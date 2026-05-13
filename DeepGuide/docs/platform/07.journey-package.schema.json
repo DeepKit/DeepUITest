@@ -1,0 +1,1178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://deepguide.dev/schemas/journey-package/v1.0",
+  "title": "DeepGuide Journey Protocol v1.0 - Business Journey Package",
+  "description": "Defines the complete structure of a BusinessJourneyPackage for the DeepGuide Journey Protocol v1.0",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "package_key",
+    "package_name",
+    "package_type",
+    "version",
+    "status",
+    "domain",
+    "owner_org",
+    "boundary_set",
+    "ability_set",
+    "accountability_set",
+    "seal_set",
+    "remediation_set",
+    "outputs",
+    "intent_triggers",
+    "journeys",
+    "fields",
+    "gates",
+    "guide_cards",
+    "route_rules",
+    "trace_schema"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Protocol version identifier"
+    },
+    "package_key": {
+      "type": "string",
+      "description": "Unique identifier for this journey package"
+    },
+    "package_name": {
+      "type": "string",
+      "description": "Human-readable name of the journey package"
+    },
+    "package_type": {
+      "type": "string",
+      "const": "business_journey",
+      "description": "Type of package, always business_journey for this schema"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this package"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "reviewed",
+        "published",
+        "recalled",
+        "deprecated",
+        "archived"
+      ],
+      "description": "Current lifecycle status of the package"
+    },
+    "domain": {
+      "type": "string",
+      "description": "Business domain this package belongs to"
+    },
+    "owner_org": {
+      "type": "string",
+      "description": "Organization that owns this package"
+    },
+    "boundary_set": {
+      "$ref": "#/$defs/BoundarySet"
+    },
+    "ability_set": {
+      "$ref": "#/$defs/AbilitySet"
+    },
+    "accountability_set": {
+      "$ref": "#/$defs/AccountabilitySet"
+    },
+    "seal_set": {
+      "$ref": "#/$defs/SealSet"
+    },
+    "remediation_set": {
+      "$ref": "#/$defs/RemediationSet"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Output"
+      },
+      "description": "Defined outputs (outcomes) of this journey package"
+    },
+    "intent_triggers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IntentTrigger"
+      },
+      "description": "Intent recognition triggers that activate this package"
+    },
+    "journeys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Journey"
+      },
+      "description": "Journey definitions within this package"
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Field"
+      },
+      "description": "Field definitions representing logical areas of the journey"
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Gate"
+      },
+      "description": "Gate definitions representing checkpoints in the journey"
+    },
+    "guide_cards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/GuideCard"
+      },
+      "description": "Guide card definitions for user-facing interactions"
+    },
+    "route_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RouteRule"
+      },
+      "description": "Routing rules that connect gates and cards"
+    },
+    "risk_policies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RiskPolicy"
+      },
+      "description": "Risk policy definitions"
+    },
+    "lost_recoveries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LostRecovery"
+      },
+      "description": "Recovery paths for lost or stuck states"
+    },
+    "trace_schema": {
+      "$ref": "#/$defs/TraceSchema"
+    },
+    "test_cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TestCase"
+      },
+      "description": "Test case definitions for validating journey behavior"
+    },
+    "human_decision_log": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/HumanDecisionLog"
+      },
+      "description": "Log of human decisions made during package design"
+    },
+    "extension_schema": {
+      "type": "object",
+      "description": "Industry extension field declarations. Namespaced keys are recommended.",
+      "additionalProperties": true
+    },
+    "industry_extensions": {
+      "type": "object",
+      "description": "Industry-specific extension values and defaults.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "PersonRef": {
+      "type": "object",
+      "required": [
+        "name",
+        "role"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PersonRefWithScope": {
+      "type": "object",
+      "required": [
+        "name",
+        "role",
+        "scope"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReviewerRef": {
+      "type": "object",
+      "required": [
+        "name",
+        "role"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RiskLevel": {
+      "type": "string",
+      "enum": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "description": "Risk level classification from L0 (lowest) to L3 (highest)"
+    },
+    "BoundarySet": {
+      "type": "object",
+      "required": [
+        "scope_declaration"
+      ],
+      "properties": {
+        "scope_declaration": {
+          "type": "string",
+          "description": "Clear declaration of what this package covers"
+        },
+        "not_applicable_when": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "condition_key",
+              "description",
+              "action"
+            ],
+            "properties": {
+              "condition_key": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "reject_with_suggestion",
+                  "redirect",
+                  "block",
+                  "warn"
+                ]
+              },
+              "suggestion": {
+                "type": "string"
+              },
+              "related_package_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "excluded_scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prerequisite_abilities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ability_key",
+              "description",
+              "required"
+            ],
+            "properties": {
+              "ability_key": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "if_not_met": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "AbilitySet": {
+      "type": "object",
+      "properties": {
+        "abilities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ability_key",
+              "category",
+              "description",
+              "required"
+            ],
+            "properties": {
+              "ability_key": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string",
+                "enum": [
+                  "system_permission",
+                  "hardware",
+                  "customer_material",
+                  "personnel_qualification",
+                  "external_service"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "if_not_met": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "AccountabilitySet": {
+      "type": "object",
+      "required": [
+        "created_by"
+      ],
+      "properties": {
+        "created_by": {
+          "$ref": "#/$defs/PersonRef"
+        },
+        "reviewed_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewerRef"
+          }
+        },
+        "published_by": {
+          "$ref": "#/$defs/PersonRef"
+        },
+        "outcome_owner": {
+          "$ref": "#/$defs/PersonRefWithScope"
+        },
+        "recall_owner": {
+          "$ref": "#/$defs/PersonRefWithScope"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SealSet": {
+      "type": "object",
+      "properties": {
+        "immutable_after_publish": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "RemediationSet": {
+      "type": "object",
+      "properties": {
+        "recall_policy": {
+          "type": "object",
+          "properties": {
+            "recall_trigger": {
+              "type": "string"
+            },
+            "recall_action": {
+              "type": "string"
+            },
+            "in_progress_policy": {
+              "type": "string"
+            },
+            "replacement_package_key": {
+              "type": "string"
+            },
+            "fallback_instruction": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rollback_policy": {
+          "type": "object",
+          "properties": {
+            "rollback_trigger": {
+              "type": "string"
+            },
+            "rollback_scope": {
+              "type": "string"
+            },
+            "rollback_action": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "feedback_channel": {
+          "type": "object",
+          "properties": {
+            "feedback_types": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "feedback_target": {
+              "type": "string"
+            },
+            "feedback_format": {
+              "type": "object",
+              "properties": {
+                "package_key": {
+                  "type": "string"
+                },
+                "gate_key": {
+                  "type": "string"
+                },
+                "feedback_type": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "submitted_by": {
+                  "type": "string"
+                },
+                "submitted_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Output": {
+      "type": "object",
+      "required": [
+        "output_key",
+        "output_name",
+        "description",
+        "final_state",
+        "risk_level"
+      ],
+      "properties": {
+        "output_key": {
+          "type": "string"
+        },
+        "output_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "final_state": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "risk_level": {
+          "$ref": "#/$defs/RiskLevel"
+        },
+        "completion_check_required": {
+          "type": "boolean"
+        },
+        "completion_gate_key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "IntentTrigger": {
+      "type": "object",
+      "required": [
+        "intent_key",
+        "phrases",
+        "normalized_intent",
+        "candidate_outputs",
+        "confidence_threshold"
+      ],
+      "properties": {
+        "intent_key": {
+          "type": "string"
+        },
+        "phrases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 3
+        },
+        "normalized_intent": {
+          "type": "string"
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "required"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "candidate_outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fallback_question": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Journey": {
+      "type": "object",
+      "required": [
+        "journey_key",
+        "journey_name",
+        "output_key",
+        "start_gate_key",
+        "start_card_key",
+        "mode",
+        "steps"
+      ],
+      "properties": {
+        "journey_key": {
+          "type": "string"
+        },
+        "journey_name": {
+          "type": "string"
+        },
+        "output_key": {
+          "type": "string"
+        },
+        "start_gate_key": {
+          "type": "string"
+        },
+        "start_card_key": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "guide",
+            "auto",
+            "hybrid"
+          ]
+        },
+        "audience": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "step_no",
+              "gate_key",
+              "card_key"
+            ],
+            "properties": {
+              "step_no": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "gate_key": {
+                "type": "string"
+              },
+              "card_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Field": {
+      "type": "object",
+      "required": [
+        "field_key",
+        "field_name",
+        "field_type"
+      ],
+      "properties": {
+        "field_key": {
+          "type": "string"
+        },
+        "field_name": {
+          "type": "string"
+        },
+        "field_type": {
+          "type": "string",
+          "enum": [
+            "conversation",
+            "system_page",
+            "document_check",
+            "decision",
+            "confirmation",
+            "risk",
+            "completion"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "parent_field_key": {
+          "type": "string"
+        },
+        "visual_context": {
+          "type": "object",
+          "properties": {
+            "has_screen": {
+              "type": "boolean"
+            },
+            "has_form": {
+              "type": "boolean"
+            },
+            "has_customer_dialogue": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Gate": {
+      "type": "object",
+      "required": [
+        "gate_key",
+        "gate_name",
+        "gate_type",
+        "field_key"
+      ],
+      "properties": {
+        "gate_key": {
+          "type": "string"
+        },
+        "gate_name": {
+          "type": "string"
+        },
+        "gate_type": {
+          "type": "string",
+          "enum": [
+            "FieldGate",
+            "ConditionGate",
+            "ActionGate",
+            "StateGate",
+            "RiskGate",
+            "HumanConfirmGate",
+            "CompletionGate"
+          ]
+        },
+        "field_key": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "condition_key",
+              "condition_name",
+              "required"
+            ],
+            "properties": {
+              "condition_key": {
+                "type": "string"
+              },
+              "condition_name": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "failure_feedback_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "next_routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "route_key",
+              "when",
+              "target_gate_key"
+            ],
+            "properties": {
+              "route_key": {
+                "type": "string"
+              },
+              "when": {
+                "type": "string"
+              },
+              "target_gate_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "risk_level": {
+          "$ref": "#/$defs/RiskLevel"
+        }
+      },
+      "additionalProperties": false
+    },
+    "GuideCard": {
+      "type": "object",
+      "required": [
+        "card_key",
+        "card_name",
+        "gate_key",
+        "field_key",
+        "card_type",
+        "title",
+        "instruction"
+      ],
+      "properties": {
+        "card_key": {
+          "type": "string"
+        },
+        "card_name": {
+          "type": "string"
+        },
+        "gate_key": {
+          "type": "string"
+        },
+        "field_key": {
+          "type": "string"
+        },
+        "card_type": {
+          "type": "string",
+          "enum": [
+            "visual_text",
+            "wireframe_reference",
+            "focus_sketch",
+            "question_choice",
+            "risk_confirm",
+            "completion_verify"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "instruction": {
+          "type": "string"
+        },
+        "visual_anchors": {
+          "type": "array",
+          "description": "Visual anchors for B panel wireframe reference navigation: blur/focus/frame/navigation line.",
+          "items": {
+            "type": "object",
+            "required": [
+              "anchor_key",
+              "anchor_type",
+              "mode"
+            ],
+            "properties": {
+              "anchor_key": {
+                "type": "string"
+              },
+              "anchor_type": {
+                "type": "string",
+                "enum": [
+                  "field",
+                  "button",
+                  "region",
+                  "risk_area",
+                  "success_state",
+                  "navigation_line"
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "blur",
+                  "focus",
+                  "frame",
+                  "line",
+                  "dim"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "target_ref": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "buttons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "label",
+              "route_key"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9
+              },
+              "label": {
+                "type": "string"
+              },
+              "route_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RouteRule": {
+      "type": "object",
+      "required": [
+        "route_key",
+        "source_gate_key",
+        "trigger",
+        "target_gate_key",
+        "target_card_key"
+      ],
+      "properties": {
+        "route_key": {
+          "type": "string"
+        },
+        "source_gate_key": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "user_choice",
+                "condition_pass",
+                "condition_fail",
+                "risk_confirmed",
+                "risk_rejected",
+                "timeout",
+                "manual_jump",
+                "lost_recovery"
+              ]
+            },
+            "choice_index": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "target_gate_key": {
+          "type": "string"
+        },
+        "target_card_key": {
+          "type": "string"
+        },
+        "trace_required": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RiskPolicy": {
+      "type": "object",
+      "required": [
+        "risk_policy_key",
+        "risk_level",
+        "description"
+      ],
+      "properties": {
+        "risk_policy_key": {
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/RiskLevel"
+        },
+        "description": {
+          "type": "string"
+        },
+        "confirm_required": {
+          "type": "boolean"
+        },
+        "confirm_message": {
+          "type": "string"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "label",
+              "action"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer"
+              },
+              "label": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "continue",
+                  "back_to_gate",
+                  "abort"
+                ]
+              },
+              "target_gate_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "trace_required": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LostRecovery": {
+      "type": "object",
+      "required": [
+        "recovery_key",
+        "problem",
+        "source_gate_key",
+        "possible_causes",
+        "choices"
+      ],
+      "properties": {
+        "recovery_key": {
+          "type": "string"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "source_gate_key": {
+          "type": "string"
+        },
+        "possible_causes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "label",
+              "target_gate_key"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer"
+              },
+              "label": {
+                "type": "string"
+              },
+              "target_gate_key": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "TraceSchema": {
+      "type": "object",
+      "properties": {
+        "trace_required": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "TestCase": {
+      "type": "object",
+      "required": [
+        "test_case_key",
+        "test_case_name",
+        "journey_key",
+        "input_intent",
+        "expected_output_key",
+        "expected_route",
+        "expected_result"
+      ],
+      "properties": {
+        "test_case_key": {
+          "type": "string"
+        },
+        "test_case_name": {
+          "type": "string"
+        },
+        "journey_key": {
+          "type": "string"
+        },
+        "input_intent": {
+          "type": "string"
+        },
+        "expected_output_key": {
+          "type": "string"
+        },
+        "expected_route": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expected_result": {
+          "type": "string",
+          "enum": [
+            "success",
+            "failure",
+            "risk_triggered",
+            "lost_recovery_used"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "HumanDecisionLog": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "topic",
+        "question",
+        "options",
+        "selected",
+        "reason",
+        "decided_by",
+        "decided_at"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selected": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "decided_by": {
+          "type": "string"
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
