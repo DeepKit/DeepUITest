@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/scan-report.schema.json",
+  "title": "DeepSpec Scan Report",
+  "description": "Schema for scan-report.yaml - file classification and project scan results",
+  "type": "object",
+  "required": ["version", "scan_time", "project_path", "project_type", "file_classification", "stats"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "scan_time": { "type": "string", "format": "date-time" },
+    "project_path": { "type": "string", "minLength": 1 },
+    "project_type": { "type": "string" },
+    "file_classification": {
+      "type": "object",
+      "required": ["documents", "code", "ui", "config", "ai_rules", "ignored"],
+      "properties": {
+        "documents": { "type": "array", "items": { "type": "string" } },
+        "code": { "type": "array", "items": { "type": "string" } },
+        "ui": { "type": "array", "items": { "type": "string" } },
+        "config": { "type": "array", "items": { "type": "string" } },
+        "ai_rules": { "type": "array", "items": { "type": "string" } },
+        "ignored": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "required": ["total_files", "documents", "code", "ui", "config", "ai_rules", "ignored"],
+      "properties": {
+        "total_files": { "type": "integer", "minimum": 0 },
+        "documents": { "type": "integer", "minimum": 0 },
+        "code": { "type": "integer", "minimum": 0 },
+        "ui": { "type": "integer", "minimum": 0 },
+        "config": { "type": "integer", "minimum": 0 },
+        "ai_rules": { "type": "integer", "minimum": 0 },
+        "ignored": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": { "type": "string" },
+          "file": { "type": ["string", "null"] },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "error"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/relations.schema.json",
+  "title": "DeepSpec Requirement Relations",
+  "description": "Schema for requirement-relations.yaml",
+  "type": "object",
+  "required": ["version", "generated_at", "relations"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" }
+    }
+  },
+  "$defs": {
+    "relation_type": {
+      "type": "string",
+      "enum": [
+        "contains",
+        "depends_on",
+        "implements",
+        "presented_by",
+        "owned_by",
+        "constrained_by",
+        "conflicts_with",
+        "derived_from",
+        "triggers",
+        "extends"
+      ]
+    },
+    "confidence_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "source_ref": {
+      "type": "object",
+      "required": ["ref_id"],
+      "properties": {
+        "ref_id": { "type": "string", "pattern": "^ev-" },
+        "relevance": {
+          "type": ["string", "null"],
+          "enum": ["primary", "supporting", "contradicting", null]
+        },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "required": ["id", "from", "to", "type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "type": { "$ref": "#/$defs/relation_type" },
+        "confidence": { "$ref": "#/$defs/confidence_level" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "source_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_ref" }
+        },
+        "decision_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "note": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

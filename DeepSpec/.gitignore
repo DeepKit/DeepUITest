@@ -1,0 +1,23 @@
+# DeepSpec build / IDE artifacts
+bin/
+dcu/
+__history/
+*.local
+*.identcache
+*.tvsconfig
+*.dsk
+*.~*
+*.~~*
+
+# Generated build logs (regenerable)
+compile_log.txt
+compile_output.txt
+
+# Per-machine config DB (DeepSpec runtime config)
+DeepSpecConfig.db
+
+# Sample-project artifacts: a project's own .deepspec/ folder is regenerable
+.deepspec/
+
+# Plugin drop-ins (regenerable)
+Plugins/

@@ -1,0 +1,19 @@
+{
+  "name": "@deepspec/reader",
+  "version": "0.1.0",
+  "description": "Minimal DeepSpec protocol reader - Level 1 compliance",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/test.js"
+  },
+  "dependencies": {
+    "yaml": "^2.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  }
+}

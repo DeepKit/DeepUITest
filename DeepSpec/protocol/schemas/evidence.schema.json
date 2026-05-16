@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/evidence.schema.json",
+  "title": "DeepSpec Source Evidence",
+  "description": "Schema for source-evidence.yaml",
+  "type": "object",
+  "required": ["version", "evidence"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_entry" }
+    }
+  },
+  "$defs": {
+    "source_layer": {
+      "type": "string",
+      "enum": ["parsed_from_a", "human_decision", "ai_inferred", "generated_summary"]
+    },
+    "confidence_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "evidence_entry": {
+      "type": "object",
+      "required": ["id", "source_layer", "path", "excerpt", "confidence"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ev-",
+          "maxLength": 80
+        },
+        "source_layer": { "$ref": "#/$defs/source_layer" },
+        "path": { "type": "string", "minLength": 1 },
+        "lines": { "type": ["string", "null"] },
+        "excerpt": { "type": "string", "maxLength": 2000 },
+        "excerpt_truncated": { "type": "boolean", "default": false },
+        "note": { "type": ["string", "null"] },
+        "confidence": { "$ref": "#/$defs/confidence_level" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "source_file_hash": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "is_stale": { "type": "boolean", "default": false },
+        "referenced_by": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

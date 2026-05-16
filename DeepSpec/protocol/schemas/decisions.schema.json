@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/decisions.schema.json",
+  "title": "DeepSpec Requirement Decisions",
+  "description": "Schema for requirement-decisions.yaml. Human decisions are first-class facts.",
+  "type": "object",
+  "required": ["version", "decisions"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision" }
+    }
+  },
+  "$defs": {
+    "decision_type": {
+      "type": "string",
+      "enum": [
+        "confirm",
+        "reject",
+        "clarify",
+        "gap_fill",
+        "resolve_conflict",
+        "scope",
+        "priority",
+        "terminology",
+        "view_mapping",
+        "module_mapping",
+        "permission",
+        "rule"
+      ]
+    },
+    "decision_status": {
+      "type": "string",
+      "enum": ["proposed", "accepted", "rejected", "superseded", "rolled_back", "withdrawn"]
+    },
+    "priority_level": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "later"]
+    },
+    "decided_by": {
+      "type": "string",
+      "enum": ["human", "system"]
+    },
+    "confidence_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "decision": {
+      "type": "object",
+      "required": ["id", "type", "title", "decision", "rationale", "target_nodes", "decided_by", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Format: dec-{seq} or RD-{YYYYMMDD}-{seq}"
+        },
+        "type": { "$ref": "#/$defs/decision_type" },
+        "title": { "type": "string", "minLength": 1 },
+        "decision": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string" },
+        "target_nodes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "affected_relations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "affected_requirements": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "affected_views": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "affected_modules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "resolved_issues": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "All issues resolved by this decision, including conflict resolutions"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref_id"],
+            "properties": {
+              "ref_id": { "type": "string" },
+              "relevance": { "type": ["string", "null"] },
+              "note": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "ai_instruction": { "type": ["string", "null"] },
+        "priority": {
+          "anyOf": [
+            { "$ref": "#/$defs/priority_level" },
+            { "type": "null" }
+          ]
+        },
+        "release": { "type": ["string", "null"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "decided_by": { "$ref": "#/$defs/decided_by" },
+        "confidence": { "$ref": "#/$defs/confidence_level" },
+        "status": { "$ref": "#/$defs/decision_status" },
+        "superseded_by": { "type": ["string", "null"] },
+        "supersedes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    }
+  }
+}

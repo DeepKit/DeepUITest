@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/tree.schema.json",
+  "title": "DeepSpec Tree File",
+  "description": "Schema for function-tree.yaml, module-tree.yaml, and view-tree.yaml",
+  "type": "object",
+  "required": ["version", "tree", "generated_at", "generator", "nodes"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "tree": { "$ref": "#/$defs/tree_type" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "generator": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    }
+  },
+  "$defs": {
+    "tree_type": {
+      "type": "string",
+      "enum": ["function", "module", "view"]
+    },
+    "node_status": {
+      "type": "string",
+      "enum": ["candidate", "confirmed", "uncertain", "rejected", "superseded"]
+    },
+    "confidence_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "source_layer": {
+      "type": "string",
+      "enum": ["parsed_from_a", "human_decision", "ai_inferred", "generated_summary"]
+    },
+    "function_kind": {
+      "type": "string",
+      "enum": ["feature", "capability", "user_story", "use_case", "rule", "constraint", "non_functional", "integration"]
+    },
+    "module_kind": {
+      "type": "string",
+      "enum": ["package", "unit", "class", "interface", "service", "repository", "controller", "adapter", "utility", "config"]
+    },
+    "view_kind": {
+      "type": "string",
+      "enum": ["application", "window", "dialog", "page", "frame", "panel", "control", "menu", "toolbar", "statusbar", "tray"]
+    },
+    "kind": {
+      "type": "string",
+      "description": "Node kind. Must be a built-in value or start with 'x_' for extensions.",
+      "anyOf": [
+        { "$ref": "#/$defs/function_kind" },
+        { "$ref": "#/$defs/module_kind" },
+        { "$ref": "#/$defs/view_kind" },
+        { "type": "string", "pattern": "^x_[a-z][a-z0-9_]*$" }
+      ]
+    },
+    "source_ref": {
+      "type": "object",
+      "required": ["ref_id"],
+      "properties": {
+        "ref_id": { "type": "string", "pattern": "^ev-" },
+        "relevance": {
+          "type": ["string", "null"],
+          "enum": ["primary", "supporting", "contradicting", null]
+        },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "tree", "title", "kind"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(func|mod|view)-[a-z0-9][a-z0-9\\-]{0,39}$",
+          "description": "Globally unique node ID with tree prefix and slug"
+        },
+        "tree": { "$ref": "#/$defs/tree_type" },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/$defs/kind" },
+        "parent_id": { "type": ["string", "null"] },
+        "slug_override": { "type": ["string", "null"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "relation_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "revision": { "type": "integer", "minimum": 1 },
+        "summary": { "type": "string" },
+        "status": { "$ref": "#/$defs/node_status" },
+        "confidence": { "$ref": "#/$defs/confidence_level" },
+        "source_layer": { "$ref": "#/$defs/source_layer" },
+        "source_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_ref" }
+        },
+        "decision_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "issue_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "related_functions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "related_modules": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "related_views": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "children": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "not_doing": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

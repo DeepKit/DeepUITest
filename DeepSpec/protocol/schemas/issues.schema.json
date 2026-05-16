@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/issues.schema.json",
+  "title": "DeepSpec Document Issues",
+  "description": "Schema for doc-issues.yaml",
+  "type": "object",
+  "required": ["version", "issues"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/issue" }
+    }
+  },
+  "$defs": {
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low", "info"]
+    },
+    "issue_type": {
+      "type": "string",
+      "enum": [
+        "missing_requirement",
+        "conflict",
+        "ambiguity",
+        "stale_doc",
+        "no_source",
+        "low_confidence",
+        "parse_warning",
+        "parse_error",
+        "orphan_node",
+        "coverage_gap"
+      ]
+    },
+    "issue_status": {
+      "type": "string",
+      "enum": ["open", "resolved", "wontfix", "deferred"]
+    },
+    "issue": {
+      "type": "object",
+      "required": ["id", "severity", "type", "title", "description", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^issue-"
+        },
+        "severity": { "$ref": "#/$defs/severity" },
+        "type": { "$ref": "#/$defs/issue_type" },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "affected_nodes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref_id"],
+            "properties": {
+              "ref_id": { "type": "string" },
+              "relevance": { "type": ["string", "null"] },
+              "note": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "suggested_action": { "type": ["string", "null"] },
+        "suggested_prompt": { "type": ["string", "null"] },
+        "status": { "$ref": "#/$defs/issue_status" },
+        "resolved_by": { "type": ["string", "null"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "resolved_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    }
+  }
+}
