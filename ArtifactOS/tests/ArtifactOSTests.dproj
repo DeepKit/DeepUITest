@@ -1,0 +1,15 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ProjectGuid>{B2C3D4E5-F6A7-8901-BCDE-F12345678901}</ProjectGuid>
+    <ProjectVersion>19.0</ProjectVersion>
+    <MainSource>ArtifactOSTests.dpr</MainSource>
+    <Config Condition="'$(Config)'==''">Debug</Config>
+    <DCC_DcuOutput>.\dcu\$(Config)</DCC_DcuOutput>
+    <DCC_ExeOutput>.\bin\$(Config)</DCC_ExeOutput>
+    <DCC_UnitSearchPath>..\DeepBase\Core;..\DeepBase\Persistence;..\DeepBase\ThirdParty\DB;..\DeepBase\Governance;..\src\core;..\src\services</DCC_UnitSearchPath>
+    <DCC_Namespace>System;System.SysUtils;System.Generics.Collections;FireDAC;FireDAC.Comp.Client;DUnitX;DUnitX.TestFramework;DUnitX.Loggers.Console;DeepBase;DeepBase.Config;DeepBase.Manager;DeepBase.Persistence.Manager.FireDAC;DeepBase.DB.PostgreSQL</DCC_Namespace>
+    <DCC_Define>DEBUG;ARTIFACTOS_TESTS</DCC_Define>
+    <DCC_Platform>Win64</DCC_Platform>
+    <DCC_UsePackage>DeepBaseCore;DeepBasePersistence;DeepBaseGovernance</DCC_UsePackage>
+  </PropertyGroup>
+</Project>

@@ -103,10 +103,11 @@ begin
 
       AResult.SnapshotId := InsertId(DB,
         'INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, purpose_fit_status, seal_candidate, sealed_at, sealed_by) ' +
-        'VALUES (''' + AResult.ArtifactId + ''', ''' + AResult.VersionId + ''', ''qualified'', ''ready'', ''pass'', true, now(), ''system:chain_runner'') ' +
+        'VALUES (''' + AResult.ArtifactId + ''', ''' + AResult.VersionId + ''', ''qualified'', ''ready'', ''pass'', true, null, null) ' +
         'RETURNING id');
 
       DB.Execute('UPDATE artifactos.quality_snapshot SET quality_run_ids_cache=''["' + AResult.RunId + '"]'' WHERE id=''' + AResult.SnapshotId + '''');
+      DB.Execute('UPDATE artifactos.quality_snapshot SET sealed_at=now(), sealed_by=''system:chain_runner'' WHERE id=''' + AResult.SnapshotId + ''' AND sealed_at IS NULL');
 
       // 6. PublicationPackage
       AResult.PackageId := TPackageBuilder.BuildPackage(AResult.ArtifactId, AResult.VersionId, AResult.SnapshotId, 'zhihu', 'test_account');

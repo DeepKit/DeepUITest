@@ -88,11 +88,13 @@ begin
       SnapshotId := InsertReturningId(
         'INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, purpose_fit_status, seal_candidate, sealed_at, sealed_by) ' +
         'VALUES (''' + ArtifactId + ''', (SELECT id FROM artifactos.artifact_version WHERE artifact_id=''' + ArtifactId + ''' AND version_no=1), ' +
-        '''qualified'', ''ready'', ''pass'', true, now(), ''system:e2e_test'') ' +
+        '''qualified'', ''ready'', ''pass'', true, null, null) ' +
         'RETURNING id');
 
       ArtifactOS_DB.Execute(
-        'UPDATE artifactos.quality_snapshot SET quality_run_ids_cache = ''["' + RunId + '"]'' WHERE id=''' + SnapshotId + '''');
+        'UPDATE artifactos.quality_snapshot SET quality_run_ids_cache = ''["' + RunId + '"]'' WHERE id=''' + SnapshotId + '''' + ' AND sealed_at IS NULL');
+      ArtifactOS_DB.Execute(
+        'UPDATE artifactos.quality_snapshot SET sealed_at = now(), sealed_by = ''system:e2e_test'' WHERE id = ''' + SnapshotId + '''' + ' AND sealed_at IS NULL');
 
       // 7. Create PublicationPackage (simulated)
       PackageId := InsertReturningId(

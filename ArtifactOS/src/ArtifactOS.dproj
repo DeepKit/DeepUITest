@@ -1,0 +1,16 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <ProjectVersion>19.0</ProjectVersion>
+    <MainSource>ArtifactOS.dpr</MainSource>
+    <Config Condition="'$(Config)'==''">Debug</Config>
+    <DCC_DcuOutput>.\dcu\$(Config)</DCC_DcuOutput>
+    <DCC_ExeOutput>.\bin\$(Config)</DCC_ExeOutput>
+    <DCC_UnitSearchPath>..\DeepBase\Core;..\DeepBase\Persistence;..\DeepBase\ThirdParty\DB;..\DeepBase\Governance;src\core;src\services</DCC_UnitSearchPath>
+    <DCC_Namespace>System;System.SysUtils;System.Classes;System.Generics.Collections;FireDAC;FireDAC.Comp.Client;FireDAC.Stan.Def;DeepBase;DeepBase.Config;DeepBase.Manager;DeepBase.Persistence.Manager.FireDAC;DeepBase.DB.PostgreSQL</DCC_Namespace>
+    <DCC_Define>DEBUG;ARTIFACTOS_PHASE1A;ARTIFACTOS_SHADOW_ONLY</DCC_Define>
+    <SanitizedProjectName>ArtifactOS</SanitizedProjectName>
+    <DCC_Platform>Win64</DCC_Platform>
+    <DCC_UsePackage>DeepBaseCore;DeepBasePersistence;DeepBaseGovernance</DCC_UsePackage>
+  </PropertyGroup>
+</Project>
