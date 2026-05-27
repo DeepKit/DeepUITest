@@ -8,8 +8,9 @@ uses
   ArtifactOS.Tests.E2EChain,
   ArtifactOS.Tests.QualityGate,
   ArtifactOS.Tests.StateMachine,
-  ArtifactOS.Tests.ShadowRun;
+  ArtifactOS.Tests.ShadowRun,
+  ArtifactOS.Tests.LegacyImport;
 
 begin
-  TDUnitX.Run([TArtifactOSE2EChain, TQualityGateTests, TStateMachineTests, TShadowRunTests]);
+  TDUnitX.Run([TArtifactOSE2EChain, TQualityGateTests, TStateMachineTests, TShadowRunTests, TLegacyImportTests]);
 end.
