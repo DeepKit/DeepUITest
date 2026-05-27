@@ -1,0 +1,21 @@
+# First Operational Surface — Phase 1A default
+first_operational_surface:
+  source_pack_id: difference_monism_v1_candidate
+  source_pack_name: 一元论
+  source_root: D:\_Progs\一元论
+  platform: zhihu
+  run_mode: shadow
+  legacy_stage: L0
+  real_publish_allowed: false
+  media_publish_mode: manual-review
+  audience_stage_scope: [S1, S2, S3]
+  theory_visibility: medium
+  database:
+    main: progee_db
+    test: artifactos_test
+    schemas: [artifactos, media_publish, legacy_bridge]
+  safety:
+    sourcepack_auto_promote_to_spl3: false
+    write_back_to_source_root: false
+    execute_real_publish: false
+    modify_legacy_system: false
