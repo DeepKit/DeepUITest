@@ -7,8 +7,9 @@ uses
   DUnitX.TestFramework,
   ArtifactOS.Tests.E2EChain,
   ArtifactOS.Tests.QualityGate,
-  ArtifactOS.Tests.StateMachine;
+  ArtifactOS.Tests.StateMachine,
+  ArtifactOS.Tests.ShadowRun;
 
 begin
-  TDUnitX.Run([TArtifactOSE2EChain, TQualityGateTests, TStateMachineTests]);
+  TDUnitX.Run([TArtifactOSE2EChain, TQualityGateTests, TStateMachineTests, TShadowRunTests]);
 end.
