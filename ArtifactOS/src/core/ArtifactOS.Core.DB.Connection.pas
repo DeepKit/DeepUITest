@@ -119,6 +119,18 @@ begin
   end;
 end;
 
+function TArtifactDB.InsertAndReturnId(const ASQL: string): string;
+var
+  Q: TFDQuery;
+begin
+  Q := Query(ASQL);
+  try
+    Result := Q.Fields[0].AsString;
+  finally
+    Q.Free;
+  end;
+end;
+
 initialization
   _Instance := nil;
 

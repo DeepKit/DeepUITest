@@ -24,16 +24,9 @@ implementation
 uses
   FireDAC.Comp.Client;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TNotificationService.CreateChannel(const ACode, AType: string): string;
@@ -43,8 +36,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.notification_channel (channel_code, channel_type, channel_name, status) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.notification_channel (channel_code, channel_type, channel_name, status) ' +
       'VALUES (''' + ACode + ''', ''' + AType + ''', ''Amy ' + AType + ' Channel'', ''binding'') ' +
       'ON CONFLICT (tenant_id, channel_code) DO UPDATE SET last_seen_at=now() ' +
       'RETURNING id');
@@ -60,8 +52,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.amy_weixin_channel (notification_channel_id, binding_status) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.amy_weixin_channel (notification_channel_id, binding_status) ' +
       'VALUES (''' + AChannelId + ''', ''qr_pending'') ' +
       'RETURNING id');
   finally
@@ -85,8 +76,7 @@ begin
       ChannelId := CreateChannel('weixin_channel_01', 'weixin');
 
     // Create daily report
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.daily_report (report_date, day_case_id, summary_text, completed_summary, decision_summary, risk_summary, tomorrow_recommendation) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.daily_report (report_date, day_case_id, summary_text, completed_summary, decision_summary, risk_summary, tomorrow_recommendation) ' +
       'VALUES (''' + AReportDate + ''', ''' + ADayCaseId + ''', ''' + ASummary + ''', ' +
       '''{"completed":0}'', ''' + ADecisions + ''', ''' + ARisks + ''', ''' + ATomorrowRec + ''') ' +
       'ON CONFLICT (tenant_id, report_date, day_case_id) DO UPDATE SET ' +
@@ -94,8 +84,7 @@ begin
       'RETURNING id');
 
     // Create entry card (for WeChat delivery)
-    InsertId(DB,
-      'INSERT INTO artifactos.daily_report_entry_card (daily_report_id, notification_event_id, prepared_action_panel_id, headline, summary_payload) ' +
+    DB.InsertAndReturnId('INSERT INTO artifactos.daily_report_entry_card (daily_report_id, notification_event_id, prepared_action_panel_id, headline, summary_payload) ' +
       'VALUES (''' + Result + ''', NULL, NULL, ''Daily Report: ' + AReportDate + ''', ''{"summary":"' + ASummary + '"}'') ' +
       'ON CONFLICT (tenant_id, daily_report_id) DO NOTHING');
   finally

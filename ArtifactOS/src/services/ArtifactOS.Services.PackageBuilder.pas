@@ -21,16 +21,9 @@ implementation
 uses
   FireDAC.Comp.Client, System.DateUtils;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TPackageBuilder.BuildPackage(const AArtifactId, AArtifactVersionId, ASnapshotId: string;
@@ -53,8 +46,7 @@ begin
     IdemKey := 'pkg_' + AArtifactId + '_' + APlatform + '_' + IntToStr(DateTimeToUnix(Now));
 
     // Build package
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.publication_package (artifact_id, artifact_version_id, quality_snapshot_id, ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.publication_package (artifact_id, artifact_version_id, quality_snapshot_id, ' +
       'platform, account_id, idempotency_key, simulation_only, run_mode, status) ' +
       'VALUES (''' + AArtifactId + ''', ''' + AArtifactVersionId + ''', ''' + ASnapshotId + ''', ' +
       '''' + APlatform + ''', ''' + AAccountId + ''', ''' + IdemKey + ''', true, ''shadow'', ''simulated'') ' +

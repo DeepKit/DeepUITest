@@ -33,16 +33,9 @@ implementation
 uses
   FireDAC.Comp.Client;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TAmyDeskService.CreateWorkCard(const AInfo: TWorkCardInfo): string;
@@ -56,7 +49,7 @@ begin
     SQL := 'INSERT INTO artifactos.work_card (card_type, source_type, source_id, priority, review_requirement, title, summary, recommended_action_no) ' +
            'VALUES (''' + AInfo.CardType + ''', ''' + AInfo.SourceType + ''', ''' + AInfo.SourceId + ''', ''' + AInfo.Priority + ''', ''' + AInfo.ReviewRequirement + ''', ''' + AInfo.Title + ''', ''' + AInfo.Summary + ''', 1) ' +
            'RETURNING id';
-    Result := InsertId(DB, SQL);
+    Result := DB.InsertAndReturnId(SQL);
   finally
     DB.Disconnect;
   end;
@@ -69,8 +62,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.prepared_action_panel (work_card_id, panel_type, context_type, context_id) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.prepared_action_panel (work_card_id, panel_type, context_type, context_id) ' +
       'VALUES (''' + AWorkCardId + ''', ''' + APanelType + ''', ''' + AContextType + ''', ''' + AContextId + ''') ' +
       'RETURNING id');
   finally
@@ -100,8 +92,7 @@ begin
     else
       Role := 'prepared';
 
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.prepared_action_option (panel_id, option_no, option_role, label, action_type, recommendation_reason, risk_level, display_order) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.prepared_action_option (panel_id, option_no, option_role, label, action_type, recommendation_reason, risk_level, display_order) ' +
       'VALUES (''' + APanelId + ''', ''' + AOptionNo + ''', ''' + Role + ''', ''' + ALabel + ''', ''' + AActionType + ''', ''' + Reason + ''', ''normal'', ' + AOptionNo + ') ' +
       'RETURNING id');
   finally

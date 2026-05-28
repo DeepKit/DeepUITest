@@ -29,16 +29,9 @@ implementation
 uses
   FireDAC.Comp.Client;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TAutoTuneService.IsDenyListed(const AParamPath: string): Boolean;

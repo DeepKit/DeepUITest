@@ -25,16 +25,9 @@ implementation
 uses
   FireDAC.Comp.Client;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TShadowRunService.CreateRun(const ARunCode: string;
@@ -45,8 +38,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.shadow_run (run_code, status, start_date, end_date, primary_platform, audience_stage_scope, theory_visibility, run_goal_payload) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.shadow_run (run_code, status, start_date, end_date, primary_platform, audience_stage_scope, theory_visibility, run_goal_payload) ' +
       'VALUES (''' + ARunCode + ''', ''planned'', ''' + AStartDate + ''', ''' + AEndDate + ''', ''' + APlatform + ''', ' +
       '''{S1,S2,S3}'', ''medium'', ''{"goal":"Phase 1A shadow run"}'') ' +
       'RETURNING id');
@@ -105,8 +97,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.shadow_run_day (shadow_run_id, run_date, day_index, status) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.shadow_run_day (shadow_run_id, run_date, day_index, status) ' +
       'VALUES (''' + ARunId + ''', ''' + ARunDate + ''', ' + IntToStr(ADayIndex) + ', ''planned'') ' +
       'RETURNING id');
   finally
@@ -126,7 +117,7 @@ begin
     SQL := 'INSERT INTO artifactos.shadow_run_observation (shadow_run_id, shadow_run_day_id, observation_type, artifactos_ref, legacy_ref, deviation_type, severity) ' +
            'VALUES (''' + ARunId + ''', ''' + AShadowRunDayId + ''', ''' + AObsType + ''', ''' + AArtifactOSRef + ''', ''' + ALegacyRef + ''', ''' + ADeviationType + ''', ''' + ASeverity + ''') ' +
            'RETURNING id';
-    Result := InsertId(DB, SQL);
+    Result := DB.InsertAndReturnId(SQL);
   finally
     DB.Disconnect;
   end;

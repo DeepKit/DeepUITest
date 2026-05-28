@@ -33,16 +33,9 @@ implementation
 uses
   FireDAC.Comp.Client, System.DateUtils, System.Hash;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 function SafeStr(const S: string): string;
@@ -59,8 +52,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO legacy_bridge.legacy_import_batch (batch_code, source_system, source_root, import_scope, status) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO legacy_bridge.legacy_import_batch (batch_code, source_system, source_root, import_scope, status) ' +
       'VALUES (''' + BatchCode + ''', ''' + ASourceSystem + ''', ''' + SafeStr(ASourceRoot) + ''', ''publication_record'', ''prepared'') ' +
       'RETURNING id');
   finally
@@ -117,8 +109,7 @@ begin
             Hash := 'unreadable';
           end;
 
-          InsertId(DB,
-            'INSERT INTO legacy_bridge.legacy_external_ref (import_batch_id, ref_type, ref_label, source_path, source_hash, source_mtime, status) ' +
+          DB.InsertAndReturnId('INSERT INTO legacy_bridge.legacy_external_ref (import_batch_id, ref_type, ref_label, source_path, source_hash, source_mtime, status) ' +
             'VALUES (''' + ABatchId + ''', ''' + ARefType + ''', ''' + SafeStr(TPath.GetFileName(FPath)) + ''', ''' + SafeStr(FPath) + ''', ''' + Hash + ''', ''' + FormatDateTime('yyyy-mm-dd hh:nn:ss', MTime) + ''', ''captured'') ' +
             'ON CONFLICT DO NOTHING');
 
@@ -157,8 +148,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO legacy_bridge.legacy_snapshot (legacy_external_ref_id, snapshot_kind, content_hash, snapshot_payload) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO legacy_bridge.legacy_snapshot (legacy_external_ref_id, snapshot_kind, content_hash, snapshot_payload) ' +
       'VALUES (''' + ARefId + ''', ''' + ASnapshotKind + ''', ''' + ContentHash + ''', ''{"content":"' + SafeStr(AContent) + '"}'') ' +
       'RETURNING id');
   finally
@@ -174,8 +164,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO legacy_bridge.legacy_diff_card (artifactos_ref, legacy_ref, deviation_type, severity, status) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO legacy_bridge.legacy_diff_card (artifactos_ref, legacy_ref, deviation_type, severity, status) ' +
       'VALUES (''' + AArtifactOSRef + ''', ''' + ALegacyRef + ''', ''' + ADeviationType + ''', ''' + ASeverity + ''', ''open'') ' +
       'RETURNING id');
   finally

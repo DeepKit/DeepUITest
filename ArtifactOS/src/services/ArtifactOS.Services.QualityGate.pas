@@ -30,16 +30,9 @@ implementation
 uses
   FireDAC.Comp.Client, System.JSON;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TQualityGateService.RunESGate(const AArtifactId, AContractJson: string): TGateResult;
@@ -157,8 +150,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.quality_run (artifact_id, artifact_version_id, run_type, run_evidence, run_status, completed_at) ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.quality_run (artifact_id, artifact_version_id, run_type, run_evidence, run_status, completed_at) ' +
       'VALUES (''' + AArtifactId + ''', ''' + AArtifactVersionId + ''', ''' + ARunType + ''', ''' + AEvidence + ''', ''completed'', now()) ' +
       'RETURNING id');
   finally
@@ -185,8 +177,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := InsertId(DB,
-      'INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, ' +
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, ' +
       'purpose_fit_status, seal_candidate) ' +
       'VALUES (''' + AArtifactId + ''', ''' + AArtifactVersionId + ''', ''' + QualStatus + ''', ''' + Readiness + ''', ''pass'', true) ' +
       'RETURNING id');

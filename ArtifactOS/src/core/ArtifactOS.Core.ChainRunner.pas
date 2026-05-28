@@ -31,16 +31,9 @@ implementation
 uses
   FireDAC.Comp.Client;
 
-function InsertId(const DB: TArtifactDB; const SQL: string): string;
-var
-  Q: TFDQuery;
+function InsertAndReturnId(const SQL: string): string;
 begin
-  Q := DB.Query(SQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
 end;
 
 class function TChainRunner.RunFullChain(const ATitle, ABody: string; out AResult: TChainResult): Boolean;
@@ -55,35 +48,29 @@ begin
     DB.Connection.StartTransaction;
     try
       // 1. Case → Studio → ArtifactPlan (reuse the e2e chain pattern)
-      AResult.CaseId := InsertId(DB,
-        'INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
+      AResult.CaseId := DB.InsertAndReturnId('INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
         'VALUES (''chain_'' || floor(extract(epoch from now()))::text, ''day_sub'', ''Chain: ' + ATitle + ''', ''active'', ''tactical_execution'', ' +
         '(SELECT id FROM artifactos.case_record WHERE case_code=''yearcase_2026''), (SELECT id FROM artifactos.case_record WHERE case_code=''yearcase_2026'')) ' +
         'RETURNING id');
 
-      AResult.StudioId := InsertId(DB,
-        'INSERT INTO artifactos.studio (studio_code, case_id, platform_id, artifact_type, theory_visibility, status) ' +
+      AResult.StudioId := DB.InsertAndReturnId('INSERT INTO artifactos.studio (studio_code, case_id, platform_id, artifact_type, theory_visibility, status) ' +
         'VALUES (''chain_studio_'' || floor(extract(epoch from now()))::text, ''' + AResult.CaseId + ''', ''zhihu'', ''zhihu_longform'', ''medium'', ''planning'') ' +
         'RETURNING id');
 
-      var PlanId := InsertId(DB,
-        'INSERT INTO artifactos.artifact_plan (studio_id, blueprint_id, primary_purpose_type, risk_level, status) ' +
+      var PlanId := DB.InsertAndReturnId('INSERT INTO artifactos.artifact_plan (studio_id, blueprint_id, primary_purpose_type, risk_level, status) ' +
         'VALUES (''' + AResult.StudioId + ''', (SELECT id FROM artifactos.artifact_blueprint WHERE blueprint_code=''zhihu_article_v1'' LIMIT 1), ''explanation'', ''normal'', ''approved'') ' +
         'RETURNING id');
 
-      InsertId(DB,
-        'INSERT INTO artifactos.sub_studio (studio_id, artifact_plan_id, status) VALUES (''' + AResult.StudioId + ''', ''' + PlanId + ''', ''executing'') RETURNING id');
+      DB.InsertAndReturnId('INSERT INTO artifactos.sub_studio (studio_id, artifact_plan_id, status) VALUES (''' + AResult.StudioId + ''', ''' + PlanId + ''', ''executing'') RETURNING id');
 
       // 2. Artifact
-      AResult.ArtifactId := InsertId(DB,
-        'INSERT INTO artifactos.artifact (sub_studio_id, artifact_plan_id, blueprint_id, title, status, primary_purpose_type, theory_visibility) ' +
+      AResult.ArtifactId := DB.InsertAndReturnId('INSERT INTO artifactos.artifact (sub_studio_id, artifact_plan_id, blueprint_id, title, status, primary_purpose_type, theory_visibility) ' +
         'VALUES ((SELECT id FROM artifactos.sub_studio WHERE artifact_plan_id=''' + PlanId + '''), ''' + PlanId + ''', ' +
         '(SELECT id FROM artifactos.artifact_blueprint WHERE blueprint_code=''zhihu_article_v1'' LIMIT 1), ''' + ATitle + ''', ''assembled'', ''explanation'', ''medium'') ' +
         'RETURNING id');
 
       // 3. ArtifactVersion (sealed)
-      AResult.VersionId := InsertId(DB,
-        'INSERT INTO artifactos.artifact_version (artifact_id, version_no, assembled_payload, seal_status) ' +
+      AResult.VersionId := DB.InsertAndReturnId('INSERT INTO artifactos.artifact_version (artifact_id, version_no, assembled_payload, seal_status) ' +
         'VALUES (''' + AResult.ArtifactId + ''', 1, ''{"title":"' + ATitle + '","body":"' + ABody + '"}'', ''sealed'') ' +
         'RETURNING id');
 
@@ -96,13 +83,11 @@ begin
       end;
 
       // 5. QualityRun + Snapshot
-      AResult.RunId := InsertId(DB,
-        'INSERT INTO artifactos.quality_run (artifact_id, artifact_version_id, run_type, run_evidence, run_status, completed_at) ' +
+      AResult.RunId := DB.InsertAndReturnId('INSERT INTO artifactos.quality_run (artifact_id, artifact_version_id, run_type, run_evidence, run_status, completed_at) ' +
         'VALUES (''' + AResult.ArtifactId + ''', ''' + AResult.VersionId + ''', ''es'', ''{"gate":"' + Gate.GateStatus + '"}'', ''completed'', now()) ' +
         'RETURNING id');
 
-      AResult.SnapshotId := InsertId(DB,
-        'INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, purpose_fit_status, seal_candidate, sealed_at, sealed_by) ' +
+      AResult.SnapshotId := DB.InsertAndReturnId('INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, purpose_fit_status, seal_candidate, sealed_at, sealed_by) ' +
         'VALUES (''' + AResult.ArtifactId + ''', ''' + AResult.VersionId + ''', ''qualified'', ''ready'', ''pass'', true, null, null) ' +
         'RETURNING id');
 
