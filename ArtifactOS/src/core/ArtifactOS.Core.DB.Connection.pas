@@ -141,6 +141,7 @@ end;
 
 function TArtifactDB.Query(const ASQL: string): TFDQuery;
 begin
+  Connect;
   Result := TFDQuery.Create(nil);
   try
     Result.Connection := FConnection;
@@ -154,7 +155,6 @@ end;
 
 function TArtifactDB.Context(const ATimeoutSec: Integer): TUniQueryContext;
 begin
-  Connect;
   Result := UniDbMakeContext(FConnection, udbPostgreSQL, ATimeoutSec, UniDbNewCorrelationId);
 end;
 
