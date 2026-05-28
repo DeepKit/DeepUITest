@@ -22,9 +22,13 @@ type
     procedure Disconnect;
     function IsConnected: Boolean;
     function Query(const ASQL: string): TFDQuery;
+    function QueryP(const ASQL: string; const AParams: array of const): TFDQuery;
     function Execute(const ASQL: string): Integer;
+    function ExecuteP(const ASQL: string; const AParams: array of const): Integer;
     function ExecuteScalar(const ASQL: string): string;
+    function ExecuteScalarP(const ASQL: string; const AParams: array of const): string;
     function InsertAndReturnId(const ASQL: string): string;
+    function InsertAndReturnIdP(const ASQL: string; const AParams: array of const): string;
     function ConnectLocked: Boolean;
     procedure DisconnectLocked;
     property Connection: TFDConnection read FConnection;
@@ -168,6 +172,85 @@ var
 begin
   Q := Query(ASQL);
   try
+    Result := Q.Fields[0].AsString;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TArtifactDB.QueryP(const ASQL: string; const AParams: array of const): TFDQuery;
+var
+  I: Integer;
+begin
+  Result := TFDQuery.Create(nil);
+  try
+    Result.Connection := FConnection;
+    Result.SQL.Text := ASQL;
+    for I := 0 to High(AParams) do
+      Result.Params[I].Value := TVarRec(AParams[I]).VInteger;
+    Result.Open;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TArtifactDB.ExecuteP(const ASQL: string; const AParams: array of const): Integer;
+var
+  I: Integer;
+  Q: TFDQuery;
+begin
+  FLock.Enter;
+  try
+    Q := TFDQuery.Create(nil);
+    try
+      Q.Connection := FConnection;
+      Q.SQL.Text := ASQL;
+      for I := 0 to High(AParams) do
+        Q.Params[I].Value := TVarRec(AParams[I]).VInteger;
+      Q.ExecSQL;
+      Result := Q.RowsAffected;
+    finally
+      Q.Free;
+    end;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+function TArtifactDB.ExecuteScalarP(const ASQL: string; const AParams: array of const): string;
+var
+  Q: TFDQuery;
+  I: Integer;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := FConnection;
+    Q.SQL.Text := ASQL;
+    for I := 0 to High(AParams) do
+      Q.Params[I].Value := TVarRec(AParams[I]).VInteger;
+    Q.Open;
+    if Q.IsEmpty or Q.Fields[0].IsNull then
+      Result := ''
+    else
+      Result := Q.Fields[0].AsString;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TArtifactDB.InsertAndReturnIdP(const ASQL: string; const AParams: array of const): string;
+var
+  Q: TFDQuery;
+  I: Integer;
+begin
+  Q := TFDQuery.Create(nil);
+  try
+    Q.Connection := FConnection;
+    Q.SQL.Text := ASQL;
+    for I := 0 to High(AParams) do
+      Q.Params[I].Value := TVarRec(AParams[I]).VInteger;
+    Q.Open;
     Result := Q.Fields[0].AsString;
   finally
     Q.Free;
