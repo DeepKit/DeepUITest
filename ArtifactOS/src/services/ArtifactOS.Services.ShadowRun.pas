@@ -54,7 +54,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.shadow_run SET status=''running'' WHERE id=''' + ARunId + ''' AND status=''planned''');
+    DB.ExecuteJson(
+      'UPDATE artifactos.shadow_run SET status=''running'' WHERE id=:id AND status=''planned''',
+      '{"id":"' + ARunId + '"}');
     Result := ARunId;
   finally
     DB.Disconnect;
@@ -68,7 +70,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.shadow_run SET status=''completed'' WHERE id=''' + ARunId + ''' AND status=''running''');
+    DB.ExecuteJson(
+      'UPDATE artifactos.shadow_run SET status=''completed'' WHERE id=:id AND status=''running''',
+      '{"id":"' + ARunId + '"}');
     Result := ARunId;
   finally
     DB.Disconnect;

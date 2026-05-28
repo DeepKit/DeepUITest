@@ -99,7 +99,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.daily_report SET status=''notified'', notified_at=now() WHERE id=''' + AReportId + '''');
+    DB.ExecuteJson(
+      'UPDATE artifactos.daily_report SET status=''notified'', notified_at=now() WHERE id=:id',
+      '{"id":"' + AReportId + '"}');
     Result := AReportId;
   finally
     DB.Disconnect;
@@ -113,7 +115,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.daily_report SET status=''opened'' WHERE id=''' + AReportId + ''' AND status IN (''prepared'',''notified'')');
+    DB.ExecuteJson(
+      'UPDATE artifactos.daily_report SET status=''opened'' WHERE id=:id AND status IN (''prepared'',''notified'')',
+      '{"id":"' + AReportId + '"}');
     Result := AReportId;
   finally
     DB.Disconnect;
@@ -127,7 +131,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.daily_report SET status=''completed'' WHERE id=''' + AReportId + ''' AND status=''opened''');
+    DB.ExecuteJson(
+      'UPDATE artifactos.daily_report SET status=''completed'' WHERE id=:id AND status=''opened''',
+      '{"id":"' + AReportId + '"}');
     Result := AReportId;
   finally
     DB.Disconnect;

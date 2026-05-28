@@ -96,7 +96,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.publication_package SET status=''simulated'', simulation_only=true WHERE id=''' + APackageId + ''' AND simulation_only=true');
+    DB.ExecuteJson(
+      'UPDATE artifactos.publication_package SET status=''simulated'', simulation_only=true WHERE id=:id AND simulation_only=true',
+      '{"id":"' + APackageId + '"}');
     Result := APackageId;
   finally
     DB.Disconnect;
@@ -110,7 +112,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.publication_package SET status=''held'', metadata=jsonb_set(metadata, ''{hold_reason}'', ''"' + AReason + '"'') WHERE id=''' + APackageId + '''');
+    DB.ExecuteJson(
+      'UPDATE artifactos.publication_package SET status=''held'', metadata=jsonb_set(metadata, ''{hold_reason}'', :reason::jsonb) WHERE id=:id',
+      Format('{"reason":"%s","id":"%s"}', [AReason, APackageId]));
     Result := APackageId;
   finally
     DB.Disconnect;
@@ -124,7 +128,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := DB.ExecuteScalar('SELECT status FROM artifactos.publication_package WHERE id=''' + APackageId + '''');
+    Result := DB.ExecuteScalarJson(
+      'SELECT status FROM artifactos.publication_package WHERE id=:id',
+      '{"id":"' + APackageId + '"}');
   finally
     DB.Disconnect;
   end;

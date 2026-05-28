@@ -73,11 +73,11 @@ begin
           try
             WriteLn;
             WriteLn('Verification:');
-            WriteLn('  Artifact:          ', ArtifactOS_DB.ExecuteScalarJson('SELECT status FROM artifactos.artifact WHERE id=:id',
+            WriteLn('  Artifact:          ', ArtifactOS_DB.ExecuteScalarJson('SELECT status FROM artifactos.artifact WHERE id=:id::uuid',
               '{"id":"' + R.ArtifactId + '"}'));
-            WriteLn('  Quality:           ', ArtifactOS_DB.ExecuteScalarJson('SELECT qualified_status FROM artifactos.quality_snapshot WHERE id=:id',
+            WriteLn('  Quality:           ', ArtifactOS_DB.ExecuteScalarJson('SELECT qualified_status FROM artifactos.quality_snapshot WHERE id=:id::uuid',
               '{"id":"' + R.SnapshotId + '"}'));
-            WriteLn('  Package:           ', ArtifactOS_DB.ExecuteScalarJson('SELECT status FROM artifactos.publication_package WHERE id=:id',
+            WriteLn('  Package:           ', ArtifactOS_DB.ExecuteScalarJson('SELECT status FROM artifactos.publication_package WHERE id=:id::uuid',
               '{"id":"' + R.PackageId + '"}'));
             WriteLn('  RealPublishGate:   ', ArtifactOS_DB.ExecuteScalar('SELECT gate_status::text FROM artifactos.check_real_publish_gate()'));
             WriteLn('  State machine:     ', ArtifactOS_DB.ExecuteScalar('SELECT COUNT(*)::text FROM artifactos.substudio_execution_task'), ' tasks');
