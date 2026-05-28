@@ -3,13 +3,15 @@ unit ArtifactOS.Services.PackageBuilder;
 interface
 
 uses
-  System.SysUtils,
+  System.SysUtils, FireDAC.Comp.Client,
   ArtifactOS.Core.DB.Connection;
 
 type
   TPackageBuilder = class
   public
     class function BuildPackage(const AArtifactId, AArtifactVersionId, ASnapshotId: string;
+      const APlatform, AAccountId: string): string;
+    class function BuildPackageOnConn(AConn: TFDConnection; const AArtifactId, AArtifactVersionId, ASnapshotId: string;
       const APlatform, AAccountId: string): string;
     class function MarkSimulated(const APackageId: string): string;
     class function MarkHeld(const APackageId: string; const AReason: string): string;
@@ -19,7 +21,7 @@ type
 implementation
 
 uses
-  FireDAC.Comp.Client, System.DateUtils;
+  System.DateUtils;
 
 function InsertAndReturnId(const SQL: string): string;
 begin
@@ -53,6 +55,37 @@ begin
       'RETURNING id');
   finally
     DB.Disconnect;
+  end;
+end;
+
+class function TPackageBuilder.BuildPackageOnConn(AConn: TFDConnection; const AArtifactId, AArtifactVersionId, ASnapshotId: string;
+  const APlatform, AAccountId: string): string;
+var
+  IdemKey: string;
+begin
+  with TFDQuery.Create(nil) do
+  try
+    Connection := AConn;
+    SQL.Text := 'SELECT qualified_status FROM artifactos.quality_snapshot WHERE id=''' + ASnapshotId + '''';
+    Open; var SnapshotStatus := Fields[0].AsString; Close;
+    if SnapshotStatus <> 'qualified' then
+      raise Exception.Create('Cannot build package: quality_snapshot is not qualified (status=' + SnapshotStatus + ')');
+  finally
+    Free;
+  end;
+
+  IdemKey := 'pkg_' + AArtifactId + '_' + APlatform + '_' + IntToStr(DateTimeToUnix(Now));
+  with TFDQuery.Create(nil) do
+  try
+    Connection := AConn;
+    SQL.Text := 'INSERT INTO artifactos.publication_package (artifact_id, artifact_version_id, quality_snapshot_id, ' +
+      'platform, account_id, idempotency_key, simulation_only, run_mode, status) ' +
+      'VALUES (''' + AArtifactId + ''', ''' + AArtifactVersionId + ''', ''' + ASnapshotId + ''', ' +
+      '''' + APlatform + ''', ''' + AAccountId + ''', ''' + IdemKey + ''', true, ''shadow'', ''simulated'') ' +
+      'RETURNING id';
+    Open; Result := Fields[0].AsString; Close;
+  finally
+    Free;
   end;
 end;
 

@@ -3,7 +3,7 @@ unit ArtifactOS.Services.QualityGate;
 interface
 
 uses
-  System.SysUtils, System.Generics.Collections,
+  System.SysUtils, System.Generics.Collections, FireDAC.Comp.Client,
   ArtifactOS.Core.DB.Connection;
 
 type
@@ -19,6 +19,7 @@ type
   TQualityGateService = class
   public
     class function RunESGate(const AArtifactId, AContractJson: string): TGateResult;
+    class function RunESGateOnConn(AConn: TFDConnection; const AArtifactId, AContractJson: string): TGateResult;
     class function RunStructureGate(const AArtifactId: string): TGateResult;
     class function CreateQualityRun(const AArtifactId, AArtifactVersionId, ARunType, AEvidence: string): string;
     class function CreateQualitySnapshot(const AArtifactId, AArtifactVersionId: string; AQualified: Boolean): string;
@@ -28,7 +29,7 @@ type
 implementation
 
 uses
-  FireDAC.Comp.Client, System.JSON;
+  System.JSON;
 
 function InsertAndReturnId(const SQL: string): string;
 begin
@@ -92,6 +93,51 @@ begin
   finally
     DB.Disconnect;
   end;
+end;
+
+class function TQualityGateService.RunESGateOnConn(AConn: TFDConnection; const AArtifactId, AContractJson: string): TGateResult;
+var
+  Title, Body: string;
+  WordCount: Integer;
+begin
+  with TFDQuery.Create(nil) do
+  try
+    Connection := AConn;
+    SQL.Text := 'SELECT title FROM artifactos.artifact WHERE id=''' + AArtifactId + '''';
+    Open; Title := Fields[0].AsString; Close;
+    SQL.Text := 'SELECT av.assembled_payload->>''body'' FROM artifactos.artifact_version av WHERE av.artifact_id=''' + AArtifactId + ''' ORDER BY av.version_no DESC LIMIT 1';
+    Open; Body := Fields[0].AsString; Close;
+  finally
+    Free;
+  end;
+
+  Result.GateType := 'es';
+  Result.Passed := True;
+  Result.Score := 100.0;
+  SetLength(Result.Issues, 0);
+
+  WordCount := Length(Body);
+  if WordCount < 50 then
+  begin
+    Result.Passed := False; Result.GateStatus := 'FAIL';
+    SetLength(Result.Issues, Length(Result.Issues) + 1);
+    Result.Issues[High(Result.Issues)] := 'ES-01: body too short (< 50 chars)';
+  end;
+  if Title.Trim.IsEmpty then
+  begin
+    Result.Passed := False; Result.GateStatus := 'FAIL';
+    SetLength(Result.Issues, Length(Result.Issues) + 1);
+    Result.Issues[High(Result.Issues)] := 'ES-02: title is empty';
+  end;
+  if Length(Body.Split([sLineBreak + sLineBreak])) < 3 then
+  begin
+    Result.Passed := False; Result.GateStatus := 'FAIL';
+    SetLength(Result.Issues, Length(Result.Issues) + 1);
+    Result.Issues[High(Result.Issues)] := 'ES-06: less than 3 paragraphs';
+  end;
+
+  if Result.Passed then Result.GateStatus := 'PASS' else Result.Score := 0.0;
+  Result.Evidence := '{"checked_at":"' + DateTimeToStr(Now) + '","rules":["ES-01","ES-02","ES-06"]}';
 end;
 
 class function TQualityGateService.RunStructureGate(const AArtifactId: string): TGateResult;
