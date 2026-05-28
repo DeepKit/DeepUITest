@@ -3,8 +3,9 @@ unit ArtifactOS.Core.DB.Connection;
 interface
 
 uses
-  System.SysUtils,
+  System.SysUtils, System.SyncObjs,
   FireDAC.Comp.Client,
+  FireDAC.Stan.Error,
   DeepBase.Config;
 
 type
@@ -13,6 +14,7 @@ type
     FConnection: TFDConnection;
     FDatabaseName: string;
     FSchema: string;
+    FLock: TCriticalSection;
   public
     constructor Create(const ADatabaseName, ASchema: string);
     destructor Destroy; override;
@@ -22,6 +24,9 @@ type
     function Query(const ASQL: string): TFDQuery;
     function Execute(const ASQL: string): Integer;
     function ExecuteScalar(const ASQL: string): string;
+    function InsertAndReturnId(const ASQL: string): string;
+    function ConnectLocked: Boolean;
+    procedure DisconnectLocked;
     property Connection: TFDConnection read FConnection;
     property DatabaseName: string read FDatabaseName;
     property Schema: string read FSchema;
@@ -50,12 +55,19 @@ begin
   FDatabaseName := ADatabaseName;
   FSchema := ASchema;
   FConnection := TFDConnection.Create(nil);
+  FLock := TCriticalSection.Create;
 end;
 
 destructor TArtifactDB.Destroy;
 begin
-  Disconnect;
-  FConnection.Free;
+  FLock.Enter;
+  try
+    Disconnect;
+    FConnection.Free;
+  finally
+    FLock.Leave;
+    FLock.Free;
+  end;
   inherited;
 end;
 
@@ -91,17 +103,48 @@ begin
   Result := FConnection.Connected;
 end;
 
+function TArtifactDB.ConnectLocked: Boolean;
+begin
+  FLock.Enter;
+  try
+    Connect;
+    Result := IsConnected;
+  except
+    FLock.Leave;
+    raise;
+  end;
+end;
+
+procedure TArtifactDB.DisconnectLocked;
+begin
+  try
+    Disconnect;
+  finally
+    FLock.Leave;
+  end;
+end;
+
 function TArtifactDB.Query(const ASQL: string): TFDQuery;
 begin
   Result := TFDQuery.Create(nil);
-  Result.Connection := FConnection;
-  Result.SQL.Text := ASQL;
-  Result.Open;
+  try
+    Result.Connection := FConnection;
+    Result.SQL.Text := ASQL;
+    Result.Open;
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 function TArtifactDB.Execute(const ASQL: string): Integer;
 begin
-  Result := FConnection.ExecSQL(ASQL);
+  FLock.Enter;
+  try
+    Result := FConnection.ExecSQL(ASQL);
+  finally
+    FLock.Leave;
+  end;
 end;
 
 function TArtifactDB.ExecuteScalar(const ASQL: string): string;
