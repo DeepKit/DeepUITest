@@ -1,0 +1,72 @@
+version: "1.0"
+tree: function
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+nodes:
+  - id: "func-root"
+    tree: function
+    title: "TodoMVC"
+    kind: capability
+    parent_id: null
+    summary: "A simple todo list application following TodoMVC spec"
+    status: confirmed
+    confidence: high
+    source_layer: human_decision
+    source_refs:
+      - ref_id: "ev-readme-intro"
+        relevance: primary
+    decision_refs:
+      - "dec-001"
+    children:
+      - "func-add-todo"
+      - "func-toggle-todo"
+      - "func-filter-todos"
+
+  - id: "func-add-todo"
+    tree: function
+    title: "Add Todo"
+    kind: feature
+    parent_id: "func-root"
+    summary: "User can add a new todo item by typing and pressing Enter"
+    status: confirmed
+    confidence: high
+    source_layer: parsed_from_a
+    source_refs:
+      - ref_id: "ev-readme-features"
+        relevance: primary
+    acceptance_criteria:
+      - "Pressing Enter with non-empty text creates a new todo"
+      - "Input field clears after adding"
+      - "Empty input does not create a todo"
+
+  - id: "func-toggle-todo"
+    tree: function
+    title: "Toggle Todo"
+    kind: feature
+    parent_id: "func-root"
+    summary: "User can mark a todo as complete or incomplete"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+    source_refs:
+      - ref_id: "ev-readme-features"
+        relevance: supporting
+    acceptance_criteria:
+      - "Clicking checkbox toggles completion state"
+      - "Completed todos show strikethrough text"
+
+  - id: "func-filter-todos"
+    tree: function
+    title: "Filter Todos"
+    kind: feature
+    parent_id: "func-root"
+    summary: "User can filter todos by All/Active/Completed"
+    status: candidate
+    confidence: low
+    source_layer: ai_inferred
+    source_refs:
+      - ref_id: "ev-readme-features"
+        relevance: supporting
+    issue_refs:
+      - "issue-001"

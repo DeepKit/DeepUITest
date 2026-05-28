@@ -1,0 +1,75 @@
+{
+  "seal_id": "dedb39cd-550f-44c5-beee-8739c647259f",
+  "timestamp": "2026-02-23T21:35:45.910775",
+  "odd_version": "0.1.0",
+  "hashes": {
+    "contract": "2e3d5658afb6e0d48f62b582176a6f70d3ac5f64472150cd439376186339fc13",
+    "code": "18c4bd58e485f329ac43825af4423332540003ca2b7a290a2f8c9a440356bbd5",
+    "verification": "d864023f6928ed7316aef199ae6235d60c97d2f5a7ac989f02fc91ce6204fd10"
+  },
+  "integrity": "b2646ba46ceec0b8843ead1709532f9a38f923361d4b031c020d96292b59003b",
+  "artifacts": {
+    "contract": {
+      "id": "add-function",
+      "name": "加法函数契约",
+      "verification_hints": {
+        "must_contain_any": [
+          {
+            "patterns": [
+              "def add"
+            ],
+            "reason": "必须定义 add 函数",
+            "severity": "critical"
+          }
+        ],
+        "must_not_contain": [
+          {
+            "patterns": [
+              "eval("
+            ],
+            "reason": "禁止 eval",
+            "severity": "critical"
+          }
+        ],
+        "should_contain": [
+          {
+            "patterns": [
+              "\"\"\"",
+              "'''"
+            ],
+            "reason": "建议添加 docstring",
+            "severity": "low"
+          }
+        ]
+      }
+    },
+    "code": "def add(a, b):\n    \"\"\"Add two numbers.\"\"\"\n    return a + b\n",
+    "verification": {
+      "passed": true,
+      "critical_failed": false,
+      "checks": [
+        {
+          "type": "must_contain_any",
+          "rule": "必须定义 add 函数",
+          "severity": "critical",
+          "passed": true,
+          "found": "def add"
+        },
+        {
+          "type": "must_not_contain",
+          "rule": "禁止 eval",
+          "severity": "critical",
+          "passed": true,
+          "found": null
+        },
+        {
+          "type": "should_contain",
+          "rule": "建议添加 docstring",
+          "severity": "low",
+          "passed": true,
+          "found": "\"\"\""
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+﻿[
+    {
+        "Name":  "DeepBase-CLI",
+        "ExitCode":  0,
+        "Log":  "D:\\_Progs\\02Business\\.kiro\\specs\\aierrorhandler-rollout\\exec-log\\_g8_compile\\DeepBase-CLI.log"
+    },
+    {
+        "Name":  "DeepBaseTray",
+        "ExitCode":  0,
+        "Log":  "D:\\_Progs\\02Business\\.kiro\\specs\\aierrorhandler-rollout\\exec-log\\_g8_compile\\DeepBaseTray.log"
+    },
+    {
+        "Name":  "DeepBaseStudio",
+        "ExitCode":  1,
+        "Log":  "D:\\_Progs\\02Business\\.kiro\\specs\\aierrorhandler-rollout\\exec-log\\_g8_compile\\DeepBaseStudio.log"
+    },
+    {
+        "Name":  "Studio",
+        "ExitCode":  1,
+        "Log":  "D:\\_Progs\\02Business\\.kiro\\specs\\aierrorhandler-rollout\\exec-log\\_g8_compile\\Studio.log"
+    },
+    {
+        "Name":  "UniPublisher",
+        "ExitCode":  1,
+        "Log":  "D:\\_Progs\\02Business\\.kiro\\specs\\aierrorhandler-rollout\\exec-log\\_g8_compile\\UniPublisher.log"
+    },
+    {
+        "Name":  "UpdaterHelper",
+        "ExitCode":  0,
+        "Log":  "D:\\_Progs\\02Business\\.kiro\\specs\\aierrorhandler-rollout\\exec-log\\_g8_compile\\UpdaterHelper.log"
+    }
+]

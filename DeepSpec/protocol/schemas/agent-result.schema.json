@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/agent-result.schema.json",
+  "title": "DeepSpec Agent Results",
+  "type": "object",
+  "required": ["version", "agent_results"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0", "1.1", "1.2"]},
+    "agent_results": {"type": "array", "items": {"$ref": "#/$defs/agent_result"}}
+  },
+  "$defs": {
+    "agent_result": {
+      "type": "object",
+      "required": ["id", "task_id", "summary", "created_at"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string"},
+        "task_id": {"type": "string"},
+        "summary": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "assumptions": {"type": "array", "items": {"type": "string"}},
+        "tradeoffs": {"type": "array", "items": {"type": "string"}},
+        "unresolved": {"type": "array", "items": {"type": "string"}},
+        "blockers_encountered": {"type": "array", "items": {"type": "string"}},
+        "alternatives_considered": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+        "coverage_added": {"type": "array", "items": {"type": "string"}},
+        "coverage_not_added": {"type": "array", "items": {"type": "string"}},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

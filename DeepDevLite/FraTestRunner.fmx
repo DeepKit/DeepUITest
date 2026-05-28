@@ -1,0 +1,67 @@
+object FrameTestRunner: TFrameTestRunner
+  Align = Client
+  Size.Width = 400.000000000000000000
+  Size.Height = 400.000000000000000000
+  Size.PlatformDefault = False
+  TabOrder = 0
+  object LayoutRoot: TLayout
+    Align = Client
+    Size.Width = 400.000000000000000000
+    Size.Height = 400.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    object LayoutHeader: TLayout
+      Align = Top
+      Margins.Left = 16.000000000000000000
+      Margins.Top = 16.000000000000000000
+      Margins.Right = 16.000000000000000000
+      Position.X = 16.000000000000000000
+      Position.Y = 16.000000000000000000
+      Size.Width = 368.000000000000000000
+      Size.Height = 40.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
+      object LblStatus: TLabel
+        Align = Client
+        Size.Width = 368.000000000000000000
+        Size.Height = 40.000000000000000000
+        Size.PlatformDefault = False
+        Text = #27491#22312#36816#34892#27979#35797'...'
+        TextSettings.HorzAlign = Center
+        TabOrder = 0
+      end
+    end
+    object LayoutProgress: TLayout
+      Align = Top
+      Margins.Left = 16.000000000000000000
+      Margins.Right = 16.000000000000000000
+      Position.X = 16.000000000000000000
+      Position.Y = 56.000000000000000000
+      Size.Width = 368.000000000000000000
+      Size.Height = 16.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 2
+      object PrgProgress: TProgressBar
+        Align = Client
+        Size.Width = 368.000000000000000000
+        Size.Height = 16.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 0
+      end
+    end
+    object MmoLog: TMemo
+      Align = Client
+      Margins.Left = 16.000000000000000000
+      Margins.Top = 8.000000000000000000
+      Margins.Right = 16.000000000000000000
+      Margins.Bottom = 16.000000000000000000
+      Position.X = 16.000000000000000000
+      Position.Y = 80.000000000000000000
+      Size.Width = 368.000000000000000000
+      Size.Height = 304.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 3
+      ReadOnly = True
+    end
+  end
+end

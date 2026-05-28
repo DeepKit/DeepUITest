@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 550">
+  <defs>
+    <linearGradient id="confirmGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="adjustGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="redoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="900" height="550" fill="#f8fafc"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="35" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#1e293b">用户确认界面 · User Confirmation Interface</text>
+  <text x="450" y="58" text-anchor="middle" font-family="Arial" font-size="12" fill="#64748b">"给用户后悔的权利，用户才敢大胆尝试"</text>
+  
+  <!-- 确认面板 -->
+  <rect x="50" y="80" width="800" height="280" rx="12" fill="white" stroke="#e2e8f0" stroke-width="2" filter="url(#shadow)"/>
+  
+  <!-- AI理解复述 -->
+  <rect x="70" y="100" width="380" height="120" rx="8" fill="#dbeafe" stroke="#3b82f6"/>
+  <text x="260" y="125" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="#1d4ed8">💬 我理解您想要...</text>
+  <text x="90" y="155" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#475569">• 做一个登录页面</text>
+  <text x="90" y="180" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#475569">• 主题色：蓝色</text>
+  <text x="90" y="205" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#475569">• 包含微信登录功能</text>
+  
+  <!-- 预览结果 -->
+  <rect x="470" y="100" width="360" height="120" rx="8" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="650" y="125" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="#15803d">🎨 生成的结果</text>
+  
+  <!-- 小预览图 -->
+  <rect x="490" y="140" width="100" height="70" rx="4" fill="white" stroke="#cbd5e1"/>
+  <rect x="495" y="145" width="90" height="15" rx="2" fill="#3b82f6"/>
+  <rect x="505" y="170" width="70" height="10" rx="2" fill="#f1f5f9"/>
+  <rect x="505" y="185" width="70" height="10" rx="2" fill="#f1f5f9"/>
+  <rect x="505" y="200" width="70" height="8" rx="2" fill="#3b82f6"/>
+  
+  <text x="610" y="165" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#475569">✓ 蓝色主题</text>
+  <text x="610" y="185" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#475569">✓ 微信登录按钮</text>
+  <text x="610" y="205" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#475569">✓ 响应式布局</text>
+  
+  <!-- 三个按钮 -->
+  <rect x="70" y="240" width="230" height="100" rx="10" fill="url(#confirmGrad)" filter="url(#shadow)"/>
+  <text x="185" y="280" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="white">✓ 确认</text>
+  <text x="185" y="310" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="rgba(255,255,255,0.9)">就这样，继续下一步</text>
+  
+  <rect x="320" y="240" width="230" height="100" rx="10" fill="url(#adjustGrad)" filter="url(#shadow)"/>
+  <text x="435" y="280" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="white">✎ 调整</text>
+  <text x="435" y="310" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="rgba(255,255,255,0.9)">差不多，但我想改改</text>
+  
+  <rect x="570" y="240" width="230" height="100" rx="10" fill="url(#redoGrad)" filter="url(#shadow)"/>
+  <text x="685" y="280" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="white">↺ 重来</text>
+  <text x="685" y="310" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="rgba(255,255,255,0.9)">不对，我想重新说</text>
+  
+  <!-- 三个流程分支 -->
+  <rect x="50" y="380" width="800" height="150" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="450" y="405" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" font-weight="bold" fill="#334155">三条路径的后续流程</text>
+  
+  <!-- 确认流程 -->
+  <rect x="70" y="420" width="230" height="90" rx="8" fill="#dcfce7" stroke="#10b981"/>
+  <text x="185" y="445" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#15803d">确认后</text>
+  <text x="185" y="470" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#16a34a">→ 应用变更</text>
+  <text x="185" y="490" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#16a34a">→ 保存状态</text>
+  <text x="185" y="510" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="#22c55e">流程完成 ✨</text>
+  
+  <!-- 调整流程 -->
+  <rect x="320" y="420" width="230" height="90" rx="8" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="435" y="445" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#92400e">调整后</text>
+  <text x="435" y="470" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#a16207">→ 返回"意图理解"节点</text>
+  <text x="435" y="490" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#a16207">→ 保留当前状态</text>
+  <text x="435" y="510" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="#d97706">可以说"颜色换成绿色"</text>
+  
+  <!-- 重来流程 -->
+  <rect x="570" y="420" width="230" height="90" rx="8" fill="#fee2e2" stroke="#ef4444"/>
+  <text x="685" y="445" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#dc2626">重来后</text>
+  <text x="685" y="470" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#ef4444">→ 返回"请求接收"节点</text>
+  <text x="685" y="490" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#ef4444">→ 当前保存为草稿</text>
+  <text x="685" y="510" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="#f87171">可以说全新的需求</text>
+</svg>

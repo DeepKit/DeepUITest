@@ -1,0 +1,435 @@
+{
+  "id": "simple-qa-workflow",
+  "name": "简单问答工作流",
+  "description": "演示基本的输入验�?�?LLM 调用 �?输出验证流程",
+  "version": "1.0.0",
+  "author": "UniFlow Team",
+  "tags": ["qa", "llm", "demo"],
+  
+  "input": {
+    "properties": {
+      "question": {
+        "type": "string",
+        "description": "用户问题",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "context": {
+        "type": "string",
+        "description": "可选的上下文信�?,
+        "default": ""
+      },
+      "maxTokens": {
+        "type": "integer",
+        "description": "最大输�?token �?,
+        "default": 1000,
+        "minimum": 100,
+        "maximum": 4000
+      },
+      "temperature": {
+        "type": "number",
+        "description": "温度参数",
+        "default": 0.7,
+        "minimum": 0,
+        "maximum": 2
+      }
+    },
+    "required": ["question"]
+  },
+  
+  "output": {
+    "properties": {
+      "answer": {
+        "type": "string",
+        "description": "AI 生成的回�?
+      },
+      "confidence": {
+        "type": "number",
+        "description": "置信度分�?
+      },
+      "processingTime": {
+        "type": "integer",
+        "description": "处理时间（毫秒）"
+      }
+    },
+    "required": ["answer"]
+  },
+  
+  "variables": {
+    "systemPrompt": "你是一个专业的AI助手，请根据用户的问题提供准确、简洁的回答�?,
+    "maxRetries": 3,
+    "timeoutSeconds": 30
+  },
+  
+  "steps": [
+    {
+      "id": "log-start",
+      "name": "记录开�?,
+      "type": "action",
+      "action": {
+        "type": "log",
+        "config": {
+          "level": "info",
+          "message": "开始处理问答请�? {{ input.question | truncate(50) }}"
+        }
+      }
+    },
+    
+    {
+      "id": "validate-input",
+      "name": "验证输入",
+      "type": "action",
+      "action": {
+        "type": "guard",
+        "config": {
+          "rules": [
+            {
+              "field": "{{ input.question }}",
+              "operator": "isNotEmpty",
+              "message": "问题不能为空"
+            },
+            {
+              "field": "{{ input.question | length }}",
+              "operator": "le",
+              "value": 2000,
+              "message": "问题长度不能超过2000字符"
+            }
+          ],
+          "failFast": true
+        }
+      },
+      "errorHandler": {
+        "strategy": "fail",
+        "errorCode": "INVALID_INPUT"
+      }
+    },
+    
+    {
+      "id": "check-context",
+      "name": "检查上下文",
+      "type": "condition",
+      "condition": {
+        "if": {
+          "operator": "isNotEmpty",
+          "field": "{{ input.context }}"
+        },
+        "then": "build-prompt-with-context",
+        "else": "build-prompt-simple"
+      }
+    },
+    
+    {
+      "id": "build-prompt-with-context",
+      "name": "构建带上下文的提�?,
+      "type": "action",
+      "action": {
+        "type": "assign",
+        "config": {
+          "assignments": [
+            {
+              "target": "vars.userPrompt",
+              "value": "基于以下上下文回答问题：\n\n上下文：{{ input.context }}\n\n问题：{{ input.question }}"
+            }
+          ]
+        }
+      },
+      "next": "call-llm"
+    },
+    
+    {
+      "id": "build-prompt-simple",
+      "name": "构建简单提�?,
+      "type": "action",
+      "action": {
+        "type": "assign",
+        "config": {
+          "assignments": [
+            {
+              "target": "vars.userPrompt",
+              "value": "{{ input.question }}"
+            }
+          ]
+        }
+      }
+    },
+    
+    {
+      "id": "call-llm",
+      "name": "调用 LLM",
+      "type": "action",
+      "action": {
+        "type": "llm",
+        "config": {
+          "model": "gpt-4",
+          "messages": [
+            {
+              "role": "system",
+              "content": "{{ vars.systemPrompt }}"
+            },
+            {
+              "role": "user",
+              "content": "{{ vars.userPrompt }}"
+            }
+          ],
+          "parameters": {
+            "maxTokens": "{{ input.maxTokens | default(1000) }}",
+            "temperature": "{{ input.temperature | default(0.7) }}"
+          }
+        }
+      },
+      "output": {
+        "mapping": {
+          "rawAnswer": "$.response.content",
+          "tokensUsed": "$.response.usage.totalTokens",
+          "modelUsed": "$.response.model"
+        }
+      },
+      "retry": {
+        "maxAttempts": "{{ vars.maxRetries }}",
+        "delayMs": 1000,
+        "backoffMultiplier": 2,
+        "retryableErrors": ["TIMEOUT", "RATE_LIMITED", "SERVICE_UNAVAILABLE"]
+      },
+      "timeout": {
+        "seconds": "{{ vars.timeoutSeconds }}"
+      },
+      "errorHandler": {
+        "strategy": "goto",
+        "gotoStepId": "handle-llm-error"
+      }
+    },
+    
+    {
+      "id": "validate-output",
+      "name": "验证输出",
+      "type": "action",
+      "action": {
+        "type": "guard",
+        "config": {
+          "rules": [
+            {
+              "field": "{{ steps.call-llm.output.rawAnswer }}",
+              "operator": "isNotEmpty",
+              "message": "LLM 返回了空回答"
+            },
+            {
+              "field": "{{ steps.call-llm.output.rawAnswer | length }}",
+              "operator": "gt",
+              "value": 10,
+              "message": "回答内容过短，可能存在问�?
+            }
+          ]
+        }
+      },
+      "errorHandler": {
+        "strategy": "goto",
+        "gotoStepId": "handle-validation-error"
+      }
+    },
+    
+    {
+      "id": "calculate-confidence",
+      "name": "计算置信�?,
+      "type": "action",
+      "action": {
+        "type": "script",
+        "config": {
+          "language": "expression",
+          "script": "min(1.0, length(steps['call-llm'].output.rawAnswer) / 500.0 * 0.5 + 0.5)"
+        }
+      },
+      "output": {
+        "mapping": {
+          "confidence": "$.result"
+        }
+      }
+    },
+    
+    {
+      "id": "prepare-output",
+      "name": "准备输出",
+      "type": "action",
+      "action": {
+        "type": "assign",
+        "config": {
+          "assignments": [
+            {
+              "target": "output.answer",
+              "value": "{{ steps.call-llm.output.rawAnswer }}"
+            },
+            {
+              "target": "output.confidence",
+              "value": "{{ steps.calculate-confidence.output.confidence | default(0.8) }}"
+            },
+            {
+              "target": "output.processingTime",
+              "value": "{{ ctx.elapsedMs }}"
+            }
+          ]
+        }
+      }
+    },
+    
+    {
+      "id": "log-success",
+      "name": "记录成功",
+      "type": "action",
+      "action": {
+        "type": "log",
+        "config": {
+          "level": "info",
+          "message": "问答完成，回答长�? {{ output.answer | length }}字符，置信度: {{ output.confidence }}"
+        }
+      }
+    },
+    
+    {
+      "id": "end-success",
+      "name": "成功结束",
+      "type": "end",
+      "endConfig": {
+        "status": "completed"
+      }
+    },
+    
+    {
+      "id": "handle-llm-error",
+      "name": "处理 LLM 错误",
+      "type": "action",
+      "action": {
+        "type": "log",
+        "config": {
+          "level": "error",
+          "message": "LLM 调用失败: {{ ctx.lastError.code }} - {{ ctx.lastError.message }}"
+        }
+      }
+    },
+    
+    {
+      "id": "llm-error-response",
+      "name": "LLM 错误响应",
+      "type": "action",
+      "action": {
+        "type": "assign",
+        "config": {
+          "assignments": [
+            {
+              "target": "output.answer",
+              "value": "抱歉，AI 服务暂时不可用，请稍后再试�?
+            },
+            {
+              "target": "output.confidence",
+              "value": 0
+            },
+            {
+              "target": "output.processingTime",
+              "value": "{{ ctx.elapsedMs }}"
+            }
+          ]
+        }
+      }
+    },
+    
+    {
+      "id": "end-llm-error",
+      "name": "LLM 错误结束",
+      "type": "end",
+      "endConfig": {
+        "status": "failed",
+        "errorCode": "LLM_ERROR",
+        "errorMessage": "{{ ctx.lastError.message }}"
+      }
+    },
+    
+    {
+      "id": "handle-validation-error",
+      "name": "处理验证错误",
+      "type": "action",
+      "action": {
+        "type": "log",
+        "config": {
+          "level": "warn",
+          "message": "输出验证失败，尝试使用备选回�?
+        }
+      }
+    },
+    
+    {
+      "id": "fallback-response",
+      "name": "备选响�?,
+      "type": "action",
+      "action": {
+        "type": "assign",
+        "config": {
+          "assignments": [
+            {
+              "target": "output.answer",
+              "value": "抱歉，我无法为这个问题生成满意的回答，请尝试重新描述您的问题�?
+            },
+            {
+              "target": "output.confidence",
+              "value": 0.3
+            },
+            {
+              "target": "output.processingTime",
+              "value": "{{ ctx.elapsedMs }}"
+            }
+          ]
+        }
+      }
+    },
+    
+    {
+      "id": "end-fallback",
+      "name": "备选结�?,
+      "type": "end",
+      "endConfig": {
+        "status": "completed"
+      }
+    }
+  ],
+  
+  "hooks": {
+    "onStart": {
+      "actions": [
+        {
+          "type": "log",
+          "config": {
+            "level": "debug",
+            "message": "工作流开�? {{ ctx.workflowId }} / {{ ctx.instanceId }}"
+          }
+        }
+      ]
+    },
+    "onComplete": {
+      "actions": [
+        {
+          "type": "log",
+          "config": {
+            "level": "info",
+            "message": "工作流完成，总耗时: {{ ctx.elapsedMs }}ms"
+          }
+        }
+      ]
+    },
+    "onError": {
+      "actions": [
+        {
+          "type": "log",
+          "config": {
+            "level": "error",
+            "message": "工作流错�? {{ ctx.lastError.code }} - {{ ctx.lastError.message }}"
+          }
+        }
+      ]
+    }
+  },
+  
+  "metadata": {
+    "category": "ai",
+    "complexity": "simple",
+    "estimatedDuration": "5-30s",
+    "requiredSkills": ["llm-service"],
+    "documentation": "https://docs.uniflow.ai/workflows/simple-qa"
+  }
+}

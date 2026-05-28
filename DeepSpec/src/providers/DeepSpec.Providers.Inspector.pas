@@ -12,11 +12,17 @@ interface
 uses
   System.SysUtils,
   DeepBase.VCL.DeepShell.Intf,
-  DeepBase.VCL.DeepShell.Types;
+  DeepBase.VCL.DeepShell.Types,
+  DeepSpec.Models;
 
 type
+  TNodeLookupFunc = reference to function(const ANodeId: string): TSpecNode;
+
   TDeepSpecInspectorProvider = class(TInterfacedObject, IShellInspectorProvider)
+  private
+    FNodeLookup: TNodeLookupFunc;
   public
+    constructor Create(ALookup: TNodeLookupFunc);
     function ProviderId: string;
     function CanInspect(const ARef: TShellObjectRef): Boolean;
     function GetProperties(const ARef: TShellObjectRef): TArray<TShellProperty>;
@@ -26,6 +32,12 @@ type
 
 implementation
 
+constructor TDeepSpecInspectorProvider.Create(ALookup: TNodeLookupFunc);
+begin
+  inherited Create;
+  FNodeLookup := ALookup;
+end;
+
 function TDeepSpecInspectorProvider.ProviderId: string;
 begin
   Result := 'deepspec.inspector';
@@ -33,12 +45,13 @@ end;
 
 function TDeepSpecInspectorProvider.CanInspect(const ARef: TShellObjectRef): Boolean;
 begin
-  Result := True;
+  Result := ARef.ProviderId = 'deepspec';
 end;
 
 function TDeepSpecInspectorProvider.GetProperties(const ARef: TShellObjectRef): TArray<TShellProperty>;
+var
+  LNode: TSpecNode;
 begin
-  // P0: basic properties from the object ref itself
   SetLength(Result, 3);
 
   Result[0].Name := 'ID';
@@ -48,7 +61,16 @@ begin
   Result[1].Value := ARef.Kind;
 
   Result[2].Name := 'Status';
-  Result[2].Value := 'candidate';
+  if Assigned(FNodeLookup) then
+  begin
+    LNode := FNodeLookup(ARef.Id);
+    if LNode.Id <> '' then
+      Result[2].Value := TSpecEnums.NodeStatusToStr(LNode.Status)
+    else
+      Result[2].Value := '(unknown)';
+  end
+  else
+    Result[2].Value := '(no lookup)';
 end;
 
 function TDeepSpecInspectorProvider.GetRelations(const ARef: TShellObjectRef): TArray<TShellRelation>;

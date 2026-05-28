@@ -1,0 +1,94 @@
+{
+  "id": "workflow_qa",
+  "name": "Q&A Chatbot Workflow",
+  "version": "1.0",
+  "description": "Simple Q&A chatbot that answers user questions",
+  "tags": ["qa", "chatbot", "simple"],
+  "variables": {
+    "max_hiDeepStory": "10",
+    "model": "gpt-4"
+  },
+  "steps": [
+    {
+      "id": "validate_input",
+      "name": "Validate User Input",
+      "type": "action",
+      "config": {
+        "action_type": "validate",
+        "schema": "user_request"
+      },
+      "on_error": {
+        "action": "goto",
+        "target": "error_response"
+      }
+    },
+    {
+      "id": "check_prompt",
+      "name": "Security Check",
+      "type": "action",
+      "config": {
+        "action_type": "prompt_guard",
+        "input": "${user_message}"
+      },
+      "on_error": {
+        "action": "goto",
+        "target": "blocked_response"
+      }
+    },
+    {
+      "id": "generate_response",
+      "name": "Generate LLM Response",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are a helpful Q&A assistant. Answer questions clearly and concisely. If you don't know the answer, say so honestly.",
+        "user_message": "${user_message}",
+        "max_tokens": 500,
+        "temperature": 0.7
+      },
+      "output": "llm_response"
+    },
+    {
+      "id": "format_response",
+      "name": "Format Response",
+      "type": "action",
+      "config": {
+        "action_type": "transform",
+        "template": {
+          "message": "${llm_response.content}",
+          "confidence": "high",
+          "source": "llm"
+        }
+      },
+      "output": "final_response"
+    },
+    {
+      "id": "error_response",
+      "name": "Error Response",
+      "type": "action",
+      "config": {
+        "action_type": "transform",
+        "template": {
+          "message": "Sorry, I couldn't process your request. Please try again.",
+          "error": true
+        }
+      },
+      "output": "final_response"
+    },
+    {
+      "id": "blocked_response",
+      "name": "Blocked Response",
+      "type": "action",
+      "config": {
+        "action_type": "transform",
+        "template": {
+          "message": "I cannot process this request as it may violate usage policies.",
+          "blocked": true
+        }
+      },
+      "output": "final_response"
+    }
+  ]
+}

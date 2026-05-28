@@ -1,0 +1,36 @@
+apiVersion: v2
+name: uniflow
+description: UniFlow Workflow Engine - AI-Powered Workflow Automation Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/example/uniflow
+icon: https://example.com/uniflow-icon.png
+sources:
+  - https://github.com/example/uniflow
+maintainers:
+  - name: UniFlow Team
+    email: uniflow@example.com
+keywords:
+  - workflow
+  - automation
+  - ai
+  - llm
+  - delphi
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/category: integration-delivery
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: rabbitmq
+    version: "11.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: rabbitmq.enabled

@@ -1,0 +1,25 @@
+id: auth_login
+name: 认证登录模块契约
+description: 用户认证/登录功能的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["login", "authenticate", "sign_in", "signin"]
+      reason: 必须包含登录/认证相关函数
+      severity: critical
+  must_not_contain:
+    - patterns: ["password =", "password=", "pwd =", "pwd="]
+      reason: 禁止硬编码密码
+      severity: critical
+    - patterns: ["md5(", "MD5("]
+      reason: 禁止使用 MD5 存储密码
+      severity: critical
+  should_contain:
+    - patterns: ["hash", "bcrypt", "argon2", "pbkdf2", "scrypt"]
+      reason: 建议使用安全的密码哈希算法
+      severity: high
+    - patterns: ["token", "jwt", "session"]
+      reason: 建议返回 token 或 session
+      severity: medium
+    - patterns: ['"""', "'''", "//", "/**"]
+      reason: 建议添加文档注释
+      severity: low

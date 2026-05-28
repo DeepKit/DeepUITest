@@ -1,0 +1,30 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "uniflow.fullname" . }}
+  labels:
+    {{- include "uniflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  {{- with .Values.api.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.api.service.type }}
+  ports:
+  - name: http
+    port: {{ .Values.api.service.port }}
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: {{ .Values.config.monitoring.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    {{- include "uniflow.api.selectorLabels" . | nindent 4 }}
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+{{- end }}

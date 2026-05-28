@@ -1,0 +1,25 @@
+version: "1.0"
+project:
+  name: "User Service"
+  path: "."
+  type: "mixed"
+  scan_time: "2026-05-15T09:00:00+08:00"
+
+summary:
+  total_nodes: 5
+  confirmed_nodes: 1
+  uncertain_nodes: 2
+  open_issues: 1
+  decisions_count: 1
+
+trees:
+  function_tree: "trees/function-tree.yaml"
+  module_tree: "trees/module-tree.yaml"
+  view_tree: "trees/view-tree.yaml"
+
+relations: "relations/requirement-relations.yaml"
+evidence: "evidence/source-evidence.yaml"
+issues: "issues/doc-issues.yaml"
+decisions: "decisions/requirement-decisions.yaml"
+
+imports: []

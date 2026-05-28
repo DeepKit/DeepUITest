@@ -1,6 +1,6 @@
 # deepspec-reader (Python)
 
-Minimal DeepSpec Protocol reader. Level 1 compliance.
+Minimal DeepSpec Protocol reader. Level 1 compliance with v1.2-draft data-tree awareness.
 
 ## Install
 
@@ -41,7 +41,7 @@ for instruction in spec.ai_instructions():
 |--------|---------|-------------|
 | `open_deepspec(path)` | `Reader \| None` | Open project, None if no .deepspec |
 | `reader.project()` | `ProjectSpec` | Project metadata and summary |
-| `reader.tree(type)` | `TreeFile` | Load tree: "function", "module", "view" |
+| `reader.tree(type)` | `TreeFile` | Load tree: "function", "module", "view", "data" when present |
 | `reader.all_nodes()` | `list[dict]` | All nodes across all trees |
 | `reader.find_node(id)` | `dict \| None` | Find node by ID |
 | `reader.roots(type)` | `list[dict]` | Root nodes of a tree |

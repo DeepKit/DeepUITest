@@ -13,6 +13,7 @@ uses
   System.SysUtils,
   System.Classes,
   System.Generics.Collections,
+  Winapi.Windows,
   DeepSpec.Models;
 
 type
@@ -45,6 +46,19 @@ type
     /// the pending file. Returns the count of promoted entries.
     /// </summary>
     function PromotePending: Integer;
+
+    /// <summary>
+    /// Apply state machine transitions to all trees for accepted/rejected
+    /// decisions. Reads each tree, updates matching nodes via
+    /// TSpecEnums.TryTransition*, writes back.
+    /// </summary>
+    procedure ApplyNodeStatusTransitions(
+      const ATreeRelPath: string;
+      AReadTree: TFunc<string, TList<TSpecNode>>;
+      AWriteTree: TProc<string, TList<TSpecNode>>); overload;
+    procedure ApplyNodeStatusTransitions(
+      const ATreeRelPath: string;
+      ANodes: TList<TSpecNode>); overload;
 
     property Decisions: TList<TSpecDecision> read FDecisions;
   end;
@@ -125,7 +139,7 @@ begin
         else LDec.Status := dsProposed;
 
         var LDeciderStr := LItem.GetString('decided_by', 'system');
-        LDec.DecidedBy := if LDeciderStr = 'human' then dbHuman else dbSystem;
+        if LDeciderStr = 'human' then LDec.DecidedBy := dbHuman else LDec.DecidedBy := dbSystem;
 
         FDecisions.Add(LDec);
 
@@ -298,6 +312,114 @@ begin
   // Clear pending file once promoted
   if Result > 0 then
     TFile.Delete(LPath);
+end;
+
+procedure TDeepSpecDecisionsService.ApplyNodeStatusTransitions(
+  const ATreeRelPath: string;
+  AReadTree: TFunc<string, TList<TSpecNode>>;
+  AWriteTree: TProc<string, TList<TSpecNode>>);
+var
+  LNodes: TList<TSpecNode>;
+  LChanged: Boolean;
+  LError: string;
+begin
+  LNodes := AReadTree(ATreeRelPath);
+  if LNodes = nil then Exit;
+  try
+    LChanged := False;
+    for var I := 0 to LNodes.Count - 1 do
+    begin
+      var LNode := LNodes[I];
+
+      // Find accepted/rejected decisions targeting this node
+      for var LDec in FDecisions do
+      begin
+        if LDec.Status <> dsAccepted then Continue;
+        var LTargetsNode := False;
+        for var LT in LDec.TargetNodes do
+          if LT = LNode.Id then begin LTargetsNode := True; Break; end;
+        if not LTargetsNode then Continue;
+
+        case LDec.DecisionType of
+          dtConfirm:
+          begin
+            // Confirm: gen draft/generated → confirmed, review unreviewed → accepted
+            if TSpecEnums.TryTransitionGen(LNode.GenStatus, gsConfirmed, LError) then
+              LChanged := True
+            else
+              OutputDebugString(PChar('DeepSpec: ' + LError));
+            if TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsAccepted, LError) then
+              LChanged := True
+            else
+              OutputDebugString(PChar('DeepSpec: ' + LError));
+            // Also update legacy Status
+            LNode.Status := nsConfirmed;
+          end;
+          dtReject:
+          begin
+            // Reject: gen → skipped, review → rejected
+            if TSpecEnums.TryTransitionGen(LNode.GenStatus, gsSkipped, LError) then
+              LChanged := True
+            else
+              OutputDebugString(PChar('DeepSpec: ' + LError));
+            if TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsRejected, LError) then
+              LChanged := True
+            else
+              OutputDebugString(PChar('DeepSpec: ' + LError));
+            LNode.Status := nsRejected;
+          end;
+        end;
+      end;
+
+      LNodes[I] := LNode;
+    end;
+
+    if LChanged then
+      AWriteTree(ATreeRelPath, LNodes);
+  finally
+    LNodes.Free;
+  end;
+end;
+
+procedure TDeepSpecDecisionsService.ApplyNodeStatusTransitions(
+  const ATreeRelPath: string; ANodes: TList<TSpecNode>);
+var
+  LChanged: Boolean;
+  LError: string;
+begin
+  if ANodes = nil then Exit;
+  LChanged := False;
+  for var I := 0 to ANodes.Count - 1 do
+  begin
+    var LNode := ANodes[I];
+    for var LDec in FDecisions do
+    begin
+      if LDec.Status <> dsAccepted then Continue;
+      var LTargetsNode := False;
+      for var LT in LDec.TargetNodes do
+        if LT = LNode.Id then begin LTargetsNode := True; Break; end;
+      if not LTargetsNode then Continue;
+      case LDec.DecisionType of
+        dtConfirm:
+        begin
+          if TSpecEnums.TryTransitionGen(LNode.GenStatus, gsConfirmed, LError) then
+            LChanged := True;
+          if TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsAccepted, LError) then
+            LChanged := True;
+          LNode.Status := nsConfirmed;
+        end;
+        dtReject:
+        begin
+          if TSpecEnums.TryTransitionGen(LNode.GenStatus, gsSkipped, LError) then
+            LChanged := True;
+          if TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsRejected, LError) then
+            LChanged := True;
+          LNode.Status := nsRejected;
+        end;
+      end;
+    end;
+    ANodes[I] := LNode;
+  end;
 end;
 
 end.

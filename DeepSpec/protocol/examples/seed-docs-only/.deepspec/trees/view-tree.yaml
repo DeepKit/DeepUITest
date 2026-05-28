@@ -1,0 +1,19 @@
+version: "1.0"
+tree: view
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+# Planned UI from wireframes in docs
+nodes:
+  - id: "view-dashboard"
+    tree: view
+    title: "Dashboard"
+    kind: page
+    parent_id: null
+    summary: "Main control dashboard showing device status"
+    status: candidate
+    confidence: low
+    source_layer: ai_inferred
+    source_refs:
+      - ref_id: "ev-wireframe"
+        relevance: primary

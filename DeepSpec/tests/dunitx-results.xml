@@ -1,0 +1,108 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<test-results name="D:\_Progs\02Business\DeepSpec\tests\DeepSpec.Tests.exe" total="48" errors="0" failures="0" ignored="0" inconclusive="0" not-run="0" skipped="0" invalid="0" date="2026-05-24" time="21:24:27">
+  <culture-info current-culture="en" current-uiculture="en" />
+  <test-suite type="Assembly" name="DeepSpec.Tests.exe" executed="true" result="Success" success="True" time="21:24:27" asserts="0">
+    <results>
+        <test-suite type="Namespace" name="Test" executed="true" result="Success" success="True" time="0.001" asserts="0" >
+          <results>
+              <test-suite type="Namespace" name="DeepSpec" executed="true" result="Success" success="True" time="0.001" asserts="0" >
+                <results>
+                    <test-suite type="Namespace" name="Validation" executed="true" result="Success" success="True" time="0.001" asserts="0" >
+                      <results>
+                          <test-suite type="Fixture" name="TValidationKindTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="ExtensionKind_NoError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationNodeIdTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="ValidFuncId_NoError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidPrefix_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="DuplicateId_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationParentRefTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="ValidParent_NoError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="MissingParentRef_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="CircularParent_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationParseErrorTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="InvalidYAML_DoesNotCrash" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationProjectSpecTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="MissingProject_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="MissingProjectName_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="MissingProjectType_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="CompleteProjectSpec_NoErrors" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationReportTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="NewReport_NoErrors" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="AddError_HasErrorsTrue" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="WarningOnly_HasErrorsFalse" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="ClearRemovesAll" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationSecurityTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="HumanDecidedBy_ForbiddenInLLMOutput" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="SystemDecidedBy_Allowed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="EmptyDecisionsList_NoErrors" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationStatusTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="ValidGenStatus_NoError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidGenStatus_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidReviewStatus_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TValidationTreeFileTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="MissingVersion_ReportedAsWarning" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="MissingTree_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidTreeType_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="ValidTreeFile_NoErrors" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidNodeStatus_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidConfidence_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                      </results>
+                    </test-suite>
+                    <test-suite type="Fixture" name="TYamlParserTests" executed="True" result="Success" success="True" time="0.000" >
+                      <results>
+                        <test-case name="EmptyInput_ReturnsEmptyMap" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="SimpleMap_TwoKeys" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="MapWithQuotedValue_DoubleQuotes" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="MapWithQuotedValue_SingleQuotes" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="FlowSequence_Empty" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="FlowSequence_WithItems" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="BooleanValues" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="IntegerValue" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="EmptyMap_FlowBraces" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="CommentStrippedFromValue" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="HasKey_ReturnsTrueForExisting" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="HasKey_ReturnsFalseForMissing" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="GetString_DefaultForMissing" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="GetInteger_ParsesValue" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="GetBoolean_ParsesTrueFalse" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="NullValue" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="NestedMap_ProjectSection" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="SequenceOfMaps_Nodes" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="SourceRefsRoundTrip" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="OldFormat_NoGenStatus_Defaults" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                      </results>
+                    </test-suite>
+                </results>
+              </test-suite>
+          </results>
+        </test-suite>
+    </results>
+  </test-suite>
+</test-results>

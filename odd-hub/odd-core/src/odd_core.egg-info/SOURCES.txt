@@ -1,0 +1,12 @@
+pyproject.toml
+src/odd/__init__.py
+src/odd/cli.py
+src/odd/sealer.py
+src/odd/verifier.py
+src/odd_core.egg-info/PKG-INFO
+src/odd_core.egg-info/SOURCES.txt
+src/odd_core.egg-info/dependency_links.txt
+src/odd_core.egg-info/entry_points.txt
+src/odd_core.egg-info/requires.txt
+src/odd_core.egg-info/top_level.txt
+tests/test_core.py

@@ -1,0 +1,175 @@
+object FrameReport: TFrameReport
+  Align = Client
+  Size.Width = 400.000000000000000000
+  Size.Height = 500.000000000000000000
+  Size.PlatformDefault = False
+  TabOrder = 0
+  object LayoutRoot: TLayout
+    Align = Client
+    Size.Width = 400.000000000000000000
+    Size.Height = 500.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    object Rectangle1: TRectangle
+      Align = Client
+      Fill.Color = xFFFFFFFF
+      Size.Width = 400.000000000000000000
+      Size.Height = 500.000000000000000000
+      Size.PlatformDefault = False
+      object LayoutHeader: TLayout
+        Align = Top
+        Size.Width = 400.000000000000000000
+        Size.Height = 90.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 0
+        object LblReportId: TLabel
+          Align = Top
+          Margins.Left = 16.000000000000000000
+          Margins.Top = 16.000000000000000000
+          Position.X = 16.000000000000000000
+          Position.Y = 16.000000000000000000
+          Size.Width = 384.000000000000000000
+          Size.Height = 20.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.FontColor = claWhite
+          TabOrder = 0
+        end
+        object LblProjectName: TLabel
+          Align = Top
+          Margins.Left = 16.000000000000000000
+          Position.X = 16.000000000000000000
+          Position.Y = 36.000000000000000000
+          Size.Width = 384.000000000000000000
+          Size.Height = 28.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 20.000000000000000000
+          TextSettings.FontColor = claWhite
+          TabOrder = 1
+        end
+        object LblVerifiedAt: TLabel
+          Align = Top
+          Margins.Left = 16.000000000000000000
+          Position.X = 16.000000000000000000
+          Position.Y = 64.000000000000000000
+          Size.Width = 384.000000000000000000
+          Size.Height = 20.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.FontColor = xaaFFFFFF
+          TabOrder = 2
+        end
+      end
+      object LayoutVerdict: TLayout
+        Align = Top
+        Position.Y = 90.000000000000000000
+        Size.Width = 400.000000000000000000
+        Size.Height = 80.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 1
+        object LblStatus: TLabel
+          Align = Left
+          Margins.Left = 16.000000000000000000
+          Margins.Top = 8.000000000000000000
+          Margins.Bottom = 8.000000000000000000
+          Position.X = 16.000000000000000000
+          Position.Y = 8.000000000000000000
+          Size.Width = 200.000000000000000000
+          Size.Height = 64.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 16.000000000000000000
+          TabOrder = 0
+        end
+        object LblPassRate: TLabel
+          Align = Right
+          Margins.Right = 16.000000000000000000
+          Position.X = 336.000000000000000000
+          Position.Y = 0.000000000000000000
+          Size.Width = 48.000000000000000000
+          Size.Height = 80.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 32.000000000000000000
+          TextSettings.HorzAlign = Trailing
+          TabOrder = 1
+        end
+      end
+      object LayoutScenarios: TLayout
+        Align = Client
+        Position.Y = 170.000000000000000000
+        Size.Width = 400.000000000000000000
+        Size.Height = 240.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 2
+        object ScrlBoxScenarios: TVertScrollBox
+          Align = Client
+          Size.Width = 400.000000000000000000
+          Size.Height = 240.000000000000000000
+          Size.PlatformDefault = False
+          TabOrder = 0
+        end
+      end
+      object LayoutEvidence: TLayout
+        Align = Bottom
+        Position.Y = 410.000000000000000000
+        Size.Width = 400.000000000000000000
+        Size.Height = 50.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 3
+        object LblSealHash: TLabel
+          Align = Client
+          Margins.Left = 16.000000000000000000
+          Margins.Right = 16.000000000000000000
+          Size.Width = 368.000000000000000000
+          Size.Height = 50.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 10.000000000000000000
+          TextSettings.FontColor = xFF7A9088
+          TabOrder = 0
+        end
+        object LblAIModel: TLabel
+          Align = Right
+          Margins.Right = 16.000000000000000000
+          Position.X = 284.000000000000000000
+          Position.Y = 0.000000000000000000
+          Size.Width = 100.000000000000000000
+          Size.Height = 50.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 11.000000000000000000
+          TextSettings.FontColor = xFF7A9088
+          TextSettings.HorzAlign = Trailing
+          TabOrder = 1
+        end
+      end
+      object LayoutFooter: TLayout
+        Align = Bottom
+        Position.Y = 460.000000000000000000
+        Size.Width = 400.000000000000000000
+        Size.Height = 40.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 4
+        object BtnExportPDF: TButton
+          Align = Right
+          Margins.Right = 8.000000000000000000
+          Position.X = 204.000000000000000000
+          Position.Y = 0.000000000000000000
+          Size.Width = 90.000000000000000000
+          Size.Height = 40.000000000000000000
+          Size.PlatformDefault = False
+          TabOrder = 0
+          Text = #23548#20986' PDF'
+          OnClick = BtnExportPDFClick
+        end
+        object BtnExportPNG: TButton
+          Align = Right
+          Margins.Right = 16.000000000000000000
+          Position.X = 302.000000000000000000
+          Position.Y = 0.000000000000000000
+          Size.Width = 82.000000000000000000
+          Size.Height = 40.000000000000000000
+          Size.PlatformDefault = False
+          TabOrder = 1
+          Text = #23548#20986' PNG'
+          OnClick = BtnExportPNGClick
+        end
+      end
+    end
+  end
+end

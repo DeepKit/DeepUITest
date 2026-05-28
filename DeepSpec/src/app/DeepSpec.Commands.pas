@@ -48,7 +48,7 @@ begin
         if LForm.Recent <> nil then
           LForm.Recent.AddRecentProject(LDir, LDir,
             ExtractFileName(ExcludeTrailingPathDelimiter(LDir)), '');
-        LForm.RebuildStructureTree;
+        // RebuildStructureTree is triggered by HandleScanEvent via sekProjectOpened
       end;
     end;
   ACommands.RegisterCommand(LCmd);
@@ -108,6 +108,15 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
+  LCmd := TShellCommand.Make('deepspec.data.render', 'Render Data Tree');
+  LCmd.Category := 'View';
+  LCmd.RiskLevel := rlLow;
+  LCmd.Handler := procedure
+    begin
+      LForm.Controller.RenderAll;
+    end;
+  ACommands.RegisterCommand(LCmd);
+
   LCmd := TShellCommand.Make('deepspec.llm.setup', 'Setup LLM (ModelScope)');
   LCmd.Category := 'Tools';
   LCmd.RiskLevel := rlLow;
@@ -144,6 +153,38 @@ begin
         on E: Exception do
           ShowMessage('Failed to save LLM config: ' + E.Message);
       end;
+    end;
+  ACommands.RegisterCommand(LCmd);
+
+  // -------------------------------------------------------------------------
+  // Debug commands — pilot smoke test for AIErrorHandler integration.
+  // Trigger an unhandled exception to verify the AIErrorHandler chain works:
+  //   - elAutoFix path  (EConvertError)  : silent log only
+  //   - elAIAnalyze path (Exception)     : friendly MessageDlg via AIEH
+  // Removed once rollout pilot is validated; safe to keep around since
+  // they are only reachable via the command palette.
+  // -------------------------------------------------------------------------
+  LCmd := TShellCommand.Make('deepspec.debug.inject-convert-error',
+    'Debug: Inject EConvertError (elAutoFix path)');
+  LCmd.Category := 'Debug';
+  LCmd.RiskLevel := rlLow;
+  LCmd.Handler := procedure
+    begin
+      // Goes through AIErrorHandler classifier as elAutoFix
+      // (logged silently, no dialog shown).
+      raise EConvertError.Create('Pilot smoke: forced EConvertError');
+    end;
+  ACommands.RegisterCommand(LCmd);
+
+  LCmd := TShellCommand.Make('deepspec.debug.inject-generic-error',
+    'Debug: Inject generic Exception (elAIAnalyze path)');
+  LCmd.Category := 'Debug';
+  LCmd.RiskLevel := rlLow;
+  LCmd.Handler := procedure
+    begin
+      // Goes through AIErrorHandler classifier as elAIAnalyze
+      // (LLM-friendly MessageDlg or fallback friendly message).
+      raise Exception.Create('Pilot smoke: forced generic exception for AI analysis');
     end;
   ACommands.RegisterCommand(LCmd);
 end;

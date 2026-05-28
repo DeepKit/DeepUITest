@@ -1,0 +1,25 @@
+id: webhook
+name: Webhook 处理器契约
+description: 接收并处理第三方 Webhook 回调的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["webhook", "Webhook", "callback", "notify", "event"]
+      reason: 必须包含 webhook 或回调处理逻辑
+      severity: critical
+  must_not_contain:
+    - patterns: ["eval(", "exec("]
+      reason: 禁止执行 webhook 传入的动态代码
+      severity: critical
+  should_contain:
+    - patterns: ["signature", "hmac", "sha256", "verify", "secret", "token"]
+      reason: 建议验证 webhook 签名，防止伪造请求
+      severity: high
+    - patterns: ["200", "status_code", "OK", "accepted"]
+      reason: 建议尽快返回 2xx 响应，避免发送方超时重试
+      severity: high
+    - patterns: ["try", "except", "catch", "error"]
+      reason: 建议捕获处理异常
+      severity: high
+    - patterns: ["idempotent", "idempotency", "dedup", "event_id", "message_id"]
+      reason: 建议实现幂等处理，防止重复投递
+      severity: medium

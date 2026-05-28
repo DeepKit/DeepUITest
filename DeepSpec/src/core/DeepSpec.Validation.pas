@@ -13,6 +13,7 @@ uses
   System.SysUtils,
   System.Classes,
   System.Generics.Collections,
+  System.RegularExpressions,
   DeepSpec.Yaml.Parser,
   DeepSpec.Models;
 
@@ -50,6 +51,7 @@ type
 
   TYamlValidator = class
   private
+    FNodeIdRegex: TRegex;
     procedure ValidateNodeId(const AId, APath: string;
       AReport: TValidationReport);
     procedure ValidateKind(const AKind, ATree, APath: string;
@@ -65,17 +67,20 @@ type
     function IsValidViewKind(const AKind: string): Boolean;
     function IsExtensionKind(const AKind: string): Boolean;
   public
+    constructor Create;
     function ValidateTreeFile(const AYaml: string;
       AMode: TValidationMode = vmLenient): TValidationReport;
     function ValidateProjectSpec(const AYaml: string): TValidationReport;
     function ValidateLLMSecurityRules(const AYaml: string): TValidationReport;
+    function ValidateNodeHashes(const ANodes: TList<TSpecNode>;
+      const ATreeName: string): TValidationReport;
   end;
 
 implementation
 
 uses
-  System.RegularExpressions,
-  System.StrUtils;
+  System.StrUtils,
+  DeepSpec.Hash;
 
 { TValidationReport }
 
@@ -137,6 +142,13 @@ end;
 
 { TYamlValidator }
 
+constructor TYamlValidator.Create;
+begin
+  inherited Create;
+  FNodeIdRegex := TRegEx.Create(
+    '^(func|mod|view|data)-[a-z0-9][a-z0-9\-]{0,49}$', [roCompiled]);
+end;
+
 function TYamlValidator.IsValidFunctionKind(const AKind: string): Boolean;
 const
   KINDS: array[0..7] of string = (
@@ -180,8 +192,6 @@ end;
 
 procedure TYamlValidator.ValidateNodeId(const AId, APath: string;
   AReport: TValidationReport);
-var
-  LRegex: TRegEx;
 begin
   if AId = '' then
   begin
@@ -190,11 +200,10 @@ begin
     Exit;
   end;
 
-  LRegex := TRegEx.Create('^(func|mod|view)-[a-z0-9][a-z0-9\-]{0,39}$');
-  if not LRegex.IsMatch(AId) then
+  if not FNodeIdRegex.IsMatch(AId) then
     AReport.AddError('invalid_id_format', vsError, APath,
       'Node id "' + AId + '" does not match required pattern',
-      'Use format {func|mod|view}-{slug}, lowercase letters/digits/hyphens only, max 40 chars after prefix');
+      'Use format {func|mod|view|data}-{slug}, lowercase letters/digits/hyphens only');
 end;
 
 procedure TYamlValidator.ValidateKind(const AKind, ATree, APath: string;
@@ -296,9 +305,9 @@ begin
 
       // Check tree type
       var LTree := LRoot.GetString('tree', '');
-      if (LTree <> 'function') and (LTree <> 'module') and (LTree <> 'view') then
+      if (LTree <> 'function') and (LTree <> 'module') and (LTree <> 'view') and (LTree <> 'data') then
         Result.AddError('invalid_tree', vsError, '/tree',
-          'tree must be "function", "module", or "view"', '');
+          'tree must be "function", "module", "view", or "data"', '');
 
       // Validate nodes
       var LNodes := LRoot.GetSeq('nodes');
@@ -331,6 +340,94 @@ begin
           ValidateSourceLayer(LNode.GetString('source_layer', ''), LPath + '/source_layer', Result);
         end;
       end;
+
+      // INV-2: parent_id reference existence
+      // INV-5: circular parent_id chains
+      if LNodes <> nil then
+      begin
+        // Build id->index map for parent ref checking
+        var LIdMap := TDictionary<string, Integer>.Create;
+        try
+          for var I := 0 to LNodes.SeqCount - 1 do
+          begin
+            var LN := LNodes.SeqItem(I);
+            if LN = nil then Continue;
+            var LNId := LN.GetString('id', '');
+            if LNId <> '' then
+              LIdMap.AddOrSetValue(LNId, I);
+          end;
+
+          for var I := 0 to LNodes.SeqCount - 1 do
+          begin
+            var LNode := LNodes.SeqItem(I);
+            if LNode = nil then Continue;
+            var LPId := LNode.GetString('parent_id', '');
+            if LPId = '' then Continue;
+
+            var LPath := '/nodes/' + I.ToString + '/parent_id';
+
+            // INV-2: parent must exist
+            if not LIdMap.ContainsKey(LPId) then
+              Result.AddError('invalid_parent_ref', vsError, LPath,
+                'parent_id "' + LPId + '" does not reference an existing node',
+                'Fix the parent_id or remove it for root nodes')
+            else
+            begin
+              // INV-5: cycle detection - walk parent chain
+              var LVisited := TDictionary<string, Boolean>.Create;
+              try
+                var LCurrent := LNode.GetString('id', '');
+                var LCycleFound := False;
+                while LCurrent <> '' do
+                begin
+                  if LVisited.ContainsKey(LCurrent) then
+                  begin
+                    LCycleFound := True;
+                    Break;
+                  end;
+                  LVisited.AddOrSetValue(LCurrent, True);
+                  var LIdx: Integer;
+                  if not LIdMap.TryGetValue(LCurrent, LIdx) then Break;
+                  var LPNode := LNodes.SeqItem(LIdx);
+                  if LPNode = nil then Break;
+                  LCurrent := LPNode.GetString('parent_id', '');
+                end;
+                if LCycleFound then
+                  Result.AddError('circular_parent', vsError, LPath,
+                    'parent_id chain contains a cycle',
+                    'Break the cycle by setting a root node parent_id to empty');
+              finally
+                LVisited.Free;
+              end;
+            end;
+          end;
+        finally
+          LIdMap.Free;
+        end;
+
+        // INV-4: gen_status / review_status value legality
+        for var I := 0 to LNodes.SeqCount - 1 do
+        begin
+          var LNode := LNodes.SeqItem(I);
+          if LNode = nil then Continue;
+          var LPath := '/nodes/' + I.ToString;
+
+          var LGS := LNode.GetString('gen_status', '');
+          if (LGS <> '') and (LGS <> 'draft') and (LGS <> 'generated') and
+             (LGS <> 'confirmed') and (LGS <> 'skipped') then
+            Result.AddError('invalid_gen_status', vsError, LPath + '/gen_status',
+              'gen_status "' + LGS + '" is not valid',
+              'Use: draft, generated, confirmed, or skipped');
+
+          var LRS := LNode.GetString('review_status', '');
+          if (LRS <> '') and (LRS <> 'unreviewed') and (LRS <> 'accepted') and
+             (LRS <> 'rejected') and (LRS <> 'deferred') then
+            Result.AddError('invalid_review_status', vsError, LPath + '/review_status',
+              'review_status "' + LRS + '" is not valid',
+              'Use: unreviewed, accepted, rejected, or deferred');
+        end;
+      end;
+
     finally
       LRoot.Free;
     end;
@@ -421,6 +518,26 @@ begin
     end;
   finally
     LParser.Free;
+  end;
+end;
+
+function TYamlValidator.ValidateNodeHashes(const ANodes: TList<TSpecNode>;
+  const ATreeName: string): TValidationReport;
+begin
+  Result := TValidationReport.Create;
+  if ANodes = nil then Exit;
+
+  for var I := 0 to ANodes.Count - 1 do
+  begin
+    var LNode := ANodes[I];
+    if LNode.ContentHash = '' then Continue;
+
+    var LExpected := TSpecHash.NodeContentHash(LNode);
+    if not LExpected.Equals(LNode.ContentHash) then
+      Result.AddError('content_hash_mismatch', vsError,
+        ATreeName + '/nodes/' + I.ToString + '/content_hash',
+        'content_hash mismatch for node "' + LNode.Id + '"',
+        'Regenerate the tree or re-run scan to update hashes');
   end;
 end;
 

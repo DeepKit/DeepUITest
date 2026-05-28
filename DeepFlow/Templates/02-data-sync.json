@@ -1,0 +1,338 @@
+{
+  "$schema": "../schema/workflow.schema.json",
+  "id": "template-data-sync",
+  "name": "数据同步工作�?,
+  "description": "从源系统提取数据，转换后加载到目标系�?(ETL)",
+  "version": "1.0.0",
+  "category": "integration",
+  "tags": ["ETL", "数据同步", "集成"],
+  
+  "input": {
+    "properties": {
+      "sourceSystem": { "type": "string", "description": "源系统标�? },
+      "targetSystem": { "type": "string", "description": "目标系统标识" },
+      "dataType": { "type": "string", "description": "数据类型" },
+      "syncMode": { 
+        "type": "string", 
+        "enum": ["full", "incremental"],
+        "description": "同步模式" 
+      },
+      "lastSyncTime": { "type": "string", "description": "上次同步时间（增量模式）" }
+    },
+    "required": ["sourceSystem", "targetSystem", "dataType", "syncMode"]
+  },
+  
+  "output": {
+    "properties": {
+      "recordsExtracted": { "type": "integer" },
+      "recordsLoaded": { "type": "integer" },
+      "errorCount": { "type": "integer" },
+      "syncDuration": { "type": "number" }
+    }
+  },
+  
+  "variables": {
+    "startTime": "",
+    "extractedData": [],
+    "transformedData": [],
+    "loadResult": null,
+    "errors": []
+  },
+  
+  "steps": [
+    {
+      "id": "start-sync",
+      "name": "开始同�?,
+      "type": "action",
+      "action": {
+        "type": "script",
+        "script": "InitializeSync",
+        "params": {
+          "sourceSystem": "{{ input.sourceSystem }}",
+          "targetSystem": "{{ input.targetSystem }}"
+        }
+      },
+      "output": {
+        "variable": "startTime"
+      }
+    },
+    
+    {
+      "id": "extract",
+      "name": "提取数据",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "data/extract",
+        "params": {
+          "source": "{{ input.sourceSystem }}",
+          "dataType": "{{ input.dataType }}",
+          "mode": "{{ input.syncMode }}",
+          "since": "{{ input.lastSyncTime }}"
+        }
+      },
+      "output": {
+        "variable": "extractedData"
+      },
+      "timeout": "30m"
+    },
+    
+    {
+      "id": "check-data",
+      "name": "检查数据量",
+      "type": "condition",
+      "expression": "{{ vars.extractedData | length }}",
+      "branches": [
+        {
+          "match": "== 0",
+          "steps": [
+            {
+              "id": "no-data",
+              "name": "无新数据",
+              "type": "action",
+              "action": {
+                "type": "script",
+                "script": "LogNoData"
+              }
+            },
+            {
+              "id": "end-no-data",
+              "name": "结束-无数�?,
+              "type": "end",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "default": true,
+          "steps": []
+        }
+      ]
+    },
+    
+    {
+      "id": "transform",
+      "name": "转换数据",
+      "type": "parallel",
+      "parallel": {
+        "mode": "waitAll",
+        "maxConcurrency": 4
+      },
+      "branches": [
+        {
+          "id": "validate",
+          "name": "数据验证",
+          "steps": [
+            {
+              "id": "validate-schema",
+              "name": "验证Schema",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skillId": "data/validate",
+                "params": {
+                  "data": "{{ vars.extractedData }}",
+                  "schema": "{{ input.dataType }}"
+                }
+              },
+              "output": {
+                "variable": "validationResult"
+              }
+            }
+          ]
+        },
+        {
+          "id": "map-fields",
+          "name": "字段映射",
+          "steps": [
+            {
+              "id": "apply-mapping",
+              "name": "应用映射规则",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skillId": "data/transform",
+                "params": {
+                  "data": "{{ vars.extractedData }}",
+                  "mappingRules": "{{ input.sourceSystem }}_to_{{ input.targetSystem }}"
+                }
+              },
+              "output": {
+                "variable": "transformedData"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    
+    {
+      "id": "handle-validation-errors",
+      "name": "处理验证错误",
+      "type": "condition",
+      "condition": {
+        "field": "vars.validationResult.errorCount",
+        "operator": "gt",
+        "value": 0
+      },
+      "branches": [
+        {
+          "when": true,
+          "steps": [
+            {
+              "id": "log-errors",
+              "name": "记录错误",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skillId": "data/log-errors",
+                "params": {
+                  "errors": "{{ vars.validationResult.errors }}",
+                  "syncId": "{{ context.instanceId }}"
+                }
+              }
+            },
+            {
+              "id": "filter-valid",
+              "name": "过滤有效数据",
+              "type": "action",
+              "action": {
+                "type": "script",
+                "script": "FilterValidRecords",
+                "params": {
+                  "data": "{{ vars.transformedData }}",
+                  "validation": "{{ vars.validationResult }}"
+                }
+              },
+              "output": {
+                "variable": "transformedData"
+              }
+            }
+          ]
+        },
+        {
+          "default": true,
+          "steps": []
+        }
+      ]
+    },
+    
+    {
+      "id": "load",
+      "name": "加载数据",
+      "type": "loop",
+      "loop": {
+        "mode": "forEach",
+        "collection": "{{ vars.transformedData | batch(1000) }}",
+        "itemVariable": "batch",
+        "indexVariable": "batchIndex",
+        "maxIterations": 1000
+      },
+      "steps": [
+        {
+          "id": "load-batch",
+          "name": "加载批次",
+          "type": "action",
+          "action": {
+            "type": "skill",
+            "skillId": "data/load",
+            "params": {
+              "target": "{{ input.targetSystem }}",
+              "data": "{{ batch }}",
+              "mode": "upsert"
+            }
+          },
+          "output": {
+            "variable": "batchResult"
+          },
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "exponential"
+          }
+        },
+        {
+          "id": "accumulate-result",
+          "name": "累计结果",
+          "type": "action",
+          "action": {
+            "type": "script",
+            "script": "AccumulateLoadResult",
+            "params": {
+              "batchResult": "{{ vars.batchResult }}",
+              "loadResult": "{{ vars.loadResult }}"
+            }
+          },
+          "output": {
+            "variable": "loadResult"
+          }
+        }
+      ]
+    },
+    
+    {
+      "id": "update-sync-state",
+      "name": "更新同步状�?,
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "data/update-sync-state",
+        "params": {
+          "sourceSystem": "{{ input.sourceSystem }}",
+          "targetSystem": "{{ input.targetSystem }}",
+          "dataType": "{{ input.dataType }}",
+          "lastSyncTime": "{{ vars.startTime }}",
+          "recordCount": "{{ vars.loadResult.successCount }}"
+        }
+      }
+    },
+    
+    {
+      "id": "notify-complete",
+      "name": "通知完成",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "notification/send",
+        "params": {
+          "channel": "ops-alerts",
+          "template": "sync_completed",
+          "data": {
+            "source": "{{ input.sourceSystem }}",
+            "target": "{{ input.targetSystem }}",
+            "extracted": "{{ vars.extractedData | length }}",
+            "loaded": "{{ vars.loadResult.successCount }}",
+            "errors": "{{ vars.loadResult.errorCount }}"
+          }
+        }
+      }
+    },
+    
+    {
+      "id": "end-success",
+      "name": "结束",
+      "type": "end",
+      "output": {
+        "mapping": {
+          "recordsExtracted": "{{ vars.extractedData | length }}",
+          "recordsLoaded": "{{ vars.loadResult.successCount }}",
+          "errorCount": "{{ vars.loadResult.errorCount }}",
+          "syncDuration": "{{ now() - vars.startTime }}"
+        }
+      }
+    }
+  ],
+  
+  "errorHandling": {
+    "onError": "continue",
+    "fallback": {
+      "action": {
+        "type": "skill",
+        "skillId": "notification/alert",
+        "params": {
+          "level": "error",
+          "message": "数据同步失败: {{ error.message }}"
+        }
+      }
+    }
+  }
+}

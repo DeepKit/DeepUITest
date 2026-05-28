@@ -1,0 +1,73 @@
+version: "1.0"
+tree: function
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+nodes:
+  - id: "func-user-service"
+    tree: function
+    title: "User Service"
+    kind: capability
+    parent_id: null
+    summary: "REST API for user registration, authentication, and profile management"
+    status: confirmed
+    confidence: high
+    source_layer: human_decision
+    source_refs:
+      - ref_id: "ev-readme"
+        relevance: primary
+    decision_refs:
+      - "dec-001"
+    children:
+      - "func-register"
+      - "func-login"
+      - "func-profile"
+
+  - id: "func-register"
+    tree: function
+    title: "User Registration"
+    kind: feature
+    parent_id: "func-user-service"
+    summary: "New user can register with email and password"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+    source_refs:
+      - ref_id: "ev-api-spec"
+        relevance: primary
+    acceptance_criteria:
+      - "POST /api/v1/users returns 201 on success"
+      - "Duplicate email returns 409"
+      - "Password must be >= 8 characters"
+
+  - id: "func-login"
+    tree: function
+    title: "User Login"
+    kind: feature
+    parent_id: "func-user-service"
+    summary: "Registered user can login and receive JWT token"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+    source_refs:
+      - ref_id: "ev-api-spec"
+        relevance: primary
+    acceptance_criteria:
+      - "POST /api/v1/auth/login returns JWT on success"
+      - "Invalid credentials return 401"
+      - "Token expires in 24 hours"
+
+  - id: "func-profile"
+    tree: function
+    title: "Profile Management"
+    kind: feature
+    parent_id: "func-user-service"
+    summary: "Authenticated user can view and update their profile"
+    status: candidate
+    confidence: low
+    source_layer: ai_inferred
+    source_refs:
+      - ref_id: "ev-readme"
+        relevance: supporting
+    issue_refs:
+      - "issue-001"

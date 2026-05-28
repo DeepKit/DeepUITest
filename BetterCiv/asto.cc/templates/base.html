@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ site.title }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ site.tagline }}{% endblock %}">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">asto.cc</a>
+      <div class="nav-links">
+        {% if layers is defined %}
+        {% for l in layers[:5] %}
+        <a href="/{{ l.slug }}">{{ l.slug | upper }}</a>
+        {% endfor %}
+        <span class="nav-sep">|</span>
+        {% endif %}
+        <a href="/walkthrough">走通</a>
+        <a href="/about">关于</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-stats">
+        {{ site.zenodo_count }} 篇 Zenodo 预印本 ·
+        作者：{{ site.author.name }}（{{ site.author.name_zh }}）·
+        ORCID: <a href="https://orcid.org/{{ site.author.orcid }}">{{ site.author.orcid }}</a>
+      </div>
+      <div class="footer-links">
+        <a href="{{ site.links.betterciv }}">BetterCiv.org</a>
+        <a href="{{ site.links.goodmem }}">goodmem.cn</a>
+        <a href="/about">引用指南</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

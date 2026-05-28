@@ -1,0 +1,36 @@
+version: "1.0"
+generated_at: "2026-05-15T09:00:00+08:00"
+
+relations:
+  - id: "rel-add-todo-header"
+    from: "func-add-todo"
+    to: "view-header"
+    type: presented_by
+    confidence: high
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    source_refs: []
+    decision_refs: []
+    note: "Add todo input lives in the header section"
+
+  - id: "rel-toggle-list"
+    from: "func-toggle-todo"
+    to: "view-todo-list"
+    type: presented_by
+    confidence: medium
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    source_refs: []
+    decision_refs: []
+    note: null
+
+  - id: "rel-filter-footer"
+    from: "func-filter-todos"
+    to: "view-footer"
+    type: presented_by
+    confidence: low
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    source_refs: []
+    decision_refs: []
+    note: null

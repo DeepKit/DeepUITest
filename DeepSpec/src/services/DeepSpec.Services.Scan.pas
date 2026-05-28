@@ -53,10 +53,11 @@ uses
   System.StrUtils;
 
 const
-  IGNORED_DIRS: array[0..14] of string = (
+  IGNORED_DIRS: array[0..15] of string = (
     'node_modules', '.git', '.svn', '.hg', '__pycache__',
     '.pytest_cache', 'build', 'bin', 'dist', 'out',
-    'target', 'debug', 'release', '__history', '.next'
+    'target', 'debug', 'release', '__history', '.next',
+    '.deepspec'
   );
 
   AI_RULES_FILES: array[0..4] of string = (
@@ -160,8 +161,11 @@ procedure TDeepSpecScanService.ScanDirectory(const ARootPath: string);
     for var LFile in TDirectory.GetFiles(ADir) do
     begin
       var LFileName := TPath.GetFileName(LFile);
-      var LRelPath := if ARelBase = '' then LFileName
-                      else ARelBase + '/' + LFileName;
+      var LRelPath: string;
+      if ARelBase = '' then
+        LRelPath := LFileName
+      else
+        LRelPath := ARelBase + '/' + LFileName;
       var LEntry: TScanResult;
       LEntry.RelativePath := LRelPath;
       LEntry.Category := ClassifyFile(LRelPath, LFileName);
@@ -174,14 +178,19 @@ procedure TDeepSpecScanService.ScanDirectory(const ARootPath: string);
       if IsIgnoredDir(LDirName) then
       begin
         var LEntry: TScanResult;
-        LEntry.RelativePath := if ARelBase = '' then LDirName
-                               else ARelBase + '/' + LDirName;
+        if ARelBase = '' then
+          LEntry.RelativePath := LDirName
+        else
+          LEntry.RelativePath := ARelBase + '/' + LDirName;
         LEntry.Category := fcIgnored;
         FResults.Add(LEntry);
         Continue;
       end;
-      var LNewBase := if ARelBase = '' then LDirName
-                      else ARelBase + '/' + LDirName;
+      var LNewBase: string;
+      if ARelBase = '' then
+        LNewBase := LDirName
+      else
+        LNewBase := ARelBase + '/' + LDirName;
       ScanRecursive(LSubDir, LNewBase);
     end;
   end;

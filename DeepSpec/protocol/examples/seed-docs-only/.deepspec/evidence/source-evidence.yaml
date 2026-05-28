@@ -1,0 +1,51 @@
+version: "1.0"
+
+evidence:
+  - id: "ev-prd-intro"
+    source_layer: parsed_from_a
+    path: "docs/PRD.md"
+    lines: "1-20"
+    excerpt: "# Smart Home Hub\n\nA central control system that connects all IoT devices in your home."
+    excerpt_truncated: false
+    note: null
+    confidence: high
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    content_hash: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    source_file_hash: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    is_stale: false
+    referenced_by:
+      - "func-product"
+
+  - id: "ev-prd-features"
+    source_layer: parsed_from_a
+    path: "docs/PRD.md"
+    lines: "25-60"
+    excerpt: "## Features\n- Device discovery (Zigbee, Z-Wave, WiFi)\n- Automation rules\n- Voice control integration"
+    excerpt_truncated: false
+    note: null
+    confidence: medium
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    content_hash: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    source_file_hash: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    is_stale: false
+    referenced_by:
+      - "func-device-discovery"
+      - "func-automation"
+
+  - id: "ev-wireframe"
+    source_layer: parsed_from_a
+    path: "docs/wireframes/dashboard.png"
+    lines: null
+    excerpt: "[Binary image - dashboard wireframe showing device grid and status indicators]"
+    excerpt_truncated: false
+    note: "PNG wireframe, content described manually"
+    confidence: low
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    content_hash: "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+    source_file_hash: null
+    is_stale: false
+    referenced_by:
+      - "view-dashboard"

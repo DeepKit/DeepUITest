@@ -1,0 +1,22 @@
+id: rate_limiter
+name: 限流器契约
+description: 接口/服务限流逻辑的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["rate_limit", "ratelimit", "throttle", "RateLimit", "Throttle", "limiter"]
+      reason: 必须包含限流逻辑或引用限流组件
+      severity: critical
+  must_not_contain:
+    - patterns: ["time.sleep(", "sleep("]
+      reason: 禁止用 sleep 实现限流（应使用令牌桶/滑动窗口算法）
+      severity: high
+  should_contain:
+    - patterns: ["redis", "cache", "counter", "token", "bucket", "window"]
+      reason: 建议使用持久化存储（如 Redis）保证分布式限流一致性
+      severity: high
+    - patterns: ["429", "TOO_MANY_REQUESTS", "rate limit exceeded", "Retry-After"]
+      reason: 建议返回 429 状态码并携带 Retry-After 头
+      severity: high
+    - patterns: ["key", "user_id", "ip", "client"]
+      reason: 建议按用户/IP 等维度分别限流
+      severity: medium

@@ -1,0 +1,75 @@
+# Dependabot Configuration
+# Automatically creates PRs for dependency updates
+
+version: 2
+
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/docs/uniFlow/Skills"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps(python):"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Node.js dependencies
+  - package-ecosystem: "npm"
+    directory: "/docs/uniFlow/Skills/nodejs"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "nodejs"
+    commit-message:
+      prefix: "deps(nodejs):"
+    groups:
+      npm-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci:"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/docs/uniFlow/Skills"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "docker:"
+
+  - package-ecosystem: "docker"
+    directory: "/docs/uniFlow/Skills/nodejs"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "docker:"

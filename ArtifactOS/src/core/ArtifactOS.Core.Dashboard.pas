@@ -62,7 +62,7 @@ begin
     Hdr('Publication Gate');
     WriteLn('  packages:     ', S('SELECT COUNT(*)::text FROM artifactos.publication_package'));
     WriteLn('  snapshots:    ', S('SELECT COUNT(*)::text FROM artifactos.quality_snapshot'));
-    WriteLn('  gate status:  ', S('SELECT gate_status::text FROM artifactos.check_real_publish_gate()'));
+    WriteLn('  gate status:  ', S('SELECT artifactos.check_real_publish_gate() ->> ''gate_status'''));
 
     Hdr('Shadow Run');
     WriteLn('  shadow_runs: ', S('SELECT COUNT(*)::text FROM artifactos.shadow_run'));

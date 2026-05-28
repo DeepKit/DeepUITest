@@ -1,0 +1,47 @@
+---
+name: Spec / Protocol Proposal
+description: Propose a change to DeepSpec protocol, schemas, CTF workflow, or .deepspec structure
+title: "spec: "
+labels: ["spec", "protocol"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when changing what DeepSpec means, stores, validates, or exposes to coding agents.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What current ambiguity, failure mode, or missing capability does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the proposed protocol/schema/workflow change.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and examples
+      description: Link to source files, sample .deepspec data, screenshots, or user cases.
+    validations:
+      required: true
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Invariant impact
+      options:
+        - label: Traceability remains explicit.
+        - label: Fallibility/review/rejection remains possible.
+        - label: State dimensions remain orthogonal.
+        - label: Partial success behavior is not weakened.
+        - label: Backward compatibility is addressed.
+  - type: textarea
+    id: migration
+    attributes:
+      label: Migration / compatibility plan
+      description: How should existing .deepspec data or readers handle this change?
+---

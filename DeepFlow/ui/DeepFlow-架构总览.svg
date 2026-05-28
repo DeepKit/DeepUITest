@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="850" viewBox="0 0 1100 850">
+  <style>
+    .layer-meta { fill:#1a1a2e; }
+    .layer-decision { fill:#0f3460; }
+    .layer-intelligence { fill:#c73659; }
+    .layer-capability { fill:#533483; }
+    .layer-foundation { fill:#2c786c; }
+    .layer-infra { fill:#4a4a4a; }
+    .role-box { fill:rgba(255,255,255,0.1); stroke:rgba(255,255,255,0.3); stroke-width:1.5; }
+    .title { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:24px; font-weight:bold; fill:#333; }
+    .layer-title { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:13px; fill:rgba(255,255,255,0.7); }
+    .role-name { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:13px; font-weight:bold; fill:#fff; }
+    .role-alias { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:9px; fill:rgba(255,255,255,0.6); }
+    .infra-item { fill:#5a5a5a; }
+    .infra-text { font-family:'Segoe UI',sans-serif; font-size:10px; fill:#fff; }
+    .note { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:11px; fill:#666; }
+    .legend-title { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:12px; font-weight:bold; fill:#333; }
+    .arrow { stroke:#666; stroke-width:1.5; marker-end:url(#arrowhead); fill:none; }
+    .observe-line { stroke:#888; stroke-width:1; stroke-dasharray:5,5; fill:none; }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1100" height="850" fill="#f8f9fa"/>
+
+  <!-- 标题 -->
+  <text class="title" x="550" y="40" text-anchor="middle">UniFlow 架构总览</text>
+  <text class="note" x="550" y="60" text-anchor="middle">智能应用的操作系统 - 11角色层级架构</text>
+
+  <!-- 元层 (Level 0) -->
+  <g transform="translate(50, 80)">
+    <rect class="layer-meta" width="1000" height="85" rx="8" filter="url(#shadow)"/>
+    <text class="layer-title" x="20" y="22">元层 Level 0</text>
+    
+    <!-- 引擎 -->
+    <rect class="role-box" x="200" y="35" width="180" height="40" rx="5"/>
+    <text class="role-name" x="290" y="55" text-anchor="middle">引擎</text>
+    <text class="role-alias" x="290" y="68" text-anchor="middle">战争机器 | 摄影机</text>
+    
+    <!-- 督察 -->
+    <rect class="role-box" x="620" y="35" width="180" height="40" rx="5"/>
+    <text class="role-name" x="710" y="55" text-anchor="middle">督察</text>
+    <text class="role-alias" x="710" y="68" text-anchor="middle">总监察长 | 监制</text>
+  </g>
+
+  <!-- 决策层 (Level 4) -->
+  <g transform="translate(50, 180)">
+    <rect class="layer-decision" width="1000" height="85" rx="8" filter="url(#shadow)"/>
+    <text class="layer-title" x="20" y="22">决策层 Level 4</text>
+    
+    <!-- 总指挥 -->
+    <rect class="role-box" x="200" y="35" width="180" height="40" rx="5"/>
+    <text class="role-name" x="290" y="55" text-anchor="middle">总指挥</text>
+    <text class="role-alias" x="290" y="68" text-anchor="middle">司令官 | 导演</text>
+    
+    <!-- 调度员 -->
+    <rect class="role-box" x="620" y="35" width="180" height="40" rx="5"/>
+    <text class="role-name" x="710" y="55" text-anchor="middle">调度员</text>
+    <text class="role-alias" x="710" y="68" text-anchor="middle">参谋 | 副导演</text>
+  </g>
+
+  <!-- 智能层 (Level 3) -->
+  <g transform="translate(50, 280)">
+    <rect class="layer-intelligence" width="1000" height="85" rx="8" filter="url(#shadow)"/>
+    <text class="layer-title" x="20" y="22">智能层 Level 3</text>
+    
+    <!-- 智囊 -->
+    <rect class="role-box" x="410" y="35" width="180" height="40" rx="5"/>
+    <text class="role-name" x="500" y="55" text-anchor="middle">智囊</text>
+    <text class="role-alias" x="500" y="68" text-anchor="middle">情报官 | 编剧</text>
+    
+    <!-- 子能力标注 -->
+    <text class="role-alias" x="200" y="58">理解</text>
+    <text class="role-alias" x="500" y="22" text-anchor="middle">生成</text>
+    <text class="role-alias" x="800" y="58">诊断</text>
+  </g>
+
+  <!-- 能力层 (Level 2) -->
+  <g transform="translate(50, 380)">
+    <rect class="layer-capability" width="1000" height="100" rx="8" filter="url(#shadow)"/>
+    <text class="layer-title" x="20" y="22">能力层 Level 2</text>
+    
+    <!-- 执行者 -->
+    <rect class="role-box" x="80" y="40" width="160" height="45" rx="5"/>
+    <text class="role-name" x="160" y="62" text-anchor="middle">执行者</text>
+    <text class="role-alias" x="160" y="75" text-anchor="middle">作战部队 | 摄制组</text>
+    
+    <!-- 守卫 -->
+    <rect class="role-box" x="280" y="40" width="260" height="45" rx="5"/>
+    <text class="role-name" x="410" y="62" text-anchor="middle">守卫</text>
+    <text class="role-alias" x="410" y="75" text-anchor="middle">门卫 | 监工 | 审核官</text>
+    
+    <!-- 军械官 -->
+    <rect class="role-box" x="580" y="40" width="160" height="45" rx="5"/>
+    <text class="role-name" x="660" y="62" text-anchor="middle">军械官</text>
+    <text class="role-alias" x="660" y="75" text-anchor="middle">军械处长 | 道具师</text>
+  </g>
+
+  <!-- 基础层 (Level 1) -->
+  <g transform="translate(50, 495)">
+    <rect class="layer-foundation" width="1000" height="100" rx="8" filter="url(#shadow)"/>
+    <text class="layer-title" x="20" y="22">基础层 Level 1</text>
+    
+    <!-- 后勤 -->
+    <rect class="role-box" x="80" y="40" width="160" height="45" rx="5"/>
+    <text class="role-name" x="160" y="62" text-anchor="middle">后勤</text>
+    <text class="role-alias" x="160" y="75" text-anchor="middle">后勤部 | 制片</text>
+    
+    <!-- 记录员 -->
+    <rect class="role-box" x="280" y="40" width="160" height="45" rx="5"/>
+    <text class="role-name" x="360" y="62" text-anchor="middle">记录员</text>
+    <text class="role-alias" x="360" y="75" text-anchor="middle">战史官 | 场记</text>
+    
+    <!-- 通信官 -->
+    <rect class="role-box" x="480" y="40" width="160" height="45" rx="5"/>
+    <text class="role-name" x="560" y="62" text-anchor="middle">通信官</text>
+    <text class="role-alias" x="560" y="75" text-anchor="middle">通信兵 | 信息中心</text>
+  </g>
+
+  <!-- 基础设施层 -->
+  <g transform="translate(50, 610)">
+    <rect class="layer-infra" width="1000" height="65" rx="8" filter="url(#shadow)"/>
+    <text class="layer-title" x="20" y="22">UniBase 基础设施</text>
+    
+    <rect class="infra-item" x="100" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="135" y="47" text-anchor="middle">Config</text>
+    
+    <rect class="infra-item" x="190" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="225" y="47" text-anchor="middle">Logging</text>
+    
+    <rect class="infra-item" x="280" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="315" y="47" text-anchor="middle">Database</text>
+    
+    <rect class="infra-item" x="370" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="405" y="47" text-anchor="middle">i18n</text>
+    
+    <rect class="infra-item" x="460" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="495" y="47" text-anchor="middle">Security</text>
+    
+    <rect class="infra-item" x="550" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="585" y="47" text-anchor="middle">Cache</text>
+    
+    <rect class="infra-item" x="640" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="675" y="47" text-anchor="middle">Network</text>
+    
+    <rect class="infra-item" x="730" y="32" width="70" height="22" rx="3"/>
+    <text class="infra-text" x="765" y="47" text-anchor="middle">LLM</text>
+  </g>
+
+  <!-- 依赖箭头 -->
+  <line class="arrow" x1="340" y1="162" x2="340" y2="178"/>
+  <line class="arrow" x1="340" y1="262" x2="340" y2="278"/>
+  <line class="arrow" x1="340" y1="362" x2="340" y2="378"/>
+  <line class="arrow" x1="340" y1="477" x2="340" y2="493"/>
+  <line class="arrow" x1="340" y1="592" x2="340" y2="608"/>
+
+  <!-- 督察观测线 -->
+  <line class="observe-line" x1="810" y1="162" x2="810" y2="590"/>
+  <text class="note" x="820" y="380">观测/调试</text>
+
+  <!-- 外部请求入口 -->
+  <text class="note" x="60" y="222">外部请求 →</text>
+  <line class="arrow" x1="130" y1="218" x2="195" y2="218"/>
+
+  <!-- 信任边界图例 -->
+  <g transform="translate(50, 700)">
+    <text class="legend-title" x="0" y="15">信任边界：</text>
+    <rect x="100" y="2" width="18" height="18" rx="2" fill="#1a1a2e"/>
+    <text class="note" x="125" y="15">完全信任区（元层、基础层）</text>
+    <rect x="340" y="2" width="18" height="18" rx="2" fill="#0f3460"/>
+    <text class="note" x="365" y="15">有限信任区（决策层、能力层部分）</text>
+    <rect x="620" y="2" width="18" height="18" rx="2" fill="#c73659"/>
+    <text class="note" x="645" y="15">不信任区（智囊、执行者）</text>
+  </g>
+
+  <!-- 角色图例 -->
+  <g transform="translate(50, 740)">
+    <text class="legend-title" x="0" y="15">图例：</text>
+    <rect x="60" y="2" width="90" height="25" rx="4" fill="#533483" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
+    <text x="105" y="18" text-anchor="middle" font-family="Microsoft YaHei,sans-serif" font-size="10" fill="#fff">角色名</text>
+    <text class="note" x="105" y="40" text-anchor="middle">军队名 | 电影名</text>
+    
+    <line class="arrow" x1="200" y1="15" x2="250" y2="15"/>
+    <text class="note" x="260" y="18">依赖/驱动</text>
+    
+    <line class="observe-line" x1="360" y1="15" x2="410" y2="15"/>
+    <text class="note" x="420" y="18">观测</text>
+  </g>
+
+  <!-- 依赖方向提示 -->
+  <g transform="translate(920, 380)">
+    <text class="note" x="0" y="0">依赖方向</text>
+    <line class="arrow" x1="25" y1="10" x2="25" y2="50"/>
+    <text class="note" x="35" y="35">↓高层→低层</text>
+  </g>
+
+  <!-- 角色数量统计 -->
+  <g transform="translate(50, 790)">
+    <text class="note" x="0" y="0">角色统计：元层 2 + 决策层 2 + 智能层 1 + 能力层 3 + 基础层 3 = 11 个标准化角色</text>
+  </g>
+
+  <!-- 版权 -->
+  <text x="550" y="830" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#999">UniFlow - UniBase 智能流程协同层 © 2025</text>
+</svg>

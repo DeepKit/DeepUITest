@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<!--
+  UniFlow Workflow Version History Component
+  ==========================================
+  TASK-2010: 工作流版本控制 - 前端组件
+  
+  功能:
+  - 版本历史列表
+  - 版本比较 (Diff Viewer)
+  - 版本切换与激活
+  - 版本回滚
+  - 标签管理
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow - 版本历史</title>
+  <style>
+    :root {
+      --primary-color: #4A90D9;
+      --secondary-color: #6C757D;
+      --success-color: #28A745;
+      --warning-color: #FFC107;
+      --danger-color: #DC3545;
+      --info-color: #17A2B8;
+      --bg-color: #F5F7FA;
+      --card-bg: #FFFFFF;
+      --border-color: #E0E4E8;
+      --text-color: #333333;
+      --text-muted: #6C757D;
+      --diff-added: #E6FFED;
+      --diff-removed: #FFEEF0;
+      --diff-modified: #FFF5E6;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.6;
+    }
+
+    /* 容器布局 */
+    .version-container {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* 左侧版本列表 */
+    .version-list-panel {
+      background: var(--card-bg);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      background: linear-gradient(135deg, var(--primary-color), #6BB3E9);
+      color: white;
+    }
+
+    .panel-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 工具栏 */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      flex-wrap: wrap;
+    }
+
+    .toolbar select,
+    .toolbar input {
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 14px;
+      flex: 1;
+      min-width: 100px;
+    }
+
+    .toolbar button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: var(--primary-color);
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    .toolbar button:hover {
+      background: #3A80C9;
+    }
+
+    /* 版本列表 */
+    .version-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .version-item {
+      padding: 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .version-item:hover {
+      border-color: var(--primary-color);
+      box-shadow: 0 2px 8px rgba(74, 144, 217, 0.15);
+    }
+
+    .version-item.selected {
+      border-color: var(--primary-color);
+      background: rgba(74, 144, 217, 0.05);
+    }
+
+    .version-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--success-color);
+      border-radius: 8px 0 0 8px;
+    }
+
+    .version-number {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--primary-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .version-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .status-active {
+      background: var(--success-color);
+      color: white;
+    }
+
+    .status-draft {
+      background: var(--warning-color);
+      color: #333;
+    }
+
+    .status-archived {
+      background: var(--secondary-color);
+      color: white;
+    }
+
+    .status-deprecated {
+      background: var(--danger-color);
+      color: white;
+    }
+
+    .version-meta {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .version-comment {
+      font-size: 13px;
+      margin-top: 8px;
+      padding: 8px;
+      background: var(--bg-color);
+      border-radius: 4px;
+    }
+
+    .version-tags {
+      display: flex;
+      gap: 4px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      background: var(--info-color);
+      color: white;
+      border-radius: 12px;
+      font-size: 11px;
+    }
+
+    .tag.rollback {
+      background: var(--warning-color);
+      color: #333;
+    }
+
+    /* 版本选择 (用于比较) */
+    .version-checkbox {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    /* 右侧详情面板 */
+    .detail-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .detail-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--card-bg);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .detail-header h3 {
+      font-size: 18px;
+      color: var(--text-color);
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    .btn-success {
+      background: var(--success-color);
+      color: white;
+    }
+
+    .btn-warning {
+      background: var(--warning-color);
+      color: #333;
+    }
+
+    .btn-danger {
+      background: var(--danger-color);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: var(--secondary-color);
+      color: white;
+    }
+
+    .action-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    /* 选项卡 */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--card-bg);
+      padding: 0 24px;
+    }
+
+    .tab {
+      padding: 12px 24px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      color: var(--primary-color);
+    }
+
+    .tab.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* 内容区域 */
+    .tab-content {
+      flex: 1;
+      overflow: auto;
+      padding: 24px;
+      background: var(--bg-color);
+    }
+
+    .content-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .content-card h4 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: var(--text-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Diff 视图 */
+    .diff-viewer {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .diff-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .diff-stats {
+      display: flex;
+      gap: 16px;
+    }
+
+    .diff-stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+    }
+
+    .diff-stat.added {
+      color: var(--success-color);
+    }
+
+    .diff-stat.removed {
+      color: var(--danger-color);
+    }
+
+    .diff-stat.modified {
+      color: var(--warning-color);
+    }
+
+    .diff-item {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      border-left: 4px solid;
+    }
+
+    .diff-item.added {
+      background: var(--diff-added);
+      border-color: var(--success-color);
+    }
+
+    .diff-item.removed {
+      background: var(--diff-removed);
+      border-color: var(--danger-color);
+    }
+
+    .diff-item.modified {
+      background: var(--diff-modified);
+      border-color: var(--warning-color);
+    }
+
+    .diff-path {
+      font-weight: 600;
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+
+    .diff-values {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .diff-value {
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+
+    .diff-value-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    /* 版本详情 */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .info-item {
+      padding: 12px;
+      background: var(--bg-color);
+      border-radius: 6px;
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .info-value {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* JSON 视图 */
+    .json-viewer {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      background: #1E1E1E;
+      color: #D4D4D4;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: pre;
+      max-height: 500px;
+    }
+
+    .json-key {
+      color: #9CDCFE;
+    }
+
+    .json-string {
+      color: #CE9178;
+    }
+
+    .json-number {
+      color: #B5CEA8;
+    }
+
+    .json-boolean {
+      color: #569CD6;
+    }
+
+    /* 回滚确认对话框 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 24px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal h3 {
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal p {
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: var(--text-color);
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-muted);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    /* 时间轴 */
+    .timeline {
+      position: relative;
+      padding-left: 24px;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border-color);
+    }
+
+    .timeline-item {
+      position: relative;
+      padding-bottom: 24px;
+    }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -20px;
+      top: 4px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      border: 2px solid var(--card-bg);
+    }
+
+    .timeline-item.current::before {
+      background: var(--success-color);
+    }
+
+    /* 响应式 */
+    @media (max-width: 768px) {
+      .version-container {
+        grid-template-columns: 1fr;
+      }
+
+      .version-list-panel {
+        max-height: 40vh;
+      }
+
+      .diff-values {
+        grid-template-columns: 1fr;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="version-container">
+    <!-- 左侧版本列表 -->
+    <div class="version-list-panel">
+      <div class="panel-header">
+        <h2>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4"/>
+            <line x1="1.05" y1="12" x2="7" y2="12"/>
+            <line x1="17.01" y1="12" x2="22.96" y2="12"/>
+          </svg>
+          版本历史
+        </h2>
+      </div>
+
+      <div class="toolbar">
+        <select id="statusFilter">
+          <option value="all">所有状态</option>
+          <option value="active">激活</option>
+          <option value="draft">草稿</option>
+          <option value="archived">归档</option>
+          <option value="deprecated">废弃</option>
+        </select>
+        <button onclick="compareSelected()" title="比较选中的版本">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          比较
+        </button>
+      </div>
+
+      <div class="version-list" id="versionList">
+        <!-- 版本项通过 JS 动态生成 -->
+      </div>
+    </div>
+
+    <!-- 右侧详情面板 -->
+    <div class="detail-panel">
+      <div class="detail-header">
+        <h3 id="detailTitle">选择一个版本查看详情</h3>
+        <div class="action-buttons" id="actionButtons" style="display: none;">
+          <button class="action-btn btn-success" onclick="activateVersion()" title="激活此版本">
+            激活
+          </button>
+          <button class="action-btn btn-warning" onclick="showRollbackModal()" title="回滚到此版本">
+            回滚
+          </button>
+          <button class="action-btn btn-secondary" onclick="archiveVersion()" title="归档此版本">
+            归档
+          </button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="info">基本信息</div>
+        <div class="tab" data-tab="diff">版本对比</div>
+        <div class="tab" data-tab="definition">定义详情</div>
+        <div class="tab" data-tab="timeline">变更历史</div>
+      </div>
+
+      <div class="tab-content">
+        <!-- 基本信息 -->
+        <div id="infoTab" class="tab-panel">
+          <div class="content-card">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              版本信息
+            </h4>
+            <div class="info-grid" id="versionInfo">
+              <div class="info-item">
+                <div class="info-label">版本号</div>
+                <div class="info-value" id="infoVersion">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">状态</div>
+                <div class="info-value" id="infoStatus">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">创建时间</div>
+                <div class="info-value" id="infoCreatedAt">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">创建者</div>
+                <div class="info-value" id="infoCreatedBy">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">版本 ID</div>
+                <div class="info-value" id="infoVersionId" style="font-family: monospace; font-size: 12px;">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">定义哈希</div>
+                <div class="info-value" id="infoHash" style="font-family: monospace; font-size: 12px;">-</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-card">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              备注
+            </h4>
+            <p id="infoComment" style="color: var(--text-muted);">暂无备注</p>
+          </div>
+
+          <div class="content-card">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                <line x1="7" y1="7" x2="7.01" y2="7"/>
+              </svg>
+              标签
+            </h4>
+            <div id="infoTags" class="version-tags">
+              <span style="color: var(--text-muted);">暂无标签</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 版本对比 -->
+        <div id="diffTab" class="tab-panel" style="display: none;">
+          <div class="content-card">
+            <div class="diff-header">
+              <div>
+                <strong id="diffTitle">选择两个版本进行比较</strong>
+              </div>
+              <div class="diff-stats" id="diffStats">
+                <!-- 统计信息动态生成 -->
+              </div>
+            </div>
+            <div class="diff-viewer" id="diffContent">
+              <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <p>在左侧列表中勾选两个版本，然后点击"比较"按钮</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 定义详情 -->
+        <div id="definitionTab" class="tab-panel" style="display: none;">
+          <div class="content-card">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+              </svg>
+              工作流定义 (JSON)
+            </h4>
+            <div class="json-viewer" id="jsonViewer">
+              <div class="empty-state">
+                <div class="empty-state-icon">📄</div>
+                <p>选择一个版本查看定义</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 变更历史 -->
+        <div id="timelineTab" class="tab-panel" style="display: none;">
+          <div class="content-card">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              版本变更时间轴
+            </h4>
+            <div class="timeline" id="timeline">
+              <!-- 时间轴动态生成 -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回滚确认对话框 -->
+  <div class="modal-overlay" id="rollbackModal">
+    <div class="modal">
+      <h3>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning-color)" stroke-width="2">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+        </svg>
+        确认回滚
+      </h3>
+      <p>回滚将创建一个新版本，其内容与目标版本相同。当前激活的版本将被归档。</p>
+      <div class="form-group">
+        <label>目标版本</label>
+        <input type="text" id="rollbackTarget" readonly>
+      </div>
+      <div class="form-group">
+        <label>备注 (可选)</label>
+        <textarea id="rollbackComment" placeholder="描述回滚原因..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="action-btn btn-secondary" onclick="closeModal('rollbackModal')">取消</button>
+        <button class="action-btn btn-warning" onclick="confirmRollback()">确认回滚</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 模拟数据
+    // ============================================================================
+    const mockVersions = [
+      {
+        version_id: 'ver_001',
+        workflow_id: 'wf_001',
+        version: '1.3.0',
+        status: 'active',
+        created_at: '2024-12-06 10:30:00',
+        created_by: 'admin',
+        comment: '添加了新的审批节点，优化了工作流性能',
+        tags: ['production', 'stable'],
+        parent_version_id: 'ver_002',
+        definition_hash: 'sha256:a1b2c3d4e5f6...'
+      },
+      {
+        version_id: 'ver_002',
+        workflow_id: 'wf_001',
+        version: '1.2.0',
+        status: 'archived',
+        created_at: '2024-12-05 14:20:00',
+        created_by: 'developer1',
+        comment: '修复了条件分支的bug',
+        tags: [],
+        parent_version_id: 'ver_003',
+        definition_hash: 'sha256:b2c3d4e5f6g7...'
+      },
+      {
+        version_id: 'ver_003',
+        workflow_id: 'wf_001',
+        version: '1.1.0',
+        status: 'archived',
+        created_at: '2024-12-04 09:15:00',
+        created_by: 'developer2',
+        comment: '添加邮件通知功能',
+        tags: ['feature'],
+        parent_version_id: 'ver_004',
+        definition_hash: 'sha256:c3d4e5f6g7h8...'
+      },
+      {
+        version_id: 'ver_004',
+        workflow_id: 'wf_001',
+        version: '1.0.0',
+        status: 'deprecated',
+        created_at: '2024-12-01 16:00:00',
+        created_by: 'admin',
+        comment: '初始版本',
+        tags: ['initial'],
+        parent_version_id: '',
+        definition_hash: 'sha256:d4e5f6g7h8i9...'
+      },
+      {
+        version_id: 'ver_005',
+        workflow_id: 'wf_001',
+        version: '1.4.0-draft',
+        status: 'draft',
+        created_at: '2024-12-06 11:00:00',
+        created_by: 'developer1',
+        comment: '正在开发: 添加并行处理支持',
+        tags: ['wip'],
+        parent_version_id: 'ver_001',
+        definition_hash: 'sha256:e5f6g7h8i9j0...'
+      }
+    ];
+
+    // ============================================================================
+    // 状态管理
+    // ============================================================================
+    let selectedVersion = null;
+    let compareSelections = [];
+
+    // ============================================================================
+    // 初始化
+    // ============================================================================
+    function init() {
+      renderVersionList();
+      setupTabs();
+      setupFilters();
+    }
+
+    // ============================================================================
+    // 渲染版本列表
+    // ============================================================================
+    function renderVersionList(filter = 'all') {
+      const list = document.getElementById('versionList');
+      const filteredVersions = filter === 'all' 
+        ? mockVersions 
+        : mockVersions.filter(v => v.status === filter);
+
+      list.innerHTML = filteredVersions.map(v => `
+        <div class="version-item ${v.status === 'active' ? 'active' : ''} ${selectedVersion?.version_id === v.version_id ? 'selected' : ''}"
+             data-id="${v.version_id}"
+             onclick="selectVersion('${v.version_id}')">
+          <input type="checkbox" class="version-checkbox" 
+                 onclick="event.stopPropagation(); toggleCompare('${v.version_id}')"
+                 ${compareSelections.includes(v.version_id) ? 'checked' : ''}>
+          <div class="version-number">
+            ${v.version}
+            <span class="version-status status-${v.status}">${getStatusText(v.status)}</span>
+          </div>
+          <div class="version-meta">
+            ${v.created_at} · ${v.created_by}
+          </div>
+          ${v.comment ? `<div class="version-comment">${v.comment}</div>` : ''}
+          ${v.tags.length > 0 ? `
+            <div class="version-tags">
+              ${v.tags.map(tag => `<span class="tag ${tag === 'rollback' ? 'rollback' : ''}">${tag}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    // ============================================================================
+    // 选择版本
+    // ============================================================================
+    function selectVersion(versionId) {
+      selectedVersion = mockVersions.find(v => v.version_id === versionId);
+      renderVersionList(document.getElementById('statusFilter').value);
+      updateDetailPanel();
+    }
+
+    // ============================================================================
+    // 更新详情面板
+    // ============================================================================
+    function updateDetailPanel() {
+      if (!selectedVersion) return;
+
+      document.getElementById('detailTitle').textContent = `版本 ${selectedVersion.version}`;
+      document.getElementById('actionButtons').style.display = 'flex';
+
+      // 基本信息
+      document.getElementById('infoVersion').textContent = selectedVersion.version;
+      document.getElementById('infoStatus').innerHTML = 
+        `<span class="version-status status-${selectedVersion.status}">${getStatusText(selectedVersion.status)}</span>`;
+      document.getElementById('infoCreatedAt').textContent = selectedVersion.created_at;
+      document.getElementById('infoCreatedBy').textContent = selectedVersion.created_by;
+      document.getElementById('infoVersionId').textContent = selectedVersion.version_id;
+      document.getElementById('infoHash').textContent = selectedVersion.definition_hash;
+      document.getElementById('infoComment').textContent = selectedVersion.comment || '暂无备注';
+
+      // 标签
+      const tagsContainer = document.getElementById('infoTags');
+      if (selectedVersion.tags.length > 0) {
+        tagsContainer.innerHTML = selectedVersion.tags
+          .map(tag => `<span class="tag ${tag === 'rollback' ? 'rollback' : ''}">${tag}</span>`)
+          .join('');
+      } else {
+        tagsContainer.innerHTML = '<span style="color: var(--text-muted);">暂无标签</span>';
+      }
+
+      // JSON 定义 (模拟)
+      updateJsonViewer();
+
+      // 时间轴
+      updateTimeline();
+    }
+
+    // ============================================================================
+    // 更新 JSON 查看器
+    // ============================================================================
+    function updateJsonViewer() {
+      const mockDefinition = {
+        id: selectedVersion.workflow_id,
+        name: "示例工作流",
+        version: selectedVersion.version,
+        steps: [
+          { id: "step_1", type: "start", name: "开始" },
+          { id: "step_2", type: "action", name: "处理数据", config: { timeout: 30 } },
+          { id: "step_3", type: "condition", name: "判断条件" },
+          { id: "step_4", type: "end", name: "结束" }
+        ],
+        connections: [
+          { from: "step_1", to: "step_2" },
+          { from: "step_2", to: "step_3" },
+          { from: "step_3", to: "step_4" }
+        ]
+      };
+
+      document.getElementById('jsonViewer').innerHTML = syntaxHighlight(JSON.stringify(mockDefinition, null, 2));
+    }
+
+    // ============================================================================
+    // JSON 语法高亮
+    // ============================================================================
+    function syntaxHighlight(json) {
+      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, 
+        function (match) {
+          let cls = 'json-number';
+          if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+              cls = 'json-key';
+            } else {
+              cls = 'json-string';
+            }
+          } else if (/true|false/.test(match)) {
+            cls = 'json-boolean';
+          }
+          return '<span class="' + cls + '">' + match + '</span>';
+        });
+    }
+
+    // ============================================================================
+    // 更新时间轴
+    // ============================================================================
+    function updateTimeline() {
+      const timeline = document.getElementById('timeline');
+      timeline.innerHTML = mockVersions.map((v, i) => `
+        <div class="timeline-item ${v.version_id === selectedVersion?.version_id ? 'current' : ''}">
+          <div class="version-number" style="margin-bottom: 4px;">
+            ${v.version}
+            <span class="version-status status-${v.status}">${getStatusText(v.status)}</span>
+          </div>
+          <div class="version-meta">${v.created_at} · ${v.created_by}</div>
+          ${v.comment ? `<div style="font-size: 13px; margin-top: 4px;">${v.comment}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    // ============================================================================
+    // 版本比较
+    // ============================================================================
+    function toggleCompare(versionId) {
+      const index = compareSelections.indexOf(versionId);
+      if (index >= 0) {
+        compareSelections.splice(index, 1);
+      } else {
+        if (compareSelections.length >= 2) {
+          compareSelections.shift();
+        }
+        compareSelections.push(versionId);
+      }
+      renderVersionList(document.getElementById('statusFilter').value);
+    }
+
+    function compareSelected() {
+      if (compareSelections.length !== 2) {
+        alert('请选择两个版本进行比较');
+        return;
+      }
+
+      // 切换到 diff 标签
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector('[data-tab="diff"]').classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+      document.getElementById('diffTab').style.display = 'block';
+
+      const v1 = mockVersions.find(v => v.version_id === compareSelections[0]);
+      const v2 = mockVersions.find(v => v.version_id === compareSelections[1]);
+
+      document.getElementById('diffTitle').textContent = `${v1.version} → ${v2.version}`;
+
+      // 模拟 diff 结果
+      const mockDiff = [
+        { type: 'modified', path: 'steps[1].config.timeout', old: '30', new: '60' },
+        { type: 'added', path: 'steps[2].config.retry', new: '3' },
+        { type: 'removed', path: 'metadata.deprecated', old: 'true' },
+        { type: 'modified', path: 'name', old: '示例工作流', new: '优化后的工作流' }
+      ];
+
+      renderDiff(mockDiff);
+    }
+
+    function renderDiff(changes) {
+      const stats = {
+        added: changes.filter(c => c.type === 'added').length,
+        removed: changes.filter(c => c.type === 'removed').length,
+        modified: changes.filter(c => c.type === 'modified').length
+      };
+
+      document.getElementById('diffStats').innerHTML = `
+        <div class="diff-stat added">+${stats.added} 新增</div>
+        <div class="diff-stat removed">-${stats.removed} 删除</div>
+        <div class="diff-stat modified">~${stats.modified} 修改</div>
+      `;
+
+      document.getElementById('diffContent').innerHTML = changes.map(c => `
+        <div class="diff-item ${c.type}">
+          <div class="diff-path">${c.path}</div>
+          <div class="diff-values">
+            ${c.old ? `
+              <div class="diff-value">
+                <div class="diff-value-label">旧值</div>
+                <code>${c.old}</code>
+              </div>
+            ` : ''}
+            ${c.new ? `
+              <div class="diff-value">
+                <div class="diff-value-label">新值</div>
+                <code>${c.new}</code>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ============================================================================
+    // 版本操作
+    // ============================================================================
+    function activateVersion() {
+      if (!selectedVersion) return;
+      if (confirm(`确定要激活版本 ${selectedVersion.version} 吗？`)) {
+        alert(`版本 ${selectedVersion.version} 已激活`);
+        // 实际调用 API
+      }
+    }
+
+    function archiveVersion() {
+      if (!selectedVersion) return;
+      if (confirm(`确定要归档版本 ${selectedVersion.version} 吗？`)) {
+        alert(`版本 ${selectedVersion.version} 已归档`);
+        // 实际调用 API
+      }
+    }
+
+    function showRollbackModal() {
+      if (!selectedVersion) return;
+      document.getElementById('rollbackTarget').value = selectedVersion.version;
+      document.getElementById('rollbackModal').classList.add('active');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('active');
+    }
+
+    function confirmRollback() {
+      const comment = document.getElementById('rollbackComment').value;
+      alert(`已回滚到版本 ${selectedVersion.version}\n备注: ${comment || '无'}`);
+      closeModal('rollbackModal');
+      // 实际调用 API
+    }
+
+    // ============================================================================
+    // 选项卡切换
+    // ============================================================================
+    function setupTabs() {
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          
+          document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+          document.getElementById(`${tab.dataset.tab}Tab`).style.display = 'block';
+        });
+      });
+    }
+
+    // ============================================================================
+    // 筛选器
+    // ============================================================================
+    function setupFilters() {
+      document.getElementById('statusFilter').addEventListener('change', (e) => {
+        renderVersionList(e.target.value);
+      });
+    }
+
+    // ============================================================================
+    // 辅助函数
+    // ============================================================================
+    function getStatusText(status) {
+      const texts = {
+        active: '激活',
+        draft: '草稿',
+        archived: '归档',
+        deprecated: '废弃'
+      };
+      return texts[status] || status;
+    }
+
+    // 初始化
+    init();
+  </script>
+</body>
+</html>

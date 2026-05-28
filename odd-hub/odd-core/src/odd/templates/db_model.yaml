@@ -1,0 +1,25 @@
+id: db_model
+name: 数据库模型契约
+description: ORM 数据库模型/实体的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["class ", "struct ", "interface "]
+      reason: 必须定义模型类/结构体
+      severity: critical
+  must_not_contain:
+    - patterns: ["DROP TABLE", "drop table", "TRUNCATE", "truncate"]
+      reason: 禁止在模型中包含破坏性 DDL
+      severity: critical
+    - patterns: ["password =", "secret =", "api_key ="]
+      reason: 禁止在模型中硬编码敏感字段值
+      severity: critical
+  should_contain:
+    - patterns: ["created_at", "updated_at", "createdAt", "updatedAt", "created_time", "updated_time"]
+      reason: 建议添加时间戳字段
+      severity: medium
+    - patterns: ["id", "ID", "pk", "primary_key"]
+      reason: 建议定义主键字段
+      severity: high
+    - patterns: ['"""', "'''", "//", "/**"]
+      reason: 建议添加文档注释
+      severity: low

@@ -1,0 +1,25 @@
+version: "1.0"
+project:
+  name: "Extension Kind Test"
+  path: "."
+  type: "mixed"
+  scan_time: "2026-05-15T00:00:00Z"
+
+summary:
+  total_nodes: 2
+  confirmed_nodes: 0
+  uncertain_nodes: 0
+  open_issues: 0
+  decisions_count: 0
+
+trees:
+  function_tree: "trees/function-tree.yaml"
+  module_tree: "trees/module-tree.yaml"
+  view_tree: "trees/view-tree.yaml"
+
+relations: "relations/requirement-relations.yaml"
+evidence: "evidence/source-evidence.yaml"
+issues: "issues/doc-issues.yaml"
+decisions: "decisions/requirement-decisions.yaml"
+
+imports: []

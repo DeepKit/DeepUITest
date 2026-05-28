@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="五行和悦论：先看清当前偏在哪里，再决定从哪里开始回来。">
+    <link rel="icon" href="data:,">
+    <title>五行和悦论 | 当下偏移与年度回正</title>
+    <style>
+        :root {
+            --bg: #f2efe8;
+            --paper: rgba(255, 255, 255, 0.8);
+            --paper-strong: #fffdf9;
+            --ink: #171615;
+            --muted: #696257;
+            --line: rgba(23, 22, 21, 0.12);
+            --accent: #47665a;
+            --accent-soft: rgba(71, 102, 90, 0.1);
+            --shadow: 0 18px 44px rgba(27, 23, 18, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(71, 102, 90, 0.12), transparent 26%),
+                radial-gradient(circle at bottom right, rgba(42, 53, 47, 0.08), transparent 18%),
+                var(--bg);
+            font-family: "Noto Serif SC", Georgia, "Source Han Serif SC", serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 28px 18px 80px;
+        }
+
+        .card {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            padding: 28px 24px;
+            margin-bottom: 18px;
+            backdrop-filter: blur(8px);
+        }
+
+        .hero {
+            padding: 38px 30px 30px;
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 0.8rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 4.8vw, 3.2rem);
+            line-height: 1.1;
+            letter-spacing: -0.04em;
+            margin-bottom: 14px;
+        }
+
+        h2 {
+            font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+            line-height: 1.22;
+            margin-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 1.14rem;
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        p, li {
+            color: var(--muted);
+            line-height: 1.8;
+        }
+
+        .copy-strong {
+            color: var(--ink);
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: transparent;
+            color: var(--ink);
+            padding: 14px 22px;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            text-decoration: none;
+            transition: 0.18s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .btn.primary {
+            background: var(--ink);
+            border-color: var(--ink);
+            color: #fffaf1;
+        }
+
+        .btn.full { width: 100%; }
+
+        .subline {
+            display: block;
+            margin-top: 4px;
+            font-size: 0.82rem;
+            font-weight: 400;
+            color: var(--muted);
+        }
+
+        .bookmark-box,
+        .note,
+        .quote-box,
+        .selection-summary,
+        .pay-status,
+        .review-box {
+            margin-top: 18px;
+            padding: 16px 18px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.62);
+        }
+
+        .quote-box {
+            border-left: 4px solid var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .selection-summary {
+            background: var(--accent-soft);
+            color: var(--ink);
+        }
+
+        .pay-status.error {
+            border-color: rgba(130, 62, 62, 0.28);
+            background: rgba(130, 62, 62, 0.08);
+        }
+
+        .split,
+        .helper-grid,
+        .result-grid,
+        .sku-grid,
+        .official-grid,
+        .flow-grid,
+        .summary-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .split { grid-template-columns: 1.1fr 0.9fr; }
+        .helper-grid,
+        .result-grid,
+        .official-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .sku-grid,
+        .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .flow-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+        .mini-list,
+        .faq-list,
+        .path-list,
+        .review-links {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .mini-item,
+        .summary-item,
+        .official-item,
+        .flow-step,
+        .faq-item,
+        .path-item,
+        .review-link,
+        .question-card,
+        .metric,
+        .sku-card,
+        .pay-box,
+        .pay-section {
+            padding: 16px 18px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+        }
+
+        .sku-card {
+            background: var(--paper-strong);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .sku-card.active {
+            border-color: var(--ink);
+        }
+
+        .sku-name {
+            font-size: 1.18rem;
+            font-weight: 800;
+            color: var(--ink);
+        }
+
+        .sku-price {
+            font-size: 1.9rem;
+            font-weight: 900;
+            color: var(--ink);
+            margin: 4px 0 6px;
+        }
+
+        .question-card strong,
+        .mini-item strong,
+        .summary-item strong,
+        .official-item strong,
+        .flow-step strong,
+        .faq-item strong,
+        .path-item strong,
+        .review-link strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .options {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .options label {
+            display: block;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.76);
+            cursor: pointer;
+            transition: 0.14s ease;
+        }
+
+        .options label:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .options input {
+            margin-right: 10px;
+        }
+
+        .muted-title {
+            font-size: 0.82rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .review-link code {
+            display: block;
+            color: var(--accent);
+            word-break: break-all;
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        .sticky-pay-bar {
+            position: sticky;
+            bottom: 12px;
+            z-index: 8;
+            margin-top: 18px;
+            padding: 14px 16px;
+            border-radius: 22px;
+            border: 1px solid rgba(23, 22, 21, 0.14);
+            background: rgba(255, 253, 249, 0.95);
+            box-shadow: 0 14px 28px rgba(27, 23, 18, 0.12);
+            backdrop-filter: blur(10px);
+        }
+
+        .sticky-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .sticky-actions .btn { flex: 1; }
+
+        @media (max-width: 900px) {
+            .split,
+            .helper-grid,
+            .result-grid,
+            .sku-grid,
+            .official-grid,
+            .flow-grid,
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 20px 14px 64px;
+            }
+
+            .hero {
+                padding: 28px 20px 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="page active" id="page-landing">
+    <div class="container">
+        <section class="card hero">
+            <div class="eyebrow">WSH / 五行和悦论</div>
+            <h1>你不是完全崩了，<br>你只是越来越不像自己了。</h1>
+            <p>五行和悦论不先讲宏大成长，也不先让你解决一整年。它先帮你看清：你现在具体偏到哪里了，应该从哪里开始回来。</p>
+            <div class="actions">
+                <button class="btn primary" onclick="navigateTo('page-quiz')">
+                    开始回归预看
+                    <span class="subline">10题，先看当前主重心与回归入口</span>
+                </button>
+                <button class="btn" onclick="document.getElementById('landing-proof').scrollIntoView({ behavior: 'smooth' })">
+                    先看 1 个断口
+                    <span class="subline">先确认这里说的是你现在的不舒服</span>
+                </button>
+            </div>
+            <div class="bookmark-box">
+                <strong>建议先收藏本站</strong>
+                <p>你不需要一次解决完整一年。先看清这次偏在哪里，后面再回来对照，也不会失掉自己的线。</p>
+            </div>
+        </section>
+
+        <section class="split" id="landing-proof">
+            <div class="card">
+                <div class="eyebrow">真实断口</div>
+                <h2>你不是没在认真活，你只是一直在推进不属于自己的节奏。</h2>
+                <p>很多人的问题不是完全停摆，而是明明还在往前推，身体、情绪、秩序和方向却越来越不像自己。五行和悦先不谈一年，只先看你这次具体偏在哪里。</p>
+                <div class="note">
+                    <p class="copy-strong">如果你看到这里已经点头，那就先别逼自己立大目标。先做回归预看，拿到当前主重心与回归入口。</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="eyebrow">你在这里得到什么</div>
+                <div class="mini-list">
+                    <div class="mini-item">
+                        <strong>先识别偏移</strong>
+                        <p>先压缩出你这次最不舒服的主重心。</p>
+                    </div>
+                    <div class="mini-item">
+                        <strong>再找到入口</strong>
+                        <p>不讲宏大成长，先告诉你从哪里开始回来。</p>
+                    </div>
+                    <div class="mini-item">
+                        <strong>后续再立靶心</strong>
+                        <p>先回正一点，再决定要不要建立年度靶心和月度回看。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="page" id="page-quiz">
+    <div class="container">
+        <section class="card">
+            <div class="eyebrow">回归预看</div>
+            <h2>先别急着规划整年。先看你最近最偏的是哪一块。</h2>
+            <p>这 10 题不是人格测试，也不是年度靶心建立。它只负责把你最近一直说不清的不舒服，压缩成“当前主重心 + 当前回归入口 + 一句偏移解释”。</p>
+            <div id="quiz-area"></div>
+            <div class="actions">
+                <button class="btn primary" onclick="submitPreview()">查看当下偏移报告</button>
+                <button class="btn" onclick="navigateTo('page-landing')">返回入口页</button>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="page" id="page-result">
+    <div class="container">
+        <section class="card" id="result-card"></section>
+    </div>
+</div>
+
+<div class="page" id="page-pay">
+    <div class="container">
+        <section class="card">
+            <div class="eyebrow">回正产品链</div>
+            <h2>先别想一口气修完整一年。先看你现在该进入哪一段。</h2>
+            <p>当前产品链不是同权混卖，而是按“当下偏移 -> 小步回正 -> 年度靶心 -> 月度纠偏”的顺序展开。</p>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <strong>当前任务</strong>
+                    <p>先识别这次最明显的偏移重心，找到第一步回归入口，而不是立刻做全年规划。</p>
+                </div>
+                <div class="summary-item">
+                    <strong>产品顺序</strong>
+                    <p>先首单小步回正，再进入年度靶心建立；只有立住靶心，月度纠偏才有参照系。</p>
+                </div>
+                <div class="summary-item">
+                    <strong>后续桥接</strong>
+                    <p>如果偏移总在同类关系或组织场景反复出现，才建议回看 WSM 识局止血。</p>
+                </div>
+            </div>
+            <div class="sku-grid" id="sku-grid"></div>
+            <div class="pay-box" id="pay-box"></div>
+            <div class="pay-sections">
+                <div class="pay-section">
+                    <div class="eyebrow">产品说明</div>
+                    <div class="official-grid">
+                        <div class="official-item">
+                            <strong>产品名称</strong>
+                            <p>五行和悦论｜年度回正系统</p>
+                        </div>
+                        <div class="official-item">
+                            <strong>当前前台任务</strong>
+                            <p>先完成当下偏移识别，不直接从月度偏移或全年愿景开讲。</p>
+                        </div>
+                        <div class="official-item">
+                            <strong>交付形式</strong>
+                            <p>H5 页面交付 / 数字内容 / 回看与回正入口</p>
+                        </div>
+                        <div class="official-item">
+                            <strong>支付方式</strong>
+                            <p>微信 H5 支付</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">产品链顺序</div>
+                    <h3>当前正式顺序不是乱跳，而是先回来一点，再建立参照系。</h3>
+                    <div class="flow-grid">
+                        <div class="flow-step">
+                            <strong>1. 回归预看</strong>
+                            <p>先识别当前主重心、回归入口和偏移解释。</p>
+                        </div>
+                        <div class="flow-step">
+                            <strong>2. 小步回正</strong>
+                            <p>先跑 7 天 / 14 天动作，不要求你一下子修完整一年。</p>
+                        </div>
+                        <div class="flow-step">
+                            <strong>3. 年度靶心</strong>
+                            <p>把这一年的归己中心立起来，作为后续回看的参照系。</p>
+                        </div>
+                        <div class="flow-step">
+                            <strong>4. 月度纠偏</strong>
+                            <p>每月回看相对靶心偏了哪里，再决定收哪一块。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">购买须知</div>
+                    <ul style="padding-left:18px;">
+                        <li>前台首测不是年度靶心建立本身，只负责产出当下偏移报告。</li>
+                        <li>月度纠偏依附于年度靶心，不作为独立首入口售卖。</li>
+                        <li>若偏移问题总在同类关系或组织场景反复出现，后续才建议桥接回 WSM。</li>
+                        <li>当前页面交付的是数字内容与数字化回看入口，不含人工 1 对 1 咨询。</li>
+                    </ul>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">适合谁 / 不适合谁</div>
+                    <div class="helper-grid">
+                        <div class="card" style="margin:0;padding:18px;">
+                            <div class="muted-title">更适合</div>
+                            <ul style="padding-left:18px;">
+                                <li>最近一直推进，但越来越不像自己的人。</li>
+                                <li>不想先听大理论，只想先确认从哪里开始回来的人。</li>
+                                <li>愿意先做轻测评、轻动作、轻回看的人。</li>
+                            </ul>
+                        </div>
+                        <div class="card" style="margin:0;padding:18px;">
+                            <div class="muted-title">不适合</div>
+                            <ul style="padding-left:18px;">
+                                <li>想一上来就直接拿全年宏大规划的人。</li>
+                                <li>只想被安慰，不想看当前偏移的人。</li>
+                                <li>希望前台首测直接替自己立年度靶心的人。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">付款后第一眼</div>
+                    <h3>重点不是让你停在付款动作，而是让你付款后立刻进入当前阶段的回正入口。</h3>
+                    <p>小步回正包先给 7 天 / 14 天动作；年度靶心建立先立这一年的归己参照系；月度纠偏先回看本月相对靶心偏了哪里。每个产品段都必须有真实承接页，而不是空目录。</p>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">常见问题</div>
+                    <div class="faq-list">
+                        <div class="faq-item">
+                            <strong>Q1：首测为什么不直接做年度靶心？</strong>
+                            <p>因为当前前台任务是先识别你这次偏在哪里。没有先看见当下偏移，直接立全年靶心会变成空口号。</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q2：月度纠偏为什么不能单独先买？</strong>
+                            <p>因为月测不是独立首入口，它必须依附于年度靶心，才能判断这月是偏了还是回来了。</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q3：什么时候才建议回看 WSM？</strong>
+                            <p>当偏移总在同类关系或组织场景中反复出现，单纯回正动作无法稳定时，才建议回到 WSM 看结构性漏血问题。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="review-box" id="review-box"></div>
+            <div class="actions">
+                <button class="btn" onclick="navigateTo('page-result')">返回偏移报告</button>
+            </div>
+            <div class="sticky-pay-bar" id="sticky-pay-bar"></div>
+        </section>
+    </div>
+</div>
+
+<div class="page" id="page-post">
+    <div class="container">
+        <section class="card" id="post-card"></section>
+    </div>
+</div>
+
+<script src="/static/wsh-config.js"></script>
+<script>
+const PRODUCT_CONFIG = WSH_CONFIG.product;
+const PREVIEW_QUESTIONS = WSH_CONFIG.previewQuestions;
+const RESULT_MAP = WSH_CONFIG.resultMap;
+const SKU_CONFIG = WSH_CONFIG.skuConfig;
+let previewResult = null;
+let selectedSku = "reset";
+let currentPrepayState = { loading: false, error: "", order: null };
+
+function ensurePreviewResult() {
+    if (!previewResult) previewResult = RESULT_MAP.D;
+}
+
+function navigateTo(pageId) {
+    if (pageId === "page-pay" || pageId === "page-post" || pageId === "page-result") {
+        ensurePreviewResult();
+    }
+    document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+    document.getElementById(pageId).classList.add("active");
+    syncRouteState(pageId);
+    window.scrollTo(0, 0);
+    if (pageId === "page-pay") renderSkuCards();
+    if (pageId === "page-post") renderPostPurchase();
+}
+
+function syncRouteState(pageId) {
+    const params = new URLSearchParams(window.location.search);
+    const pageMap = {
+        "page-landing": "landing",
+        "page-quiz": "quiz",
+        "page-result": "result",
+        "page-pay": "pay",
+        "page-post": "post",
+    };
+    params.set("view", pageMap[pageId] || "landing");
+    params.set("sku", selectedSku);
+    const nextUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, "", nextUrl);
+}
+
+function initRouteFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const sku = params.get("sku");
+    if (sku && SKU_CONFIG[sku]) selectedSku = sku;
+    const pageMap = {
+        landing: "page-landing",
+        quiz: "page-quiz",
+        result: "page-result",
+        pay: "page-pay",
+        post: "page-post",
+    };
+    const targetPage = pageMap[params.get("view")] || "page-landing";
+    if (targetPage === "page-pay" || targetPage === "page-post" || targetPage === "page-result") {
+        ensurePreviewResult();
+        if (targetPage === "page-result") renderResult();
+    }
+    navigateTo(targetPage);
+}
+
+function renderQuiz() {
+    const area = document.getElementById("quiz-area");
+    area.innerHTML = PREVIEW_QUESTIONS.map((q, index) => `
+        <div class="question-card">
+            <strong>Q${index + 1}. ${q.prompt}</strong>
+            <div class="options">
+                ${Object.entries(q.options).map(([key, text]) => `
+                    <label><input type="radio" name="${q.id}" value="${key}">${text}</label>
+                `).join("")}
+            </div>
+        </div>
+    `).join("");
+}
+
+function submitPreview() {
+    const answers = {};
+    let missing = false;
+    PREVIEW_QUESTIONS.forEach((q) => {
+        const checked = document.querySelector(`input[name="${q.id}"]:checked`);
+        if (!checked) missing = true;
+        else answers[q.id] = checked.value;
+    });
+    if (missing) {
+        alert("请先把这组题答完。");
+        return;
+    }
+    const counts = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+    Object.values(answers).forEach((value) => { counts[value] += 1; });
+    const topKey = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    previewResult = RESULT_MAP[topKey];
+    renderResult();
+    navigateTo("page-result");
+}
+
+function renderResult() {
+    const card = document.getElementById("result-card");
+    if (!previewResult) return;
+    card.innerHTML = `
+        <div class="eyebrow">当下偏移报告</div>
+        <h2>你这次最需要先照看的主重心，更像是：${previewResult.strongest}</h2>
+        <p class="copy-strong">${previewResult.quote}</p>
+        <div class="result-grid">
+            <div class="metric">
+                <span class="muted-title">当前偏移解释</span>
+                <p class="copy-strong">${previewResult.warning}</p>
+            </div>
+            <div class="metric">
+                <span class="muted-title">当前回归入口</span>
+                <p class="copy-strong">${previewResult.returnEntry}</p>
+            </div>
+        </div>
+        <div class="quote-box">
+            <p class="copy-strong">这不是年度靶心建立，也不是月度纠偏报告。</p>
+            <p>这次结果只负责帮你看清：你现在偏在哪里，更适合从哪里先回来。</p>
+        </div>
+        <div class="helper-grid" style="margin-top:18px;">
+            <div class="card" style="margin:0;padding:18px;">
+                <div class="muted-title">后续更适合做什么</div>
+                <p>${previewResult.bridge}</p>
+            </div>
+            <div class="card" style="margin:0;padding:18px;">
+                <div class="muted-title">建议先收藏本站</div>
+                <p>你不需要一次解决全年。先回来一点，后面再回到这里看自己是否继续走偏。</p>
+            </div>
+        </div>
+        <div class="actions">
+            <button class="btn primary" onclick="navigateTo('page-pay')">查看回正产品链</button>
+            <button class="btn" onclick="navigateTo('page-quiz')">重新做一次回归预看</button>
+        </div>
+    `;
+}
+
+function renderSkuCards() {
+    const grid = document.getElementById("sku-grid");
+    grid.innerHTML = Object.values(SKU_CONFIG).map((sku) => `
+        <div class="sku-card ${selectedSku === sku.key ? "active" : ""}">
+            <div>
+                <div class="sku-name">${sku.name}</div>
+                <div class="sku-price">${sku.price}</div>
+                <p>${sku.tagline}</p>
+            </div>
+            <div>
+                <div class="muted-title">适合谁</div>
+                <p>${sku.suitable}</p>
+            </div>
+            <div>
+                <div class="muted-title">你会拿到什么</div>
+                <ul style="padding-left:18px;">${sku.features.map((item) => `<li>${item}</li>`).join("")}</ul>
+            </div>
+            <button class="btn full ${selectedSku === sku.key ? "primary" : ""}" onclick="selectSku('${sku.key}')">${sku.button}</button>
+        </div>
+    `).join("");
+    renderPayBox();
+}
+
+function selectSku(key) {
+    selectedSku = key;
+    currentPrepayState = { loading: false, error: "", order: null };
+    renderSkuCards();
+}
+
+function renderPayBox() {
+    const sku = SKU_CONFIG[selectedSku];
+    const box = document.getElementById("pay-box");
+    const stickyBar = document.getElementById("sticky-pay-bar");
+    const reviewBox = document.getElementById("review-box");
+    const order = currentPrepayState.order;
+    const selectionNote = order
+        ? "你已经为当前产品生成过订单信息。如果切换产品，需要重新生成对应订单。"
+        : "切换产品后，下方下单区会按当前产品重新生成订单信息。";
+    const statusHtml = currentPrepayState.loading
+        ? `<div class="pay-status"><p>正在生成 ${sku.name} 的下单信息，请稍候…</p></div>`
+        : currentPrepayState.error
+            ? `<div class="pay-status error"><p>${currentPrepayState.error}</p></div>`
+            : order
+                ? `<div class="pay-status"><p class="copy-strong">订单信息已生成。当前页面已经具备产品说明、订单号、金额与 H5 支付参数展示结构。</p></div>`
+                : "";
+
+    box.innerHTML = `
+        <strong>下单区</strong>
+        <p>你当前选择的是 <span class="copy-strong">${sku.name}</span>。下单后会生成该产品对应的金额、订单号与支付参数；正式接入微信 H5 支付后，这里会直接拉起支付流程。</p>
+        <div class="selection-summary">当前选择：<span class="copy-strong">${sku.name} ${sku.price}</span>。${selectionNote}</div>
+        ${statusHtml}
+        <div class="actions">
+            <button class="btn primary" onclick="requestPrepay()" ${currentPrepayState.loading ? "disabled" : ""}>生成订单并准备支付</button>
+            <button class="btn" onclick="navigateTo('page-post')">查看付款后首屏</button>
+        </div>
+    `;
+
+    stickyBar.innerHTML = `
+        <strong>${sku.name} ${sku.price}</strong>
+        <p>${order ? "订单信息已生成，可继续支付或查看购后首屏。" : "先确认当前阶段最该进入哪段，再决定是否生成订单。"}</p>
+        <div class="sticky-actions">
+            <button class="btn primary" onclick="requestPrepay()" ${currentPrepayState.loading ? "disabled" : ""}>生成订单</button>
+            <button class="btn" onclick="navigateTo('page-post')">预览购后页</button>
+        </div>
+    `;
+
+    reviewBox.innerHTML = `
+        <div class="eyebrow">申报展示路径</div>
+        <h3>当前这 3 个页面可直接用于 WSH 的商品展示与支付申请截图。</h3>
+        <div class="review-links">
+            <div class="review-link">
+                <strong>1. 入口页截图</strong>
+                <p>展示不舒服共鸣之光、回归预看入口与收藏建议。</p>
+                <code>${buildReviewUrl("landing", sku.key)}</code>
+            </div>
+            <div class="review-link">
+                <strong>2. 产品链截图</strong>
+                <p>展示当下偏移报告后的产品顺序、小步回正与年度靶心的关系。</p>
+                <code>${buildReviewUrl("pay", sku.key)}</code>
+            </div>
+            <div class="review-link">
+                <strong>3. 购后首屏截图</strong>
+                <p>展示付款后进入的真实承接页，而不是空目录。</p>
+                <code>${buildReviewUrl("post", sku.key)}</code>
+            </div>
+        </div>
+    `;
+}
+
+function buildReviewUrl(view, skuKey) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    url.searchParams.set("sku", skuKey);
+    return url.toString();
+}
+
+async function requestPrepay() {
+    const sku = SKU_CONFIG[selectedSku];
+    currentPrepayState = { loading: true, error: "", order: null };
+    renderPayBox();
+    try {
+        const response = await fetch("/api/v1/pay/prepay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ product_tier: sku.key === "reset" ? "emergency" : sku.key === "annual" ? "system" : "archive", novel_key: PRODUCT_CONFIG.novelKey }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "生成订单失败，请稍后重试。");
+        currentPrepayState = { loading: false, error: "", order: data };
+    } catch (error) {
+        currentPrepayState = { loading: false, error: error.message || "生成订单失败，请稍后重试。", order: null };
+    }
+    renderPayBox();
+}
+
+function renderPostPurchase() {
+    const sku = SKU_CONFIG[selectedSku];
+    const card = document.getElementById("post-card");
+    if (selectedSku === "reset") {
+        card.innerHTML = `
+            <div class="eyebrow">${sku.name}｜购后首屏</div>
+            <h2>先回来一点，不要求你一口气修完整一年。</h2>
+            <div class="path-list">
+                <div class="path-item"><strong>这 7 天先做什么</strong><p>先围绕“${previewResult.returnEntry}”做一个最小动作，不求大改，只求回到自己一点。</p></div>
+                <div class="path-item"><strong>这次先别做什么</strong><p>先别把自己推进更大的计划表，先收回一段最明显的偏移。</p></div>
+                <div class="path-item"><strong>当前不宜硬攻的方向</strong><p>在回稳之前，不要用意志力硬拉整年节奏。</p></div>
+            </div>
+            <div class="actions">
+                <button class="btn primary">开始我的 7 天回正</button>
+                <button class="btn" onclick="navigateTo('page-pay')">回看产品链</button>
+            </div>
+        `;
+        return;
+    }
+
+    if (selectedSku === "annual") {
+        card.innerHTML = `
+            <div class="eyebrow">${sku.name}｜购后首屏</div>
+            <h2>现在不是追求人设，而是建立这一年的归己参照系。</h2>
+            <div class="path-list">
+                <div class="path-item"><strong>先做年度回看</strong><p>先看过去一年哪些状态更像你自己，哪些阶段只是被生活推着走。</p></div>
+                <div class="path-item"><strong>再过五维校验</strong><p>按身 / 心 / 灵 / 人生 / 价值，把这一年的靶心落到真实可用的结构里。</p></div>
+                <div class="path-item"><strong>最后生成靶心</strong><p>形成年度总靶心图、五维分靶心图和年度锚定句，作为后续月测参照系。</p></div>
+            </div>
+            <div class="actions">
+                <button class="btn primary">开始年度靶心建立</button>
+                <button class="btn" onclick="navigateTo('page-pay')">回看产品链</button>
+            </div>
+        `;
+        return;
+    }
+
+    card.innerHTML = `
+        <div class="eyebrow">${sku.name}｜购后首屏</div>
+        <h2>月测不是重新崩一次，而是看你这月离靶心近了还是远了。</h2>
+        <div class="path-list">
+            <div class="path-item"><strong>当前月测任务</strong><p>回看本月相对靶心偏了哪里，先收哪一块。</p></div>
+            <div class="path-item"><strong>这次重点输出</strong><p>本月主归项 / 辅助项 / 摩擦项 / 行动回归记录。</p></div>
+            <div class="path-item"><strong>当前前提</strong><p>只有完成年度靶心建立之后，月测才有判断标准。</p></div>
+        </div>
+        <div class="actions">
+            <button class="btn primary">进入本月纠偏</button>
+            <button class="btn" onclick="navigateTo('page-pay')">回看产品链</button>
+        </div>
+    `;
+}
+
+renderQuiz();
+initRouteFromUrl();
+</script>
+</body>
+</html>

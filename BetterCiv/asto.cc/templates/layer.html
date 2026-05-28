@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{{ layer.title_zh }} · {{ layer.title_en }} — asto.cc{% endblock %}
+{% block description %}{{ layer.one_liner }}{% endblock %}
+
+{% block content %}
+<article class="layer-page">
+  <header class="layer-header">
+    <a href="/" class="back-link">← 八层架构</a>
+    <div class="layer-identity">
+      <span class="layer-pos">{{ layer.chain_position }}</span>
+      <h1>{{ layer.title_zh }}</h1>
+      <p class="layer-en">{{ layer.title_en }}</p>
+      <p class="layer-one-liner">{{ layer.one_liner }}</p>
+    </div>
+    {% if layer.doi %}
+    <div class="zenodo-badge">
+      <a href="https://doi.org/{{ layer.doi }}" target="_blank">
+        DOI: {{ layer.doi }}
+      </a>
+    </div>
+    {% endif %}
+  </header>
+
+  <section class="layer-concepts">
+    <h2>核心概念</h2>
+    <ul>
+      {% for c in layer.concepts %}
+      <li>{{ c }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="layer-innovation">
+    <h2>创新点</h2>
+    <p>{{ layer.innovation }}</p>
+  </section>
+
+  <section class="layer-relations">
+    <h2>上下游关系</h2>
+    <div class="relations-grid">
+      <div class="relation">
+        <span class="relation-label">继承自</span>
+        {% if layer.upstream %}
+          {% for u in layer.upstream %}
+          <a href="/{{ u }}">{{ u | upper }}</a>
+          {% endfor %}
+        {% else %}
+          <span class="muted">无（最底层）</span>
+        {% endif %}
+      </div>
+      <div class="relation">
+        <span class="relation-label">提供给</span>
+        {% if layer.downstream %}
+          {% for d in layer.downstream %}
+          <a href="/{{ d }}">{{ d | upper }}</a>
+          {% endfor %}
+        {% else %}
+          <span class="muted">无（最顶层）</span>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="layer-body">
+    <h2>详细内容</h2>
+    {{ body | safe }}
+  </section>
+
+  <nav class="layer-nav">
+    {% if layer.chain_position > 1 %}
+    {% for l in layers %}
+      {% if l.chain_position == layer.chain_position - 1 %}
+      <a href="/{{ l.slug }}" class="layer-nav-prev">← {{ l.slug | upper }} {{ l.title_zh }}</a>
+      {% endif %}
+    {% endfor %}
+    {% endif %}
+    {% if layer.downstream %}
+    {% for l in layers %}
+      {% if l.slug == layer.downstream[0] %}
+      <a href="/{{ l.slug }}" class="layer-nav-next">{{ l.slug | upper }} {{ l.title_zh }} →</a>
+      {% endif %}
+    {% endfor %}
+    {% endif %}
+  </nav>
+</article>
+{% endblock %}

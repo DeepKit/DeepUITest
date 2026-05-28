@@ -1,0 +1,118 @@
+{
+  "id": "workflow_multiturn",
+  "name": "Multi-Turn Conversation Workflow",
+  "version": "1.0",
+  "description": "Handles multi-turn conversations with context awareness",
+  "tags": ["conversation", "multi-turn", "context"],
+  "variables": {
+    "max_context_messages": "10",
+    "model": "gpt-4"
+  },
+  "steps": [
+    {
+      "id": "load_context",
+      "name": "Load Conversation Context",
+      "type": "action",
+      "config": {
+        "action_type": "context_load",
+        "source": "session",
+        "max_messages": "${max_context_messages}"
+      },
+      "output": "conversation_hiDeepStory"
+    },
+    {
+      "id": "check_topic_change",
+      "name": "Check for Topic Change",
+      "type": "condition",
+      "config": {
+        "expression": "${user_message} contains 'new topic' or ${user_message} contains 'let''s talk about'"
+      },
+      "branches": [
+        {
+          "condition": "true",
+          "goto": "reset_context"
+        },
+        {
+          "condition": "else",
+          "goto": "build_prompt"
+        }
+      ]
+    },
+    {
+      "id": "reset_context",
+      "name": "Reset Context",
+      "type": "action",
+      "config": {
+        "action_type": "context_reset",
+        "keep_system": true
+      }
+    },
+    {
+      "id": "build_prompt",
+      "name": "Build Contextual Prompt",
+      "type": "action",
+      "config": {
+        "action_type": "prompt_build",
+        "template": "contextual_conversation",
+        "variables": {
+          "hiDeepStory": "${conversation_hiDeepStory}",
+          "current_message": "${user_message}"
+        }
+      },
+      "output": "full_prompt"
+    },
+    {
+      "id": "generate_response",
+      "name": "Generate Contextual Response",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are a helpful conversational assistant. Maintain context from previous messages. Be natural and engaging. Remember details the user has shared.",
+        "messages": "${full_prompt}",
+        "max_tokens": 800,
+        "temperature": 0.8
+      },
+      "output": "llm_response"
+    },
+    {
+      "id": "extract_entities",
+      "name": "Extract Mentioned Entities",
+      "type": "action",
+      "config": {
+        "action_type": "entity_extract",
+        "input": "${user_message}",
+        "entities": ["person", "place", "date", "topic"]
+      },
+      "output": "entities"
+    },
+    {
+      "id": "update_context",
+      "name": "Update Context",
+      "type": "action",
+      "config": {
+        "action_type": "context_update",
+        "add_entities": "${entities}",
+        "add_message": {
+          "role": "assistant",
+          "content": "${llm_response.content}"
+        }
+      }
+    },
+    {
+      "id": "format_response",
+      "name": "Format Final Response",
+      "type": "action",
+      "config": {
+        "action_type": "transform",
+        "template": {
+          "message": "${llm_response.content}",
+          "context_used": true,
+          "entities_detected": "${entities}"
+        }
+      },
+      "output": "final_response"
+    }
+  ]
+}

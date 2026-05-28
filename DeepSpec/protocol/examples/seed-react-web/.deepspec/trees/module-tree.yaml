@@ -1,0 +1,41 @@
+version: "1.0"
+tree: module
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+nodes:
+  - id: "mod-app"
+    tree: module
+    title: "App"
+    kind: package
+    parent_id: null
+    summary: "Root application module"
+    status: candidate
+    confidence: medium
+    source_layer: parsed_from_a
+    source_refs:
+      - ref_id: "ev-src-structure"
+        relevance: primary
+    children:
+      - "mod-components"
+      - "mod-hooks"
+
+  - id: "mod-components"
+    tree: module
+    title: "Components"
+    kind: package
+    parent_id: "mod-app"
+    summary: "React UI components"
+    status: candidate
+    confidence: medium
+    source_layer: parsed_from_a
+
+  - id: "mod-hooks"
+    tree: module
+    title: "Hooks"
+    kind: utility
+    parent_id: "mod-app"
+    summary: "Custom React hooks for state management"
+    status: candidate
+    confidence: low
+    source_layer: ai_inferred

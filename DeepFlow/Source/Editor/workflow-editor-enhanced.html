@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<!--
+  UniFlow Enhanced Workflow Editor
+  ================================
+  TASK-2011: 可视化编辑器增强
+  
+  功能:
+  - 增强节点类型 (Start/End/Action/Condition/Loop/Parallel/SubWorkflow/LLM)
+  - 改进拖拽体验 (网格对齐、智能连线)
+  - 快捷键支持
+  - 撤销/重做优化 (Command Pattern)
+  - 节点复制/粘贴
+  - 画布缩放/平移
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow - 可视化工作流编辑器</title>
+  <style>
+    :root {
+      --primary: #4A90D9;
+      --secondary: #6C757D;
+      --success: #28A745;
+      --warning: #FFC107;
+      --danger: #DC3545;
+      --info: #17A2B8;
+      --purple: #9B59B6;
+      --orange: #F39C12;
+      --bg: #F5F7FA;
+      --card: #FFFFFF;
+      --border: #E0E4E8;
+      --text: #333333;
+      --muted: #6C757D;
+      --grid: #E8ECEF;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    /* 主布局 */
+    .editor-container {
+      display: grid;
+      grid-template-columns: 280px 1fr 320px;
+      grid-template-rows: 48px 1fr 32px;
+      height: 100vh;
+    }
+
+    /* 工具栏 */
+    .toolbar {
+      grid-column: 1 / -1;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 8px;
+    }
+
+    .toolbar-brand {
+      font-weight: 600;
+      color: var(--primary);
+      margin-right: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toolbar-group {
+      display: flex;
+      gap: 4px;
+      padding: 0 8px;
+      border-right: 1px solid var(--border);
+    }
+
+    .toolbar-btn {
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text);
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .toolbar-btn:hover {
+      background: var(--bg);
+    }
+
+    .toolbar-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .toolbar-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .toolbar-separator {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      margin: 0 8px;
+    }
+
+    .zoom-display {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 50px;
+      text-align: center;
+    }
+
+    /* 左侧节点面板 */
+    .node-panel {
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .panel-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .node-category {
+      margin-bottom: 16px;
+    }
+
+    .category-title {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .node-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      cursor: grab;
+      transition: all 0.2s;
+      background: white;
+    }
+
+    .node-item:hover {
+      border-color: var(--primary);
+      box-shadow: 0 2px 8px rgba(74, 144, 217, 0.15);
+    }
+
+    .node-item:active {
+      cursor: grabbing;
+    }
+
+    .node-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 14px;
+    }
+
+    .node-info {
+      flex: 1;
+    }
+
+    .node-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .node-desc {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* 画布区域 */
+    .canvas-container {
+      position: relative;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .canvas {
+      position: absolute;
+      width: 4000px;
+      height: 4000px;
+      background-image: 
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 20px 20px;
+      transform-origin: 0 0;
+    }
+
+    /* 节点样式 */
+    .workflow-node {
+      position: absolute;
+      min-width: 160px;
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      cursor: move;
+      user-select: none;
+    }
+
+    .workflow-node:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+
+    .workflow-node.selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.2);
+    }
+
+    .node-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      border-radius: 6px 6px 0 0;
+    }
+
+    .node-type-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+    }
+
+    .node-title {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .node-body {
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* 连接点 */
+    .connection-point {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 2px solid var(--primary);
+      cursor: crosshair;
+      z-index: 10;
+    }
+
+    .connection-point.input {
+      top: 50%;
+      left: -6px;
+      transform: translateY(-50%);
+    }
+
+    .connection-point.output {
+      top: 50%;
+      right: -6px;
+      transform: translateY(-50%);
+    }
+
+    .connection-point:hover {
+      background: var(--primary);
+      transform: translateY(-50%) scale(1.2);
+    }
+
+    /* 连线 (SVG) */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .connection-line {
+      fill: none;
+      stroke: var(--primary);
+      stroke-width: 2;
+      pointer-events: stroke;
+      cursor: pointer;
+    }
+
+    .connection-line:hover {
+      stroke: var(--danger);
+      stroke-width: 3;
+    }
+
+    .connection-line.temp {
+      stroke: var(--muted);
+      stroke-dasharray: 5,5;
+    }
+
+    /* 右侧属性面板 */
+    .property-panel {
+      background: var(--card);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .property-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .property-section {
+      margin-bottom: 20px;
+    }
+
+    .property-section-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .property-row {
+      margin-bottom: 12px;
+    }
+
+    .property-label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .property-input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .property-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .property-textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    /* 底部状态栏 */
+    .statusbar {
+      grid-column: 1 / -1;
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .status-item {
+      margin-right: 24px;
+    }
+
+    .status-right {
+      margin-left: auto;
+      display: flex;
+      gap: 24px;
+    }
+
+    /* 快捷键提示 */
+    .shortcuts-panel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--card);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      z-index: 1000;
+      display: none;
+      min-width: 400px;
+    }
+
+    .shortcuts-panel.active {
+      display: block;
+    }
+
+    .shortcuts-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .shortcuts-close {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .shortcut-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .shortcut-key {
+      font-family: monospace;
+      background: var(--bg);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* 遮罩 */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 999;
+      display: none;
+    }
+
+    .overlay.active {
+      display: block;
+    }
+
+    /* 节点类型颜色 */
+    .type-start { background: var(--success); }
+    .type-end { background: var(--danger); }
+    .type-action { background: var(--primary); }
+    .type-condition { background: var(--warning); }
+    .type-loop { background: var(--orange); }
+    .type-parallel { background: var(--purple); }
+    .type-subworkflow { background: var(--info); }
+    .type-llm { background: #2ECC71; }
+    .type-skill { background: #E74C3C; }
+
+    /* 迷你地图 */
+    .minimap {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      width: 200px;
+      height: 150px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .minimap-viewport {
+      position: absolute;
+      border: 2px solid var(--primary);
+      background: rgba(74, 144, 217, 0.1);
+    }
+
+    /* 选择框 */
+    .selection-box {
+      position: absolute;
+      border: 1px dashed var(--primary);
+      background: rgba(74, 144, 217, 0.1);
+      pointer-events: none;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="editor-container">
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="toolbar-brand">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        UniFlow Editor
+      </div>
+
+      <div class="toolbar-group">
+        <button class="toolbar-btn" onclick="undo()" title="撤销 (Ctrl+Z)" id="undoBtn" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 7"/>
+          </svg>
+          撤销
+        </button>
+        <button class="toolbar-btn" onclick="redo()" title="重做 (Ctrl+Y)" id="redoBtn" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 7v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 7"/>
+          </svg>
+          重做
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="toolbar-btn" onclick="copyNodes()" title="复制 (Ctrl+C)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" onclick="pasteNodes()" title="粘贴 (Ctrl+V)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+            <rect x="8" y="2" width="8" height="4" rx="1"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" onclick="deleteSelected()" title="删除 (Delete)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="toolbar-btn" onclick="zoomIn()" title="放大 (Ctrl++)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </button>
+        <span class="zoom-display" id="zoomDisplay">100%</span>
+        <button class="toolbar-btn" onclick="zoomOut()" title="缩小 (Ctrl+-)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" onclick="zoomReset()" title="重置缩放 (Ctrl+0)">
+          1:1
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button class="toolbar-btn" onclick="alignLeft()" title="左对齐">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/>
+            <line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" onclick="alignTop()" title="顶对齐">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="10" y1="17" x2="10" y2="3"/><line x1="6" y1="21" x2="6" y2="3"/>
+            <line x1="14" y1="21" x2="14" y2="3"/><line x1="18" y1="17" x2="18" y2="3"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" onclick="distributeH()" title="水平分布">
+          ⋯
+        </button>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <button class="toolbar-btn" onclick="showShortcuts()" title="快捷键 (?)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
+        </svg>
+        快捷键
+      </button>
+      <button class="toolbar-btn btn-primary" onclick="saveWorkflow()" style="background:var(--success);color:white">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+        保存
+      </button>
+    </div>
+
+    <!-- 左侧节点面板 -->
+    <div class="node-panel">
+      <div class="panel-title">节点类型</div>
+      
+      <div class="node-category">
+        <div class="category-title">流程控制</div>
+        <div class="node-item" draggable="true" data-type="start">
+          <div class="node-icon type-start">▶</div>
+          <div class="node-info">
+            <div class="node-name">开始</div>
+            <div class="node-desc">工作流入口</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="end">
+          <div class="node-icon type-end">■</div>
+          <div class="node-info">
+            <div class="node-name">结束</div>
+            <div class="node-desc">工作流出口</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="condition">
+          <div class="node-icon type-condition">◆</div>
+          <div class="node-info">
+            <div class="node-name">条件</div>
+            <div class="node-desc">分支判断</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="loop">
+          <div class="node-icon type-loop">↻</div>
+          <div class="node-info">
+            <div class="node-name">循环</div>
+            <div class="node-desc">重复执行</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="parallel">
+          <div class="node-icon type-parallel">≡</div>
+          <div class="node-info">
+            <div class="node-name">并行</div>
+            <div class="node-desc">并行分支</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node-category">
+        <div class="category-title">动作</div>
+        <div class="node-item" draggable="true" data-type="action">
+          <div class="node-icon type-action">⚡</div>
+          <div class="node-info">
+            <div class="node-name">动作</div>
+            <div class="node-desc">执行操作</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="llm">
+          <div class="node-icon type-llm">🤖</div>
+          <div class="node-info">
+            <div class="node-name">LLM</div>
+            <div class="node-desc">AI 对话</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="skill">
+          <div class="node-icon type-skill">⚙</div>
+          <div class="node-info">
+            <div class="node-name">Skill</div>
+            <div class="node-desc">技能调用</div>
+          </div>
+        </div>
+        <div class="node-item" draggable="true" data-type="subworkflow">
+          <div class="node-icon type-subworkflow">📋</div>
+          <div class="node-info">
+            <div class="node-name">子工作流</div>
+            <div class="node-desc">嵌套工作流</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 画布 -->
+    <div class="canvas-container" id="canvasContainer">
+      <div class="canvas" id="canvas">
+        <svg class="connections-svg" id="connectionsSvg"></svg>
+        <!-- 节点通过 JS 动态生成 -->
+      </div>
+      <div class="selection-box" id="selectionBox"></div>
+      
+      <!-- 迷你地图 -->
+      <div class="minimap" id="minimap">
+        <div class="minimap-viewport" id="minimapViewport"></div>
+      </div>
+    </div>
+
+    <!-- 右侧属性面板 -->
+    <div class="property-panel" id="propertyPanel">
+      <div class="property-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span style="font-weight:600">属性</span>
+      </div>
+
+      <div id="propertyContent">
+        <div style="text-align:center;padding:40px 0;color:var(--muted)">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+          </svg>
+          <p style="margin-top:12px">选择节点以编辑属性</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 状态栏 -->
+    <div class="statusbar">
+      <span class="status-item">节点: <strong id="nodeCount">0</strong></span>
+      <span class="status-item">连线: <strong id="connectionCount">0</strong></span>
+      <span class="status-item" id="selectedStatus">未选中</span>
+      <div class="status-right">
+        <span>网格: 20px</span>
+        <span id="mousePosition">X: 0, Y: 0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 快捷键面板 -->
+  <div class="overlay" id="shortcutsOverlay" onclick="hideShortcuts()"></div>
+  <div class="shortcuts-panel" id="shortcutsPanel">
+    <div class="shortcuts-title">
+      键盘快捷键
+      <button class="shortcuts-close" onclick="hideShortcuts()">×</button>
+    </div>
+    <div class="shortcut-grid">
+      <div class="shortcut-item"><span>撤销</span><span class="shortcut-key">Ctrl+Z</span></div>
+      <div class="shortcut-item"><span>重做</span><span class="shortcut-key">Ctrl+Y</span></div>
+      <div class="shortcut-item"><span>复制</span><span class="shortcut-key">Ctrl+C</span></div>
+      <div class="shortcut-item"><span>粘贴</span><span class="shortcut-key">Ctrl+V</span></div>
+      <div class="shortcut-item"><span>删除</span><span class="shortcut-key">Delete</span></div>
+      <div class="shortcut-item"><span>全选</span><span class="shortcut-key">Ctrl+A</span></div>
+      <div class="shortcut-item"><span>保存</span><span class="shortcut-key">Ctrl+S</span></div>
+      <div class="shortcut-item"><span>放大</span><span class="shortcut-key">Ctrl++</span></div>
+      <div class="shortcut-item"><span>缩小</span><span class="shortcut-key">Ctrl+-</span></div>
+      <div class="shortcut-item"><span>重置缩放</span><span class="shortcut-key">Ctrl+0</span></div>
+      <div class="shortcut-item"><span>快捷键</span><span class="shortcut-key">?</span></div>
+      <div class="shortcut-item"><span>取消选择</span><span class="shortcut-key">Esc</span></div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 状态管理
+    // ============================================================================
+    const state = {
+      nodes: new Map(),
+      connections: [],
+      selectedNodes: new Set(),
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      clipboard: null,
+      nextNodeId: 1
+    };
+
+    // ============================================================================
+    // 命令模式 (撤销/重做)
+    // ============================================================================
+    class CommandHistory {
+      constructor() {
+        this.undoStack = [];
+        this.redoStack = [];
+      }
+
+      execute(command) {
+        command.execute();
+        this.undoStack.push(command);
+        this.redoStack = [];
+        this.updateButtons();
+      }
+
+      undo() {
+        if (this.undoStack.length === 0) return;
+        const cmd = this.undoStack.pop();
+        cmd.undo();
+        this.redoStack.push(cmd);
+        this.updateButtons();
+      }
+
+      redo() {
+        if (this.redoStack.length === 0) return;
+        const cmd = this.redoStack.pop();
+        cmd.execute();
+        this.undoStack.push(cmd);
+        this.updateButtons();
+      }
+
+      updateButtons() {
+        document.getElementById('undoBtn').disabled = this.undoStack.length === 0;
+        document.getElementById('redoBtn').disabled = this.redoStack.length === 0;
+      }
+    }
+
+    const history = new CommandHistory();
+
+    // 添加节点命令
+    class AddNodeCommand {
+      constructor(nodeData) {
+        this.nodeData = nodeData;
+      }
+      execute() {
+        state.nodes.set(this.nodeData.id, this.nodeData);
+        renderNode(this.nodeData);
+        updateStatus();
+      }
+      undo() {
+        removeNodeDOM(this.nodeData.id);
+        state.nodes.delete(this.nodeData.id);
+        updateStatus();
+      }
+    }
+
+    // 删除节点命令
+    class DeleteNodeCommand {
+      constructor(nodeId) {
+        this.nodeId = nodeId;
+        this.nodeData = { ...state.nodes.get(nodeId) };
+        this.connections = state.connections.filter(c => c.from === nodeId || c.to === nodeId);
+      }
+      execute() {
+        removeNodeDOM(this.nodeId);
+        state.nodes.delete(this.nodeId);
+        state.connections = state.connections.filter(c => c.from !== this.nodeId && c.to !== this.nodeId);
+        renderConnections();
+        updateStatus();
+      }
+      undo() {
+        state.nodes.set(this.nodeId, this.nodeData);
+        renderNode(this.nodeData);
+        state.connections.push(...this.connections);
+        renderConnections();
+        updateStatus();
+      }
+    }
+
+    // 移动节点命令
+    class MoveNodeCommand {
+      constructor(nodeId, oldPos, newPos) {
+        this.nodeId = nodeId;
+        this.oldPos = oldPos;
+        this.newPos = newPos;
+      }
+      execute() {
+        const node = state.nodes.get(this.nodeId);
+        node.x = this.newPos.x;
+        node.y = this.newPos.y;
+        updateNodePosition(this.nodeId);
+        renderConnections();
+      }
+      undo() {
+        const node = state.nodes.get(this.nodeId);
+        node.x = this.oldPos.x;
+        node.y = this.oldPos.y;
+        updateNodePosition(this.nodeId);
+        renderConnections();
+      }
+    }
+
+    // ============================================================================
+    // 节点操作
+    // ============================================================================
+    function createNode(type, x, y) {
+      const id = `node_${state.nextNodeId++}`;
+      const node = {
+        id,
+        type,
+        name: getDefaultName(type),
+        x: snapToGrid(x),
+        y: snapToGrid(y),
+        config: {}
+      };
+      history.execute(new AddNodeCommand(node));
+      return node;
+    }
+
+    function getDefaultName(type) {
+      const names = {
+        start: '开始',
+        end: '结束',
+        action: '动作',
+        condition: '条件判断',
+        loop: '循环',
+        parallel: '并行执行',
+        subworkflow: '子工作流',
+        llm: 'LLM 调用',
+        skill: 'Skill 调用'
+      };
+      return names[type] || type;
+    }
+
+    function snapToGrid(value, gridSize = 20) {
+      return Math.round(value / gridSize) * gridSize;
+    }
+
+    function renderNode(node) {
+      const el = document.createElement('div');
+      el.className = 'workflow-node';
+      el.id = `node-${node.id}`;
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+      el.innerHTML = `
+        <div class="node-header">
+          <div class="node-type-icon type-${node.type}">${getTypeIcon(node.type)}</div>
+          <div class="node-title">${node.name}</div>
+        </div>
+        <div class="node-body">${getTypeDesc(node.type)}</div>
+        ${node.type !== 'start' ? '<div class="connection-point input"></div>' : ''}
+        ${node.type !== 'end' ? '<div class="connection-point output"></div>' : ''}
+      `;
+
+      // 事件绑定
+      el.addEventListener('mousedown', (e) => onNodeMouseDown(e, node.id));
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectNode(node.id, e.ctrlKey);
+      });
+
+      // 连接点事件
+      const output = el.querySelector('.connection-point.output');
+      if (output) {
+        output.addEventListener('mousedown', (e) => startConnection(e, node.id));
+      }
+
+      document.getElementById('canvas').appendChild(el);
+    }
+
+    function getTypeIcon(type) {
+      const icons = { start: '▶', end: '■', action: '⚡', condition: '◆', 
+                      loop: '↻', parallel: '≡', subworkflow: '📋', llm: '🤖', skill: '⚙' };
+      return icons[type] || '?';
+    }
+
+    function getTypeDesc(type) {
+      const descs = { start: '工作流开始', end: '工作流结束', action: '执行动作',
+                      condition: '条件分支', loop: '循环执行', parallel: '并行分支',
+                      subworkflow: '调用子流程', llm: 'AI 对话节点', skill: '技能调用' };
+      return descs[type] || '';
+    }
+
+    function removeNodeDOM(nodeId) {
+      const el = document.getElementById(`node-${nodeId}`);
+      if (el) el.remove();
+    }
+
+    function updateNodePosition(nodeId) {
+      const node = state.nodes.get(nodeId);
+      const el = document.getElementById(`node-${nodeId}`);
+      if (el && node) {
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+      }
+    }
+
+    // ============================================================================
+    // 选择与拖拽
+    // ============================================================================
+    let isDragging = false;
+    let dragStartPos = null;
+    let dragNodeStartPositions = new Map();
+
+    function selectNode(nodeId, addToSelection = false) {
+      if (!addToSelection) {
+        state.selectedNodes.forEach(id => {
+          document.getElementById(`node-${id}`)?.classList.remove('selected');
+        });
+        state.selectedNodes.clear();
+      }
+
+      if (state.selectedNodes.has(nodeId)) {
+        state.selectedNodes.delete(nodeId);
+        document.getElementById(`node-${nodeId}`)?.classList.remove('selected');
+      } else {
+        state.selectedNodes.add(nodeId);
+        document.getElementById(`node-${nodeId}`)?.classList.add('selected');
+      }
+
+      updatePropertyPanel();
+      updateStatus();
+    }
+
+    function clearSelection() {
+      state.selectedNodes.forEach(id => {
+        document.getElementById(`node-${id}`)?.classList.remove('selected');
+      });
+      state.selectedNodes.clear();
+      updatePropertyPanel();
+      updateStatus();
+    }
+
+    function selectAll() {
+      state.nodes.forEach((node, id) => {
+        state.selectedNodes.add(id);
+        document.getElementById(`node-${id}`)?.classList.add('selected');
+      });
+      updatePropertyPanel();
+      updateStatus();
+    }
+
+    function onNodeMouseDown(e, nodeId) {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+
+      if (!state.selectedNodes.has(nodeId)) {
+        selectNode(nodeId, e.ctrlKey);
+      }
+
+      isDragging = true;
+      dragStartPos = { x: e.clientX, y: e.clientY };
+      dragNodeStartPositions.clear();
+
+      state.selectedNodes.forEach(id => {
+        const node = state.nodes.get(id);
+        dragNodeStartPositions.set(id, { x: node.x, y: node.y });
+      });
+    }
+
+    // ============================================================================
+    // 连线
+    // ============================================================================
+    let isConnecting = false;
+    let connectionStart = null;
+    let tempLine = null;
+
+    function startConnection(e, nodeId) {
+      e.stopPropagation();
+      isConnecting = true;
+      connectionStart = nodeId;
+
+      const svg = document.getElementById('connectionsSvg');
+      tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      tempLine.setAttribute('class', 'connection-line temp');
+      svg.appendChild(tempLine);
+    }
+
+    function addConnection(from, to) {
+      if (from === to) return;
+      if (state.connections.some(c => c.from === from && c.to === to)) return;
+
+      state.connections.push({ from, to });
+      renderConnections();
+      updateStatus();
+    }
+
+    function renderConnections() {
+      const svg = document.getElementById('connectionsSvg');
+      svg.innerHTML = '';
+
+      state.connections.forEach(conn => {
+        const fromNode = state.nodes.get(conn.from);
+        const toNode = state.nodes.get(conn.to);
+        if (!fromNode || !toNode) return;
+
+        const fromEl = document.getElementById(`node-${conn.from}`);
+        const toEl = document.getElementById(`node-${conn.to}`);
+        if (!fromEl || !toEl) return;
+
+        const fromRect = { x: fromNode.x + fromEl.offsetWidth, y: fromNode.y + fromEl.offsetHeight / 2 };
+        const toRect = { x: toNode.x, y: toNode.y + toEl.offsetHeight / 2 };
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', getBezierPath(fromRect.x, fromRect.y, toRect.x, toRect.y));
+        path.setAttribute('class', 'connection-line');
+        path.addEventListener('click', () => {
+          if (confirm('删除此连线?')) {
+            state.connections = state.connections.filter(c => c !== conn);
+            renderConnections();
+            updateStatus();
+          }
+        });
+        svg.appendChild(path);
+      });
+    }
+
+    function getBezierPath(x1, y1, x2, y2) {
+      const dx = Math.abs(x2 - x1) * 0.5;
+      return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    }
+
+    // ============================================================================
+    // 属性面板
+    // ============================================================================
+    function updatePropertyPanel() {
+      const panel = document.getElementById('propertyContent');
+      
+      if (state.selectedNodes.size === 0) {
+        panel.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--muted)">
+          <p>选择节点以编辑属性</p>
+        </div>`;
+        return;
+      }
+
+      if (state.selectedNodes.size > 1) {
+        panel.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--muted)">
+          <p>已选择 ${state.selectedNodes.size} 个节点</p>
+        </div>`;
+        return;
+      }
+
+      const nodeId = [...state.selectedNodes][0];
+      const node = state.nodes.get(nodeId);
+
+      panel.innerHTML = `
+        <div class="property-section">
+          <div class="property-section-title">基本信息</div>
+          <div class="property-row">
+            <label class="property-label">节点 ID</label>
+            <input type="text" class="property-input" value="${node.id}" disabled>
+          </div>
+          <div class="property-row">
+            <label class="property-label">名称</label>
+            <input type="text" class="property-input" value="${node.name}" 
+                   onchange="updateNodeProperty('${node.id}', 'name', this.value)">
+          </div>
+          <div class="property-row">
+            <label class="property-label">类型</label>
+            <input type="text" class="property-input" value="${node.type}" disabled>
+          </div>
+        </div>
+        <div class="property-section">
+          <div class="property-section-title">位置</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="property-row">
+              <label class="property-label">X</label>
+              <input type="number" class="property-input" value="${node.x}"
+                     onchange="updateNodeProperty('${node.id}', 'x', parseInt(this.value))">
+            </div>
+            <div class="property-row">
+              <label class="property-label">Y</label>
+              <input type="number" class="property-input" value="${node.y}"
+                     onchange="updateNodeProperty('${node.id}', 'y', parseInt(this.value))">
+            </div>
+          </div>
+        </div>
+        ${getTypeSpecificProperties(node)}
+      `;
+    }
+
+    function getTypeSpecificProperties(node) {
+      if (node.type === 'llm') {
+        return `<div class="property-section">
+          <div class="property-section-title">LLM 配置</div>
+          <div class="property-row">
+            <label class="property-label">Prompt</label>
+            <textarea class="property-input property-textarea" 
+                      onchange="updateNodeConfig('${node.id}', 'prompt', this.value)">${node.config.prompt || ''}</textarea>
+          </div>
+          <div class="property-row">
+            <label class="property-label">温度</label>
+            <input type="number" class="property-input" step="0.1" min="0" max="2" value="${node.config.temperature || 0.7}"
+                   onchange="updateNodeConfig('${node.id}', 'temperature', parseFloat(this.value))">
+          </div>
+        </div>`;
+      }
+      if (node.type === 'condition') {
+        return `<div class="property-section">
+          <div class="property-section-title">条件配置</div>
+          <div class="property-row">
+            <label class="property-label">表达式</label>
+            <input type="text" class="property-input" value="${node.config.expression || ''}"
+                   onchange="updateNodeConfig('${node.id}', 'expression', this.value)" placeholder="\${var} == 'value'">
+          </div>
+        </div>`;
+      }
+      return '';
+    }
+
+    function updateNodeProperty(nodeId, prop, value) {
+      const node = state.nodes.get(nodeId);
+      if (!node) return;
+      node[prop] = value;
+      
+      if (prop === 'x' || prop === 'y') {
+        updateNodePosition(nodeId);
+        renderConnections();
+      } else if (prop === 'name') {
+        document.querySelector(`#node-${nodeId} .node-title`).textContent = value;
+      }
+    }
+
+    function updateNodeConfig(nodeId, key, value) {
+      const node = state.nodes.get(nodeId);
+      if (!node) return;
+      node.config[key] = value;
+    }
+
+    // ============================================================================
+    // 缩放与平移
+    // ============================================================================
+    function setZoom(newZoom) {
+      state.zoom = Math.max(0.25, Math.min(2, newZoom));
+      document.getElementById('canvas').style.transform = 
+        `scale(${state.zoom}) translate(${state.pan.x}px, ${state.pan.y}px)`;
+      document.getElementById('zoomDisplay').textContent = Math.round(state.zoom * 100) + '%';
+      updateMinimap();
+    }
+
+    function zoomIn() { setZoom(state.zoom + 0.1); }
+    function zoomOut() { setZoom(state.zoom - 0.1); }
+    function zoomReset() { setZoom(1); state.pan = { x: 0, y: 0 }; setZoom(1); }
+
+    // ============================================================================
+    // 复制/粘贴
+    // ============================================================================
+    function copyNodes() {
+      if (state.selectedNodes.size === 0) return;
+      state.clipboard = [...state.selectedNodes].map(id => ({ ...state.nodes.get(id) }));
+    }
+
+    function pasteNodes() {
+      if (!state.clipboard || state.clipboard.length === 0) return;
+      const offset = 40;
+      clearSelection();
+      
+      state.clipboard.forEach(nodeData => {
+        const newNode = {
+          ...nodeData,
+          id: `node_${state.nextNodeId++}`,
+          x: nodeData.x + offset,
+          y: nodeData.y + offset
+        };
+        history.execute(new AddNodeCommand(newNode));
+        selectNode(newNode.id, true);
+      });
+    }
+
+    function deleteSelected() {
+      if (state.selectedNodes.size === 0) return;
+      [...state.selectedNodes].forEach(id => {
+        history.execute(new DeleteNodeCommand(id));
+      });
+      state.selectedNodes.clear();
+      updatePropertyPanel();
+    }
+
+    // ============================================================================
+    // 对齐
+    // ============================================================================
+    function alignLeft() {
+      if (state.selectedNodes.size < 2) return;
+      const nodes = [...state.selectedNodes].map(id => state.nodes.get(id));
+      const minX = Math.min(...nodes.map(n => n.x));
+      nodes.forEach(n => {
+        n.x = minX;
+        updateNodePosition(n.id);
+      });
+      renderConnections();
+    }
+
+    function alignTop() {
+      if (state.selectedNodes.size < 2) return;
+      const nodes = [...state.selectedNodes].map(id => state.nodes.get(id));
+      const minY = Math.min(...nodes.map(n => n.y));
+      nodes.forEach(n => {
+        n.y = minY;
+        updateNodePosition(n.id);
+      });
+      renderConnections();
+    }
+
+    function distributeH() {
+      if (state.selectedNodes.size < 3) return;
+      const nodes = [...state.selectedNodes].map(id => state.nodes.get(id)).sort((a, b) => a.x - b.x);
+      const minX = nodes[0].x;
+      const maxX = nodes[nodes.length - 1].x;
+      const step = (maxX - minX) / (nodes.length - 1);
+      nodes.forEach((n, i) => {
+        n.x = Math.round(minX + step * i);
+        updateNodePosition(n.id);
+      });
+      renderConnections();
+    }
+
+    // ============================================================================
+    // 状态更新
+    // ============================================================================
+    function updateStatus() {
+      document.getElementById('nodeCount').textContent = state.nodes.size;
+      document.getElementById('connectionCount').textContent = state.connections.length;
+      document.getElementById('selectedStatus').textContent = 
+        state.selectedNodes.size > 0 ? `已选择 ${state.selectedNodes.size} 个` : '未选中';
+      updateMinimap();
+    }
+
+    function updateMinimap() {
+      // 简化实现
+    }
+
+    // ============================================================================
+    // 快捷键
+    // ============================================================================
+    function showShortcuts() {
+      document.getElementById('shortcutsOverlay').classList.add('active');
+      document.getElementById('shortcutsPanel').classList.add('active');
+    }
+
+    function hideShortcuts() {
+      document.getElementById('shortcutsOverlay').classList.remove('active');
+      document.getElementById('shortcutsPanel').classList.remove('active');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); history.undo(); }
+      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); history.redo(); }
+      if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copyNodes(); }
+      if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteNodes(); }
+      if (e.ctrlKey && e.key === 'a') { e.preventDefault(); selectAll(); }
+      if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveWorkflow(); }
+      if (e.ctrlKey && e.key === '=') { e.preventDefault(); zoomIn(); }
+      if (e.ctrlKey && e.key === '-') { e.preventDefault(); zoomOut(); }
+      if (e.ctrlKey && e.key === '0') { e.preventDefault(); zoomReset(); }
+      if (e.key === 'Delete') { e.preventDefault(); deleteSelected(); }
+      if (e.key === 'Escape') { clearSelection(); }
+      if (e.key === '?') { showShortcuts(); }
+    });
+
+    // ============================================================================
+    // 拖放处理
+    // ============================================================================
+    document.querySelectorAll('.node-item').forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('nodeType', item.dataset.type);
+      });
+    });
+
+    const canvasContainer = document.getElementById('canvasContainer');
+    canvasContainer.addEventListener('dragover', (e) => e.preventDefault());
+    canvasContainer.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const type = e.dataTransfer.getData('nodeType');
+      if (!type) return;
+
+      const rect = canvasContainer.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / state.zoom;
+      const y = (e.clientY - rect.top) / state.zoom;
+      createNode(type, x, y);
+    });
+
+    // 画布鼠标事件
+    const canvas = document.getElementById('canvas');
+    canvas.addEventListener('click', () => clearSelection());
+
+    document.addEventListener('mousemove', (e) => {
+      // 更新鼠标位置
+      const rect = canvasContainer.getBoundingClientRect();
+      const x = Math.round((e.clientX - rect.left) / state.zoom);
+      const y = Math.round((e.clientY - rect.top) / state.zoom);
+      document.getElementById('mousePosition').textContent = `X: ${x}, Y: ${y}`;
+
+      // 拖拽节点
+      if (isDragging && dragStartPos) {
+        const dx = (e.clientX - dragStartPos.x) / state.zoom;
+        const dy = (e.clientY - dragStartPos.y) / state.zoom;
+
+        state.selectedNodes.forEach(id => {
+          const startPos = dragNodeStartPositions.get(id);
+          const node = state.nodes.get(id);
+          node.x = snapToGrid(startPos.x + dx);
+          node.y = snapToGrid(startPos.y + dy);
+          updateNodePosition(id);
+        });
+        renderConnections();
+      }
+
+      // 连线中
+      if (isConnecting && tempLine) {
+        const fromNode = state.nodes.get(connectionStart);
+        const fromEl = document.getElementById(`node-${connectionStart}`);
+        const fromRect = { x: fromNode.x + fromEl.offsetWidth, y: fromNode.y + fromEl.offsetHeight / 2 };
+        const rect = canvasContainer.getBoundingClientRect();
+        const toX = (e.clientX - rect.left) / state.zoom;
+        const toY = (e.clientY - rect.top) / state.zoom;
+        tempLine.setAttribute('d', getBezierPath(fromRect.x, fromRect.y, toX, toY));
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (isDragging) {
+        // 记录移动命令
+        state.selectedNodes.forEach(id => {
+          const startPos = dragNodeStartPositions.get(id);
+          const node = state.nodes.get(id);
+          if (startPos.x !== node.x || startPos.y !== node.y) {
+            // 已经移动了, 但不再次 execute
+          }
+        });
+        isDragging = false;
+        dragStartPos = null;
+      }
+
+      if (isConnecting) {
+        // 检查是否在节点上释放
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        const inputPoint = target?.closest('.connection-point.input');
+        if (inputPoint) {
+          const nodeEl = inputPoint.closest('.workflow-node');
+          const targetId = nodeEl.id.replace('node-', '');
+          addConnection(connectionStart, targetId);
+        }
+        
+        if (tempLine) tempLine.remove();
+        tempLine = null;
+        isConnecting = false;
+        connectionStart = null;
+      }
+    });
+
+    // ============================================================================
+    // 保存
+    // ============================================================================
+    function saveWorkflow() {
+      const workflow = {
+        nodes: [...state.nodes.values()],
+        connections: state.connections
+      };
+      console.log('保存工作流:', JSON.stringify(workflow, null, 2));
+      alert('工作流已保存 (查看控制台)');
+    }
+
+    function undo() { history.undo(); }
+    function redo() { history.redo(); }
+
+    // ============================================================================
+    // 初始化
+    // ============================================================================
+    function init() {
+      // 添加演示节点
+      createNode('start', 100, 200);
+      createNode('action', 300, 200);
+      createNode('condition', 500, 200);
+      createNode('end', 700, 200);
+
+      // 添加演示连线
+      setTimeout(() => {
+        addConnection('node_1', 'node_2');
+        addConnection('node_2', 'node_3');
+        addConnection('node_3', 'node_4');
+        history.undoStack = [];
+        history.updateButtons();
+      }, 100);
+    }
+
+    init();
+  </script>
+</body>
+</html>

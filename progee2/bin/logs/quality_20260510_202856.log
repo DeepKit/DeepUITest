@@ -1,0 +1,20 @@
+=== Progee Quality Report ===
+Commit: d57bf8c - [d13] Delphi 13.1 migration - build verified Win64 (81,907 lines / 6.25s)
+Date: 2026-05-10 20:28:57
+
+--- Codebase Size ---
+Source files: 0
+Test files: 0
+Source lines: 0
+Test lines: 0
+
+--- Complexity Warnings ---
+
+--- Anti-Pattern Scan ---
+SQL string formatting (potential injection): 0 occurrences
+FillChar on records (potential managed type corruption): 0 occurrences
+Bare except blocks (swallowed errors): 0 occurrences
+
+--- Trend (vs previous commit) ---
+
+=== End Report ===

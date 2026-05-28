@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Progee Verification Report</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand: #0D5C4A;
+    --brand-light: #12775F;
+    --accent: #00E5A0;
+    --accent-dim: rgba(0,229,160,0.12);
+    --warn: #F59E0B;
+    --fail: #EF4444;
+    --bg: #F7F9F8;
+    --surface: #FFFFFF;
+    --border: #E2EAE7;
+    --text: #0F1F1A;
+    --muted: #6B8C82;
+    --mono: 'DM Mono', monospace;
+    --serif: 'Instrument Serif', serif;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    font-family: var(--sans);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+
+  .report {
+    width: 680px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 32px rgba(13,92,74,0.08);
+  }
+
+  /* Header */
+  .header {
+    background: var(--brand);
+    padding: 32px 40px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .header::after {
+    content: '';
+    position: absolute;
+    top: -20px; right: -20px;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--brand);
+    letter-spacing: -0.5px;
+  }
+
+  .brand-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .report-title-zh {
+    font-family: var(--serif);
+    font-size: 26px;
+    color: #fff;
+    line-height: 1.2;
+    margin-bottom: 4px;
+  }
+
+  .report-title-en {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    font-family: var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .meta-label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .meta-value {
+    font-size: 13px;
+    color: rgba(255,255,255,0.85);
+    font-family: var(--mono);
+  }
+
+  /* Verdict */
+  .verdict-section {
+    padding: 28px 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--accent-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .verdict-left {}
+
+  .verdict-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: var(--brand);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 100px;
+    margin-bottom: 10px;
+  }
+
+  .verdict-badge .dot {
+    width: 6px; height: 6px;
+    background: var(--brand);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .verdict-zh {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--brand);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .verdict-en {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .verdict-score {
+    text-align: right;
+  }
+
+  .score-num {
+    font-family: var(--serif);
+    font-size: 52px;
+    color: var(--brand);
+    line-height: 1;
+    font-style: italic;
+  }
+
+  .score-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-align: right;
+  }
+
+  /* Scenarios */
+  .scenarios-section {
+    padding: 28px 40px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .section-title-zh {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .section-title-en {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .scenario-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .scenario-item {
+    display: grid;
+    grid-template-columns: 20px 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #FAFCFB;
+    transition: border-color 0.2s;
+  }
+
+  .scenario-item:hover {
+    border-color: var(--accent);
+  }
+
+  .scenario-icon {
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .scenario-desc {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .scenario-zh {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .scenario-en {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .scenario-result {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+  }
+
+  .scenario-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  .status-pass {
+    background: rgba(0,229,160,0.15);
+    color: #0A7A56;
+  }
+
+  .status-fail {
+    background: rgba(239,68,68,0.1);
+    color: var(--fail);
+  }
+
+  /* Evidence */
+  .evidence-section {
+    padding: 20px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    background: #FAFCFB;
+  }
+
+  .evidence-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .evidence-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .evidence-label {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .evidence-value {
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+
+  .hash-value {
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+
+  /* Footer */
+  .footer {
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .footer-logo {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .footer-logo span {
+    color: var(--brand);
+    font-weight: 500;
+  }
+
+  .footer-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--sans);
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .btn-outline:hover {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+
+  .btn-primary {
+    background: var(--brand);
+    color: #fff;
+  }
+
+  .btn-primary:hover {
+    background: var(--brand-light);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Watermark area */
+  .sealed-banner {
+    background: var(--brand);
+    padding: 8px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .sealed-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .sealed-accent {
+    color: var(--accent);
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<div class="report">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand-row">
+      <div class="brand-mark">Pg</div>
+      <div class="brand-name">Progee · Verification Report</div>
+    </div>
+    <div class="report-title-zh">功能验证报告</div>
+    <div class="report-title-en">Output Verification Report · ODD Certified</div>
+    <div class="meta-row">
+      <div class="meta-item">
+        <div class="meta-label">项目 / Project</div>
+        <div class="meta-value">用户登录模块</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">验证时间 / Time</div>
+        <div class="meta-value">2026-02-20 14:32</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">报告编号 / ID</div>
+        <div class="meta-value">PRG-20260220-0042</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Verdict -->
+  <div class="verdict-section">
+    <div class="verdict-left">
+      <div class="verdict-badge">
+        <div class="dot"></div>
+        验证通过 · VERIFIED
+      </div>
+      <div class="verdict-zh">所有场景通过验证</div>
+      <div class="verdict-en">All scenarios passed · Ready to deliver</div>
+    </div>
+    <div class="verdict-score">
+      <div class="score-num">3/3</div>
+      <div class="score-label">场景通过 / Scenarios Passed</div>
+    </div>
+  </div>
+
+  <!-- Scenarios -->
+  <div class="scenarios-section">
+    <div class="section-header">
+      <div class="section-title-zh">验证场景明细</div>
+      <div class="section-title-en">/ Scenario Details</div>
+    </div>
+    <div class="scenario-list">
+
+      <div class="scenario-item">
+        <div class="scenario-icon">✅</div>
+        <div class="scenario-desc">
+          <div class="scenario-zh">正确账号密码登录</div>
+          <div class="scenario-en">Valid credentials → returns token</div>
+        </div>
+        <div class="scenario-result">128ms</div>
+        <div class="scenario-status status-pass">PASS</div>
+      </div>
+
+      <div class="scenario-item">
+        <div class="scenario-icon">✅</div>
+        <div class="scenario-desc">
+          <div class="scenario-zh">错误密码被拒绝</div>
+          <div class="scenario-en">Wrong password → returns error AUTH_002</div>
+        </div>
+        <div class="scenario-result">94ms</div>
+        <div class="scenario-status status-pass">PASS</div>
+      </div>
+
+      <div class="scenario-item">
+        <div class="scenario-icon">✅</div>
+        <div class="scenario-desc">
+          <div class="scenario-zh">空账号被拒绝</div>
+          <div class="scenario-en">Empty username → rejected with validation error</div>
+        </div>
+        <div class="scenario-result">31ms</div>
+        <div class="scenario-status status-pass">PASS</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Evidence -->
+  <div class="evidence-section">
+    <div class="section-header">
+      <div class="section-title-zh">可信证据</div>
+      <div class="section-title-en">/ Evidence Chain</div>
+    </div>
+    <div class="evidence-grid">
+      <div class="evidence-item">
+        <div class="evidence-label">验证方式 / Method</div>
+        <div class="evidence-value">ODD 输出对比验证</div>
+      </div>
+      <div class="evidence-item">
+        <div class="evidence-label">AI 模型 / Model</div>
+        <div class="evidence-value">claude-sonnet-4</div>
+      </div>
+      <div class="evidence-item">
+        <div class="evidence-label">封存状态 / Seal</div>
+        <div class="evidence-value" style="color: var(--brand); font-weight:500;">✦ 已封存 SEALED</div>
+      </div>
+      <div class="evidence-item">
+        <div class="evidence-label">授权人 / Authorized by</div>
+        <div class="evidence-value">小王</div>
+      </div>
+      <div class="evidence-item" style="grid-column: 1/-1;">
+        <div class="evidence-label">SHA-256 防篡改哈希 / Tamper-proof Hash</div>
+        <div class="evidence-value hash-value">a3f9b2e1c847d6f05a219e83c740b5d1e629f4a87c3021be958d6f1a4c730e82</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sealed banner -->
+  <div class="sealed-banner">
+    <div class="sealed-text">此报告由 <span class="sealed-accent">Progee</span> 自动生成并封存 · This report is auto-generated and sealed by <span class="sealed-accent">Progee</span></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-brand">
+      <div class="footer-logo"><span>Progee</span> · ODD-Native Software Factory · v1.0</div>
+    </div>
+    <div class="footer-actions">
+      <button class="btn btn-outline">🔗 分享链接</button>
+      <button class="btn btn-primary">⬇ 导出 PDF</button>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

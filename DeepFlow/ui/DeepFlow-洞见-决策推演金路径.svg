@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="520" viewBox="0 0 1100 520">
+  <style>
+    .title { font: bold 20px sans-serif; }
+    .stage { fill: #f7f7ff; stroke: #444; stroke-width: 1.2; }
+    .step { fill: #ffffff; stroke: #777; stroke-width: 1; }
+    .label { font: 12px sans-serif; }
+    .note { font: 11px sans-serif; fill: #555; }
+    .arrow { stroke: #555; stroke-width: 1.5; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555" />
+    </marker>
+  </defs>
+
+  <text x="40" y="40" class="title">洞见 · 决策推演黄金路径（简版）</text>
+
+  <!-- Stage 1: 输入与建模 -->
+  <rect x="40" y="80" width="280" height="150" rx="12" ry="12" class="stage" />
+  <text x="55" y="105" class="label">阶段一：输入与建模</text>
+  <rect x="55" y="120" width="250" height="40" rx="8" ry="8" class="step" />
+  <text x="65" y="145" class="note">receive_input：接收问题与基础背景</text>
+  <rect x="55" y="165" width="250" height="40" rx="8" ry="8" class="step" />
+  <text x="65" y="190" class="note">enrich_context：补齐上下文（会话/项目记忆）</text>
+
+  <!-- Stage 2: 多视角推演 -->
+  <rect x="360" y="80" width="320" height="200" rx="12" ry="12" class="stage" />
+  <text x="375" y="105" class="label">阶段二：多视角推演</text>
+  <rect x="375" y="120" width="290" height="35" rx="8" ry="8" class="step" />
+  <text x="385" y="142" class="note">fork_roles：并行分叉</text>
+  <rect x="375" y="160" width="140" height="35" rx="8" ry="8" class="step" />
+  <text x="385" y="182" class="note">coach：decision_coach</text>
+  <rect x="525" y="160" width="140" height="35" rx="8" ry="8" class="step" />
+  <text x="535" y="182" class="note">critic：decision_critic</text>
+  <rect x="375" y="200" width="140" height="35" rx="8" ry="8" class="step" />
+  <text x="385" y="222" class="note">mirror：decision_mirror</text>
+  <rect x="525" y="200" width="140" height="35" rx="8" ry="8" class="step" />
+  <text x="535" y="222" class="note">observer：decision_observer</text>
+  <rect x="375" y="240" width="290" height="35" rx="8" ry="8" class="step" />
+  <text x="385" y="262" class="note">join_results：聚合多视角</text>
+
+  <!-- Stage 3: 综合与胶片 -->
+  <rect x="720" y="80" width="320" height="170" rx="12" ry="12" class="stage" />
+  <text x="735" y="105" class="label">阶段三：综合与胶片生成</text>
+  <rect x="735" y="120" width="290" height="40" rx="8" ry="8" class="step" />
+  <text x="745" y="145" class="note">synthesize：advisor_synthesizer 聚合视角</text>
+  <rect x="735" y="165" width="290" height="40" rx="8" ry="8" class="step" />
+  <text x="745" y="190" class="note">generate_film：film_generator 生成胶片/X光片</text>
+  <rect x="735" y="210" width="290" height="40" rx="8" ry="8" class="step" />
+  <text x="745" y="235" class="note">guard_review：守卫校验输出</text>
+
+  <!-- Stage 4: 落地与返回 -->
+  <rect x="260" y="300" width="580" height="150" rx="12" ry="12" class="stage" />
+  <text x="275" y="325" class="label">阶段四：落地与返回</text>
+  <rect x="275" y="340" width="260" height="40" rx="8" ry="8" class="step" />
+  <text x="285" y="365" class="note">write_memory：写入决策记忆 / 审计</text>
+  <rect x="555" y="340" width="270" height="40" rx="8" ry="8" class="step" />
+  <text x="565" y="365" class="note">reply_user：返回洞见 UI，展示胶片与总结</text>
+
+  <!-- Arrows between stages -->
+  <line x1="320" y1="155" x2="360" y2="155" class="arrow" />
+  <text x="320" y="145" class="note">上下文</text>
+
+  <line x1="680" y1="210" x2="720" y2="210" class="arrow" />
+  <text x="660" y="200" class="note">多视角结果</text>
+
+  <line x1="580" y1="300" x2="580" y2="260" class="arrow" />
+  <text x="590" y="285" class="note">胶片/摘要</text>
+
+  <!-- Bottom notes -->
+  <text x="60" y="480" class="note">说明：所有节点均在单个交互式 Workflow 中完成，run_as 默认为 user；若引入离线复盘/重放，将通过独立 Workflow 以 project_runtime 执行。</text>
+</svg>

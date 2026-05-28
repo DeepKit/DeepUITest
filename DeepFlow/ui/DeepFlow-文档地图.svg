@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560">
+  <style>
+    .title { font: bold 20px sans-serif; }
+    .group { fill: #f7f7ff; stroke: #444; stroke-width: 1.2; }
+    .doc { fill: #ffffff; stroke: #777; stroke-width: 1; }
+    .label { font: 12px sans-serif; }
+    .note { font: 11px sans-serif; fill: #555; }
+    .arrow { stroke: #555; stroke-width: 1.4; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555" />
+    </marker>
+  </defs>
+
+  <text x="40" y="40" class="title">UniFlow 文档地图（简版）</text>
+
+  <!-- Product group -->
+  <rect x="40" y="80" width="260" height="130" rx="10" ry="10" class="group" />
+  <text x="55" y="105" class="label">产品 & 概念</text>
+  <rect x="55" y="120" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="65" y="140" class="note">01.01 Product-UniFlow 三层演进规划</text>
+  <rect x="55" y="155" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="65" y="175" class="note">02.01 名词与角色表</text>
+
+  <!-- Arch group -->
+  <rect x="360" y="80" width="260" height="160" rx="10" ry="10" class="group" />
+  <text x="375" y="105" class="label">架构 & 版本策略</text>
+  <rect x="375" y="120" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="385" y="140" class="note">03.01 Arch-UniFlow 架构设计</text>
+  <rect x="375" y="155" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="385" y="175" class="note">03.02 Arch-UniFlow 版本与实验策略</text>
+  <rect x="375" y="190" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="385" y="210" class="note">UniFlow 角色图谱 / 内部角色职能</text>
+
+  <!-- Data/API group -->
+  <rect x="680" y="80" width="260" height="160" rx="10" ry="10" class="group" />
+  <text x="695" y="105" class="label">数据 & 接口</text>
+  <rect x="695" y="120" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="705" y="140" class="note">04.01 Data-UniFlow 数据模型</text>
+  <rect x="695" y="155" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="705" y="175" class="note">05.01 API-UniFlow 接口规范</text>
+  <rect x="695" y="190" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="705" y="210" class="note">05.02 API-UniFlow MCP 支持规划</text>
+
+  <!-- Dev group -->
+  <rect x="40" y="260" width="260" height="190" rx="10" ry="10" class="group" />
+  <text x="55" y="285" class="label">开发规范 & 上手</text>
+  <rect x="55" y="300" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="65" y="320" class="note">06.01 Dev-UniFlow 开发总览</text>
+  <rect x="55" y="335" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="65" y="355" class="note">06.03 / 06.05 / 06.07 Dev 规范</text>
+  <rect x="55" y="370" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="65" y="390" class="note">06.08 外部 MCP 与 Skill 集成指南</text>
+  <rect x="55" y="405" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="65" y="425" class="note">06.09 开发者上手与脚手架指南</text>
+
+  <!-- Security & Quality group -->
+  <rect x="360" y="260" width="260" height="190" rx="10" ry="10" class="group" />
+  <text x="375" y="285" class="label">安全 & 质量</text>
+  <rect x="375" y="300" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="385" y="320" class="note">UniFlow 安全与数据权限策略</text>
+  <rect x="375" y="335" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="385" y="355" class="note">UniFlow 测试策略 / 错误处理策略</text>
+  <rect x="375" y="370" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="385" y="390" class="note">UniFlow 指标体系</text>
+
+  <!-- Cases group -->
+  <rect x="680" y="260" width="260" height="140" rx="10" ry="10" class="group" />
+  <text x="695" y="285" class="label">案例 & 哲学</text>
+  <rect x="695" y="300" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="705" y="320" class="note">07.01 Case-UniFlow 用户旅程案例</text>
+  <rect x="695" y="335" width="230" height="30" rx="6" ry="6" class="doc" />
+  <text x="705" y="355" class="note">UniFlow-AI 能力复用 / Skill 动态增强哲学</text>
+
+  <!-- flows -->
+  <line x1="170" y1="210" x2="490" y2="210" class="arrow" />
+  <text x="260" y="200" class="note">从产品愿景 → 架构设计</text>
+
+  <line x1="490" y1="240" x2="810" y2="240" class="arrow" />
+  <text x="585" y="230" class="note">架构约束数据与接口设计</text>
+
+  <line x1="170" y1="260" x2="170" y2="260" style="visibility:hidden" />
+  <line x1="170" y1="260" x2="170" y2="260" style="visibility:hidden" />
+
+  <line x1="170" y1="210" x2="170" y2="260" class="arrow" />
+  <text x="85" y="245" class="note">开发从这里继续</text>
+
+  <line x1="490" y1="355" x2="810" y2="330" class="arrow" />
+  <text x="545" y="345" class="note">安全与质量要求约束案例设计与实践</text>
+
+</svg>

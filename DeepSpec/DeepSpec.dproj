@@ -102,6 +102,7 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
+        <DCC_MapFile>3</DCC_MapFile>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <DCC_Define>RELEASE;$(DCC_Define)</DCC_Define>
@@ -132,6 +133,7 @@
         <DCCReference Include="src\services\DeepSpec.Services.Decisions.pas"/>
         <DCCReference Include="src\services\DeepSpec.Services.LLM.pas"/>
         <DCCReference Include="src\services\DeepSpec.Services.LLMConfig.pas"/>
+        <DCCReference Include="src\services\DeepSpec.Services.Context.pas"/>
         <DCCReference Include="src\models\DeepSpec.Models.pas"/>
         <DCCReference Include="src\core\DeepSpec.Hash.pas"/>
         <DCCReference Include="src\core\DeepSpec.Yaml.Writer.pas"/>

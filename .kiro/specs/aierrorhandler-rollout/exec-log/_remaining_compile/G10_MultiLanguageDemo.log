@@ -1,0 +1,56 @@
+Embarcadero Delphi for Win64 compiler version 36.0
+Copyright (c) 1983,2024 Embarcadero Technologies, Inc.
+DeepBase\Core\DeepBase.Logging.pas(88) Hint: H2219 Private symbol 'NextRotatedFileName' declared but never used
+DeepBase\Core\DeepBase.AIErrorHandler.pas(137) Warning: W1000 Symbol 'EStackOverflow' is deprecated
+DeepBase\Core\DeepBase.AIErrorHandler.pas(82) Hint: H2219 Private symbol 'GetCacheKey' declared but never used
+DeepBase\Features\DeepBase.Net.Transport.pas(196) Hint: H2443 Inline function 'THTTPClient.SetContentType' has not been expanded because unit 'System.NetConsts' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(154) Hint: H2164 Variable 'ContentArr' is declared but never used in 'TLLMHttpClient.BuildOpenAIVisionRequest'
+DeepBase\Features\DeepBase.LLM.HTTP.pas(156) Hint: H2164 Variable 'I' is declared but never used in 'TLLMHttpClient.BuildOpenAIVisionRequest'
+DeepBase\Features\DeepBase.LLM.HTTP.pas(266) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(299) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(519) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(522) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(523) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(635) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(624) Hint: H2077 Value assigned to 'Done' never used
+DeepBase\Core\DeepBase.i18n.Plural.pas(596) Hint: H2164 Variable 'Idx' is declared but never used in 'TPluralRules.SelectForm'
+DeepBase\Core\DeepBase.PluginManager.pas(885) Hint: H2077 Value assigned to 'TDeepBasePluginManager.IsValidPluginPath' never used
+DeepBase\Core\DeepBase.FormState.pas(416) Hint: H2443 Inline function 'TRttiType.GetHandle' has not been expanded because unit 'System.TypInfo' is not specified in USES list
+DeepBase\Core\DeepBase.Manager.Operational.pas(56) Hint: H2077 Value assigned to 'TDeepBaseManagerOperational.GetRetentionDays' never used
+DeepBase\Core\DeepBase.Manager.pas(581) Hint: H2077 Value assigned to 'TDeepBaseManager.DoLocateConfigDB' never used
+DeepBase\Core\DeepBase.Manager.pas(114) Hint: H2219 Private symbol 'ValidateSchemaVersion' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(117) Hint: H2219 Private symbol 'MigrateSchemaInternal' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(118) Hint: H2219 Private symbol 'RunMigrationScript' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(119) Hint: H2219 Private symbol 'EnsureSchemaColumns' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(121) Hint: H2219 Private symbol 'GetRetentionDays' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(123) Hint: H2219 Private symbol 'TableExists' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(124) Hint: H2219 Private symbol 'TableHasColumn' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(125) Hint: H2219 Private symbol 'ResolveTimeColumn' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(127) Hint: H2219 Private symbol 'ArchiveAndTrimTable' declared but never used
+DeepBase\Core\DeepBase.Crypto.pas(1240) Hint: H2077 Value assigned to 'TPasswordUtils.CheckStrength' never used
+DeepBase\Core\DeepBase.Crypto.pas(2030) Hint: H2077 Value assigned to 'LLen' never used
+DeepBase\Core\DeepBase.Crypto.pas(2023) Hint: H2077 Value assigned to 'LLen' never used
+DeepBase\Core\DeepBase.Crypto.pas(2014) Hint: H2077 Value assigned to 'LLen' never used
+DeepBase\Core\DeepBase.Security.DPAPI.pas(383) Hint: H2077 Value assigned to 'TDPAPIHelper.IsAvailable' never used
+DeepBase\Features\DeepBase.LLM.Proxy.pas(113) Hint: H2077 Value assigned to 'TProxyLLMClient.Probe' never used
+DeepBase\Features\DeepBase.LLM.Proxy.pas(146) Hint: H2443 Inline function 'THTTPClient.SetContentType' has not been expanded because unit 'System.NetConsts' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(220) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(271) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(373) Hint: H2443 Inline function 'THTTPClient.SetContentType' has not been expanded because unit 'System.NetConsts' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(417) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Service.pas(384) Hint: H2077 Value assigned to 'Idx' never used
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(119) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(120) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(120) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(121) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(121) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(124) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(125) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(126) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(127) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(128) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(128) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(129) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(130) Error: E2052 Unterminated string
+DeepBase\Examples\MultiLanguageDemo\MainForm.pas(131) Error: E2029 ')' expected but identifier 'UB' found
+DeepBase\Examples\MultiLanguageDemo\MultiLanguageDemo.dpr(21) Fatal: F2063 Could not compile used unit 'MainForm.pas'

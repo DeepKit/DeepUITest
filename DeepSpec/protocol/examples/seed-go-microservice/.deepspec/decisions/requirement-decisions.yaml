@@ -1,0 +1,29 @@
+version: "1.0"
+
+decisions:
+  - id: "dec-001"
+    type: scope
+    title: "MVP scope is registration + login only"
+    decision: "First release includes user registration and JWT login. Profile management is deferred."
+    rationale: "Team agreed to ship auth first, profile in v1.1"
+    target_nodes:
+      - "func-user-service"
+      - "func-profile"
+    affected_relations: []
+    affected_requirements: []
+    affected_views: []
+    affected_modules: []
+    resolved_issues: []
+    source_refs:
+      - ref_id: "ev-readme"
+        relevance: supporting
+    ai_instruction: "Do not implement profile endpoints in v1.0. Focus on registration and login."
+    priority: P0
+    release: "v1.0"
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    decided_by: human
+    confidence: high
+    status: accepted
+    superseded_by: null
+    supersedes: []

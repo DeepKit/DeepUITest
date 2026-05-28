@@ -192,3 +192,16 @@ YAML 是 B 的机器事实数据，HTML/DeepShell 原生控件是审阅界面；
 - AI Agent 治理；
 - CLI 调度工作台；
 - 多人协作和企业审批。
+
+---
+
+## 2026-05-20 更新
+
+当前对外工程入口以以下文件为准：
+
+1. `../README.md`：DeepSpec 对外项目入口。
+2. `../SPEC.md`：DeepSpec v1.2-draft 规格入口。
+3. `CTF.md`：CTF 在 DeepSpec 中的工程解释。
+4. `DeepSpec-文档优化审查报告-2026-05-20.md`：本轮文档问题和修正记录。
+
+旧文档中“三棵树”的说法保留历史意义；新协议目标口径为四投影：function-tree、module-tree、view-tree、data-tree。

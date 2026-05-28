@@ -1,70 +1,48 @@
-# DeepSpec Reader Profile v1
+# DeepSpec Reader Profile v1.2-draft
 
 > Minimum specification for tools that consume `.deepspec/` directories.
 
----
-
-## Purpose
-
-A "DeepSpec Reader" is any tool that reads `.deepspec/` facts to provide value to users. This document defines the minimum compliance requirements.
-
----
-
-## Compliance Levels
-
-### Level 0: Scanner Reader
-
-Can read scan results and file classification.
+## Level 0: Scanner Reader
 
 | Capability | Required |
-|-----------|----------|
-| Parse `project-spec.yaml` | Yes |
+|---|---|
+| Detect `.deepspec/project-spec.yaml` | Yes |
 | Read `project.name`, `project.type`, `project.scan_time` | Yes |
 | Read `summary.*` counters | Yes |
-| Handle missing file gracefully | Yes |
+| Report missing project cleanly | Yes |
 
-### Level 1: Tree Reader
-
-Can navigate the three requirement trees.
+## Level 1: Tree Reader
 
 | Capability | Required |
-|-----------|----------|
+|---|---|
 | All Level 0 capabilities | Yes |
 | Parse `trees/function-tree.yaml` | Yes |
 | Parse `trees/module-tree.yaml` | Yes |
 | Parse `trees/view-tree.yaml` | Yes |
-| Reconstruct parent-child hierarchy from `parent_id` | Yes |
+| Parse `trees/data-tree.yaml` when referenced or present | Yes |
+| Reconstruct hierarchy from `parent_id` | Yes |
 | Handle empty `nodes: []` | Yes |
-| Apply default values for missing optional fields | Yes |
-| Distinguish `status` values visually | Recommended |
-| Distinguish `source_layer` values | Recommended |
+| Apply defaults for optional fields | Yes |
 | Handle `x_` extension kinds without error | Yes |
+| Warn on unknown non-extension kinds | Yes |
 
-### Level 2: Full Reader
-
-Can consume all fact types including evidence, issues, and decisions.
+## Level 2: Full Reader
 
 | Capability | Required |
-|-----------|----------|
+|---|---|
 | All Level 1 capabilities | Yes |
-| Parse `relations/requirement-relations.yaml` | Yes |
-| Parse `evidence/source-evidence.yaml` | Yes |
-| Parse `issues/doc-issues.yaml` | Yes |
-| Parse `decisions/requirement-decisions.yaml` | Yes |
+| Parse relations, evidence, issues, and decisions | Yes |
 | Resolve `source_refs[].ref_id` to evidence entries | Yes |
-| Respect decision priority (accepted > candidate) | Yes |
-| Expose `ai_instruction` from accepted decisions | Recommended |
-| Validate against JSON Schema | Recommended |
-| Detect `is_stale` evidence | Recommended |
-
----
+| Expose accepted `ai_instruction` values | Recommended |
+| Detect stale evidence | Recommended |
+| Parse semantic bundles when present | Recommended |
 
 ## Default Values
 
-When optional fields are missing, readers MUST apply these defaults:
-
 ```yaml
-status: candidate
+gen_status: generated
+review_status: pending
+status: candidate          # legacy compatibility only
 confidence: medium
 source_layer: ai_inferred
 revision: 1
@@ -74,6 +52,7 @@ issue_refs: []
 related_functions: []
 related_modules: []
 related_views: []
+related_data: []
 children: []
 tags: []
 acceptance_criteria: []
@@ -81,45 +60,18 @@ not_doing: []
 slug_override: null
 ```
 
----
-
 ## Error Handling
 
 | Situation | Required behavior |
-|-----------|------------------|
+|---|---|
 | `project-spec.yaml` missing | Report "not a DeepSpec project" |
-| Tree file referenced but missing | Warning, continue with empty tree |
-| Unknown `kind` value (no `x_` prefix) | Warning, treat as unknown |
-| Unknown `kind` value (with `x_` prefix) | Accept silently |
-| Unknown fields in YAML | Ignore silently (forward compatibility) |
-| `version` mismatch | Warning, attempt parse anyway |
-| Malformed YAML | Error, report file and location |
-
----
-
-## Testing Compliance
-
-Use the seed projects in `examples/` to verify your reader:
-
-1. `seed-react-web/` — Web project with all fact types populated
-2. `seed-go-microservice/` — Backend with empty view tree
-
-Your reader passes Level 1 if it can:
-- Load both seed projects without error
-- Display all nodes from all three trees
-- Show correct parent-child relationships
-- Not crash on empty `nodes: []`
-
----
+| Optional tree referenced but missing | Warning, continue with empty tree |
+| Required v1.0 tree missing | Warning, continue with partial data if possible |
+| Unknown `x_` field or kind | Ignore or preserve silently |
+| Unknown core field | Warning, attempt parse anyway |
+| Version mismatch | Warning, attempt parse anyway |
+| Malformed YAML | Error with file and location |
 
 ## Non-Goals
 
-A Reader Profile does NOT require:
-- Writing to `.deepspec/`
-- Generating HTML
-- Running LLM tasks
-- Validating content_hash
-- Implementing incremental patch mode
-- Supporting the full validation/merge pipeline
-
-These are Writer capabilities, defined separately.
+A reader does not need to write `.deepspec/`, run LLM calls, render HTML, or enforce all invariants. Those are writer/gate capabilities.

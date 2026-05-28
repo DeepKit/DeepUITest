@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:8080']
+    metrics_path: /nginx_status
+
+  - job_name: 'python-skills'
+    static_configs:
+      - targets: ['skills-python:8000']
+    metrics_path: /metrics
+
+  - job_name: 'nodejs-skills'
+    static_configs:
+      - targets: ['skills-nodejs:3000']
+    metrics_path: /metrics
+
+rule_files:
+  - alert.rules.yml

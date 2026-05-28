@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/spec-snapshot.schema.json",
+  "title": "DeepSpec Snapshot",
+  "type": "object",
+  "required": ["version", "snapshot_id", "created_at", "source_project", "files"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0", "1.1", "1.2"]},
+    "snapshot_id": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source_project": {"type": "string"},
+    "files": {"type": "array", "items": {"type": "object", "required": ["path", "sha256"], "additionalProperties": true}},
+    "review_basis": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"}
+  }
+}

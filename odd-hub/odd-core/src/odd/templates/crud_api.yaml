@@ -1,0 +1,31 @@
+id: crud_api
+name: CRUD API 契约
+description: 增删改查 API 的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["create", "insert", "add", "post", "POST"]
+      reason: 必须包含创建操作
+      severity: critical
+    - patterns: ["read", "get", "find", "select", "GET"]
+      reason: 必须包含读取操作
+      severity: critical
+  must_not_contain:
+    - patterns: ["eval(", "exec("]
+      reason: 禁止使用 eval/exec
+      severity: critical
+    - patterns: ["SELECT *", "select *"]
+      reason: 禁止 SELECT * 查询
+      severity: high
+  should_contain:
+    - patterns: ["update", "put", "patch", "PUT", "PATCH"]
+      reason: 建议包含更新操作
+      severity: high
+    - patterns: ["delete", "remove", "destroy", "DELETE"]
+      reason: 建议包含删除操作
+      severity: high
+    - patterns: ["try", "except", "catch", "error"]
+      reason: 建议添加错误处理
+      severity: high
+    - patterns: ["pagination", "page", "limit", "offset"]
+      reason: 建议列表接口支持分页
+      severity: medium

@@ -1,0 +1,12 @@
+{
+  "ts": "2026-05-28T04:32:13.504+08:00",
+  "success": true,
+  "duration_sec": 4,
+  "msbuild_exit": 0,
+  "project": "D:\\_Progs\\02Business\\DeepDevLite\\DeepDevLite.dproj",
+  "config": "Debug",
+  "platform": "Win64",
+  "errors": [],
+  "warnings": [],
+  "log_path": "D:\\_Progs\\02Business\\DeepDevLite\\autofix-output\\compile-errors.log"
+}

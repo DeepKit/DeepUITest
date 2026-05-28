@@ -1,0 +1,14 @@
+The following {LANGUAGE} code failed verification.
+
+Failed scenarios:
+{FAILED_SCENARIOS}
+
+Contract:
+{CONTRACT_YAML}
+
+Original code:
+```{LANGUAGE_LOWER}
+{SOURCE_CODE}
+```
+
+Fix the code so ALL scenarios pass. Output ONLY the fixed code.

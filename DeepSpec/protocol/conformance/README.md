@@ -1,62 +1,38 @@
 # DeepSpec Conformance Test Suite
 
-Automated tests to verify a reader implementation meets the DeepSpec Reader Profile.
+This directory contains a lightweight Python runner for checking reader behavior against the DeepSpec Reader Profile.
 
-## Structure
+## Actual Layout
 
-```
+```text
 conformance/
-├── level-0/          Tests for Scanner Reader
-├── level-1/          Tests for Tree Reader
-├── level-2/          Tests for Full Reader
-├── fixtures/         Test .deepspec directories
-└── run.sh            Test runner (calls your reader)
+  README.md
+  run.py
+  fixtures/
+    valid-minimal/
+    valid-extension-kinds/
 ```
 
-## How to use
+## Reader CLI Contract
 
-1. Implement a CLI wrapper for your reader that outputs JSON:
+The runner expects your reader command to support:
 
 ```bash
-your-reader project-info <path>    → { "name": "...", "type": "..." }
-your-reader tree <path> function   → { "nodes": [...] }
-your-reader find-node <path> <id>  → { "id": "...", "title": "..." } | null
+your-reader exists <path>       # -> {"exists": true|false}
+your-reader project <path>      # -> {"name": "...", "type": "...", "total_nodes": 0}
+your-reader tree <path> function
+your-reader tree <path> module
+your-reader tree <path> view
+your-reader find <path> <id>
+your-reader decisions <path>
 ```
 
-2. Run conformance tests:
+## Run
 
 ```bash
-./run.sh --reader "your-reader" --level 1
+python protocol/conformance/run.py --reader "your-reader" --level 1
 ```
 
-3. All tests pass → you can claim "DeepSpec Reader Level 1 compatible".
+## Current Coverage
 
-## Test Categories
-
-### Level 0
-
-- `t001_project_exists`: Can detect .deepspec presence
-- `t002_project_info`: Can read project name, type, scan_time
-- `t003_summary`: Can read summary counters
-- `t004_missing_graceful`: Returns error (not crash) for missing project-spec
-
-### Level 1
-
-- `t101_function_tree`: Can load function tree nodes
-- `t102_module_tree`: Can load module tree nodes
-- `t103_view_tree`: Can load view tree (including empty)
-- `t104_hierarchy`: Correctly reconstructs parent-child from parent_id
-- `t105_defaults`: Applies defaults for missing optional fields
-- `t106_extension_kind`: Handles x_ prefix kinds without error
-- `t107_all_nodes`: Can aggregate nodes across trees
-- `t108_find_by_id`: Can find specific node by ID
-
-### Level 2
-
-- `t201_relations`: Can load and traverse relations
-- `t202_evidence`: Can load evidence and resolve ref_ids
-- `t203_issues`: Can load issues
-- `t204_decisions`: Can load decisions
-- `t205_accepted_priority`: Accepted decisions override candidates
-- `t206_ai_instructions`: Can extract ai_instruction strings
-- `t207_stale_evidence`: Can detect is_stale=true evidence
+The current runner checks Level 0, Level 1, and part of Level 2. It does not yet cover all v1.2-draft features such as `data-tree`, semantic bundles, or review-decision levels. Those should be added before claiming full v1.2 conformance.

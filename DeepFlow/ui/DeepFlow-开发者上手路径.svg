@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="420" viewBox="0 0 1000 420">
+  <style>
+    .title { font: bold 20px sans-serif; }
+    .step { fill: #ffffff; stroke: #444; stroke-width: 1.2; }
+    .label { font: 13px sans-serif; }
+    .note { font: 11px sans-serif; fill: #555; }
+    .arrow { stroke: #555; stroke-width: 1.5; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555" />
+    </marker>
+  </defs>
+
+  <text x="40" y="40" class="title">UniFlow 开发者上手路径</text>
+
+  <!-- steps row -->
+  <rect x="40" y="90" width="160" height="90" rx="10" ry="10" class="step" />
+  <text x="55" y="115" class="label">1. 理解整体</text>
+  <text x="55" y="135" class="note">阅读 06.01 开发总览</text>
+  <text x="55" y="152" class="note">+ 02.01 名词与角色表</text>
+
+  <rect x="240" y="90" width="160" height="90" rx="10" ry="10" class="step" />
+  <text x="255" y="115" class="label">2. 环境准备</text>
+  <text x="255" y="135" class="note">配置 Delphi / Python</text>
+  <text x="255" y="152" class="note">本地数据库与配置</text>
+
+  <rect x="440" y="90" width="160" height="90" rx="10" ry="10" class="step" />
+  <text x="455" y="115" class="label">3. 第一个 Skill</text>
+  <text x="455" y="135" class="note">Delphi 或 Python Skill</text>
+  <text x="455" y="152" class="note">注册到 Skill Registry</text>
+
+  <rect x="640" y="90" width="160" height="90" rx="10" ry="10" class="step" />
+  <text x="655" y="115" class="label">4. 第一个 Workflow</text>
+  <text x="655" y="135" class="note">选择 07.01 中简化用例</text>
+  <text x="655" y="152" class="note">配置节点与 run_as</text>
+
+  <rect x="840" y="90" width="160" height="90" rx="10" ry="10" class="step" />
+  <text x="855" y="115" class="label">5. 调试 & 发布</text>
+  <text x="855" y="135" class="note">本地调试 / 日志 / 测试</text>
+  <text x="855" y="152" class="note">版本与实验配置</text>
+
+  <!-- arrows -->
+  <line x1="200" y1="135" x2="240" y2="135" class="arrow" />
+  <line x1="400" y1="135" x2="440" y2="135" class="arrow" />
+  <line x1="600" y1="135" x2="640" y2="135" class="arrow" />
+  <line x1="800" y1="135" x2="840" y2="135" class="arrow" />
+
+  <!-- bottom notes -->
+  <text x="60" y="230" class="note">建议对照 06.09《开发者上手与脚手架指南》逐步完成每一步。</text>
+  <text x="60" y="250" class="note">安全与运行时主体（run_as）相关细节参见《UniFlow-安全与数据权限策略-v1.0.md》4.4 小节。</text>
+</svg>

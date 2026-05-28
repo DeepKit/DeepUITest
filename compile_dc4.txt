@@ -1,0 +1,19 @@
+Embarcadero Delphi for Win64 compiler version 36.0
+Copyright (c) 1983,2024 Embarcadero Technologies, Inc.
+DeepBase\Core\DeepBase.i18n.Plural.pas(596) Hint: H2164 Variable 'Idx' is declared but never used in 'TPluralRules.SelectForm'
+DeepBase\Core\DeepBase.Logging.pas(88) Hint: H2219 Private symbol 'NextRotatedFileName' declared but never used
+DeepBase\Core\DeepBase.PluginManager.pas(885) Hint: H2077 Value assigned to 'TDeepBasePluginManager.IsValidPluginPath' never used
+DeepBase\Core\DeepBase.FormState.pas(416) Hint: H2443 Inline function 'TRttiType.GetHandle' has not been expanded because unit 'System.TypInfo' is not specified in USES list
+DeepBase\Core\DeepBase.Manager.Operational.pas(56) Hint: H2077 Value assigned to 'TDeepBaseManagerOperational.GetRetentionDays' never used
+DeepBase\Core\DeepBase.Manager.pas(581) Hint: H2077 Value assigned to 'TDeepBaseManager.DoLocateConfigDB' never used
+DeepBase\Core\DeepBase.Manager.pas(114) Hint: H2219 Private symbol 'ValidateSchemaVersion' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(117) Hint: H2219 Private symbol 'MigrateSchemaInternal' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(118) Hint: H2219 Private symbol 'RunMigrationScript' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(119) Hint: H2219 Private symbol 'EnsureSchemaColumns' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(121) Hint: H2219 Private symbol 'GetRetentionDays' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(123) Hint: H2219 Private symbol 'TableExists' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(124) Hint: H2219 Private symbol 'TableHasColumn' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(125) Hint: H2219 Private symbol 'ResolveTimeColumn' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(127) Hint: H2219 Private symbol 'ArchiveAndTrimTable' declared but never used
+DeepCompare\delphi\DeepCompare.dpr(49) Fatal: F2613 Unit 'DeepBase.Persistence.Manager.FireDAC' not found.
+EXIT=1 

@@ -1,0 +1,16 @@
+version: "1.0"
+tree: view
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+# Backend API - view tree represents API endpoints as "views"
+nodes:
+  - id: "view-swagger"
+    tree: view
+    title: "Swagger UI"
+    kind: page
+    parent_id: null
+    summary: "Auto-generated API documentation at /docs"
+    status: candidate
+    confidence: high
+    source_layer: parsed_from_a

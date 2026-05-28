@@ -1,0 +1,125 @@
+version: "1.0"
+tree: data
+generated_at: "2026-05-19T00:0000+08:00"
+generator: "DeepSpec v2.0"
+
+nodes:
+  - id:-user
+    tree: data
+    title: "User"
+    kind: entity
+    persistence: db
+    confidence: high
+    status: candidate
+    source_layer: ai_inferred
+    children:
+      - data-user-id
+      - data-user-name
+      - data-user-email
+      - data-user-password-hash
+      - data-user-created-at
+      - data-user-status
+    risk_score: medium
+
+  - id: data-user-id
+    tree: data
+    title: "User ID"
+    kind: field
+    parent_id: data-user
+    data_type: "uuid"
+    nullable: false
+    confidence: high
+    status: candidate
+    source_layer: ai_inferred
+
+  - id: data-user-name
+    tree: data
+    title: "User Name"
+    kind: field
+    parent_id: data-user
+    data_type: "string"
+    nullable: false
+    confidence: high
+    status: candidate
+    source_layer: ai_inferred
+
+  - id: data-user-email
+    tree: data
+    title: "User Email"
+    kind: field
+    parent_id: data-user
+    data_type: "string"
+    nullable: false
+    field_constraints:
+      - unique
+    confidence: high
+    status: candidate
+    source_layer: ai_inferred
+
+  - id: data-user-password-hash
+    tree: data
+    title: "Password Hash"
+    kind: field
+    parent_id: data-user
+    data_type "string"
+    nullable: false
+    confidence: high
+    status: candidate
+    source_layer: ai_inferred
+
+  - id: data-user-created-at
+    tree: data
+    title: "Created At"
+    kind: field
+    parent_id: data-user
+    data_type: "datetime"
+    nullable: false
+    confidence: high
+    status: candidate
+    source_layer:_inferred
+
+  - id: data-user-status
+    tree: data
+    title: "User Status"
+    kind: field
+   _id: data-user
+    data_type: "string"
+    nullable: false
+    confidence: high
+    status: candidate
+    source_layer: ai_inferred
+
+  - id: data-user-state
+    tree: data
+    title: "User Account State"
+    kind: state
+    summary: "User account lifecycle states"
+    valid_states:
+      - active
+      - suspended
+      - deactivated
+    transitions:
+      - from: active
+        to: suspended
+        trigger: "admin_action"
+      - from: suspended
+        to: active
+        trigger: "admin_action"
+      - from: active
+        to: deactivated
+        trigger: "user_request"
+    risk_score: medium
+    confidence: medium
+    status: candidate
+    source_layer: ai_inferred
+
+  - id: data-user-session
+    tree: data
+    title: "User Session"
+    kind: entity
+    persistence: memory
+    confidence: medium
+    status: candidate
+    source_layer: ai_inferred
+    risk_score: high
+    summary: "Session data stored in memory, not persisted. Risk: no locking on concurrent access."

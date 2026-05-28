@@ -1,0 +1,317 @@
+{
+  "$schema": "../schema/workflow.schema.json",
+  "id": "template-ai-chat",
+  "name": "AI 智能对话工作�?,
+  "description": "带上下文管理的多�?AI 对话流程，支持工具调�?,
+  "version": "1.0.0",
+  "category": "ai",
+  "tags": ["AI", "对话", "LLM", "Agent"],
+  
+  "input": {
+    "properties": {
+      "sessionId": { "type": "string", "description": "会话ID" },
+      "userId": { "type": "string", "description": "用户ID" },
+      "message": { "type": "string", "description": "用户消息" },
+      "context": { "type": "object", "description": "额外上下�? }
+    },
+    "required": ["sessionId", "userId", "message"]
+  },
+  
+  "output": {
+    "properties": {
+      "reply": { "type": "string" },
+      "toolResults": { "type": "array" },
+      "suggestions": { "type": "array" }
+    }
+  },
+  
+  "variables": {
+    "hiDeepStory": [],
+    "systemPrompt": "",
+    "tools": [],
+    "llmResponse": null,
+    "toolCalls": [],
+    "toolResults": []
+  },
+  
+  "steps": [
+    {
+      "id": "load-session",
+      "name": "加载会话",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "session/load",
+        "params": {
+          "sessionId": "{{ input.sessionId }}",
+          "userId": "{{ input.userId }}"
+        }
+      },
+      "output": {
+        "mapping": {
+          "hiDeepStory": "result.hiDeepStory",
+          "systemPrompt": "result.systemPrompt",
+          "tools": "result.availableTools"
+        }
+      }
+    },
+    
+    {
+      "id": "add-user-message",
+      "name": "添加用户消息",
+      "type": "action",
+      "action": {
+        "type": "script",
+        "script": "AppendToHiDeepStory",
+        "params": {
+          "hiDeepStory": "{{ vars.hiDeepStory }}",
+          "role": "user",
+          "content": "{{ input.message }}"
+        }
+      },
+      "output": {
+        "variable": "hiDeepStory"
+      }
+    },
+    
+    {
+      "id": "llm-call",
+      "name": "调用 LLM",
+      "type": "action",
+      "action": {
+        "type": "llm",
+        "model": "gpt-4",
+        "params": {
+          "systemPrompt": "{{ vars.systemPrompt }}",
+          "messages": "{{ vars.hiDeepStory }}",
+          "tools": "{{ vars.tools }}",
+          "temperature": 0.7,
+          "maxTokens": 2000
+        }
+      },
+      "output": {
+        "variable": "llmResponse"
+      },
+      "timeout": "60s"
+    },
+    
+    {
+      "id": "check-tool-calls",
+      "name": "检查工具调�?,
+      "type": "condition",
+      "condition": {
+        "field": "vars.llmResponse.toolCalls",
+        "operator": "isNotEmpty"
+      },
+      "branches": [
+        {
+          "when": true,
+          "steps": [
+            {
+              "id": "tool-call-loop",
+              "name": "执行工具调用",
+              "type": "loop",
+              "loop": {
+                "mode": "forEach",
+                "collection": "{{ vars.llmResponse.toolCalls }}",
+                "itemVariable": "toolCall",
+                "indexVariable": "toolIndex",
+                "maxIterations": 10
+              },
+              "steps": [
+                {
+                  "id": "execute-tool",
+                  "name": "执行工具",
+                  "type": "action",
+                  "action": {
+                    "type": "skill",
+                    "skillId": "{{ toolCall.function.name }}",
+                    "params": "{{ toolCall.function.arguments | fromJson }}"
+                  },
+                  "output": {
+                    "variable": "toolOutput"
+                  },
+                  "timeout": "30s",
+                  "retry": {
+                    "maxAttempts": 2,
+                    "backoff": "fixed",
+                    "delay": "1s"
+                  }
+                },
+                {
+                  "id": "collect-tool-result",
+                  "name": "收集工具结果",
+                  "type": "action",
+                  "action": {
+                    "type": "script",
+                    "script": "AppendToolResult",
+                    "params": {
+                      "toolResults": "{{ vars.toolResults }}",
+                      "toolCallId": "{{ toolCall.id }}",
+                      "result": "{{ vars.toolOutput }}"
+                    }
+                  },
+                  "output": {
+                    "variable": "toolResults"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "add-tool-results",
+              "name": "添加工具结果到历�?,
+              "type": "action",
+              "action": {
+                "type": "script",
+                "script": "AppendToolResultsToHiDeepStory",
+                "params": {
+                  "hiDeepStory": "{{ vars.hiDeepStory }}",
+                  "assistantMessage": "{{ vars.llmResponse }}",
+                  "toolResults": "{{ vars.toolResults }}"
+                }
+              },
+              "output": {
+                "variable": "hiDeepStory"
+              }
+            },
+            {
+              "id": "llm-followup",
+              "name": "LLM 跟进回复",
+              "type": "action",
+              "action": {
+                "type": "llm",
+                "model": "gpt-4",
+                "params": {
+                  "systemPrompt": "{{ vars.systemPrompt }}",
+                  "messages": "{{ vars.hiDeepStory }}",
+                  "temperature": 0.7,
+                  "maxTokens": 2000
+                }
+              },
+              "output": {
+                "variable": "llmResponse"
+              }
+            }
+          ]
+        },
+        {
+          "default": true,
+          "steps": []
+        }
+      ]
+    },
+    
+    {
+      "id": "add-assistant-message",
+      "name": "添加助手回复",
+      "type": "action",
+      "action": {
+        "type": "script",
+        "script": "AppendToHiDeepStory",
+        "params": {
+          "hiDeepStory": "{{ vars.hiDeepStory }}",
+          "role": "assistant",
+          "content": "{{ vars.llmResponse.content }}"
+        }
+      },
+      "output": {
+        "variable": "hiDeepStory"
+      }
+    },
+    
+    {
+      "id": "generate-suggestions",
+      "name": "生成建议问题",
+      "type": "action",
+      "action": {
+        "type": "llm",
+        "model": "gpt-3.5-turbo",
+        "params": {
+          "systemPrompt": "根据对话上下文，生成3个用户可能想问的后续问题。只返回JSON数组格式�?,
+          "messages": [
+            {
+              "role": "user",
+              "content": "对话历史：{{ vars.hiDeepStory | last(4) | toJson }}"
+            }
+          ],
+          "temperature": 0.5,
+          "maxTokens": 200
+        }
+      },
+      "output": {
+        "variable": "suggestions"
+      },
+      "condition": {
+        "field": "vars.llmResponse.content",
+        "operator": "isNotEmpty"
+      }
+    },
+    
+    {
+      "id": "save-session",
+      "name": "保存会话",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "session/save",
+        "params": {
+          "sessionId": "{{ input.sessionId }}",
+          "hiDeepStory": "{{ vars.hiDeepStory }}",
+          "metadata": {
+            "lastUpdated": "{{ now() }}",
+            "messageCount": "{{ vars.hiDeepStory | length }}"
+          }
+        }
+      }
+    },
+    
+    {
+      "id": "end",
+      "name": "返回结果",
+      "type": "end",
+      "output": {
+        "mapping": {
+          "reply": "{{ vars.llmResponse.content }}",
+          "toolResults": "{{ vars.toolResults }}",
+          "suggestions": "{{ vars.suggestions | fromJson | default([]) }}"
+        }
+      }
+    }
+  ],
+  
+  "errorHandling": {
+    "onError": "fallback",
+    "fallback": {
+      "steps": [
+        {
+          "id": "error-response",
+          "name": "错误回复",
+          "type": "action",
+          "action": {
+            "type": "script",
+            "script": "GenerateErrorResponse",
+            "params": {
+              "error": "{{ error }}",
+              "userFriendly": true
+            }
+          },
+          "output": {
+            "variable": "errorReply"
+          }
+        },
+        {
+          "id": "end-error",
+          "name": "返回错误",
+          "type": "end",
+          "output": {
+            "mapping": {
+              "reply": "{{ vars.errorReply }}",
+              "toolResults": [],
+              "suggestions": []
+            }
+          }
+        }
+      ]
+    }
+  }
+}

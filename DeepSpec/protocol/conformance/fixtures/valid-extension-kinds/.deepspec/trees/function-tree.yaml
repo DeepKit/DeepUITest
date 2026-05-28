@@ -1,0 +1,19 @@
+version: "1.0"
+tree: function
+generated_at: "2026-05-15T00:00:00Z"
+generator: "test"
+
+nodes:
+  - id: "func-workflow"
+    tree: function
+    title: "Custom Workflow"
+    kind: x_workflow
+    parent_id: null
+    summary: "A custom extension kind"
+
+  - id: "func-saga"
+    tree: function
+    title: "Order Saga"
+    kind: x_saga
+    parent_id: "func-workflow"
+    summary: "Distributed transaction pattern"

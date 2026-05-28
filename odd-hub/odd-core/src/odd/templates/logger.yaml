@@ -1,0 +1,25 @@
+id: logger
+name: 日志模块契约
+description: 应用日志记录模块的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["log", "logger", "logging", "Logger", "getLogger"]
+      reason: 必须引用日志模块或 logger 实例
+      severity: critical
+  must_not_contain:
+    - patterns: ["password", "secret", "token", "api_key", "credit_card"]
+      reason: 禁止在日志中记录敏感信息
+      severity: critical
+    - patterns: ["print("]
+      reason: 禁止用 print 替代日志（无法控制级别和输出目标）
+      severity: high
+  should_contain:
+    - patterns: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "debug(", "info(", "warning(", "error("]
+      reason: 建议使用明确的日志级别
+      severity: high
+    - patterns: ["format", "formatter", "%(", "{%", "structlog", "json"]
+      reason: 建议使用结构化日志格式
+      severity: medium
+    - patterns: ["handler", "FileHandler", "StreamHandler", "RotatingFileHandler"]
+      reason: 建议配置日志输出目标
+      severity: medium

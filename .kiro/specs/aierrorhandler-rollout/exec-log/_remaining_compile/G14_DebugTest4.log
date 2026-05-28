@@ -1,0 +1,83 @@
+Embarcadero Delphi for Win64 compiler version 36.0
+Copyright (c) 1983,2024 Embarcadero Technologies, Inc.
+DeepBase\Core\DeepBase.Logging.pas(88) Hint: H2219 Private symbol 'NextRotatedFileName' declared but never used
+DeepBase\Core\DeepBase.AIErrorHandler.pas(137) Warning: W1000 Symbol 'EStackOverflow' is deprecated
+DeepBase\Core\DeepBase.AIErrorHandler.pas(82) Hint: H2219 Private symbol 'GetCacheKey' declared but never used
+DeepBase\Features\DeepBase.Net.Transport.pas(196) Hint: H2443 Inline function 'THTTPClient.SetContentType' has not been expanded because unit 'System.NetConsts' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(154) Hint: H2164 Variable 'ContentArr' is declared but never used in 'TLLMHttpClient.BuildOpenAIVisionRequest'
+DeepBase\Features\DeepBase.LLM.HTTP.pas(156) Hint: H2164 Variable 'I' is declared but never used in 'TLLMHttpClient.BuildOpenAIVisionRequest'
+DeepBase\Features\DeepBase.LLM.HTTP.pas(266) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(299) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(519) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(522) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(523) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(635) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.HTTP.pas(624) Hint: H2077 Value assigned to 'Done' never used
+DeepBase\Core\DeepBase.i18n.Plural.pas(596) Hint: H2164 Variable 'Idx' is declared but never used in 'TPluralRules.SelectForm'
+DeepBase\Core\DeepBase.PluginManager.pas(885) Hint: H2077 Value assigned to 'TDeepBasePluginManager.IsValidPluginPath' never used
+DeepBase\Core\DeepBase.FormState.pas(416) Hint: H2443 Inline function 'TRttiType.GetHandle' has not been expanded because unit 'System.TypInfo' is not specified in USES list
+DeepBase\Core\DeepBase.Manager.Operational.pas(56) Hint: H2077 Value assigned to 'TDeepBaseManagerOperational.GetRetentionDays' never used
+DeepBase\Core\DeepBase.Manager.pas(581) Hint: H2077 Value assigned to 'TDeepBaseManager.DoLocateConfigDB' never used
+DeepBase\Core\DeepBase.Manager.pas(114) Hint: H2219 Private symbol 'ValidateSchemaVersion' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(117) Hint: H2219 Private symbol 'MigrateSchemaInternal' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(118) Hint: H2219 Private symbol 'RunMigrationScript' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(119) Hint: H2219 Private symbol 'EnsureSchemaColumns' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(121) Hint: H2219 Private symbol 'GetRetentionDays' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(123) Hint: H2219 Private symbol 'TableExists' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(124) Hint: H2219 Private symbol 'TableHasColumn' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(125) Hint: H2219 Private symbol 'ResolveTimeColumn' declared but never used
+DeepBase\Core\DeepBase.Manager.pas(127) Hint: H2219 Private symbol 'ArchiveAndTrimTable' declared but never used
+DeepBase\Core\DeepBase.Crypto.pas(1240) Hint: H2077 Value assigned to 'TPasswordUtils.CheckStrength' never used
+DeepBase\Core\DeepBase.Crypto.pas(2030) Hint: H2077 Value assigned to 'LLen' never used
+DeepBase\Core\DeepBase.Crypto.pas(2023) Hint: H2077 Value assigned to 'LLen' never used
+DeepBase\Core\DeepBase.Crypto.pas(2014) Hint: H2077 Value assigned to 'LLen' never used
+DeepBase\Core\DeepBase.Security.DPAPI.pas(383) Hint: H2077 Value assigned to 'TDPAPIHelper.IsAvailable' never used
+DeepBase\Features\DeepBase.LLM.Proxy.pas(113) Hint: H2077 Value assigned to 'TProxyLLMClient.Probe' never used
+DeepBase\Features\DeepBase.LLM.Proxy.pas(146) Hint: H2443 Inline function 'THTTPClient.SetContentType' has not been expanded because unit 'System.NetConsts' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(220) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(271) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(373) Hint: H2443 Inline function 'THTTPClient.SetContentType' has not been expanded because unit 'System.NetConsts' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Proxy.pas(417) Hint: H2443 Inline function 'TJSONArray.GetValue' has not been expanded because unit 'System.Generics.Collections' is not specified in USES list
+DeepBase\Features\DeepBase.LLM.Service.pas(384) Hint: H2077 Value assigned to 'Idx' never used
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(60) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(83) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(84) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(85) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(86) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(87) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(138) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(165) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Config.FireDAC.pas(184) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(138) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(144) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(189) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(190) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(264) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(268) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(293) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(314) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Persistence\DeepBase.Persistence.Manager.FireDAC.pas(315) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(166) Hint: H2164 Variable 'ErrorMsg' is declared but never used in 'TTestDeepBaseManager.Test_InitializeEx_ReturnsErrorMsg'
+DeepBase\Tests\Test.DeepBase.Manager.pas(333) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(334) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(405) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(406) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(407) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(408) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(409) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(410) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(411) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(412) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(418) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(419) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(421) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(422) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(428) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(429) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(431) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(432) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(438) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(439) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(441) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+DeepBase\Tests\Test.DeepBase.Manager.pas(442) Hint: H2443 Inline function 'TFDParam.SetAsString' has not been expanded because unit 'FireDAC.Stan.Param' is not specified in USES list
+22337 lines, 1.22 seconds, 7550932 bytes code, 803404 bytes data.

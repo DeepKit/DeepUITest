@@ -1,0 +1,30 @@
+﻿version: "1.0"
+tree: module
+generated_at: "2026-05-15T22:38:40+08:00"
+generator: "deepspec-treebuilder"
+
+nodes:
+  - id: "mod-docs"
+    tree: module
+    title: "docs Modules"
+    kind: package
+    parent_id: null
+    created_at: "2026-05-15T22:38:40+08:00"
+    updated_at: "2026-05-15T22:38:40+08:00"
+    content_hash: "a0f8c737fabc8b06928caea72454b7b9320dfc915dd7c1be041bfb06ae6bcb14"
+    relation_hash: "c9ca9e69b9fc0d2d9f646e9d879df867e8bc9503fbf713b6c18f99b4a1637187"
+    revision: 1
+    summary: "Top-level module structure derived from directory layout"
+    status: candidate
+    confidence: medium
+    source_layer: parsed_from_a
+    source_refs: []
+    decision_refs: []
+    issue_refs: []
+    related_functions: []
+    related_modules: []
+    related_views: []
+    children: []
+    tags: []
+    acceptance_criteria: []
+    not_doing: []

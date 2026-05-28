@@ -1,0 +1,27 @@
+version: "1.0"
+generated_at: "2026-05-15T09:00:00+08:00"
+
+relations:
+  - id: "rel-crud-api"
+    from: "func-product-crud"
+    to: "mod-api"
+    type: implements
+    confidence: high
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    source_refs:
+      - ref_id: "ev-openapi"
+        relevance: primary
+    decision_refs: []
+    note: "CRUD endpoints in api/ package"
+
+  - id: "rel-crud-swagger"
+    from: "func-product-crud"
+    to: "view-swagger"
+    type: presented_by
+    confidence: high
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    source_refs: []
+    decision_refs: []
+    note: "API documented via Swagger UI"

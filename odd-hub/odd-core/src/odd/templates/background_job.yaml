@@ -1,0 +1,25 @@
+id: background_job
+name: 后台任务契约
+description: 异步后台任务/定时任务的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["task", "job", "worker", "celery", "rq", "apscheduler", "cron", "schedule", "async def", "Thread", "Process"]
+      reason: 必须包含后台任务或异步执行逻辑
+      severity: critical
+  must_not_contain:
+    - patterns: ["sys.exit(", "os._exit(", "os.kill("]
+      reason: 禁止在后台任务中强制退出进程
+      severity: critical
+  should_contain:
+    - patterns: ["try", "except", "catch", "error"]
+      reason: 建议捕获任务异常，防止 worker 崩溃
+      severity: high
+    - patterns: ["retry", "max_retries", "backoff", "countdown"]
+      reason: 建议配置失败重试策略
+      severity: medium
+    - patterns: ["log", "logger", "logging"]
+      reason: 建议记录任务执行日志
+      severity: medium
+    - patterns: ["timeout", "time_limit", "soft_time_limit"]
+      reason: 建议设置任务超时时间
+      severity: medium

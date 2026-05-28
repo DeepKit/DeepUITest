@@ -22,8 +22,9 @@ uses
   FireDAC.DApt,
   DeepBase.Manager,
   DeepBase.Persistence.Manager.FireDAC,
-  DeepBase.AutoFix.ErrorRecorder,
-  DeepBase.AutoFix.ErrorRecorder.VCL,
+  DeepBase.AutoFix,
+  DeepBase.AutoFix.VclHook,
+  DeepBase.AIErrorHandler.Bootstrap,
   DeepSpec.MainForm in 'src\app\DeepSpec.MainForm.pas',
   DeepSpec.Commands in 'src\app\DeepSpec.Commands.pas',
   DeepSpec.Services in 'src\app\DeepSpec.Services.pas',
@@ -37,6 +38,7 @@ uses
   DeepSpec.Services.Decisions in 'src\services\DeepSpec.Services.Decisions.pas',
   DeepSpec.Services.LLM in 'src\services\DeepSpec.Services.LLM.pas',
   DeepSpec.Services.LLMConfig in 'src\services\DeepSpec.Services.LLMConfig.pas',
+  DeepSpec.Services.Context in 'src\services\DeepSpec.Services.Context.pas',
   DeepSpec.Models in 'src\models\DeepSpec.Models.pas',
   DeepSpec.Hash in 'src\core\DeepSpec.Hash.pas',
   DeepSpec.Yaml.Writer in 'src\core\DeepSpec.Yaml.Writer.pas',
@@ -56,8 +58,9 @@ var
 
 begin
   ReportMemoryLeaksOnShutdown := True;
-  TAutoFixErrorRecorder.Install;       // Core (cross-platform)
-  TAutoFixErrorRecorderVCL.HookApplication;  // VCL: hook Application.OnException
+  InstallAIErrorHandler;                     // AI runtime error handler (chains to AutoFix below)
+  AutoFix.Install;
+  TAutoFixVclHook.Install;             // VCL: hook Application.OnException (no-op unless --autofix-mode)
   Application.Initialize;
   Application.MainFormOnTaskbar := True;
   Application.Title := 'DeepSpec';
@@ -76,6 +79,11 @@ begin
         Exit;
       end;
     end;
+    AutoFix.RegisterScenario('smoke',
+      procedure
+      begin
+        // smoke: verify AutoFix infrastructure is alive
+      end);
     Application.Run;
   finally
     DeepBase.Manager.DeepBase.Finalize;

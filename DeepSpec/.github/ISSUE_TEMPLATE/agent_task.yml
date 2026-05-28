@@ -1,0 +1,43 @@
+---
+name: Agent Task
+description: A concrete task suitable for a coding agent or external contributor
+title: "agent: "
+labels: ["agent-task"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What should the agent accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Required context
+      description: List only the files, docs, schemas, or examples needed for this task.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What observable outputs prove the task is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: guardrails
+    attributes:
+      label: Guardrails
+      description: What must not be changed or weakened?
+      value: |
+        - Do not weaken traceability.
+        - Do not collapse orthogonal state fields.
+        - Do not add secrets or local credentials.
+        - Do not rewrite unrelated docs or code.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification command or manual check
+      description: How should the result be verified?
+---

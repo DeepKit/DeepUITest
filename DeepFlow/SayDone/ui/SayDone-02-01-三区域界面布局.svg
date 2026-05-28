@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600">
+  <defs>
+    <linearGradient id="statusGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#334155"/>
+    </linearGradient>
+    <linearGradient id="inputGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8fafc"/>
+      <stop offset="100%" style="stop-color:#e2e8f0"/>
+    </linearGradient>
+    <linearGradient id="previewGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ecfdf5"/>
+      <stop offset="100%" style="stop-color:#d1fae5"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="900" height="600" fill="#f1f5f9"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="30" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#1e293b">三区域界面布局 · Interface Layout</text>
+  
+  <!-- 主界面框架 -->
+  <rect x="50" y="50" width="800" height="500" rx="12" fill="white" stroke="#cbd5e1" stroke-width="2" filter="url(#shadow)"/>
+  
+  <!-- 状态栏 -->
+  <rect x="50" y="50" width="800" height="45" rx="12" fill="url(#statusGrad)"/>
+  <rect x="50" y="80" width="800" height="15" fill="url(#statusGrad)"/>
+  <circle cx="75" cy="72" r="6" fill="#ef4444"/>
+  <circle cx="95" cy="72" r="6" fill="#fbbf24"/>
+  <circle cx="115" cy="72" r="6" fill="#22c55e"/>
+  <text x="450" y="78" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" fill="white">DevDirector - 自然语言交互系统</text>
+  
+  <!-- 状态指示 -->
+  <rect x="700" y="60" width="130" height="25" rx="4" fill="rgba(34,197,94,0.2)"/>
+  <circle cx="715" cy="72" r="5" fill="#22c55e"/>
+  <text x="725" y="77" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#22c55e">● 正在理解...</text>
+  
+  <!-- 标注：状态栏 -->
+  <rect x="860" y="55" width="35" height="35" rx="4" fill="#1e293b"/>
+  <text x="877" y="77" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white">状态</text>
+  
+  <!-- 输入区（左侧） -->
+  <rect x="55" y="100" width="350" height="395" fill="url(#inputGrad)"/>
+  <rect x="55" y="100" width="350" height="35" fill="#3b82f6"/>
+  <text x="230" y="123" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="white">输入区 Input Zone</text>
+  
+  <!-- 对话输入框 -->
+  <rect x="70" y="150" width="320" height="180" rx="8" fill="white" stroke="#cbd5e1"/>
+  
+  <!-- 对话记录 -->
+  <rect x="85" y="165" width="200" height="35" rx="15" fill="#dbeafe"/>
+  <text x="100" y="187" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#1d4ed8">做个登录页面</text>
+  
+  <rect x="135" y="210" width="180" height="35" rx="15" fill="#dcfce7"/>
+  <text x="150" y="232" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#15803d">好的，这样可以吗？</text>
+  
+  <rect x="85" y="255" width="120" height="35" rx="15" fill="#dbeafe"/>
+  <text x="100" y="277" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#1d4ed8">蓝色的</text>
+  
+  <rect x="135" y="300" width="150" height="25" rx="12" fill="#f0fdf4" stroke="#22c55e" stroke-dasharray="3,2"/>
+  <text x="150" y="317" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#16a34a">正在变蓝...</text>
+  
+  <!-- 输入框 -->
+  <rect x="70" y="345" width="320" height="45" rx="8" fill="white" stroke="#3b82f6" stroke-width="2"/>
+  <text x="85" y="373" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#94a3b8">说点什么... 或试试 "加个微信登录"</text>
+  <rect x="340" y="352" width="40" height="30" rx="6" fill="#3b82f6"/>
+  <text x="360" y="372" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">🎤</text>
+  
+  <!-- 智能推荐 -->
+  <text x="70" y="415" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#64748b">智能推荐：</text>
+  <rect x="70" y="425" width="100" height="28" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="120" y="444" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#475569">加个记住密码</text>
+  <rect x="180" y="425" width="100" height="28" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="230" y="444" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#475569">加个忘记密码</text>
+  <rect x="290" y="425" width="90" height="28" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="335" y="444" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#475569">更换样式</text>
+  
+  <!-- 历史记录 -->
+  <text x="70" y="475" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#64748b">历史：</text>
+  <text x="110" y="475" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#3b82f6" text-decoration="underline">注册页面</text>
+  <text x="170" y="475" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#3b82f6" text-decoration="underline">用户中心</text>
+  
+  <!-- 标注：输入区 -->
+  <rect x="395" y="240" width="20" height="80" rx="4" fill="#3b82f6"/>
+  <text x="405" y="285" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white" transform="rotate(-90 405 285)">输入区</text>
+  
+  <!-- 显影区（右侧） -->
+  <rect x="420" y="100" width="425" height="395" fill="url(#previewGrad)"/>
+  <rect x="420" y="100" width="425" height="35" fill="#10b981"/>
+  <text x="632" y="123" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="white">显影区 Preview Zone</text>
+  
+  <!-- 模式切换 -->
+  <rect x="435" y="145" width="60" height="25" rx="4" fill="#10b981"/>
+  <text x="465" y="162" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white">预览</text>
+  <rect x="500" y="145" width="60" height="25" rx="4" fill="white" stroke="#cbd5e1"/>
+  <text x="530" y="162" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">设计</text>
+  <rect x="565" y="145" width="60" height="25" rx="4" fill="white" stroke="#cbd5e1"/>
+  <text x="595" y="162" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">代码</text>
+  <rect x="630" y="145" width="60" height="25" rx="4" fill="white" stroke="#cbd5e1"/>
+  <text x="660" y="162" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">对比</text>
+  
+  <!-- 预览内容 - 登录页面 -->
+  <rect x="470" y="185" width="330" height="260" rx="8" fill="white" stroke="#cbd5e1" filter="url(#shadow)"/>
+  
+  <!-- 模拟登录页面（蓝色主题） -->
+  <rect x="470" y="185" width="330" height="50" rx="8" fill="#3b82f6"/>
+  <rect x="470" y="220" width="330" height="15" fill="#3b82f6"/>
+  <text x="635" y="217" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" font-weight="bold" fill="white">用户登录</text>
+  
+  <rect x="520" y="260" width="230" height="35" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="540" y="283" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#94a3b8">请输入用户名</text>
+  
+  <rect x="520" y="305" width="230" height="35" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="540" y="328" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#94a3b8">请输入密码</text>
+  
+  <rect x="520" y="355" width="230" height="40" rx="6" fill="#3b82f6"/>
+  <text x="635" y="380" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" fill="white">登 录</text>
+  
+  <text x="635" y="420" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">还没有账号？立即注册</text>
+  
+  <!-- 点击编辑提示 -->
+  <rect x="750" y="355" width="45" height="20" rx="4" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="772" y="369" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#92400e">可编辑</text>
+  
+  <!-- 追问区 -->
+  <rect x="435" y="460" width="395" height="30" rx="6" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="632" y="480" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#16a34a">还想调整哪里？点击元素可直接编辑 ✨</text>
+  
+  <!-- 标注：显影区 -->
+  <rect x="835" y="240" width="20" height="80" rx="4" fill="#10b981"/>
+  <text x="845" y="285" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white" transform="rotate(-90 845 285)">显影区</text>
+  
+  <!-- 操作栏 -->
+  <rect x="50" y="500" width="800" height="50" rx="12" fill="#1e293b"/>
+  <rect x="50" y="500" width="800" height="12" fill="#1e293b"/>
+  
+  <!-- 操作按钮 -->
+  <rect x="100" y="512" width="80" height="30" rx="6" fill="#475569"/>
+  <text x="140" y="532" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">↺ 撤销</text>
+  
+  <rect x="200" y="512" width="80" height="30" rx="6" fill="#475569"/>
+  <text x="240" y="532" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">↻ 重做</text>
+  
+  <rect x="340" y="512" width="80" height="30" rx="6" fill="#3b82f6"/>
+  <text x="380" y="532" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">预览</text>
+  
+  <rect x="440" y="512" width="80" height="30" rx="6" fill="#8b5cf6"/>
+  <text x="480" y="532" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">代码</text>
+  
+  <rect x="620" y="512" width="100" height="30" rx="6" fill="#10b981"/>
+  <text x="670" y="532" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">✓ 确认完成</text>
+  
+  <rect x="740" y="512" width="80" height="30" rx="6" fill="#f59e0b"/>
+  <text x="780" y="532" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">发布</text>
+  
+  <!-- 标注：操作栏 -->
+  <rect x="860" y="505" width="35" height="35" rx="4" fill="#1e293b" stroke="white"/>
+  <text x="877" y="527" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white">操作</text>
+  
+  <!-- 底部说明 -->
+  <text x="450" y="580" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#64748b">眼睛看（显影区）→ 手/嘴操作（输入区）→ 眼睛确认（操作栏）</text>
+</svg>

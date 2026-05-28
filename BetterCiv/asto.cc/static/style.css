@@ -1,0 +1,494 @@
+/* asto.cc — 差异一元论理论展示站 */
+/* 品牌规范：黑白灰、临床感、精确到冷酷 */
+
+:root {
+  --bg: #0d0d0d;
+  --fg: #f0f0f0;
+  --accent: #c8f542;
+  --muted: #888;
+  --card-bg: #161616;
+  --border: #2a2a2a;
+  --font: 'Georgia', 'Noto Serif SC', 'Times New Roman', serif;
+  --max-width: 960px;
+  --content-width: 720px;
+}
+
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.8;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+a:hover { opacity: 0.8; }
+
+/* ─── Nav ─── */
+nav {
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 1.2rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.nav-logo {
+  color: var(--fg);
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+}
+.nav-links {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.nav-links a { color: var(--muted); }
+.nav-links a:hover { color: var(--accent); }
+.nav-sep { color: var(--border); }
+
+/* ─── Main ─── */
+main {
+  min-height: 80vh;
+}
+
+/* ─── Hero ─── */
+.hero {
+  max-width: var(--content-width);
+  margin: 6rem auto;
+  padding: 0 2rem;
+  text-align: center;
+}
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.2;
+  margin-bottom: 0.5rem;
+}
+.hero-en {
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 2rem;
+}
+.hero-tagline {
+  font-size: 1.05rem;
+  color: var(--muted);
+  margin-bottom: 2.5rem;
+  line-height: 1.9;
+}
+.hero-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-block;
+  padding: 0.75rem 2rem;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+.btn-outline {
+  border-color: var(--border);
+  color: var(--muted);
+}
+.btn-outline:hover {
+  border-color: var(--muted);
+  color: var(--fg);
+  background: transparent;
+}
+
+/* ─── Overview ─── */
+.overview {
+  max-width: var(--content-width);
+  margin: 0 auto 5rem;
+  padding: 0 2rem;
+  text-align: center;
+}
+.overview h2 {
+  font-size: 1.4rem;
+  color: var(--accent);
+  margin-bottom: 1.5rem;
+}
+.chain {
+  margin-top: 1.5rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* ─── Reading Paths ─── */
+.reading-paths {
+  max-width: var(--max-width);
+  margin: 0 auto 5rem;
+  padding: 0 2rem;
+}
+.reading-paths h2 {
+  text-align: center;
+  font-size: 1.4rem;
+  color: var(--accent);
+  margin-bottom: 2rem;
+}
+.paths-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+.path-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 2rem;
+}
+.path-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.path-target {
+  display: block;
+  font-size: 1.8rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+.path-card p {
+  font-size: 0.95rem;
+  color: #ccc;
+}
+
+/* ─── Layers Grid ─── */
+.layers {
+  max-width: var(--max-width);
+  margin: 0 auto 6rem;
+  padding: 0 2rem;
+}
+.layers h2 {
+  text-align: center;
+  font-size: 1.4rem;
+  color: var(--accent);
+  margin-bottom: 2rem;
+}
+.layers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+.layer-card {
+  display: block;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  color: var(--fg);
+}
+.layer-card:hover {
+  border-color: var(--accent);
+  opacity: 1;
+}
+.layer-pos {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.layer-slug {
+  display: block;
+  font-size: 1.8rem;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+.layer-title-en {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.8rem;
+}
+.layer-one-liner {
+  font-size: 0.9rem;
+  color: #ccc;
+  margin-bottom: 0.5rem;
+}
+.layer-doi {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ─── Layer Detail Page ─── */
+.layer-page, .about-page, .walkthrough-page {
+  max-width: var(--content-width);
+  margin: 4rem auto;
+  padding: 0 2rem;
+}
+.back-link {
+  display: inline-block;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 2rem;
+}
+.layer-identity {
+  margin-bottom: 1.5rem;
+}
+.layer-header .layer-pos {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.layer-header h1 {
+  font-size: 2.2rem;
+  line-height: 1.2;
+  margin-bottom: 0.3rem;
+}
+.layer-en {
+  font-size: 1.05rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+.layer-header .layer-one-liner {
+  font-size: 1rem;
+  color: var(--muted);
+}
+.zenodo-badge {
+  margin-bottom: 3rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--border);
+}
+.zenodo-badge a {
+  font-size: 0.9rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.zenodo-badge a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Layer sections */
+.layer-page section,
+.about-page section,
+.walkthrough-page section {
+  margin-bottom: 3rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--border);
+}
+.layer-page section:last-of-type,
+.about-page section:last-of-type {
+  border-bottom: none;
+}
+
+.layer-page h2,
+.about-page h2,
+.walkthrough-page h2 {
+  font-size: 1.3rem;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+.layer-concepts ul {
+  list-style: none;
+  padding: 0;
+}
+.layer-concepts li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  color: #ccc;
+}
+.layer-concepts li::before {
+  content: "→";
+  color: var(--accent);
+  margin-left: -1.5rem;
+  margin-right: 0.5rem;
+}
+
+.relations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+.relation-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.relation a {
+  font-size: 1.2rem;
+  margin-right: 0.5rem;
+}
+.muted { color: var(--muted); }
+
+/* Layer body (rendered markdown) */
+.layer-body h1, .layer-body h2, .layer-body h3,
+.walkthrough-body h1, .walkthrough-body h2, .walkthrough-body h3 {
+  color: var(--fg);
+  margin-top: 2rem;
+  margin-bottom: 0.8rem;
+}
+.layer-body h1, .walkthrough-body h1 { font-size: 1.6rem; }
+.layer-body h2, .walkthrough-body h2 { font-size: 1.3rem; color: var(--accent); }
+.layer-body h3, .walkthrough-body h3 { font-size: 1.1rem; }
+.layer-body p, .walkthrough-body p,
+.layer-body li, .walkthrough-body li {
+  color: #ccc;
+  margin-bottom: 0.8rem;
+}
+.layer-body ul, .layer-body ol,
+.walkthrough-body ul, .walkthrough-body ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+.layer-body blockquote,
+.walkthrough-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-style: italic;
+  margin-bottom: 1rem;
+}
+.layer-body code, .walkthrough-body code {
+  background: var(--card-bg);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.9rem;
+}
+.layer-body pre, .walkthrough-body pre {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 1rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+.layer-body pre code, .walkthrough-body pre code {
+  background: none;
+  padding: 0;
+}
+.layer-body table, .walkthrough-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+.layer-body th, .layer-body td,
+.walkthrough-body th, .walkthrough-body td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.8rem;
+  text-align: left;
+}
+.layer-body th, .walkthrough-body th {
+  background: var(--card-bg);
+  color: var(--accent);
+}
+
+/* Layer nav (prev/next) */
+.layer-nav {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+.layer-nav a {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.layer-nav a:hover { color: var(--accent); }
+
+/* ─── Walkthrough nav ─── */
+.walkthrough-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+.wt-layer-link {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.wt-layer-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.wt-pos {
+  color: var(--muted);
+  margin-right: 0.3rem;
+  font-size: 0.75rem;
+}
+
+/* ─── About page ─── */
+.sites-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+.site-card {
+  display: block;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  color: var(--fg);
+}
+.site-card:hover { border-color: var(--accent); }
+.site-card strong { color: var(--accent); }
+.site-card p { color: var(--muted); font-size: 0.9rem; margin-top: 0.3rem; }
+
+/* ─── Footer ─── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem;
+  margin-top: 4rem;
+}
+.footer-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  text-align: center;
+}
+.footer-stats {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.footer-links {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 600px) {
+  .nav-inner { padding: 1rem; }
+  .nav-links { gap: 0.4rem; font-size: 0.8rem; }
+  .hero { margin: 3rem auto; }
+  .hero h1 { font-size: 2rem; }
+  .hero-actions { flex-direction: column; align-items: center; }
+  .paths-grid { grid-template-columns: 1fr; }
+  .layers-grid { grid-template-columns: 1fr; }
+  .relations-grid { grid-template-columns: 1fr; }
+  .sites-grid { grid-template-columns: 1fr; }
+  .layer-page, .about-page, .walkthrough-page {
+    margin: 2rem auto;
+  }
+}

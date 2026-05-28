@@ -1,0 +1,240 @@
+﻿[
+    {
+        "Name":  "DoQryDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\doQry\\examples\\DoQryDemo\\DoQryDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DataBindingDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\DataBindingDemo\\DataBindingDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "FullDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\FullDemo\\FullDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "MicroserviceClientDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\MicroserviceClientDemo\\MicroserviceClientDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "MultiLanguageDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\MultiLanguageDemo\\MultiLanguageDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "MVVMDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\MVVMDemo\\MVVMDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "Phase0Demo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\Phase0Demo\\Phase0Demo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "Phase1Demo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\Phase1Demo\\Phase1Demo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "CRUDApp.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\Templates\\CRUDApp\\CRUDApp.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DataAnalyzer.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\Templates\\DataAnalyzer\\DataAnalyzer.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DocManager.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\Templates\\DocManager\\DocManager.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "VCLDeepShellDemo.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Examples\\VCLDeepShellDemo\\VCLDeepShellDemo.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DeepBaseTests.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DeepBaseTests.dpr",
+        "UsesOk":  "skip",
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "InferenceTests.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\InferenceTests.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "MinimalDUnitX.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\MinimalDUnitX.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "SimpleTest.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\SimpleTest.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "TestLLMClient.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\TestLLMClient.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "TestLLMProxyClient.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\TestLLMProxyClient.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "TestNewModules.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\TestNewModules.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DebugTest.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DebugTest.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DebugTest2.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DebugTest2.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DebugTest3.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DebugTest3.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DebugTest4.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DebugTest4.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DebugTest5.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DebugTest5.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DebugTest6.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\DebugTest6.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DeepBaseAcceptanceTest.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Acceptance\\DeepBaseAcceptanceTest.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DeepBaseArchitectureTests.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Architecture\\DeepBaseArchitectureTests.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "ConfigRegistrarPBT.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Governance\\ConfigRegistrarPBT.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DeepBaseGUITests.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\GUI\\DeepBaseGUITests.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "PageDriverSmoke.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\GUI\\PageDriverSmoke.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DeepBaseIntegrationTests.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Integration\\DeepBaseIntegrationTests.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "SpeechSpike.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Speech\\SpeechSpike.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "TestSpeechHeadless.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Speech\\TestSpeechHeadless.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    },
+    {
+        "Name":  "DeepBaseStressTests.dpr",
+        "Path":  "D:\\_Progs\\02Business\\DeepBase\\Tests\\Stress\\DeepBaseStressTests.dpr",
+        "UsesOk":  true,
+        "CallOk":  true,
+        "Error":  ""
+    }
+]

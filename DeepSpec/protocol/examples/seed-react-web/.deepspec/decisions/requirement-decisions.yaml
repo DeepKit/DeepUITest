@@ -1,0 +1,28 @@
+version: "1.0"
+
+decisions:
+  - id: "dec-001"
+    type: confirm
+    title: "Confirm TodoMVC spec compliance"
+    decision: "This app follows the standard TodoMVC specification"
+    rationale: "README explicitly states TodoMVC compliance"
+    target_nodes:
+      - "func-root"
+    affected_relations: []
+    affected_requirements: []
+    affected_views: []
+    affected_modules: []
+    resolved_issues: []
+    source_refs:
+      - ref_id: "ev-readme-intro"
+        relevance: primary
+    ai_instruction: "All feature descriptions must align with the TodoMVC spec at todomvc.com"
+    priority: P0
+    release: "v1.0"
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    decided_by: human
+    confidence: high
+    status: accepted
+    superseded_by: null
+    supersedes: []

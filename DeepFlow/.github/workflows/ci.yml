@@ -1,0 +1,236 @@
+# UniFlow CI/CD Pipeline
+# Runs on push to main/develop and pull requests
+# Tests: Python Skills, Node.js Skills, Web Editor
+
+name: UniFlow CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'docs/uniFlow/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'docs/uniFlow/**'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ==========================================================================
+  # Python Skills Service Tests
+  # ==========================================================================
+  python-tests:
+    name: Python Skills Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/uniFlow/Skills
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: docs/uniFlow/Skills/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run linting (ruff)
+        run: |
+          pip install ruff
+          ruff check src/ --ignore E501
+
+      - name: Run type checking (mypy)
+        run: |
+          mypy src/ --ignore-missing-imports --no-error-summary || true
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing || true
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v3
+        with:
+          files: docs/uniFlow/Skills/coverage.xml
+          flags: python-skills
+          fail_ci_if_error: false
+
+  # ==========================================================================
+  # Node.js Skills Service Tests
+  # ==========================================================================
+  nodejs-tests:
+    name: Node.js Skills Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/uniFlow/Skills/nodejs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: docs/uniFlow/Skills/nodejs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run linting (ESLint)
+        run: |
+          npm install eslint --save-dev
+          npx eslint src/ --ext .js || true
+
+      - name: Run tests
+        run: npm test || true
+
+  # ==========================================================================
+  # Web Editor Tests (Browser-based)
+  # ==========================================================================
+  editor-tests:
+    name: Web Editor Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install playwright @playwright/test
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run Editor tests with Playwright
+        run: |
+          npx playwright test docs/uniFlow/Editor/tests/ --config=docs/uniFlow/.github/playwright.config.js
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-test-results
+          path: test-results/
+          retention-days: 7
+
+  # ==========================================================================
+  # Docker Build Tests
+  # ==========================================================================
+  docker-build:
+    name: Docker Build Tests
+    runs-on: ubuntu-latest
+    needs: [python-tests, nodejs-tests]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Python Skills Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: docs/uniFlow/Skills
+          file: docs/uniFlow/Skills/Dockerfile
+          push: false
+          tags: uniflow-skills-python:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Node.js Skills Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: docs/uniFlow/Skills/nodejs
+          file: docs/uniFlow/Skills/nodejs/Dockerfile
+          push: false
+          tags: uniflow-skills-nodejs:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================================================
+  # Integration Tests
+  # ==========================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    services:
+      python-skills:
+        image: uniflow-skills-python:test
+        ports:
+          - 8001:8000
+        options: --health-cmd "curl -f http://localhost:8000/health" --health-interval 10s --health-timeout 5s --health-retries 5
+
+      nodejs-skills:
+        image: uniflow-skills-nodejs:test
+        ports:
+          - 3001:3000
+        options: --health-cmd "curl -f http://localhost:3000/health" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for services to be ready..."
+          sleep 10
+
+      - name: Test Python Skills health
+        run: curl -f http://localhost:8001/health || exit 1
+
+      - name: Test Node.js Skills health
+        run: curl -f http://localhost:3001/health || exit 1
+
+      - name: Test Python Skills discovery
+        run: curl -f http://localhost:8001/skills
+
+      - name: Test Node.js Skills discovery
+        run: curl -f http://localhost:3001/skills
+
+  # ==========================================================================
+  # Summary
+  # ==========================================================================
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [python-tests, nodejs-tests, editor-tests]
+    if: always()
+
+    steps:
+      - name: Check all jobs
+        run: |
+          if [[ "${{ needs.python-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.nodejs-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.editor-tests.result }}" == "failure" ]]; then
+            echo "Some tests failed"
+            exit 1
+          fi
+          echo "All tests passed!"

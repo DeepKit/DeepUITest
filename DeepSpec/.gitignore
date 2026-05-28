@@ -17,7 +17,14 @@ compile_output.txt
 DeepSpecConfig.db
 
 # Sample-project artifacts: a project's own .deepspec/ folder is regenerable
-.deepspec/
+/.deepspec/
 
 # Plugin drop-ins (regenerable)
 Plugins/
+
+.claude/
+.vscode/
+*.db
+
+__pycache__/
+*.pyc

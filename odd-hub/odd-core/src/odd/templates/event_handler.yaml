@@ -1,0 +1,22 @@
+id: event_handler
+name: 事件处理器契约
+description: 事件监听/处理逻辑的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["on_", "handle_", "handler", "listener", "subscribe", "emit", "dispatch", "event"]
+      reason: 必须包含事件处理或订阅逻辑
+      severity: critical
+  must_not_contain:
+    - patterns: ["while True:", "while(true)", "while (true)"]
+      reason: 禁止在事件处理器中使用无限循环（应由事件循环驱动）
+      severity: high
+  should_contain:
+    - patterns: ["try", "except", "catch", "error"]
+      reason: 建议捕获事件处理异常，防止单个事件崩溃整个监听器
+      severity: high
+    - patterns: ["log", "logger", "logging", "print"]
+      reason: 建议记录事件处理日志
+      severity: medium
+    - patterns: ["async", "await", "asyncio", "Promise", "callback"]
+      reason: 建议使用异步处理避免阻塞事件循环
+      severity: medium

@@ -1,0 +1,40 @@
+---
+name: Feature Request
+description: Suggest a product, workflow, UI, CLI, or integration improvement
+title: "feature: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: user_problem
+    attributes:
+      label: User problem
+      description: What user pain does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Desired workflow
+      description: Describe the ideal user or agent workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: relationship
+    attributes:
+      label: Relationship to CTF / ODD
+      description: Is this about constructing specs, reviewing specs, or verifying implementation outputs?
+  - type: textarea
+    id: minimal_version
+    attributes:
+      label: Minimal useful version
+      description: What is the smallest version that would still be useful?
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: Must preserve traceability.
+        - label: Must preserve human review authority.
+        - label: Must support partial success or graceful degradation.
+        - label: Must not require publishing private project data.
+---

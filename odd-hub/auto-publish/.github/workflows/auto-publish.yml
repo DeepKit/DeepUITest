@@ -1,0 +1,70 @@
+name: Auto Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.2.0)"
+        required: true
+      changelog:
+        description: "Changelog text"
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install auto-publish
+        run: pip install -e ./auto-publish
+
+      - name: Resolve tag and changelog
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          CHANGELOG="${{ github.event.inputs.changelog }}"
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG=$(git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --pretty=format:"- %s" 2>/dev/null || echo "New release $TAG")
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          # multiline safe
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "changelog<<$EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+
+      - name: Publish to all platforms
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_CHANGELOG: ${{ steps.meta.outputs.changelog }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NIM_API_KEY: ${{ secrets.NIM_API_KEY }}
+          NIM_MODEL: ${{ secrets.NIM_MODEL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          HASHNODE_TOKEN: ${{ secrets.HASHNODE_TOKEN }}
+          HASHNODE_PUBLICATION_ID: ${{ secrets.HASHNODE_PUBLICATION_ID }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+          REDDIT_SUBREDDIT: ${{ secrets.REDDIT_SUBREDDIT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JUEJIN_COOKIE: ${{ secrets.JUEJIN_COOKIE }}
+          JIKE_COOKIE: ${{ secrets.JIKE_COOKIE }}
+          ZHIHU_COOKIE: ${{ secrets.ZHIHU_COOKIE }}
+        run: python -m auto_publish.main

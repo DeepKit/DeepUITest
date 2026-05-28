@@ -42,6 +42,13 @@ type
     /// the YAML cannot be parsed. Caller owns the returned list.
     /// </summary>
     function ReadTreeFile(const ARelPath: string): TList<TSpecNode>;
+
+    /// <summary>Write bundles.yaml</summary>
+    procedure WriteBundlesFile(const ARelPath: string;
+      ABundles: TList<TSemanticBundle>);
+    /// <summary>Read bundles.yaml</summary>
+    function ReadBundlesFile(const ARelPath: string): TList<TSemanticBundle>;
+
     property BasePath: string read FBasePath;
   end;
 
@@ -177,6 +184,7 @@ begin
     LSb.AppendLine('  function_tree: "trees/function-tree.yaml"');
     LSb.AppendLine('  module_tree: "trees/module-tree.yaml"');
     LSb.AppendLine('  view_tree: "trees/view-tree.yaml"');
+    LSb.AppendLine('  data_tree: "trees/data-tree.yaml"');
     LSb.AppendLine('');
     LSb.AppendLine('relations: "relations/requirement-relations.yaml"');
     LSb.AppendLine('evidence: "evidence/source-evidence.yaml"');
@@ -205,6 +213,7 @@ begin
   WriteYamlFile('trees/function-tree.yaml', Format(LTemplate, ['function']));
   WriteYamlFile('trees/module-tree.yaml', Format(LTemplate, ['module']));
   WriteYamlFile('trees/view-tree.yaml', Format(LTemplate, ['view']));
+  WriteYamlFile('trees/data-tree.yaml', Format(LTemplate, ['data']));
 
   WriteYamlFile('relations/requirement-relations.yaml',
     'version: "1.0"' + sLineBreak +
@@ -338,6 +347,23 @@ begin
         LNode.Revision := LItem.GetInteger('revision', 0);
         LNode.Summary := LItem.GetString('summary', '');
         LNode.Status := TSpecEnums.NodeStatusFromStr(LItem.GetString('status', ''));
+        LNode.GenStatus := TSpecEnums.GenStatusFromStr(LItem.GetString('gen_status', ''));
+        LNode.ReviewStatus := TSpecEnums.ReviewStatusFromStr(LItem.GetString('review_status', ''));
+
+        // Backward compatibility: derive gen_status/review_status from old status
+        // if the new fields were not present in the YAML file.
+        if not LItem.Has('gen_status') then
+          case LNode.Status of
+            nsConfirmed:  LNode.GenStatus := gsConfirmed;
+            nsRejected,
+            nsSuperseded: LNode.GenStatus := gsSkipped;
+          end;
+        if not LItem.Has('review_status') then
+          case LNode.Status of
+            nsConfirmed:  LNode.ReviewStatus := rsAccepted;
+            nsRejected:   LNode.ReviewStatus := rsRejected;
+            nsSuperseded: LNode.ReviewStatus := rsDeferred;
+          end;
         LNode.Confidence := TSpecEnums.ConfidenceFromStr(LItem.GetString('confidence', ''));
         LNode.SourceLayer := TSpecEnums.SourceLayerFromStr(
           LItem.GetString('source_layer', ''));
@@ -351,8 +377,117 @@ begin
         LNode.Tags := StringList(LItem.Get('tags'));
         LNode.AcceptanceCriteria := StringList(LItem.Get('acceptance_criteria'));
         LNode.NotDoing := StringList(LItem.Get('not_doing'));
+        LNode.RelatedData := StringList(LItem.Get('related_data'));
+
+        // data-tree specific fields
+        if LNode.Tree = ttData then
+        begin
+          var LRisk := LItem.GetString('risk_score', '');
+          if LRisk <> '' then
+          begin
+            LNode.HasRiskScore := True;
+            LNode.RiskScore := TSpecEnums.RiskLevelFromStr(LRisk);
+          end;
+          LNode.DataType := LItem.GetString('data_type', '');
+          LNode.Nullable := LItem.GetBoolean('nullable', False);
+          LNode.HasNullable := LItem.Has('nullable');
+          LNode.DefaultValue := LItem.GetString('default_value', '');
+          LNode.FieldConstraints := StringList(LItem.Get('field_constraints'));
+          LNode.Persistence := LItem.GetString('persistence', '');
+          LNode.SourceEntity := LItem.GetString('source_entity', '');
+          LNode.TargetEntity := LItem.GetString('target_entity', '');
+          LNode.Cardinality := LItem.GetString('cardinality', '');
+          LNode.Cascade := LItem.GetString('cascade', '');
+          LNode.ValidStates := StringList(LItem.Get('valid_states'));
+
+          var LTrans := LItem.Get('transitions');
+          if (LTrans <> nil) and (LTrans.Kind = ykSequence) then
+          begin
+            SetLength(LNode.Transitions, LTrans.SeqCount);
+            for var TJ := 0 to LTrans.SeqCount - 1 do
+            begin
+              var TItem := LTrans.SeqItem(TJ);
+              if TItem <> nil then
+                LNode.Transitions[TJ] := TPair<string, string>.Create(
+                  TItem.GetString('from', ''),
+                  TItem.GetString('to', ''));
+            end;
+          end;
+
+          LNode.BackwardCompatible := LItem.GetBoolean('backward_compatible', False);
+          LNode.HasBackwardCompatible := LItem.Has('backward_compatible');
+          LNode.HasRollback := LItem.GetBoolean('has_rollback', False);
+          LNode.HasHasRollback := LItem.Has('has_rollback');
+          LNode.Scope := LItem.GetString('scope', '');
+          LNode.Enforcement := LItem.GetString('enforcement', '');
+        end;
 
         Result.Add(LNode);
+      end;
+    finally
+      LRoot.Free;
+    end;
+  finally
+    LParser.Free;
+  end;
+end;
+
+procedure TDeepSpecStoreService.WriteBundlesFile(const ARelPath: string;
+  ABundles: TList<TSemanticBundle>);
+var
+  LSb: TStringBuilder;
+begin
+  LSb := TStringBuilder.Create;
+  try
+    LSb.AppendLine('version: "1.0"');
+    LSb.AppendLine('bundles:');
+    for var LB in ABundles do
+    begin
+      LSb.AppendLine('  - id: ' + LB.Id);
+      LSb.AppendLine('    title: "' + LB.Title.Replace('"', '""') + '"');
+      if LB.Description <> '' then
+        LSb.AppendLine('    description: "' + LB.Description.Replace('"', '""') + '"');
+      LSb.AppendLine('    nodes: [' + string.Join(', ', LB.NodeIds) + ']');
+    end;
+    WriteYamlFile(ARelPath, LSb.ToString);
+  finally
+    LSb.Free;
+  end;
+end;
+
+function TDeepSpecStoreService.ReadBundlesFile(
+  const ARelPath: string): TList<TSemanticBundle>;
+var
+  LParser: TYamlParser;
+  LRoot, LSeq: TYamlNode;
+begin
+  Result := TList<TSemanticBundle>.Create;
+  var LPath := TPath.Combine(FBasePath, ARelPath);
+  if not TFile.Exists(LPath) then Exit;
+
+  LParser := TYamlParser.Create;
+  try
+    LRoot := LParser.ParseFile(LPath);
+    try
+      LSeq := LRoot.GetSeq('bundles');
+      if LSeq = nil then Exit;
+      for var I := 0 to LSeq.SeqCount - 1 do
+      begin
+        var LItem := LSeq.SeqItem(I);
+        if LItem = nil then Continue;
+        var LB: TSemanticBundle;
+        LB := Default(TSemanticBundle);
+        LB.Id := LItem.GetString('id', '');
+        LB.Title := LItem.GetString('title', '');
+        LB.Description := LItem.GetString('description', '');
+        var LNodes := LItem.GetSeq('nodes');
+        if LNodes <> nil then
+        begin
+          SetLength(LB.NodeIds, LNodes.SeqCount);
+          for var J := 0 to LNodes.SeqCount - 1 do
+            LB.NodeIds[J] := LNodes.SeqItem(J).AsString;
+        end;
+        Result.Add(LB);
       end;
     finally
       LRoot.Free;

@@ -1,0 +1,22 @@
+id: cli_command
+name: CLI 命令契约
+description: 命令行工具命令的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["@click.command", "@app.command", "argparse", "commander", "cobra.Command", "clap::"]
+      reason: 必须使用 CLI 框架定义命令
+      severity: critical
+  must_not_contain:
+    - patterns: ["sys.exit(1)", "process.exit(1)", "os.Exit(1)"]
+      reason: 错误退出应通过框架机制处理，避免裸 exit(1)
+      severity: medium
+  should_contain:
+    - patterns: ["--help", "help=", "help:", "Short:", "Long:"]
+      reason: 建议添加帮助文本
+      severity: high
+    - patterns: ["try", "except", "catch", "error"]
+      reason: 建议添加错误处理
+      severity: medium
+    - patterns: ['"""', "'''", "//", "/**"]
+      reason: 建议添加文档注释
+      severity: low

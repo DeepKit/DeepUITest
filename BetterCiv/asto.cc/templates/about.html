@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}关于 · 引用指南 — asto.cc{% endblock %}
+
+{% block content %}
+<article class="about-page">
+  <h1>关于</h1>
+
+  <section class="about-author">
+    <h2>作者</h2>
+    <p><strong>{{ site.author.name }}</strong>（{{ site.author.name_zh }}）</p>
+    <p>ORCID: <a href="https://orcid.org/{{ site.author.orcid }}">{{ site.author.orcid }}</a></p>
+    <p>{{ site.author.email }}</p>
+  </section>
+
+  <section class="about-citation">
+    <h2>引用指南</h2>
+    {{ citation | safe }}
+  </section>
+
+  <section class="about-sites">
+    <h2>关联站点</h2>
+    <div class="sites-grid">
+      <a href="{{ site.links.betterciv }}" class="site-card">
+        <strong>BetterCiv.org</strong>
+        <p>执行系统入口</p>
+      </a>
+      <a href="{{ site.links.goodmem }}" class="site-card">
+        <strong>goodmem.cn</strong>
+        <p>免费结构自测</p>
+      </a>
+    </div>
+  </section>
+</article>
+{% endblock %}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/bundle.schema.json",
+  "title": "DeepSpec Semantic Bundles",
+  "type": "object",
+  "required": ["version", "bundles"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0", "1.1", "1.2"]},
+    "bundles": {"type": "array", "items": {"$ref": "#/$defs/bundle"}}
+  },
+  "$defs": {
+    "tree_type": {"type": "string", "enum": ["function", "module", "view", "data"]},
+    "confidence_level": {"type": "string", "enum": ["low", "medium", "high"]},
+    "anchor": {
+      "type": "object",
+      "required": ["tree", "node_ids"],
+      "additionalProperties": true,
+      "properties": {
+        "tree": {"$ref": "#/$defs/tree_type"},
+        "node_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "required": ["id", "label", "anchors"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string", "pattern": "^bnd-[a-z0-9][a-z0-9\\-]{0,79}$"},
+        "label": {"type": "string", "minLength": 1},
+        "anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}},
+        "confidence": {"$ref": "#/$defs/confidence_level"},
+        "risk_score": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+        "completeness": {"type": "object", "additionalProperties": {"type": "boolean"}}
+      }
+    }
+  }
+}

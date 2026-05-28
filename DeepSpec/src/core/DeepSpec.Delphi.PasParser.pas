@@ -107,7 +107,13 @@ begin
     var LContent := TFile.ReadAllText(APath, TEncoding.UTF8);
     Result := Parse(LContent);
   except
-    Result := nil;
+    // UTF-8 failed — try system default encoding (legacy GBK/ANSI files)
+    try
+      var LContent := TFile.ReadAllText(APath, TEncoding.Default);
+      Result := Parse(LContent);
+    except
+      Result := nil;
+    end;
   end;
 end;
 

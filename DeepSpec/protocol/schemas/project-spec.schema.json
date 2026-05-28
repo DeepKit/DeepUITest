@@ -5,72 +5,66 @@
   "description": "Root index file for a .deepspec directory. References all fact files.",
   "type": "object",
   "required": ["version", "project", "summary", "trees"],
+  "additionalProperties": true,
   "properties": {
-    "version": {
-      "type": "string",
-      "const": "1.0",
-      "description": "Protocol version"
-    },
+    "version": {"type": "string", "enum": ["1.0", "1.1", "1.2"]},
     "project": {
       "type": "object",
       "required": ["name", "path", "type", "scan_time"],
+      "additionalProperties": true,
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "path": { "type": "string", "minLength": 1 },
-        "type": {
-          "type": "string",
-          "description": "Project type identifier",
-          "examples": ["delphi_vcl", "web_react", "python_backend", "mixed"]
-        },
-        "scan_time": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "name": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "examples": ["delphi_vcl", "web_react", "python_backend", "mixed"]},
+        "scan_time": {"type": "string", "format": "date-time"}
       }
     },
     "summary": {
       "type": "object",
       "required": ["total_nodes", "confirmed_nodes", "uncertain_nodes", "open_issues", "decisions_count"],
+      "additionalProperties": true,
       "properties": {
-        "total_nodes": { "type": "integer", "minimum": 0 },
-        "confirmed_nodes": { "type": "integer", "minimum": 0 },
-        "uncertain_nodes": { "type": "integer", "minimum": 0 },
-        "open_issues": { "type": "integer", "minimum": 0 },
-        "decisions_count": { "type": "integer", "minimum": 0 }
+        "total_nodes": {"type": "integer", "minimum": 0},
+        "confirmed_nodes": {"type": "integer", "minimum": 0},
+        "uncertain_nodes": {"type": "integer", "minimum": 0},
+        "open_issues": {"type": "integer", "minimum": 0},
+        "decisions_count": {"type": "integer", "minimum": 0},
+        "data_nodes": {"type": "integer", "minimum": 0},
+        "locked_nodes": {"type": "integer", "minimum": 0}
       }
     },
     "trees": {
       "type": "object",
       "required": ["function_tree", "module_tree", "view_tree"],
+      "additionalProperties": true,
       "properties": {
-        "function_tree": { "type": "string" },
-        "module_tree": { "type": "string" },
-        "view_tree": { "type": "string" }
+        "function_tree": {"type": "string"},
+        "module_tree": {"type": "string"},
+        "view_tree": {"type": "string"},
+        "data_tree": {"type": "string", "description": "Optional in v1.1, default projection in v1.2-draft."}
       }
     },
-    "relations": { "type": "string" },
-    "evidence": { "type": "string" },
-    "issues": { "type": "string" },
-    "decisions": { "type": "string" },
-    "imports": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/import_entry" },
-      "default": []
-    }
+    "relations": {"type": "string"},
+    "evidence": {"type": "string"},
+    "issues": {"type": "string"},
+    "decisions": {"type": "string"},
+    "bundles": {"type": "string"},
+    "agent_results": {"type": "string"},
+    "review_decisions": {"type": "string"},
+    "imports": {"type": "array", "items": {"$ref": "#/$defs/import_entry"}, "default": []}
   },
   "$defs": {
     "import_entry": {
       "type": "object",
       "required": ["alias", "path"],
+      "additionalProperties": true,
       "properties": {
-        "alias": { "type": "string" },
-        "path": { "type": "string" },
-        "version_lock": { "type": ["string", "null"] },
-        "scope": {
-          "type": "string",
-          "enum": ["all", "trees", "modules", "views", "decisions"]
-        }
+        "alias": {"type": "string"},
+        "path": {"type": "string"},
+        "version_lock": {"type": ["string", "null"]},
+        "scope": {"type": "string", "enum": ["all", "trees", "modules", "views", "data", "decisions"]}
       }
     }
   }
 }
+

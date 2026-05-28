@@ -1,0 +1,25 @@
+id: cache_layer
+name: 缓存层契约
+description: 缓存读写逻辑的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["cache", "redis", "memcache", "Cache", "Redis"]
+      reason: 必须引用缓存客户端或模块
+      severity: critical
+  must_not_contain:
+    - patterns: ["time.sleep(0)", "sleep(0)"]
+      reason: 禁止无意义的零延迟 sleep
+      severity: low
+  should_contain:
+    - patterns: ["get(", "set(", "hget", "hset", "getex", "setex"]
+      reason: 建议包含缓存读写操作
+      severity: high
+    - patterns: ["expire", "ttl", "TTL", "timeout", "ex=", "px="]
+      reason: 建议为缓存设置过期时间
+      severity: high
+    - patterns: ["miss", "hit", "fallback", "else"]
+      reason: 建议处理缓存未命中的回退逻辑
+      severity: high
+    - patterns: ["try", "except", "catch", "error"]
+      reason: 建议添加缓存异常处理（防止缓存故障影响主流程）
+      severity: medium

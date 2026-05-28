@@ -1,0 +1,19 @@
+version: "1.0"
+
+issues:
+  - id: "issue-001"
+    severity: medium
+    type: low_confidence
+    title: "Filter behavior not fully specified"
+    description: "README mentions filtering but does not specify URL routing or state persistence"
+    affected_nodes:
+      - "func-filter-todos"
+    source_refs:
+      - ref_id: "ev-readme-features"
+    suggested_action: "Confirm whether filters use URL hash routing"
+    suggested_prompt: "Does the todo filter use URL hash (#/active, #/completed) or local state only?"
+    status: open
+    resolved_by: null
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    resolved_at: null

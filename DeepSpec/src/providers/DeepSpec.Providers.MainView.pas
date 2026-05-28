@@ -185,7 +185,8 @@ end;
 function TDeepSpecMainViewProvider.CanOpen(const ARef: TShellObjectRef): Boolean;
 begin
   Result := ARef.Id.StartsWith('root-') or ARef.Id.StartsWith('func-')
-         or ARef.Id.StartsWith('mod-') or ARef.Id.StartsWith('view-');
+         or ARef.Id.StartsWith('mod-') or ARef.Id.StartsWith('view-')
+         or ARef.Id.StartsWith('index-') or (ARef.Kind = 'html');
 end;
 
 function TDeepSpecMainViewProvider.GetViewForObject(const ARef: TShellObjectRef): TShellViewInfo;

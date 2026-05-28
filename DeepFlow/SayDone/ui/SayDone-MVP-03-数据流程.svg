@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500">
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .step { fill: #ffffff; stroke: #e2e8f0; stroke-width: 2; rx: 8; }
+      .step-highlight { fill: #fef3c7; stroke: #f59e0b; stroke-width: 2; rx: 8; }
+      .step-ai { fill: #dbeafe; stroke: #3b82f6; stroke-width: 2; rx: 8; }
+      .step-validate { fill: #dcfce7; stroke: #22c55e; stroke-width: 2; rx: 8; }
+      .step-error { fill: #fee2e2; stroke: #ef4444; stroke-width: 2; rx: 8; }
+      .text-title { fill: #1e293b; font-family: Microsoft YaHei, sans-serif; font-size: 16px; font-weight: bold; }
+      .text-step { fill: #334155; font-family: Microsoft YaHei, sans-serif; font-size: 12px; font-weight: bold; }
+      .text-desc { fill: #64748b; font-family: Microsoft YaHei, sans-serif; font-size: 10px; }
+      .text-code { fill: #475569; font-family: Consolas, monospace; font-size: 9px; }
+      .arrow { fill: none; stroke: #94a3b8; stroke-width: 2; marker-end: url(#arrowhead); }
+      .arrow-success { fill: none; stroke: #22c55e; stroke-width: 2; marker-end: url(#arrowhead-green); }
+      .arrow-retry { fill: none; stroke: #f59e0b; stroke-width: 2; stroke-dasharray: 5; marker-end: url(#arrowhead-orange); }
+      .number { fill: #ffffff; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }
+      .number-bg { fill: #3b82f6; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e"/>
+    </marker>
+    <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/>
+    </marker>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect class="bg" width="1000" height="500"/>
+  
+  <!-- 标题 -->
+  <text x="500" y="35" class="text-title" text-anchor="middle">SayDone MVP 数据流程</text>
+  
+  <!-- Step 1: 用户输入 -->
+  <rect class="step-highlight" x="30" y="70" width="150" height="90"/>
+  <circle class="number-bg" cx="45" cy="85" r="12"/>
+  <text x="45" y="90" class="number" text-anchor="middle">1</text>
+  <text x="105" y="100" class="text-step" text-anchor="middle">用户输入</text>
+  <text x="105" y="120" class="text-desc" text-anchor="middle">"做个登录页"</text>
+  <text x="105" y="140" class="text-code" text-anchor="middle">UI.Panels.NLInput</text>
+  
+  <!-- Step 2: 构建 Prompt -->
+  <rect class="step" x="220" y="70" width="150" height="90"/>
+  <circle class="number-bg" cx="235" cy="85" r="12"/>
+  <text x="235" y="90" class="number" text-anchor="middle">2</text>
+  <text x="295" y="100" class="text-step" text-anchor="middle">构建 Prompt</text>
+  <text x="295" y="120" class="text-desc" text-anchor="middle">系统提示 + 用户输入</text>
+  <text x="295" y="140" class="text-code" text-anchor="middle">NL.PromptBuilder</text>
+  
+  <!-- Step 3: 调用 AI -->
+  <rect class="step-ai" x="410" y="70" width="150" height="90"/>
+  <circle class="number-bg" cx="425" cy="85" r="12"/>
+  <text x="425" y="90" class="number" text-anchor="middle">3</text>
+  <text x="485" y="100" class="text-step" text-anchor="middle">调用 AI</text>
+  <text x="485" y="120" class="text-desc" text-anchor="middle">liteLLM 网关</text>
+  <text x="485" y="140" class="text-code" text-anchor="middle">NL.AiService</text>
+  
+  <!-- Step 4: 解析 JSON -->
+  <rect class="step" x="600" y="70" width="150" height="90"/>
+  <circle class="number-bg" cx="615" cy="85" r="12"/>
+  <text x="615" y="90" class="number" text-anchor="middle">4</text>
+  <text x="675" y="100" class="text-step" text-anchor="middle">解析 JSON</text>
+  <text x="675" y="120" class="text-desc" text-anchor="middle">AI响应 → 对象</text>
+  <text x="675" y="140" class="text-code" text-anchor="middle">Domain.NL</text>
+  
+  <!-- Step 5: Schema 验证 -->
+  <rect class="step-validate" x="790" y="70" width="150" height="90"/>
+  <circle class="number-bg" cx="805" cy="85" r="12"/>
+  <text x="805" y="90" class="number" text-anchor="middle">5</text>
+  <text x="865" y="100" class="text-step" text-anchor="middle">Schema 验证</text>
+  <text x="865" y="120" class="text-desc" text-anchor="middle">结构正确性检查</text>
+  <text x="865" y="140" class="text-code" text-anchor="middle">NL.Validator</text>
+  
+  <!-- Step 6: 逻辑验证 -->
+  <rect class="step-validate" x="790" y="200" width="150" height="90"/>
+  <circle class="number-bg" cx="805" cy="215" r="12"/>
+  <text x="805" y="220" class="number" text-anchor="middle">6</text>
+  <text x="865" y="230" class="text-step" text-anchor="middle">逻辑验证</text>
+  <text x="865" y="250" class="text-desc" text-anchor="middle">语义合理性检查</text>
+  <text x="865" y="270" class="text-code" text-anchor="middle">NL.Validator</text>
+  
+  <!-- Step 7: 渲染预览 -->
+  <rect class="step" x="600" y="200" width="150" height="90"/>
+  <circle class="number-bg" cx="615" cy="215" r="12"/>
+  <text x="615" y="220" class="number" text-anchor="middle">7</text>
+  <text x="675" y="230" class="text-step" text-anchor="middle">渲染预览</text>
+  <text x="675" y="250" class="text-desc" text-anchor="middle">可视化界面</text>
+  <text x="675" y="270" class="text-code" text-anchor="middle">UI.Panels.NLPreview</text>
+  
+  <!-- Step 8: 用户确认 -->
+  <rect class="step-highlight" x="410" y="200" width="150" height="90"/>
+  <circle class="number-bg" cx="425" cy="215" r="12"/>
+  <text x="425" y="220" class="number" text-anchor="middle">8</text>
+  <text x="485" y="230" class="text-step" text-anchor="middle">用户确认</text>
+  <text x="485" y="250" class="text-desc" text-anchor="middle">确认/调整/重新生成</text>
+  <text x="485" y="270" class="text-code" text-anchor="middle">UI.Panels.NLPreview</text>
+  
+  <!-- Step 9: 转换实体 -->
+  <rect class="step" x="220" y="200" width="150" height="90"/>
+  <circle class="number-bg" cx="235" cy="215" r="12"/>
+  <text x="235" y="220" class="number" text-anchor="middle">9</text>
+  <text x="295" y="230" class="text-step" text-anchor="middle">转换实体</text>
+  <text x="295" y="250" class="text-desc" text-anchor="middle">TNLResult → TUIScreen</text>
+  <text x="295" y="270" class="text-code" text-anchor="middle">Domain.NL</text>
+  
+  <!-- Step 10: 完成 -->
+  <rect class="step-validate" x="30" y="200" width="150" height="90"/>
+  <circle class="number-bg" cx="45" cy="215" r="12"/>
+  <text x="45" y="220" class="number" text-anchor="middle">10</text>
+  <text x="105" y="230" class="text-step" text-anchor="middle">完成</text>
+  <text x="105" y="250" class="text-desc" text-anchor="middle">集成到 DevDirector</text>
+  <text x="105" y="270" class="text-code" text-anchor="middle">Domain.Entities</text>
+  
+  <!-- 重试分支 -->
+  <rect class="step-error" x="600" y="340" width="150" height="70"/>
+  <text x="675" y="370" class="text-step" text-anchor="middle">验证失败</text>
+  <text x="675" y="390" class="text-desc" text-anchor="middle">重试（最多2次）</text>
+  
+  <!-- 箭头连接 -->
+  <path class="arrow" d="M 180 115 L 220 115"/>
+  <path class="arrow" d="M 370 115 L 410 115"/>
+  <path class="arrow" d="M 560 115 L 600 115"/>
+  <path class="arrow" d="M 750 115 L 790 115"/>
+  <path class="arrow" d="M 865 160 L 865 200"/>
+  <path class="arrow-success" d="M 790 245 L 750 245"/>
+  <path class="arrow" d="M 600 245 L 560 245"/>
+  <path class="arrow-success" d="M 410 245 L 370 245"/>
+  <path class="arrow-success" d="M 220 245 L 180 245"/>
+  
+  <!-- 重试箭头 -->
+  <path class="arrow" d="M 865 290 L 865 340 L 675 340"/>
+  <path class="arrow-retry" d="M 675 340 L 675 320 L 500 320 L 500 160 L 485 160"/>
+  
+  <!-- 图例 -->
+  <rect x="30" y="430" width="940" height="50" fill="#f1f5f9" rx="4"/>
+  <text x="50" y="455" class="text-desc">图例：</text>
+  <rect x="90" y="445" width="20" height="15" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="115" y="457" class="text-desc">用户交互</text>
+  <rect x="180" y="445" width="20" height="15" fill="#dbeafe" stroke="#3b82f6"/>
+  <text x="205" y="457" class="text-desc">AI调用</text>
+  <rect x="260" y="445" width="20" height="15" fill="#dcfce7" stroke="#22c55e"/>
+  <text x="285" y="457" class="text-desc">验证/成功</text>
+  <rect x="350" y="445" width="20" height="15" fill="#fee2e2" stroke="#ef4444"/>
+  <text x="375" y="457" class="text-desc">失败/重试</text>
+  <line x1="450" y1="452" x2="500" y2="452" stroke="#22c55e" stroke-width="2"/>
+  <text x="510" y="457" class="text-desc">成功路径</text>
+  <line x1="580" y1="452" x2="630" y2="452" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5"/>
+  <text x="640" y="457" class="text-desc">重试路径</text>
+</svg>

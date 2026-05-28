@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="2KeyRun 使用文档 — 热键说明、Grid 操作指南、搜索技巧。">
+    <title>2KeyRun 使用文档</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>⚡</text></svg>">
+</head>
+<body>
+<header class="site-header">
+    <nav class="nav-bar">
+        <a href="/" class="nav-logo">
+            <span class="logo-accent">2Key</span>Run
+        </a>
+        <div class="nav-links">
+            <a href="/">首页</a>
+            <a href="/tools/2keyrun/">2KeyRun</a>
+            <a href="/tools/2keyrun/docs.html" class="active">文档</a>
+            <a href="/en/" class="nav-lang">EN</a>
+        </div>
+    </nav>
+</header>
+<section class="section">
+    <div class="container">
+        <a href="/tools/2keyrun/" class="back-link">← 返回 2KeyRun</a>
+        <h1>使用文档</h1>
+        <p style="color:var(--muted);margin-bottom:var(--gap-lg);">快速上手 2KeyRun，掌握所有快捷键和操作技巧。</p>
+
+        <div class="doc-section">
+
+            <h2>快速上手</h2>
+
+            <h3>第一步：启动</h3>
+            <p>下载并解压后，运行 <code>TwoKeyRun.exe</code>。程序会自动缩小到系统托盘，不占用任务栏空间。</p>
+
+            <h3>第二步：唤出主界面</h3>
+            <p>按下 <kbd>F1</kbd> 或 <kbd>F3</kbd> 键唤出 2KeyRun 主窗口。再按一次则隐藏。</p>
+
+            <h3>第三步：绑定你的第一个程序</h3>
+            <p>将任意 <code>.exe</code> 文件或快捷方式从文件管理器拖到网格中的任意空格，即完成绑定。之后在单键模式下按对应字母键即可启动。</p>
+
+            <h3>第四步：搜索一切</h3>
+            <p>点击「搜索面板」标签，在搜索框中输入程序名称（中文、拼音首字母或英文均可），从结果列表中点击或回车启动。</p>
+
+            <h2>热键说明</h2>
+            <table class="changelog-table">
+                <thead>
+                    <tr><th>热键</th><th>功能</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><kbd>F1</kbd> / <kbd>F3</kbd></td><td>唤出 / 隐藏主窗口</td><td>窗口在前台时隐藏，在后台时显示并提到最前</td></tr>
+                    <tr><td><kbd>A</kbd> ~ <kbd>Z</kbd> / <kbd>0</kbd> ~ <kbd>9</kbd></td><td>单键启动</td><td>需开启「单键模式」。按对应字母/数字键启动该格位绑定的程序</td></tr>
+                    <tr><td><kbd>Ctrl</kbd> + 字母键</td><td>Ctrl 层启动</td><td>切换到 Ctrl 修饰层后，按键启动该层对应程序</td></tr>
+                    <tr><td><kbd>Alt</kbd> + 字母键</td><td>Alt 层启动</td><td>切换到 Alt 修饰层后，按键启动该层对应程序</td></tr>
+                    <tr><td><kbd>Shift</kbd> + 字母键</td><td>Shift 层启动</td><td>切换到 Shift 修饰层后，按键启动该层对应程序</td></tr>
+                    <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>网格导航</td><td>在网格中用方向键移动选中格</td></tr>
+                    <tr><td><kbd>Enter</kbd></td><td>启动当前选中程序</td><td>在网格中按下 Enter 启动当前选中格的程序</td></tr>
+                    <tr><td><kbd>Apps</kbd> / 右键</td><td>右键菜单</td><td>在网格格子上弹出菜单：执行 / 编辑 / 清空 / 查看属性</td></tr>
+                </tbody>
+            </table>
+
+            <h2>Grid 网格操作指南</h2>
+
+            <h3>网格布局</h3>
+            <p>主界面右侧的网格区域为 <strong>10 列 × 6 行 = 60 格</strong>。每个格子可以绑定一个程序，显示其图标和名称。</p>
+            <p>通过底部控制面板的「Grid 层级」可以在 4 层之间切换：</p>
+            <ul>
+                <li><strong>无修饰层</strong>（none）：默认层，直接按键启动</li>
+                <li><strong>Shift 层</strong>：Shift + 按键启动</li>
+                <li><strong>Ctrl 层</strong>：Ctrl + 按键启动</li>
+                <li><strong>Alt 层</strong>：Alt + 按键启动</li>
+            </ul>
+            <p>总计 <strong>4 × 60 = 240 个快捷槽位</strong>。</p>
+
+            <h3>单键模式</h3>
+            <p>在底部控制面板勾选「单键模式」后，无需按任何修饰键，直接按字母或数字键即可启动对应格位的程序。</p>
+            <p>关闭单键模式后，按键输入会进入搜索框，不会触发程序启动，避免误操作。</p>
+
+            <h3>拖放操作</h3>
+            <ul>
+                <li><strong>从文件管理器拖入</strong>：将 exe / lnk / bat / cmd / ps1 / url 文件拖到空格子上，自动绑定</li>
+                <li><strong>格子间互换</strong>：拖动一个格子到另一个格子上，交换两个格子的内容</li>
+                <li><strong>拖到左侧树</strong>：将格子拖到左侧「常用文件」树节点，加入收藏</li>
+                <li><strong>右键编辑</strong>：右键格子 → 编辑，手动设置程序路径、名称、启动参数</li>
+            </ul>
+
+            <h3>双击与 Enter</h3>
+            <p>在网格中<strong>双击</strong>格子或选中格子后按 <kbd>Enter</kbd>，立即启动该程序。单击仅选中，不启动。</p>
+
+            <h2>搜索技巧</h2>
+
+            <h3>搜索源</h3>
+            <p>2KeyRun 的搜索框同时从以下来源检索：</p>
+            <ul>
+                <li><strong>已绑定的快捷动作</strong>：你在 Grid 中绑定的所有程序</li>
+                <li><strong>系统已安装程序</strong>：自动扫描开始菜单和桌面建立的程序索引</li>
+                <li><strong>Everything 全盘文件</strong>：需安装 <a href="https://www.voidtools.com/" target="_blank" rel="noopener">Everything</a>，开启后在设置中启用</li>
+            </ul>
+
+            <h3>匹配规则</h3>
+            <ul>
+                <li><strong>拼音首字母</strong>：输入 <code>wx</code> 可匹配「微信」</li>
+                <li><strong>全拼</strong>：输入 <code>weixin</code> 也可匹配</li>
+                <li><strong>中文</strong>：直接输入「微信」</li>
+                <li><strong>英文</strong>：输入 <code>chrome</code> 匹配 Chrome 浏览器</li>
+                <li><strong>全字匹配</strong>：多字符查询只匹配连续子串，不会拆分到不连续位置</li>
+            </ul>
+
+            <h3>触发条件</h3>
+            <p>输入 <strong>2 个拉丁字符</strong>或 <strong>1 个中文字符</strong>后自动开始搜索。空输入框时显示最近使用记录（MRU）。</p>
+
+            <h2>剪贴板增强</h2>
+            <p>在设置中开启「启用剪贴板伴生进程」后，2KeyRun 会在后台监听剪贴板变化：</p>
+            <ul>
+                <li>自动记录每次复制的内容到历史列表</li>
+                <li>在「剪贴板」标签页中查看历史记录</li>
+                <li>点击任意一条即可粘贴到当前应用</li>
+            </ul>
+
+            <h2>主题切换</h2>
+            <p>点击底部「设置」按钮，进入「外观」标签页：</p>
+            <ul>
+                <li>浅色系和深色系各 15 套主题</li>
+                <li>点击主题名称即时预览，无需重启</li>
+                <li>推荐默认深色主题以匹配系统暗色模式</li>
+            </ul>
+
+            <h2>设置说明</h2>
+            <table class="changelog-table">
+                <thead>
+                    <tr><th>设置项</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>唤醒热键</td><td>默认为 F1，可在设置中自定义</td></tr>
+                    <tr><td>自动切英文输入法</td><td>搜索框获焦时自动切换为英文，建议保持开启</td></tr>
+                    <tr><td>运行模式</td><td>唤醒（默认）/ 重复上一次 / 新建实例</td></tr>
+                    <tr><td>Everything 集成</td><td>需安装 Everything 并保持运行，开启后搜索结果会包含全盘文件</td></tr>
+                    <tr><td>高级视觉效果</td><td>开启圆角等高级渲染效果，低配电脑可关闭</td></tr>
+                    <tr><td>分享配置</td><td>导出当前 Grid 布局和设置为文件，分享或迁移</td></tr>
+                </tbody>
+            </table>
+
+            <h2>常见问题</h2>
+
+            <h3>Q: 程序启动后找不到窗口？</h3>
+            <p>A: 2KeyRun 默认最小化到系统托盘（右下角图标区）。按 <kbd>F1</kbd> 或双击托盘图标即可唤出。</p>
+
+            <h3>Q: 输入中文时总是变成英文？</h3>
+            <p>A: 这是「自动切英文输入法」功能，防止搜索时误输入中文。可在设置中关闭此功能。</p>
+
+            <h3>Q: 搜索不到某个已安装的程序？</h3>
+            <p>A: 在设置中点击「重建程序索引」，系统会重新扫描开始菜单和桌面。完成后即可搜索到新安装的程序。</p>
+
+            <h3>Q: 如何完全退出程序？</h3>
+            <p>A: 右键系统托盘图标 → 退出，或在主窗口底部点击「退出」按钮。</p>
+
+            <h3>Q: 配置文件在哪里？</h3>
+            <p>A: 所有配置和 Grid 数据存储在程序目录下的 <code>data\</code> 文件夹中（SQLite 数据库）。备份该文件夹即可迁移全部配置。</p>
+
+        </div>
+    </div>
+</section>
+<footer class="site-footer">
+    <div class="container">
+        <div class="footer-links">
+            <a href="/">首页</a>
+            <a href="/tools/2keyrun/">2KeyRun</a>
+            <a href="/tools/2keyrun/docs.html">文档</a>
+            <a href="https://www.goodmem.cn" target="_blank" rel="noopener">goodmem.cn</a>
+            <a href="/en/">English</a>
+        </div>
+        <p>&copy; 2026 2KeyRun.top</p>
+    </div>
+</footer>
+</body>
+</html>

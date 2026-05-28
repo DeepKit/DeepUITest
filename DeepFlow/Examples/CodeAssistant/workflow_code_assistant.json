@@ -1,0 +1,130 @@
+{
+  "id": "workflow_code_assistant",
+  "name": "Code Assistant Workflow",
+  "version": "1.0",
+  "description": "AI-powered code assistant for reviewing and generating code",
+  "tags": ["code", "assistant", "review", "generate"],
+  "variables": {
+    "model": "gpt-4",
+    "language": "auto"
+  },
+  "steps": [
+    {
+      "id": "detect_intent",
+      "name": "Detect Code Intent",
+      "type": "condition",
+      "config": {
+        "expression": "${user_message}"
+      },
+      "branches": [
+        {
+          "condition": "contains('review') or contains('check')",
+          "goto": "code_review"
+        },
+        {
+          "condition": "contains('generate') or contains('write') or contains('create')",
+          "goto": "code_generate"
+        },
+        {
+          "condition": "contains('explain') or contains('what does')",
+          "goto": "code_explain"
+        },
+        {
+          "condition": "contains('fix') or contains('bug') or contains('error')",
+          "goto": "code_fix"
+        },
+        {
+          "condition": "else",
+          "goto": "general_help"
+        }
+      ]
+    },
+    {
+      "id": "code_review",
+      "name": "Code Review",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are an expert code reviewer. Analyze the provided code for:\n1. Bugs and potential issues\n2. Code style and best practices\n3. Performance considerations\n4. Security vulnerabilities\n5. Suggestions for improvement\n\nProvide specific, actionable feedback with line references where applicable.",
+        "user_message": "${user_message}",
+        "max_tokens": 1500,
+        "temperature": 0.3,
+        "response_format": "json"
+      },
+      "output": "review_result"
+    },
+    {
+      "id": "code_generate",
+      "name": "Code Generation",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are an expert programmer. Generate clean, well-documented code based on the user's requirements.\n\nFollow these guidelines:\n1. Use clear, descriptive variable and function names\n2. Add comments for complex logic\n3. Follow the language's best practices and conventions\n4. Include error handling where appropriate\n5. Make the code modular and reusable",
+        "user_message": "${user_message}",
+        "max_tokens": 2000,
+        "temperature": 0.5
+      },
+      "output": "generated_code"
+    },
+    {
+      "id": "code_explain",
+      "name": "Code Explanation",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are a patient programming teacher. Explain the provided code in a clear, step-by-step manner.\n\n1. Start with a high-level overview\n2. Explain each significant section\n3. Describe the flow of data and control\n4. Highlight any patterns or techniques used\n5. Note any potential issues or improvements",
+        "user_message": "${user_message}",
+        "max_tokens": 1200,
+        "temperature": 0.4
+      },
+      "output": "explanation"
+    },
+    {
+      "id": "code_fix",
+      "name": "Bug Fix",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are an expert debugger. Analyze the code and error description to:\n\n1. Identify the root cause of the issue\n2. Explain why the bug occurs\n3. Provide the corrected code\n4. Explain the fix\n5. Suggest how to prevent similar issues",
+        "user_message": "${user_message}",
+        "max_tokens": 1500,
+        "temperature": 0.3
+      },
+      "output": "fix_result"
+    },
+    {
+      "id": "general_help",
+      "name": "General Programming Help",
+      "type": "action",
+      "config": {
+        "action_type": "llm",
+        "provider": "openai",
+        "model": "${model}",
+        "system_prompt": "You are a helpful programming assistant. Answer the user's programming-related questions clearly and concisely. Provide code examples when helpful.",
+        "user_message": "${user_message}",
+        "max_tokens": 1000,
+        "temperature": 0.5
+      },
+      "output": "help_response"
+    },
+    {
+      "id": "format_output",
+      "name": "Format Response",
+      "type": "action",
+      "config": {
+        "action_type": "merge_outputs",
+        "sources": ["review_result", "generated_code", "explanation", "fix_result", "help_response"],
+        "select_non_null": true
+      },
+      "output": "final_response"
+    }
+  ]
+}

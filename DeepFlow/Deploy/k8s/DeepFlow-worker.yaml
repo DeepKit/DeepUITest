@@ -1,0 +1,435 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uniflow-worker
+  namespace: uniflow
+  labels:
+    app: uniflow
+    component: worker
+    version: v1.0.0
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: uniflow
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: uniflow
+        component: worker
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: uniflow
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      containers:
+      - name: worker
+        image: uniflow/worker:1.0.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - "--mode=worker"
+        - "--concurrency=10"
+        - "--queue=workflows,skills,sessions"
+        
+        ports:
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: WORKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        
+        # 数据库配置
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-host
+        - name: DB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-port
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-name
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-password
+        
+        # Redis 配置
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: redis-host
+        - name: REDIS_PORT
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: redis-port
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: redis-password
+        
+        # RabbitMQ 配置
+        - name: RABBITMQ_HOST
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-host
+        - name: RABBITMQ_PORT
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-port
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-user
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-password
+        
+        # LLM API Keys
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: openai-api-key
+              optional: true
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: anthropic-api-key
+              optional: true
+        
+        volumeMounts:
+        - name: config
+          mountPath: /etc/uniflow
+          readOnly: true
+        - name: work
+          mountPath: /var/lib/uniflow/work
+        
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 1Gi
+          limits:
+            cpu: 4000m
+            memory: 4Gi
+        
+        livenessProbe:
+          httpGet:
+            path: /live
+            port: metrics
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      
+      volumes:
+      - name: config
+        configMap:
+          name: uniflow-config
+      - name: work
+        emptyDir:
+          sizeLimit: 10Gi
+      
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - uniflow
+                - key: component
+                  operator: In
+                  values:
+                  - worker
+              topologyKey: kubernetes.io/hostname
+      
+      terminationGracePeriodSeconds: 120
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: uniflow-worker
+  namespace: uniflow
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: uniflow-worker
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: External
+    external:
+      metric:
+        name: rabbitmq_queue_messages_ready
+        selector:
+          matchLabels:
+            queue: workflows
+      target:
+        type: AverageValue
+        averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uniflow-worker
+  namespace: uniflow
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: uniflow
+      component: worker
+
+---
+# Scheduler Deployment - 单实例调度器
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uniflow-scheduler
+  namespace: uniflow
+  labels:
+    app: uniflow
+    component: scheduler
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: uniflow
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: uniflow
+        component: scheduler
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: uniflow
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      
+      containers:
+      - name: scheduler
+        image: uniflow/scheduler:1.0.0
+        args:
+        - "--mode=scheduler"
+        - "--leader-election=true"
+        
+        ports:
+        - name: metrics
+          containerPort: 9090
+        
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-host
+        - name: DB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-port
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-name
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: db-password
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: redis-host
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: redis-password
+        - name: RABBITMQ_HOST
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-host
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-user
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: uniflow-secrets
+              key: rabbitmq-password
+        
+        volumeMounts:
+        - name: config
+          mountPath: /etc/uniflow
+          readOnly: true
+        
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        
+        livenessProbe:
+          httpGet:
+            path: /live
+            port: metrics
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+      
+      volumes:
+      - name: config
+        configMap:
+          name: uniflow-config
+
+---
+# Leader Election Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: uniflow-leader-election
+  namespace: uniflow
+rules:
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "create", "update"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "create", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: uniflow-leader-election
+  namespace: uniflow
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: uniflow-leader-election
+subjects:
+- kind: ServiceAccount
+  name: uniflow
+  namespace: uniflow

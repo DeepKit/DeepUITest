@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "odd-core"
+version = "0.1.0"
+description = "ODD (Output-Driven Development) CLI tool"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+odd = "odd.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]

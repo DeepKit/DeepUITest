@@ -6,6 +6,7 @@ uses
   System.SysUtils, System.SyncObjs, System.Variants,
   FireDAC.Comp.Client,
   FireDAC.Comp.DataSet,
+  FireDAC.Phys.PG,
   DeepBase.Config,
   DeepBase.DB.DoQry;
 
@@ -85,7 +86,15 @@ begin
   Host  := GetConfig('ArtifactOS.DB.Host',  '127.0.0.1');
   Port  := GetConfig('ArtifactOS.DB.Port',  '5432');
   User  := GetConfig('ArtifactOS.DB.User',  '');
-  Pwd   := LoadSecret('ArtifactOS.DB.Pass');
+  if User = '' then
+    User := GetEnvironmentVariable('ARTIFACTOS_DB_USER');
+  Pwd := LoadSecret('ArtifactOS.DB.Pass');
+  if Pwd = '' then
+  begin
+    Pwd := GetEnvironmentVariable('ARTIFACTOS_DB_PASS');
+    if Pwd <> '' then
+      SaveSecret('ArtifactOS.DB.Pass', Pwd);
+  end;
   Db    := GetConfig('ArtifactOS.DB.Name',  FDatabaseName);
 
   FConnection.DriverName := 'PG';
@@ -192,8 +201,15 @@ begin
 end;
 
 function TArtifactDB.InsertAndReturnId(const ASQL: string): string;
+var
+  Q: TFDQuery;
 begin
-  Result := InsertAndReturnIdJson(ASQL, '');
+  Q := Query(ASQL);
+  try
+    Result := Q.Fields[0].AsString;
+  finally
+    Q.Free;
+  end;
 end;
 
 function TArtifactDB.InsertAndReturnIdJson(const ASQL, AParamsJson: string): string;

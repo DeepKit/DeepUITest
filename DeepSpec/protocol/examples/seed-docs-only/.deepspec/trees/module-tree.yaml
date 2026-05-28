@@ -1,0 +1,8 @@
+version: "1.0"
+tree: module
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+# Documentation-only project: no code modules yet
+# Module tree represents planned architecture from design docs
+nodes: []

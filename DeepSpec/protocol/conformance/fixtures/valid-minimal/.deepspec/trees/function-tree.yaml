@@ -1,0 +1,10 @@
+version: "1.0"
+tree: function
+generated_at: "2026-05-15T00:00:00Z"
+generator: "test"
+
+nodes:
+  - id: "func-root"
+    tree: function
+    title: "Root"
+    kind: capability

@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="750" viewBox="0 0 900 750">
+  <style>
+    .title { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:22px; font-weight:bold; fill:#333; }
+    .subtitle { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:12px; fill:#666; }
+    .role-name { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:12px; font-weight:bold; fill:#fff; }
+    .role-alias { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:8px; fill:rgba(255,255,255,0.7); }
+    .zone-title { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:12px; font-weight:bold; fill:#555; }
+    .note { font-family:'Microsoft YaHei','Segoe UI',sans-serif; font-size:10px; fill:#888; }
+    .arrow { stroke:#666; stroke-width:1.2; marker-end:url(#arrowhead); fill:none; }
+    .arrow-dep { stroke:#38a3a5; stroke-width:1; marker-end:url(#arrowhead-dep); fill:none; }
+    .arrow-msg { stroke:#e94560; stroke-width:1; stroke-dasharray:4,2; marker-end:url(#arrowhead-msg); fill:none; }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666" />
+    </marker>
+    <marker id="arrowhead-dep" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#38a3a5" />
+    </marker>
+    <marker id="arrowhead-msg" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#e94560" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="900" height="750" fill="#f8f9fa"/>
+
+  <!-- 标题 -->
+  <text class="title" x="450" y="35" text-anchor="middle">UniFlow 角色图谱</text>
+  <text class="subtitle" x="450" y="55" text-anchor="middle">11个角色的依赖关系与信任边界</text>
+
+  <!-- 完全信任区 -->
+  <g transform="translate(50, 70)">
+    <rect width="800" height="200" rx="10" fill="rgba(26,26,46,0.05)" stroke="#1a1a2e" stroke-width="2" stroke-dasharray="5,3"/>
+    <text class="zone-title" x="20" y="25">完全信任区 (Full Trust Zone)</text>
+    <text class="note" x="20" y="42">系统基础设施，代码可审计，无不可预测行为</text>
+    
+    <!-- 引擎 -->
+    <g transform="translate(100, 70)">
+      <rect width="120" height="55" rx="6" fill="#1a1a2e" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">引擎</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">战争机器 | 摄影机</text>
+    </g>
+    
+    <!-- 督察 -->
+    <g transform="translate(280, 70)">
+      <rect width="120" height="55" rx="6" fill="#1a1a2e" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">督察</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">总监察长 | 监制</text>
+    </g>
+    
+    <!-- 后勤 -->
+    <g transform="translate(100, 140)">
+      <rect width="120" height="55" rx="6" fill="#2c786c" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">后勤</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">后勤部 | 制片</text>
+    </g>
+    
+    <!-- 记录员 -->
+    <g transform="translate(280, 140)">
+      <rect width="120" height="55" rx="6" fill="#2c786c" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">记录员</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">战史官 | 场记</text>
+    </g>
+    
+    <!-- 通信官 -->
+    <g transform="translate(460, 140)">
+      <rect width="120" height="55" rx="6" fill="#2c786c" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">通信官</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">通信兵 | 信息中心</text>
+    </g>
+
+    <!-- 依赖箭头：后勤 <- 引擎 -->
+    <line class="arrow-dep" x1="160" y1="125" x2="160" y2="137"/>
+    <!-- 依赖箭头：记录员 <- 引擎 -->
+    <line class="arrow-dep" x1="280" y1="125" x2="290" y2="137"/>
+    <!-- 依赖箭头：通信官 <- 引擎 (绕过) -->
+    <path class="arrow-dep" d="M 220 97 L 500 97 L 500 137" fill="none"/>
+    <!-- 依赖箭头：督察 <- 引擎 -->
+    <line class="arrow-dep" x1="220" y1="97" x2="275" y2="97"/>
+  </g>
+
+  <!-- 有限信任区 -->
+  <g transform="translate(50, 290)">
+    <rect width="800" height="160" rx="10" fill="rgba(15,52,96,0.05)" stroke="#0f3460" stroke-width="2" stroke-dasharray="5,3"/>
+    <text class="zone-title" x="20" y="25">有限信任区 (Limited Trust Zone)</text>
+    <text class="note" x="20" y="42">可信但需审计，涉及业务决策或外部依赖</text>
+    
+    <!-- 总指挥 -->
+    <g transform="translate(100, 60)">
+      <rect width="120" height="55" rx="6" fill="#0f3460" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">总指挥</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">司令官 | 导演</text>
+    </g>
+    
+    <!-- 调度员 -->
+    <g transform="translate(280, 60)">
+      <rect width="120" height="55" rx="6" fill="#0f3460" filter="url(#shadow)"/>
+      <text class="role-name" x="60" y="25" text-anchor="middle">调度员</text>
+      <text class="role-alias" x="60" y="40" text-anchor="middle">参谋 | 副导演</text>
+    </g>
+    
+    <!-- 守卫 -->
+    <g transform="translate(460, 60)">
+      <rect width="160" height="55" rx="6" fill="#533483" filter="url(#shadow)"/>
+      <text class="role-name" x="80" y="25" text-anchor="middle">守卫</text>
+      <text class="role-alias" x="80" y="40" text-anchor="middle">门卫 | 监工 | 审核官</text>
+    </g>
+    
+    <!-- 军械官 -->
+    <g transform="translate(680, 60)">
+      <rect width="100" height="55" rx="6" fill="#533483" filter="url(#shadow)"/>
+      <text class="role-name" x="50" y="25" text-anchor="middle">军械官</text>
+      <text class="role-alias" x="50" y="40" text-anchor="middle">道具师</text>
+    </g>
+
+    <!-- 依赖箭头 -->
+    <line class="arrow-dep" x1="220" y1="87" x2="275" y2="87"/>
+    <text class="note" x="230" y="82">命令</text>
+  </g>
+
+  <!-- 不信任区 -->
+  <g transform="translate(50, 470)">
+    <rect width="800" height="130" rx="10" fill="rgba(199,54,89,0.05)" stroke="#c73659" stroke-width="2" stroke-dasharray="5,3"/>
+    <text class="zone-title" x="20" y="25">不信任区 (Untrust Zone)</text>
+    <text class="note" x="20" y="42">输出不可预测（LLM幻觉、外部服务异常），必须校验</text>
+    
+    <!-- 智囊 -->
+    <g transform="translate(200, 60)">
+      <rect width="180" height="55" rx="6" fill="#c73659" filter="url(#shadow)"/>
+      <text class="role-name" x="90" y="25" text-anchor="middle">智囊</text>
+      <text class="role-alias" x="90" y="40" text-anchor="middle">情报官 | 编剧 (理解/生成/诊断)</text>
+    </g>
+    
+    <!-- 执行者 -->
+    <g transform="translate(480, 60)">
+      <rect width="140" height="55" rx="6" fill="#533483" filter="url(#shadow)"/>
+      <text class="role-name" x="70" y="25" text-anchor="middle">执行者</text>
+      <text class="role-alias" x="70" y="40" text-anchor="middle">作战部队 | 摄制组</text>
+    </g>
+  </g>
+
+  <!-- 跨区域依赖箭头 -->
+  <!-- 调度员 -> 智囊 -->
+  <path class="arrow-msg" d="M 380 405 L 380 430 L 340 525" fill="none"/>
+  <text class="note" x="360" y="450">分派AI任务</text>
+  
+  <!-- 调度员 -> 执行者 -->
+  <path class="arrow-msg" d="M 380 405 L 380 430 L 550 525" fill="none"/>
+  <text class="note" x="480" y="480">分派Skill</text>
+  
+  <!-- 智囊 -> 执行者 -->
+  <line class="arrow-msg" x1="430" y1="555" x2="475" y2="555"/>
+  <text class="note" x="440" y="545">方案</text>
+  
+  <!-- 执行者 -> 守卫(审核) -->
+  <path class="arrow-msg" d="M 600 525 L 600 440 L 580 405" fill="none"/>
+  <text class="note" x="610" y="470">审核请求</text>
+
+  <!-- 总指挥 -> 守卫(门卫) -->
+  <line class="arrow-msg" x1="270" y1="377" x2="505" y2="377"/>
+  
+  <!-- 记录员服务线 -->
+  <path class="arrow-dep" d="M 400 250 L 400 285" fill="none"/>
+  <path class="arrow-dep" d="M 400 250 L 340 460 L 340 522" fill="none"/>
+
+  <!-- 消息类型图例 -->
+  <g transform="translate(50, 620)">
+    <text class="zone-title" x="0" y="20">消息流向：</text>
+    
+    <line class="arrow-dep" x1="100" y1="17" x2="150" y2="17"/>
+    <text class="note" x="160" y="20">依赖/驱动</text>
+    
+    <line class="arrow-msg" x1="260" y1="17" x2="310" y2="17"/>
+    <text class="note" x="320" y="20">命令消息</text>
+    
+    <rect x="420" y="7" width="15" height="15" rx="2" fill="#1a1a2e"/>
+    <text class="note" x="445" y="20">元层</text>
+    
+    <rect x="490" y="7" width="15" height="15" rx="2" fill="#0f3460"/>
+    <text class="note" x="515" y="20">决策层</text>
+    
+    <rect x="580" y="7" width="15" height="15" rx="2" fill="#c73659"/>
+    <text class="note" x="605" y="20">智能层</text>
+    
+    <rect x="660" y="7" width="15" height="15" rx="2" fill="#533483"/>
+    <text class="note" x="685" y="20">能力层</text>
+    
+    <rect x="740" y="7" width="15" height="15" rx="2" fill="#2c786c"/>
+    <text class="note" x="765" y="20">基础层</text>
+  </g>
+
+  <!-- 核心交互说明 -->
+  <g transform="translate(50, 660)">
+    <text class="zone-title" x="0" y="20">核心交互模式：</text>
+    <text class="note" x="0" y="40">1. 调度员分派任务给智囊（AI处理）和执行者（Skill执行）</text>
+    <text class="note" x="0" y="55">2. 守卫贯穿全程：门卫把入口、监工管过程、审核官验出口</text>
+    <text class="note" x="0" y="70">3. 记录员被所有角色依赖，全程记录</text>
+    <text class="note" x="400" y="40">4. 智囊和执行者的输出必须经守卫审核</text>
+    <text class="note" x="400" y="55">5. 督察可观测和干预所有角色（穿透边界）</text>
+    <text class="note" x="400" y="70">6. 引擎驱动所有角色生命周期</text>
+  </g>
+
+  <!-- 版权 -->
+  <text x="450" y="735" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#999">UniFlow - 角色图谱 © 2025</text>
+</svg>

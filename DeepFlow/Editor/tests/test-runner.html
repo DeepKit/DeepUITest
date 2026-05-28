@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow Editor - 单元测试</title>
+  <style>
+    :root {
+      --color-bg: #1e1e2e;
+      --color-surface: #313244;
+      --color-text: #cdd6f4;
+      --color-green: #a6e3a1;
+      --color-red: #f38ba8;
+      --color-yellow: #f9e2af;
+      --color-blue: #89b4fa;
+      --color-gray: #6c7086;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text);
+      line-height: 1.5;
+      padding: 20px;
+    }
+    
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .status {
+      font-size: 14px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: var(--color-surface);
+    }
+    
+    .status.running { background: var(--color-yellow); color: #1e1e2e; }
+    .status.passed { background: var(--color-green); color: #1e1e2e; }
+    .status.failed { background: var(--color-red); color: #1e1e2e; }
+    
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: var(--color-blue);
+      color: #1e1e2e;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .summary {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding: 15px;
+      background: var(--color-surface);
+      border-radius: 8px;
+    }
+    
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .summary-value {
+      font-size: 28px;
+      font-weight: bold;
+    }
+    
+    .summary-label {
+      font-size: 12px;
+      color: var(--color-gray);
+    }
+    
+    .summary-item.passed .summary-value { color: var(--color-green); }
+    .summary-item.failed .summary-value { color: var(--color-red); }
+    .summary-item.skipped .summary-value { color: var(--color-yellow); }
+    
+    .test-suites {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .test-suite {
+      background: var(--color-surface);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .suite-header {
+      padding: 12px 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    .suite-header:hover { background: rgba(255,255,255,0.05); }
+    
+    .suite-icon {
+      font-size: 16px;
+    }
+    
+    .suite-name {
+      flex: 1;
+    }
+    
+    .suite-stats {
+      font-size: 12px;
+      color: var(--color-gray);
+    }
+    
+    .suite-tests {
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .test-case {
+      padding: 10px 15px 10px 40px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    .test-case:last-child { border-bottom: none; }
+    
+    .test-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    
+    .test-icon.passed { background: var(--color-green); color: #1e1e2e; }
+    .test-icon.failed { background: var(--color-red); color: #1e1e2e; }
+    .test-icon.skipped { background: var(--color-yellow); color: #1e1e2e; }
+    .test-icon.pending { background: var(--color-gray); }
+    
+    .test-name { flex: 1; }
+    
+    .test-time {
+      font-size: 12px;
+      color: var(--color-gray);
+    }
+    
+    .test-error {
+      padding: 10px 15px 10px 60px;
+      background: rgba(243, 139, 168, 0.1);
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--color-red);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    
+    .collapsed .suite-tests { display: none; }
+    
+    /* Hidden mock elements for testing */
+    #mockCanvas, #mockNodes, #mockConnections, #mockProperties, #mockTemplate {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>
+    🧪 UniFlow Editor 单元测试
+    <span id="globalStatus" class="status">就绪</span>
+  </h1>
+  
+  <div class="controls">
+    <button id="btnRunAll" onclick="runAllTests()">▶ 运行全部测试</button>
+    <button id="btnReset" onclick="resetTests()">↺ 重置</button>
+  </div>
+  
+  <div class="summary">
+    <div class="summary-item total">
+      <span id="totalCount" class="summary-value">0</span>
+      <span class="summary-label">总计</span>
+    </div>
+    <div class="summary-item passed">
+      <span id="passedCount" class="summary-value">0</span>
+      <span class="summary-label">通过</span>
+    </div>
+    <div class="summary-item failed">
+      <span id="failedCount" class="summary-value">0</span>
+      <span class="summary-label">失败</span>
+    </div>
+    <div class="summary-item skipped">
+      <span id="skippedCount" class="summary-value">0</span>
+      <span class="summary-label">跳过</span>
+    </div>
+    <div class="summary-item">
+      <span id="duration" class="summary-value">0ms</span>
+      <span class="summary-label">耗时</span>
+    </div>
+  </div>
+  
+  <div id="testSuites" class="test-suites">
+    <!-- Test suites will be rendered here -->
+  </div>
+  
+  <!-- Mock DOM elements required by editor components -->
+  <div id="mockCanvas">
+    <div id="canvasWrapper">
+      <div id="nodesLayer"></div>
+      <svg id="connectionsLayer"></svg>
+    </div>
+  </div>
+  <div id="mockProperties">
+    <div class="properties-title"></div>
+    <div class="properties-content"></div>
+  </div>
+  <template id="nodeTemplate">
+    <div class="workflow-node">
+      <div class="node-header">
+        <span class="node-icon"></span>
+        <span class="node-title"></span>
+        <button class="node-delete">×</button>
+      </div>
+      <div class="node-description"></div>
+      <div class="node-ports">
+        <div class="node-port node-port-in" data-port="in"></div>
+        <div class="node-port node-port-out" data-port="out"></div>
+      </div>
+    </div>
+  </template>
+  
+  <!-- Load editor modules -->
+  <script src="../js/utils.js"></script>
+  <script src="../js/node-types.js"></script>
+  <script src="../js/canvas.js"></script>
+  <script src="../js/properties.js"></script>
+  
+  <!-- Test framework -->
+  <script src="test-framework.js"></script>
+  
+  <!-- Test suites -->
+  <script src="utils.test.js"></script>
+  <script src="node-types.test.js"></script>
+  <script src="canvas.test.js"></script>
+  <script src="properties.test.js"></script>
+  <script src="integration.test.js"></script>
+  
+  <script>
+    // Initialize test UI
+    document.addEventListener('DOMContentLoaded', () => {
+      TestRunner.renderSuites();
+    });
+  </script>
+</body>
+</html>

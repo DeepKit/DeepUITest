@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700">
+  <defs>
+    <style>
+      .bg { fill: #fafafa; }
+      .layer { fill: #ffffff; stroke: #e5e7eb; stroke-width: 1; rx: 8; }
+      .layer-header { fill: #f3f4f6; rx: 8; }
+      .module { fill: #ffffff; stroke: #d1d5db; stroke-width: 1; rx: 6; }
+      .module-new { fill: #fef3c7; stroke: #f59e0b; stroke-width: 2; rx: 6; }
+      .module-reuse { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; rx: 6; }
+      .text-layer { fill: #374151; font-family: Microsoft YaHei, sans-serif; font-size: 14px; font-weight: bold; }
+      .text-module { fill: #1f2937; font-family: Microsoft YaHei, sans-serif; font-size: 11px; }
+      .text-file { fill: #6b7280; font-family: Consolas, monospace; font-size: 10px; }
+      .text-desc { fill: #9ca3af; font-family: Microsoft YaHei, sans-serif; font-size: 9px; }
+      .arrow { fill: none; stroke: #9ca3af; stroke-width: 1.5; marker-end: url(#arrowhead); }
+      .arrow-data { fill: none; stroke: #3b82f6; stroke-width: 1.5; stroke-dasharray: 4; marker-end: url(#arrowhead-blue); }
+      .legend-new { fill: #fef3c7; stroke: #f59e0b; stroke-width: 2; }
+      .legend-reuse { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; }
+      .title { fill: #111827; font-family: Microsoft YaHei, sans-serif; font-size: 18px; font-weight: bold; }
+      .subtitle { fill: #6b7280; font-family: Microsoft YaHei, sans-serif; font-size: 12px; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af"/>
+    </marker>
+    <marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/>
+    </marker>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect class="bg" width="900" height="700"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="35" class="title" text-anchor="middle">SayDone MVP 架构图</text>
+  <text x="450" y="55" class="subtitle" text-anchor="middle">基于 DevDirector 现有架构扩展</text>
+  
+  <!-- 图例 -->
+  <rect class="legend-new" x="650" y="25" width="16" height="16" rx="3"/>
+  <text x="672" y="38" class="text-module">新增模块</text>
+  <rect class="legend-reuse" x="750" y="25" width="16" height="16" rx="3"/>
+  <text x="772" y="38" class="text-module">复用模块</text>
+  
+  <!-- UI 层 -->
+  <rect class="layer" x="30" y="80" width="840" height="130"/>
+  <rect class="layer-header" x="30" y="80" width="840" height="30"/>
+  <text x="50" y="100" class="text-layer">📱 UI 层 (src/app/panels)</text>
+  
+  <rect class="module-new" x="60" y="125" width="180" height="70"/>
+  <text x="150" y="148" class="text-module" text-anchor="middle">UI.Panels.NLInput</text>
+  <text x="150" y="165" class="text-file" text-anchor="middle">NL 输入面板</text>
+  <text x="150" y="180" class="text-desc" text-anchor="middle">自然语言输入 + 快捷场景</text>
+  
+  <rect class="module-new" x="260" y="125" width="180" height="70"/>
+  <text x="350" y="148" class="text-module" text-anchor="middle">UI.Panels.NLPreview</text>
+  <text x="350" y="165" class="text-file" text-anchor="middle">预览面板</text>
+  <text x="350" y="180" class="text-desc" text-anchor="middle">实时渲染 + 确认操作</text>
+  
+  <rect class="module-reuse" x="460" y="125" width="180" height="70"/>
+  <text x="550" y="148" class="text-module" text-anchor="middle">UI.Panels.Workspace</text>
+  <text x="550" y="165" class="text-file" text-anchor="middle">工作区面板</text>
+  <text x="550" y="180" class="text-desc" text-anchor="middle">复用现有 Tab 系统</text>
+  
+  <rect class="module-reuse" x="660" y="125" width="180" height="70"/>
+  <text x="750" y="148" class="text-module" text-anchor="middle">UMainForm</text>
+  <text x="750" y="165" class="text-file" text-anchor="middle">主窗体</text>
+  <text x="750" y="180" class="text-desc" text-anchor="middle">集成 NL 面板</text>
+  
+  <!-- 服务层 -->
+  <rect class="layer" x="30" y="230" width="840" height="130"/>
+  <rect class="layer-header" x="30" y="230" width="840" height="30"/>
+  <text x="50" y="250" class="text-layer">⚙️ 服务层 (src/app)</text>
+  
+  <rect class="module-new" x="60" y="275" width="150" height="70"/>
+  <text x="135" y="298" class="text-module" text-anchor="middle">NL.Parser</text>
+  <text x="135" y="315" class="text-file" text-anchor="middle">解析服务</text>
+  <text x="135" y="330" class="text-desc" text-anchor="middle">NL → JSON</text>
+  
+  <rect class="module-new" x="230" y="275" width="150" height="70"/>
+  <text x="305" y="298" class="text-module" text-anchor="middle">NL.Validator</text>
+  <text x="305" y="315" class="text-file" text-anchor="middle">验证服务</text>
+  <text x="305" y="330" class="text-desc" text-anchor="middle">Schema + 逻辑</text>
+  
+  <rect class="module-new" x="400" y="275" width="150" height="70"/>
+  <text x="475" y="298" class="text-module" text-anchor="middle">NL.PromptBuilder</text>
+  <text x="475" y="315" class="text-file" text-anchor="middle">Prompt 构建</text>
+  <text x="475" y="330" class="text-desc" text-anchor="middle">场景模板管理</text>
+  
+  <rect class="module-new" x="570" y="275" width="150" height="70"/>
+  <text x="645" y="298" class="text-module" text-anchor="middle">NL.AiService</text>
+  <text x="645" y="315" class="text-file" text-anchor="middle">AI 调用封装</text>
+  <text x="645" y="330" class="text-desc" text-anchor="middle">liteLLM 网关</text>
+  
+  <rect class="module-reuse" x="740" y="275" width="120" height="70"/>
+  <text x="800" y="298" class="text-module" text-anchor="middle">App.Services</text>
+  <text x="800" y="315" class="text-file" text-anchor="middle">应用服务</text>
+  <text x="800" y="330" class="text-desc" text-anchor="middle">服务聚合</text>
+  
+  <!-- 领域层 -->
+  <rect class="layer" x="30" y="380" width="500" height="130"/>
+  <rect class="layer-header" x="30" y="380" width="500" height="30"/>
+  <text x="50" y="400" class="text-layer">🏛️ 领域层 (src/domain)</text>
+  
+  <rect class="module-new" x="60" y="425" width="150" height="70"/>
+  <text x="135" y="448" class="text-module" text-anchor="middle">Domain.NL</text>
+  <text x="135" y="465" class="text-file" text-anchor="middle">NL 领域模型</text>
+  <text x="135" y="480" class="text-desc" text-anchor="middle">TNLParseResult, TNLField</text>
+  
+  <rect class="module-reuse" x="230" y="425" width="150" height="70"/>
+  <text x="305" y="448" class="text-module" text-anchor="middle">Domain.Entities</text>
+  <text x="305" y="465" class="text-file" text-anchor="middle">核心实体</text>
+  <text x="305" y="480" class="text-desc" text-anchor="middle">TUIScreen, TUIControl</text>
+  
+  <rect class="module-reuse" x="400" y="425" width="120" height="70"/>
+  <text x="460" y="448" class="text-module" text-anchor="middle">Domain.Types</text>
+  <text x="460" y="465" class="text-file" text-anchor="middle">类型枚举</text>
+  <text x="460" y="480" class="text-desc" text-anchor="middle">TScreenKind 等</text>
+  
+  <!-- 基础设施层 -->
+  <rect class="layer" x="550" y="380" width="320" height="130"/>
+  <rect class="layer-header" x="550" y="380" width="320" height="30"/>
+  <text x="570" y="400" class="text-layer">🔧 基础设施层 (src/infra)</text>
+  
+  <rect class="module-new" x="570" y="425" width="130" height="70"/>
+  <text x="635" y="448" class="text-module" text-anchor="middle">NLCacheRepo</text>
+  <text x="635" y="465" class="text-file" text-anchor="middle">NL 缓存仓储</text>
+  <text x="635" y="480" class="text-desc" text-anchor="middle">精确匹配缓存</text>
+  
+  <rect class="module-reuse" x="720" y="425" width="130" height="70"/>
+  <text x="785" y="448" class="text-module" text-anchor="middle">Sqlite.*</text>
+  <text x="785" y="465" class="text-file" text-anchor="middle">SQLite 基础设施</text>
+  <text x="785" y="480" class="text-desc" text-anchor="middle">FireDAC + Schema</text>
+  
+  <!-- 外部依赖 -->
+  <rect class="layer" x="30" y="530" width="840" height="100"/>
+  <rect class="layer-header" x="30" y="530" width="840" height="30"/>
+  <text x="50" y="550" class="text-layer">☁️ 外部依赖</text>
+  
+  <rect class="module-reuse" x="60" y="575" width="180" height="45"/>
+  <text x="150" y="598" class="text-module" text-anchor="middle">liteLLM 网关</text>
+  <text x="150" y="612" class="text-desc" text-anchor="middle">AI 模型统一访问</text>
+  
+  <rect class="module-reuse" x="260" y="575" width="180" height="45"/>
+  <text x="350" y="598" class="text-module" text-anchor="middle">SQLite (devdirector.db)</text>
+  <text x="350" y="612" class="text-desc" text-anchor="middle">本地数据存储</text>
+  
+  <rect class="module-reuse" x="460" y="575" width="180" height="45"/>
+  <text x="550" y="598" class="text-module" text-anchor="middle">UniBase</text>
+  <text x="550" y="612" class="text-desc" text-anchor="middle">配置 / 日志 / i18n</text>
+  
+  <!-- 数据流箭头 -->
+  <path class="arrow" d="M 150 195 L 150 275"/>
+  <path class="arrow" d="M 350 195 L 350 275"/>
+  <path class="arrow" d="M 135 345 L 135 425"/>
+  <path class="arrow" d="M 305 345 L 305 425"/>
+  <path class="arrow" d="M 475 345 L 475 390 L 420 390 L 420 425"/>
+  <path class="arrow" d="M 645 345 L 645 390 L 635 390 L 635 425"/>
+  <path class="arrow-data" d="M 645 345 L 645 575"/>
+  <path class="arrow-data" d="M 785 495 L 785 530 L 350 530 L 350 575"/>
+  
+  <!-- 标注 -->
+  <text x="450" y="680" class="subtitle" text-anchor="middle">MVP 新增 7 个文件，复用 10+ 现有模块</text>
+</svg>

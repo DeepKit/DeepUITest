@@ -1,0 +1,25 @@
+id: unit_test
+name: 单元测试契约
+description: 单元测试文件的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["def test_", "it(", "test(", "describe(", "@Test", "func Test"]
+      reason: 必须包含测试用例定义
+      severity: critical
+  must_not_contain:
+    - patterns: ["time.sleep(", "Thread.sleep(", "asyncio.sleep("]
+      reason: 禁止在单元测试中使用 sleep（应使用 mock）
+      severity: high
+    - patterns: ["http://", "https://"]
+      reason: 单元测试不应发起真实网络请求
+      severity: high
+  should_contain:
+    - patterns: ["assert", "expect(", "assertEqual", "assertEquals", "should"]
+      reason: 必须包含断言
+      severity: critical
+    - patterns: ["mock", "Mock", "patch", "stub", "spy", "fake"]
+      reason: 建议使用 mock 隔离外部依赖
+      severity: medium
+    - patterns: ["setUp", "tearDown", "beforeEach", "afterEach", "setup", "teardown"]
+      reason: 建议添加测试前后置处理
+      severity: low

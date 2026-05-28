@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="思维越狱阅读入口页。">
+    <link rel="icon" href="data:,">
+    <title>思维越狱 | 阅读入口</title>
+    <style>
+        :root {
+            --bg: #f4efe7;
+            --paper: rgba(255, 255, 255, 0.82);
+            --ink: #171411;
+            --muted: #655d53;
+            --line: rgba(23, 20, 17, 0.12);
+            --accent: #80592d;
+            --accent-soft: rgba(128, 89, 45, 0.1);
+            --shadow: 0 18px 44px rgba(32, 23, 13, 0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(128, 89, 45, 0.12), transparent 24%),
+                radial-gradient(circle at bottom right, rgba(23, 20, 17, 0.08), transparent 18%),
+                var(--bg);
+            font-family: "Noto Serif SC", Georgia, "Source Han Serif SC", serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .card {
+            width: min(760px, 100%);
+            padding: 34px 30px;
+            border-radius: 24px;
+            border: 1px solid var(--line);
+            background: var(--paper);
+            box-shadow: var(--shadow);
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 0.8rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        h1 {
+            font-size: clamp(1.9rem, 4vw, 2.8rem);
+            line-height: 1.16;
+            margin-bottom: 14px;
+            letter-spacing: -0.04em;
+        }
+
+        p {
+            color: var(--muted);
+            line-height: 1.8;
+            margin-bottom: 16px;
+        }
+
+        .panel {
+            padding: 16px 18px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.58);
+            margin-top: 18px;
+        }
+
+        .panel strong {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 22px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 22px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            color: var(--ink);
+            text-decoration: none;
+            font-weight: 700;
+            transition: 0.18s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .btn.primary {
+            background: var(--ink);
+            border-color: var(--ink);
+            color: #fff7eb;
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="eyebrow">WSM Reader</div>
+        <h1>当前阅读入口已并入主商品页链路。</h1>
+        <p>支付后的首屏承接、起始路径和商品交付说明，现已统一收进主页面。这里不再继续展示旧版承接语、旧弹窗或旧销售文案。</p>
+        <div class="panel">
+            <strong>当前处理原则</strong>
+            <p>当前以“背锅预看 -> 免费结果 -> 三档处方 -> 购后首屏”为主链，后续再根据正式交付结构扩展独立阅读入口。</p>
+        </div>
+        <div class="actions">
+            <a class="btn primary" href="/break">返回思维越狱首页</a>
+        </div>
+    </main>
+</body>
+</html>

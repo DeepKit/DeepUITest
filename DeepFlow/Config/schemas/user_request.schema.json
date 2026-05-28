@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "uniflow://schemas/user_request",
+  "title": "User Request Schema",
+  "description": "Schema for validating user chat requests",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "User message content",
+      "minLength": 1,
+      "maxLength": 10000
+    },
+    "conversation_id": {
+      "type": "string",
+      "description": "Conversation/session identifier",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "maxLength": 64
+    },
+    "attachments": {
+      "type": "array",
+      "description": "Optional attachments",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["text", "image", "file", "url"]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "content": {
+            "type": "string",
+            "description": "Base64 encoded content or URL",
+            "maxLength": 1000000
+          },
+          "mime_type": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": ["type", "content"]
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Request-specific settings",
+      "properties": {
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+          "default": "zh-CN"
+        },
+        "response_format": {
+          "type": "string",
+          "enum": ["text", "json", "markdown"],
+          "default": "text"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16000,
+          "default": 2000
+        },
+        "stream": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  },
+  "required": ["message"]
+}

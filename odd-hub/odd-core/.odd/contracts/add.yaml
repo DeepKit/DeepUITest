@@ -1,0 +1,15 @@
+id: add-function
+name: 加法函数契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["def add"]
+      reason: 必须定义 add 函数
+      severity: critical
+  must_not_contain:
+    - patterns: ["eval("]
+      reason: 禁止 eval
+      severity: critical
+  should_contain:
+    - patterns: ['"""', "'''"]
+      reason: 建议添加 docstring
+      severity: low

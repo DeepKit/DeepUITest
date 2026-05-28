@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700">
+  <defs>
+    <style>
+      .bg { fill: #1a1a2e; }
+      .panel { fill: #16213e; stroke: #0f3460; stroke-width: 1; }
+      .panel-header { fill: #0f3460; }
+      .text-title { fill: #e94560; font-family: Microsoft YaHei, sans-serif; font-size: 14px; font-weight: bold; }
+      .text-normal { fill: #eaeaea; font-family: Microsoft YaHei, sans-serif; font-size: 12px; }
+      .text-label { fill: #94a3b8; font-family: Microsoft YaHei, sans-serif; font-size: 11px; }
+      .text-hint { fill: #64748b; font-family: Microsoft YaHei, sans-serif; font-size: 10px; }
+      .input-box { fill: #0f3460; stroke: #1a1a2e; stroke-width: 1; rx: 4; }
+      .input-focus { fill: #0f3460; stroke: #e94560; stroke-width: 2; rx: 4; }
+      .btn-primary { fill: #e94560; rx: 4; }
+      .btn-secondary { fill: #0f3460; stroke: #e94560; stroke-width: 1; rx: 4; }
+      .btn-text { fill: #ffffff; font-family: Microsoft YaHei, sans-serif; font-size: 12px; }
+      .divider { stroke: #0f3460; stroke-width: 1; }
+      .highlight { fill: #e94560; opacity: 0.2; }
+      .preview-bg { fill: #ffffff; }
+      .preview-text { fill: #333333; font-family: Microsoft YaHei, sans-serif; font-size: 12px; }
+      .preview-label { fill: #666666; font-family: Microsoft YaHei, sans-serif; font-size: 11px; }
+      .preview-input { fill: #ffffff; stroke: #cccccc; stroke-width: 1; rx: 4; }
+      .preview-btn { fill: #e94560; rx: 4; }
+      .status-success { fill: #10b981; }
+      .status-processing { fill: #f59e0b; }
+      .annotation { fill: #e94560; font-family: Microsoft YaHei, sans-serif; font-size: 10px; }
+      .arrow { fill: none; stroke: #e94560; stroke-width: 1.5; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e94560"/>
+    </marker>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect class="bg" width="1000" height="700"/>
+  
+  <!-- 标题栏 -->
+  <rect x="0" y="0" width="1000" height="40" fill="#0f3460"/>
+  <text x="20" y="26" class="text-title">SayDone - 自然语言交互面板 (MVP)</text>
+  <text x="980" y="26" class="text-label" text-anchor="end">DevDirector 子模块</text>
+  
+  <!-- 左侧：NL输入区 -->
+  <rect class="panel" x="20" y="60" width="460" height="620" rx="8"/>
+  <rect class="panel-header" x="20" y="60" width="460" height="35" rx="8"/>
+  <rect fill="#16213e" x="20" y="87" width="460" height="8"/>
+  <text x="40" y="83" class="text-title">📝 需求输入</text>
+  
+  <!-- 输入提示 -->
+  <text x="40" y="120" class="text-label">描述您想要的界面：</text>
+  
+  <!-- 输入框 -->
+  <rect class="input-focus" x="40" y="130" width="420" height="100"/>
+  <text x="55" y="155" class="text-normal">做个用户登录页面</text>
+  <text x="55" y="175" class="text-hint">|</text>
+  
+  <!-- 快捷场景按钮 -->
+  <text x="40" y="260" class="text-label">快捷场景：</text>
+  <rect class="btn-secondary" x="40" y="270" width="80" height="28"/>
+  <text x="80" y="289" class="btn-text" text-anchor="middle">登录页</text>
+  <rect class="btn-secondary" x="130" y="270" width="80" height="28"/>
+  <text x="170" y="289" class="btn-text" text-anchor="middle">注册页</text>
+  <rect class="btn-secondary" x="220" y="270" width="80" height="28"/>
+  <text x="260" y="289" class="btn-text" text-anchor="middle">联系我们</text>
+  <rect class="btn-secondary" x="310" y="270" width="80" height="28"/>
+  <text x="350" y="289" class="btn-text" text-anchor="middle">个人资料</text>
+  
+  <!-- 生成按钮 -->
+  <rect class="btn-primary" x="40" y="320" width="420" height="40"/>
+  <text x="250" y="346" class="btn-text" text-anchor="middle" font-size="14px">🚀 生成结构化数据</text>
+  
+  <!-- 分割线 -->
+  <line class="divider" x1="40" y1="380" x2="460" y2="380"/>
+  
+  <!-- 状态区 -->
+  <text x="40" y="410" class="text-label">处理状态：</text>
+  <circle class="status-success" cx="120" cy="406" r="6"/>
+  <text x="135" y="410" class="text-normal">解析完成</text>
+  
+  <!-- JSON输出区 -->
+  <text x="40" y="450" class="text-label">生成的结构化数据 (JSON)：</text>
+  <rect class="input-box" x="40" y="460" width="420" height="200"/>
+  <text x="55" y="485" class="text-hint" font-family="Consolas, monospace">{</text>
+  <text x="65" y="505" class="text-hint" font-family="Consolas, monospace">"type": "FormPage",</text>
+  <text x="65" y="525" class="text-hint" font-family="Consolas, monospace">"title": "用户登录",</text>
+  <text x="65" y="545" class="text-hint" font-family="Consolas, monospace">"fields": [</text>
+  <text x="75" y="565" class="text-hint" font-family="Consolas, monospace">{ "name": "username", "type": "text" },</text>
+  <text x="75" y="585" class="text-hint" font-family="Consolas, monospace">{ "name": "password", "type": "password" }</text>
+  <text x="65" y="605" class="text-hint" font-family="Consolas, monospace">],</text>
+  <text x="65" y="625" class="text-hint" font-family="Consolas, monospace">"submitButton": { "text": "登录" }</text>
+  <text x="55" y="645" class="text-hint" font-family="Consolas, monospace">}</text>
+  
+  <!-- 右侧：预览区 -->
+  <rect class="panel" x="520" y="60" width="460" height="620" rx="8"/>
+  <rect class="panel-header" x="520" y="60" width="460" height="35" rx="8"/>
+  <rect fill="#16213e" x="520" y="87" width="460" height="8"/>
+  <text x="540" y="83" class="text-title">👁️ 实时预览</text>
+  
+  <!-- 预览内容区 -->
+  <rect class="preview-bg" x="560" y="120" width="380" height="400" rx="8"/>
+  
+  <!-- 预览标题 -->
+  <text x="750" y="160" class="preview-text" text-anchor="middle" font-size="18px" font-weight="bold" fill="#333">用户登录</text>
+  
+  <!-- 预览表单 -->
+  <text x="600" y="210" class="preview-label">用户名</text>
+  <rect class="preview-input" x="600" y="220" width="300" height="36"/>
+  <text x="615" y="244" class="preview-label">请输入用户名</text>
+  
+  <text x="600" y="280" class="preview-label">密码</text>
+  <rect class="preview-input" x="600" y="290" width="300" height="36"/>
+  <text x="615" y="314" class="preview-label">请输入密码</text>
+  
+  <!-- 预览按钮 -->
+  <rect class="preview-btn" x="600" y="360" width="300" height="40" rx="4"/>
+  <text x="750" y="386" fill="#ffffff" font-family="Microsoft YaHei" font-size="14px" text-anchor="middle">登录</text>
+  
+  <!-- 操作按钮 -->
+  <rect class="btn-primary" x="540" y="550" width="200" height="40"/>
+  <text x="640" y="576" class="btn-text" text-anchor="middle">✅ 确认使用</text>
+  
+  <rect class="btn-secondary" x="760" y="550" width="200" height="40"/>
+  <text x="860" y="576" class="btn-text" text-anchor="middle">✏️ 调整修改</text>
+  
+  <rect class="btn-secondary" x="540" y="610" width="200" height="40"/>
+  <text x="640" y="636" class="btn-text" text-anchor="middle">🔄 重新生成</text>
+  
+  <rect class="btn-secondary" x="760" y="610" width="200" height="40"/>
+  <text x="860" y="636" class="btn-text" text-anchor="middle">📋 复制JSON</text>
+  
+  <!-- 标注 -->
+  <rect fill="none" stroke="#e94560" stroke-width="2" stroke-dasharray="4" x="35" y="125" width="430" height="115" rx="4"/>
+  <text x="175" y="118" class="annotation">UI.Panels.NLInput</text>
+  
+  <rect fill="none" stroke="#e94560" stroke-width="2" stroke-dasharray="4" x="555" y="115" width="390" height="415" rx="4"/>
+  <text x="680" y="108" class="annotation">UI.Panels.NLPreview</text>
+</svg>

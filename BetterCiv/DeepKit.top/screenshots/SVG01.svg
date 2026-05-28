@@ -1,0 +1,4 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <rect width="800" height="500" fill="#F0F0F0" rx="8"/>
+  <text x="400" y="250" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#999">DeepSVG - 主图</text>
+</svg>

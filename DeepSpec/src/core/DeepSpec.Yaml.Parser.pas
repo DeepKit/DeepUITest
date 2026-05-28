@@ -125,7 +125,12 @@ end;
 function TYamlNode.AsString(const ADefault: string): string;
 begin
   if FKind = ykScalar then
-    Result := if (FScalar = 'null') or (FScalar = '~') then ADefault else FScalar
+  begin
+    if (FScalar = 'null') or (FScalar = '~') then
+      Result := ADefault
+    else
+      Result := FScalar;
+  end
   else
     Result := ADefault;
 end;
@@ -534,8 +539,8 @@ begin
   // Empty value: check next line for nested map or sequence
   if LTrimmed = '' then
   begin
-    // Look at next non-blank line
-    var LNextPos := FPos + 1;
+    // Look at next non-blank line (FPos already points to the line after key:)
+    var LNextPos := FPos;
     while (LNextPos < Length(FLines)) and IsBlankOrComment(FLines[LNextPos]) do
       Inc(LNextPos);
 
@@ -603,9 +608,10 @@ begin
       end;
 
       LKey := LStripped.Substring(0, LColonPos).Trim;
-      LValue := if LColonPos + 1 < LStripped.Length
-                then LStripped.Substring(LColonPos + 1).Trim
-                else '';
+      if LColonPos + 1 < LStripped.Length then
+        LValue := LStripped.Substring(LColonPos + 1).Trim
+      else
+        LValue := '';
 
       Inc(FPos);
       LValueNode := ParseValue(LValue, AIndent);
@@ -648,8 +654,10 @@ begin
       if not (LStripped.StartsWith('- ') or (LStripped = '-')) then
         Break;
 
-      LItemContent := if LStripped = '-' then ''
-                      else LStripped.Substring(2).Trim;
+      if LStripped = '-' then
+        LItemContent := ''
+      else
+        LItemContent := LStripped.Substring(2).Trim;
 
       Inc(FPos);
 
@@ -675,9 +683,11 @@ begin
         try
           var LColonPos := LItemContent.IndexOf(':');
           var LKey := LItemContent.Substring(0, LColonPos).Trim;
-          var LValue := if LColonPos + 1 < LItemContent.Length
-                        then LItemContent.Substring(LColonPos + 1).Trim
-                        else '';
+          var LValue: string;
+          if LColonPos + 1 < LItemContent.Length then
+            LValue := LItemContent.Substring(LColonPos + 1).Trim
+          else
+            LValue := '';
           var LValNode := ParseValue(LValue, AIndent + 2);
           LItem.SetField(StripQuotes(LKey), LValNode);
 
@@ -703,9 +713,11 @@ begin
               Continue;
             end;
             var LNextKey := LNextStripped.Substring(0, LNextColon).Trim;
-            var LNextVal := if LNextColon + 1 < LNextStripped.Length
-                            then LNextStripped.Substring(LNextColon + 1).Trim
-                            else '';
+            var LNextVal: string;
+            if LNextColon + 1 < LNextStripped.Length then
+              LNextVal := LNextStripped.Substring(LNextColon + 1).Trim
+            else
+              LNextVal := '';
             Inc(FPos);
             var LNextValNode := ParseValue(LNextVal, AIndent + 2);
             LItem.SetField(StripQuotes(LNextKey), LNextValNode);

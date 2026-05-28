@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="520" viewBox="0 0 1000 520">
+  <style>
+    .title { font: bold 20px sans-serif; }
+    .subtitle { font: 14px sans-serif; }
+    .box { fill: #f7f7ff; stroke: #333366; stroke-width: 1.2; }
+    .task { fill: #f9f9f9; stroke: #666666; stroke-width: 1; stroke-dasharray: 4 3; }
+    .arrow { stroke: #555; stroke-width: 1.4; marker-end: url(#arrowhead); }
+    .label { font: 12px sans-serif; }
+    .note { font: 11px sans-serif; fill: #555; }
+    .badge { font: 11px sans-serif; fill: #fff; }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555" />
+    </marker>
+  </defs>
+
+  <text x="40" y="40" class="title">UniFlow 运行时主体与兜底规则</text>
+  <text x="40" y="62" class="subtitle">每个 Task 必须有明确 run_as 主体；无法确定时拒绝执行并记录审计日志。</text>
+
+  <!-- principals row -->
+  <rect x="60" y="90" width="260" height="90" rx="8" ry="8" class="box" />
+  <text x="75" y="115" class="label">用户会话主体（User Session Principal）</text>
+  <text x="75" y="138" class="note">ID: user:&lt;user_id&gt;</text>
+  <text x="75" y="158" class="note">来源：UI / Token 调用</text>
+
+  <rect x="370" y="90" width="260" height="90" rx="8" ry="8" class="box" />
+  <text x="385" y="115" class="label">项目运行时服务账号（Project Runtime SA）</text>
+  <text x="385" y="138" class="note">ID: sa:project:&lt;project_id&gt;:runtime</text>
+  <text x="385" y="158" class="note">用于定时任务 / 异步步骤 / 队列消费</text>
+
+  <rect x="680" y="90" width="260" height="90" rx="8" ry="8" class="box" />
+  <text x="695" y="115" class="label">平台运行时服务账号（Platform Runtime SA）</text>
+  <text x="695" y="138" class="note">ID: sa:platform:runtime</text>
+  <text x="695" y="158" class="note">仅访问平台元数据与 L0–L1 低敏数据</text>
+
+  <!-- tasks row -->
+  <rect x="60" y="240" width="260" height="80" rx="6" ry="6" class="task" />
+  <text x="75" y="265" class="label">交互式任务</text>
+  <text x="75" y="285" class="note">例：用户点击触发的 Workflow / API 调用</text>
+
+  <rect x="370" y="240" width="260" height="80" rx="6" ry="6" class="task" />
+  <text x="385" y="265" class="label">项目级后台任务</text>
+  <text x="385" y="285" class="note">例：定时统计、异步重试、补偿、队列消费</text>
+
+  <rect x="680" y="240" width="260" height="80" rx="6" ry="6" class="task" />
+  <text x="695" y="265" class="label">平台维护任务</text>
+  <text x="695" y="285" class="note">例：索引重建、缓存清理、健康检查</text>
+
+  <!-- arrows principals -> tasks -->
+  <line x1="190" y1="180" x2="190" y2="240" class="arrow" />
+  <text x="125" y="215" class="note">run_as = user</text>
+
+  <line x1="500" y1="180" x2="500" y2="240" class="arrow" />
+  <text x="420" y="215" class="note">run_as = sa:project:...:runtime</text>
+
+  <line x1="810" y1="180" x2="810" y2="240" class="arrow" />
+  <text x="735" y="215" class="note">run_as = sa:platform:runtime</text>
+
+  <!-- decision box -->
+  <rect x="140" y="360" width="720" height="110" rx="8" ry="8" class="box" />
+  <text x="155" y="385" class="label">run_as 决策顺序（简化版）</text>
+  <text x="155" y="408" class="note">1. Workflow/Task 显式配置 run_as =&gt; 按配置执行（非法配置直接失败）</text>
+  <text x="155" y="428" class="note">2. 有用户会话 + 项目上下文 =&gt; run_as = user:&lt;user_id&gt;</text>
+  <text x="155" y="448" class="note">3. 无用户会话但有项目上下文 =&gt; run_as = sa:project:&lt;project_id&gt;:runtime</text>
+  <text x="155" y="468" class="note">4. 平台维护任务 =&gt; run_as = sa:platform:runtime</text>
+  <text x="155" y="488" class="note">5. 仍无法确定 =&gt; 视为配置错误，拒绝执行并写入审计日志</text>
+
+  <!-- data level badges -->
+  <rect x="260" y="320" width="60" height="22" rx="4" ry="4" fill="#4caf50" />
+  <text x="267" y="335" class="badge">L0–L2</text>
+  <text x="330" y="335" class="note">用户/项目任务允许的数据等级</text>
+
+  <rect x="650" y="320" width="60" height="22" rx="4" ry="4" fill="#f57c00" />
+  <text x="657" y="335" class="badge">L0–L1</text>
+  <text x="720" y="335" class="note">平台任务限制在低敏数据</text>
+</svg>

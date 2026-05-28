@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
+  <defs>
+    <linearGradient id="timeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="33%" style="stop-color:#8b5cf6"/>
+      <stop offset="66%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#22c55e"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="900" height="500" fill="#f8fafc"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="35" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#1e293b">流式显影过程 · Progressive Rendering</text>
+  <text x="450" y="58" text-anchor="middle" font-family="Arial" font-size="12" fill="#64748b">"用户说完0.5秒内必须有响应，哪怕是假的反馈"</text>
+  
+  <!-- 时间轴 -->
+  <rect x="50" y="80" width="800" height="8" rx="4" fill="url(#timeGrad)"/>
+  
+  <!-- 时间标记 -->
+  <circle cx="50" cy="84" r="10" fill="#3b82f6"/>
+  <text x="50" y="110" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#3b82f6">0秒</text>
+  
+  <circle cx="300" cy="84" r="10" fill="#8b5cf6"/>
+  <text x="300" y="110" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#8b5cf6">1秒</text>
+  
+  <circle cx="550" cy="84" r="10" fill="#10b981"/>
+  <text x="550" y="110" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#10b981">2秒</text>
+  
+  <circle cx="800" cy="84" r="10" fill="#22c55e"/>
+  <text x="800" y="110" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#22c55e">3秒</text>
+  
+  <!-- 第0秒：空画布 -->
+  <rect x="30" y="130" width="180" height="180" rx="10" fill="white" stroke="#e2e8f0" stroke-width="2" filter="url(#shadow)"/>
+  <text x="120" y="155" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#3b82f6">第0秒</text>
+  <rect x="50" y="170" width="140" height="120" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-dasharray="5,3"/>
+  <text x="120" y="235" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" fill="#94a3b8">空画布</text>
+  <text x="120" y="305" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#94a3b8">用户刚说完</text>
+  
+  <!-- 箭头 -->
+  <path d="M 220 220 L 250 220" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker></defs>
+  
+  <!-- 第1秒：布局骨架 -->
+  <rect x="260" y="130" width="180" height="180" rx="10" fill="white" stroke="#8b5cf6" stroke-width="2" filter="url(#shadow)"/>
+  <text x="350" y="155" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#8b5cf6">第1秒</text>
+  <rect x="280" y="170" width="140" height="120" rx="6" fill="#f5f3ff" stroke="#8b5cf6"/>
+  
+  <!-- 骨架屏 -->
+  <rect x="295" y="180" width="110" height="15" rx="3" fill="#ddd6fe"/>
+  <rect x="295" y="205" width="80" height="10" rx="2" fill="#ede9fe"/>
+  <rect x="295" y="225" width="100" height="10" rx="2" fill="#ede9fe"/>
+  <rect x="295" y="245" width="100" height="10" rx="2" fill="#ede9fe"/>
+  <rect x="295" y="265" width="110" height="20" rx="4" fill="#ddd6fe"/>
+  
+  <text x="350" y="305" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#8b5cf6">"有东西了"</text>
+  
+  <!-- 箭头 -->
+  <path d="M 450 220 L 480 220" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 第2秒：色块填充 -->
+  <rect x="490" y="130" width="180" height="180" rx="10" fill="white" stroke="#10b981" stroke-width="2" filter="url(#shadow)"/>
+  <text x="580" y="155" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#10b981">第2秒</text>
+  <rect x="510" y="170" width="140" height="120" rx="6" fill="#ecfdf5" stroke="#10b981"/>
+  
+  <!-- 色块 -->
+  <rect x="525" y="180" width="110" height="20" rx="3" fill="#3b82f6"/>
+  <rect x="525" y="210" width="80" height="15" rx="3" fill="#e0f2fe"/>
+  <rect x="525" y="235" width="80" height="15" rx="3" fill="#e0f2fe"/>
+  <rect x="525" y="260" width="110" height="25" rx="4" fill="#3b82f6"/>
+  
+  <text x="580" y="305" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#10b981">"方向对了"</text>
+  
+  <!-- 箭头 -->
+  <path d="M 680 220 L 710 220" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 第3秒：内容渲染 -->
+  <rect x="720" y="130" width="170" height="180" rx="10" fill="white" stroke="#22c55e" stroke-width="2" filter="url(#shadow)"/>
+  <text x="805" y="155" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#22c55e">第3秒</text>
+  <rect x="735" y="170" width="140" height="120" rx="6" fill="#f0fdf4" stroke="#22c55e"/>
+  
+  <!-- 完整内容 -->
+  <rect x="750" y="180" width="110" height="20" rx="3" fill="#3b82f6"/>
+  <text x="805" y="194" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">用户登录</text>
+  <rect x="760" y="210" width="90" height="15" rx="3" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="770" y="221" font-family="Microsoft YaHei, sans-serif" font-size="7" fill="#94a3b8">用户名</text>
+  <rect x="760" y="232" width="90" height="15" rx="3" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="770" y="243" font-family="Microsoft YaHei, sans-serif" font-size="7" fill="#94a3b8">密码</text>
+  <rect x="760" y="255" width="90" height="20" rx="4" fill="#3b82f6"/>
+  <text x="805" y="269" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="white">登录</text>
+  
+  <text x="805" y="305" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#22c55e">"成了！" ✨</text>
+  
+  <!-- 关键说明 -->
+  <rect x="50" y="340" width="800" height="70" rx="10" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="450" y="365" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" font-weight="bold" fill="#92400e">关键流程：复述确认 → 进度显影 → 渐进渲染</text>
+  <text x="450" y="390" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#a16207">宁可先展示"假的"即时反馈，也不能让用户等"真的"结果</text>
+  
+  <!-- 底部对照 -->
+  <rect x="50" y="425" width="380" height="55" rx="8" fill="#fee2e2" stroke="#ef4444"/>
+  <text x="240" y="450" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#dc2626">❌ 差体验</text>
+  <text x="240" y="470" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#ef4444">用户说完 → 等3秒 → 突然出现完整页面</text>
+  
+  <rect x="470" y="425" width="380" height="55" rx="8" fill="#dcfce7" stroke="#22c55e"/>
+  <text x="660" y="450" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="#16a34a">✓ 好体验</text>
+  <text x="660" y="470" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#22c55e">用户说完 → 立刻骨架 → 渐进填充 → 完整呈现</text>
+</svg>

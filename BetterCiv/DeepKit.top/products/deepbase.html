@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepBase 深擎 - Delphi 开发框架 | DeepKit</title>
+  <meta name="description" content="DeepBase 深擎 - Powered by 深擎。所有Deep系列的技术底座，Delphi全栈开发框架。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+SC:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="container">
+      <a href="../index.html" class="nav-logo">DeepKit 深工坊</a>
+      <ul class="nav-links">
+        <li><a href="../index.html#products">产品</a></li>
+        <li><a href="https://github.com" target="_blank">开源</a></li>
+        <li><a href="../index.html#footer">关于</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    <a href="../index.html#products" class="back-link">← 返回产品列表</a>
+  </div>
+
+  <!-- Product Hero -->
+  <section class="product-hero">
+    <img src="../icons/deepbase.svg" alt="DeepBase" class="product-icon">
+    <h1 class="product-name-en">DeepBase</h1>
+    <p class="product-name-cn">深擎</p>
+    <p class="product-tagline">Powered by 深擎</p>
+  </section>
+
+  <div class="container">
+
+    <!-- Architecture Overview -->
+    <section class="product-section">
+      <h2>架构概览</h2>
+      <p>DeepBase 是所有 Deep 系列产品的技术底座——一个基于 Delphi 的全栈桌面应用开发框架。它提供了从进程管理到 UI 主题的完整基础设施，让每个 Deep 产品专注于业务逻辑而非重复造轮子。</p>
+      <div class="arch-block">┌─────────────────────────────────────┐
+│         Deep 系列产品               │
+│  DeepForge / DeepStory / DeepClip... │
+└──────────────┬──────────────────────┘
+               ↓
+┌─────────────────────────────────────┐
+│           DeepBase 深擎             │
+│                                     │
+│  ┌─────────┐ ┌────────┐ ┌───────┐ │
+│  │ Manager │ │ Config │ │Logger │ │
+│  └─────────┘ └────────┘ └───────┘ │
+│  ┌─────────┐ ┌────────┐ ┌───────┐ │
+│  │  i18n   │ │ Theme  │ │Security│ │
+│  └─────────┘ └────────┘ └───────┘ │
+│                                     │
+└─────────────────────────────────────┘
+               ↓
+┌─────────────────────────────────────┐
+│     Delphi Runtime / Windows API    │
+└─────────────────────────────────────┘</div>
+    </section>
+
+    <!-- Module List -->
+    <section class="product-section">
+      <h2>核心模块</h2>
+      <div class="module-list">
+        <div class="module-item">Manager</div>
+        <div class="module-item">Config</div>
+        <div class="module-item">Logger</div>
+        <div class="module-item">i18n</div>
+        <div class="module-item">Theme</div>
+        <div class="module-item">Security</div>
+      </div>
+
+      <h3>模块说明</h3>
+      <ul>
+        <li><strong>Manager</strong> — 进程生命周期管理、插件加载、模块间通信</li>
+        <li><strong>Config</strong> — 统一配置管理，支持多层级覆盖和热更新</li>
+        <li><strong>Logger</strong> — 结构化日志系统，支持文件/控制台/远程多输出</li>
+        <li><strong>i18n</strong> — 国际化框架，运行时语言切换</li>
+        <li><strong>Theme</strong> — 主题引擎，支持亮/暗模式和自定义主题</li>
+        <li><strong>Security</strong> — 授权验证、加密存储、安全通信</li>
+      </ul>
+    </section>
+
+    <!-- Powered by Badge -->
+    <section class="product-section">
+      <h2>"Powered by 深擎" 徽章</h2>
+      <p>所有基于 DeepBase 构建的产品都会在关于页面展示 "Powered by 深擎" 徽章，表明它们共享同一套经过验证的技术基础设施。这意味着：</p>
+      <ul>
+        <li>统一的安全更新机制</li>
+        <li>一致的用户体验和主题系统</li>
+        <li>共享的国际化资源</li>
+        <li>标准化的日志和诊断能力</li>
+      </ul>
+    </section>
+
+    <!-- Screenshots -->
+    <section class="product-section">
+      <h2>产品截图</h2>
+      <div class="screenshot-main">
+        <img src="../screenshots/Base01.svg" alt="DeepBase 主图">
+      </div>
+      <div class="screenshot-grid">
+        <img src="../screenshots/Base02.svg" alt="DeepBase 截图 2">
+        <img src="../screenshots/Base03.svg" alt="DeepBase 截图 3">
+        <img src="../screenshots/Base04.svg" alt="DeepBase 截图 4">
+        <img src="../screenshots/Base05.svg" alt="DeepBase 截图 5">
+      </div>
+    </section>
+
+    <!-- No pricing, no download -->
+    <section class="product-section" style="text-align:center;padding-bottom:60px;">
+      <p style="font-size:15px;color:var(--text-secondary);">DeepBase 为内部技术底座，不单独售卖或分发。</p>
+      <span class="badge" style="background:var(--price-foundation);margin-top:12px;">仅展示 · 不售卖</span>
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <span>© 2026 DeepKit 深工坊</span>
+        <span class="footer-divider">|</span>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <span class="footer-divider">|</span>
+        <a href="mailto:contact@deepkit.top">联系</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

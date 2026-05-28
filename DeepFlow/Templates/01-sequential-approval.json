@@ -1,0 +1,251 @@
+{
+  "$schema": "../schema/workflow.schema.json",
+  "id": "template-sequential-approval",
+  "name": "顺序审批工作�?,
+  "description": "多级顺序审批流程，适用于请假、报销、采购等场景",
+  "version": "1.0.0",
+  "category": "approval",
+  "tags": ["审批", "顺序", "多级"],
+  
+  "input": {
+    "properties": {
+      "applicant": { "type": "string", "description": "申请人ID" },
+      "requestType": { "type": "string", "description": "申请类型" },
+      "amount": { "type": "number", "description": "金额（如适用�? },
+      "reason": { "type": "string", "description": "申请理由" },
+      "attachments": { "type": "array", "description": "附件列表" }
+    },
+    "required": ["applicant", "requestType", "reason"]
+  },
+  
+  "output": {
+    "properties": {
+      "approved": { "type": "boolean" },
+      "finalApprover": { "type": "string" },
+      "comments": { "type": "array" }
+    }
+  },
+  
+  "variables": {
+    "currentLevel": 1,
+    "maxLevel": 3,
+    "approvalChain": [],
+    "rejectionReason": ""
+  },
+  
+  "steps": [
+    {
+      "id": "init",
+      "name": "初始化审批链",
+      "type": "action",
+      "action": {
+        "type": "script",
+        "script": "DetermineApprovalChain",
+        "params": {
+          "requestType": "{{ input.requestType }}",
+          "amount": "{{ input.amount }}"
+        }
+      },
+      "output": {
+        "variable": "approvalChain"
+      }
+    },
+    
+    {
+      "id": "notify-applicant",
+      "name": "通知申请�?,
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "notification/send",
+        "params": {
+          "userId": "{{ input.applicant }}",
+          "template": "approval_submitted",
+          "data": {
+            "requestType": "{{ input.requestType }}",
+            "firstApprover": "{{ vars.approvalChain[0].name }}"
+          }
+        }
+      }
+    },
+    
+    {
+      "id": "approval-loop",
+      "name": "审批循环",
+      "type": "loop",
+      "loop": {
+        "mode": "forEach",
+        "collection": "{{ vars.approvalChain }}",
+        "itemVariable": "approver",
+        "indexVariable": "level",
+        "maxIterations": 10
+      },
+      "steps": [
+        {
+          "id": "request-approval",
+          "name": "发送审批请�?,
+          "type": "action",
+          "action": {
+            "type": "skill",
+            "skillId": "workflow/create-task",
+            "params": {
+              "assignee": "{{ approver.userId }}",
+              "taskType": "approval",
+              "title": "{{ input.requestType }} 审批 - {{ input.applicant }}",
+              "description": "{{ input.reason }}",
+              "deadline": "{{ approver.deadline }}"
+            }
+          },
+          "output": {
+            "variable": "taskId"
+          }
+        },
+        
+        {
+          "id": "wait-decision",
+          "name": "等待审批决定",
+          "type": "wait",
+          "wait": {
+            "timeout": "{{ approver.timeoutHours }}h",
+            "event": "task.completed",
+            "filter": {
+              "taskId": "{{ vars.taskId }}"
+            }
+          },
+          "output": {
+            "variable": "decision"
+          }
+        },
+        
+        {
+          "id": "check-decision",
+          "name": "检查审批结�?,
+          "type": "condition",
+          "expression": "{{ vars.decision.action }}",
+          "branches": [
+            {
+              "when": "approve",
+              "steps": [
+                {
+                  "id": "record-approval",
+                  "name": "记录通过",
+                  "type": "action",
+                  "action": {
+                    "type": "script",
+                    "script": "RecordApproval",
+                    "params": {
+                      "level": "{{ level }}",
+                      "approver": "{{ approver.userId }}",
+                      "comment": "{{ vars.decision.comment }}"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "when": "reject",
+              "steps": [
+                {
+                  "id": "handle-rejection",
+                  "name": "处理驳回",
+                  "type": "action",
+                  "action": {
+                    "type": "script",
+                    "script": "HandleRejection",
+                    "params": {
+                      "level": "{{ level }}",
+                      "approver": "{{ approver.userId }}",
+                      "reason": "{{ vars.decision.comment }}"
+                    }
+                  },
+                  "output": {
+                    "variable": "rejectionReason"
+                  }
+                },
+                {
+                  "id": "notify-rejection",
+                  "name": "通知驳回",
+                  "type": "action",
+                  "action": {
+                    "type": "skill",
+                    "skillId": "notification/send",
+                    "params": {
+                      "userId": "{{ input.applicant }}",
+                      "template": "approval_rejected",
+                      "data": {
+                        "rejector": "{{ approver.name }}",
+                        "reason": "{{ vars.rejectionReason }}"
+                      }
+                    }
+                  }
+                },
+                {
+                  "id": "end-rejected",
+                  "name": "结束-驳回",
+                  "type": "end",
+                  "status": "rejected"
+                }
+              ]
+            },
+            {
+              "when": "timeout",
+              "steps": [
+                {
+                  "id": "escalate",
+                  "name": "超时升级",
+                  "type": "action",
+                  "action": {
+                    "type": "skill",
+                    "skillId": "workflow/escalate",
+                    "params": {
+                      "taskId": "{{ vars.taskId }}",
+                      "escalateTo": "{{ approver.escalateTo }}"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    
+    {
+      "id": "final-notify",
+      "name": "最终通知",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skillId": "notification/send",
+        "params": {
+          "userId": "{{ input.applicant }}",
+          "template": "approval_completed",
+          "data": {
+            "approved": true,
+            "approvalChain": "{{ vars.approvalChain }}"
+          }
+        }
+      }
+    },
+    
+    {
+      "id": "end-approved",
+      "name": "结束-通过",
+      "type": "end",
+      "status": "approved",
+      "output": {
+        "mapping": {
+          "approved": true,
+          "finalApprover": "{{ vars.approvalChain[-1].name }}",
+          "comments": "{{ vars.approvalChain | map('comment') }}"
+        }
+      }
+    }
+  ],
+  
+  "errorHandling": {
+    "onError": "retry",
+    "maxRetries": 3,
+    "retryDelay": "5m"
+  }
+}

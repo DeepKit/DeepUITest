@@ -1,0 +1,407 @@
+# UniFlow Istio Service Mesh 配置
+# 包含 VirtualService, DestinationRule, Gateway, AuthorizationPolicy 等
+
+---
+# Gateway - 入口网关
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: uniflow-gateway
+  namespace: uniflow
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - uniflow.example.com
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - uniflow.example.com
+    tls:
+      mode: SIMPLE
+      credentialName: uniflow-tls
+
+---
+# VirtualService - 流量路由
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: uniflow
+  namespace: uniflow
+spec:
+  hosts:
+  - uniflow.example.com
+  - uniflow.uniflow.svc.cluster.local
+  gateways:
+  - uniflow-gateway
+  - mesh
+  http:
+  # API 路由
+  - name: api-routes
+    match:
+    - uri:
+        prefix: /api/
+    - uri:
+        prefix: /health
+    - uri:
+        prefix: /ready
+    - uri:
+        prefix: /live
+    - uri:
+        prefix: /metrics
+    route:
+    - destination:
+        host: uniflow
+        port:
+          number: 80
+        subset: stable
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: 5xx,reset,connect-failure,retriable-4xx
+    timeout: 60s
+    headers:
+      request:
+        add:
+          x-request-id: "%REQ(X-REQUEST-ID)%"
+      response:
+        add:
+          x-envoy-upstream-service-time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+  
+  # WebSocket 路由 (用于实时更新)
+  - name: websocket-routes
+    match:
+    - uri:
+        prefix: /ws/
+      headers:
+        upgrade:
+          exact: websocket
+    route:
+    - destination:
+        host: uniflow
+        port:
+          number: 80
+        subset: stable
+    timeout: 3600s
+  
+  # 默认路由
+  - name: default
+    route:
+    - destination:
+        host: uniflow
+        port:
+          number: 80
+        subset: stable
+
+---
+# DestinationRule - 流量策略
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: uniflow
+  namespace: uniflow
+spec:
+  host: uniflow
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1000
+        connectTimeout: 10s
+      http:
+        h2UpgradePolicy: UPGRADE
+        http1MaxPendingRequests: 1000
+        http2MaxRequests: 1000
+        maxRequestsPerConnection: 100
+        maxRetries: 3
+    loadBalancer:
+      simple: LEAST_REQUEST
+      consistentHash:
+        httpHeaderName: x-user-id
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+  subsets:
+  - name: stable
+    labels:
+      version: v1.0.0
+  - name: canary
+    labels:
+      version: canary
+
+---
+# DestinationRule - Worker
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: uniflow-worker
+  namespace: uniflow
+spec:
+  host: uniflow-worker
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 500
+        connectTimeout: 30s
+    loadBalancer:
+      simple: ROUND_ROBIN
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 60s
+
+---
+# PeerAuthentication - mTLS 配置
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: uniflow-mtls
+  namespace: uniflow
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# AuthorizationPolicy - API 访问控制
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: uniflow-api-policy
+  namespace: uniflow
+spec:
+  selector:
+    matchLabels:
+      app: uniflow
+      component: api
+  action: ALLOW
+  rules:
+  # 允许健康检查
+  - to:
+    - operation:
+        paths:
+        - /health
+        - /ready
+        - /live
+        methods:
+        - GET
+  # 允许 Prometheus 抓取
+  - from:
+    - source:
+        namespaces:
+        - monitoring
+    to:
+    - operation:
+        paths:
+        - /metrics
+        methods:
+        - GET
+  # 允许认证用户访问 API
+  - from:
+    - source:
+        requestPrincipals:
+        - "*"
+    to:
+    - operation:
+        paths:
+        - /api/*
+        methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+  # 允许内部服务调用
+  - from:
+    - source:
+        namespaces:
+        - uniflow
+        principals:
+        - cluster.local/ns/uniflow/sa/uniflow
+
+---
+# AuthorizationPolicy - 拒绝未授权访问
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: uniflow-deny-all
+  namespace: uniflow
+spec:
+  selector:
+    matchLabels:
+      app: uniflow
+  action: DENY
+  rules:
+  - from:
+    - source:
+        notNamespaces:
+        - uniflow
+        - istio-system
+        - monitoring
+    to:
+    - operation:
+        paths:
+        - /admin/*
+        - /internal/*
+
+---
+# RequestAuthentication - JWT 验证
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: uniflow-jwt
+  namespace: uniflow
+spec:
+  selector:
+    matchLabels:
+      app: uniflow
+      component: api
+  jwtRules:
+  - issuer: "https://uniflow.example.com"
+    audiences:
+    - "uniflow-api"
+    jwksUri: "https://uniflow.example.com/.well-known/jwks.json"
+    forwardOriginalToken: true
+    outputPayloadToHeader: x-jwt-payload
+
+---
+# ServiceEntry - 外部服务访问
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-llm-providers
+  namespace: uniflow
+spec:
+  hosts:
+  - api.openai.com
+  - api.anthropic.com
+  - generativelanguage.googleapis.com
+  - api.deepseek.com
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# Sidecar - 限制出站流量
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: uniflow-sidecar
+  namespace: uniflow
+spec:
+  workloadSelector:
+    labels:
+      app: uniflow
+  egress:
+  - hosts:
+    - "./*"
+    - "istio-system/*"
+    - "monitoring/*"
+  - hosts:
+    - "*/api.openai.com"
+    - "*/api.anthropic.com"
+    - "*/generativelanguage.googleapis.com"
+    - "*/api.deepseek.com"
+    port:
+      number: 443
+      protocol: HTTPS
+
+---
+# EnvoyFilter - 自定义 Envoy 配置
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: uniflow-ratelimit
+  namespace: uniflow
+spec:
+  workloadSelector:
+    labels:
+      app: uniflow
+      component: api
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: http_local_rate_limiter
+            token_bucket:
+              max_tokens: 1000
+              tokens_per_fill: 100
+              fill_interval: 1s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            response_headers_to_add:
+            - append: false
+              header:
+                key: x-rate-limit-limit
+                value: "1000"
+            - append: false
+              header:
+                key: x-rate-limit-remaining
+                value: "%DYNAMIC_METADATA(envoy.http.local_ratelimit:tokens_remaining)%"
+
+---
+# Telemetry - 可观测性配置
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: uniflow-telemetry
+  namespace: uniflow
+spec:
+  selector:
+    matchLabels:
+      app: uniflow
+  tracing:
+  - providers:
+    - name: opentelemetry
+    randomSamplingPercentage: 10
+    customTags:
+      workflow.id:
+        header:
+          name: x-workflow-id
+      session.id:
+        header:
+          name: x-session-id
+  accessLogging:
+  - providers:
+    - name: envoy
+    filter:
+      expression: response.code >= 400
+  metrics:
+  - providers:
+    - name: prometheus

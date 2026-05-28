@@ -1,0 +1,217 @@
+     1|﻿<!DOCTYPE html>
+     2|<html lang="zh-CN">
+     3|<head>
+     4|  <meta charset="UTF-8">
+     5|  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     6|  <title>Assayer 精鉴 - AI 质价管家 | DeepKit</title>
+     7|  <meta name="description" content="Assayer 精鉴 - 多模型智能调度 + LLM 输出质量检测（L0-L5 六层质检），省钱调度，质量有据。">
+     8|  <link rel="preconnect" href="https://fonts.googleapis.com">
+     9|  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    10|  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+SC:wght@400;600;700;800&display=swap" rel="stylesheet">
+    11|  <link rel="stylesheet" href="../style.css">
+    12|</head>
+    13|<body>
+    14|
+    15|  <!-- Navigation -->
+    16|  <nav class="nav">
+    17|    <div class="container">
+    18|      <a href="../index.html" class="nav-logo">DeepKit 深工坊</a>
+    19|      <ul class="nav-links">
+    20|        <li><a href="../index.html#products">产品</a></li>
+    21|        <li><a href="https://github.com" target="_blank">开源</a></li>
+    22|        <li><a href="../index.html#footer">关于</a></li>
+    23|      </ul>
+    24|    </div>
+    25|  </nav>
+    26|
+    27|  <div class="container">
+    28|    <a href="../index.html#products" class="back-link">← 返回产品列表</a>
+    29|  </div>
+    30|
+    31|  <!-- Product Hero -->
+    32|  <section class="product-hero">
+    33|    <img src="../icons/assayer.svg" alt="Assayer" class="product-icon">
+    34|    <h1 class="product-name-en">Assayer</h1>
+    35|    <p class="product-name-cn">精鉴</p>
+    36|    <p class="product-tagline">智选省钱线路，让你省钱省心的LLM代理</p>
+    37|  </section>
+    38|
+    39|  <div class="container">
+    40|
+    41|    <!-- Use Cases -->
+    42|    <section class="product-section">
+    43|      <h2>适用场景</h2>
+    44|      <ul>
+    45|        <li>团队使用多个 LLM 供应商，需要统一网关管理</li>
+    46|        <li>希望按质量/成本/延迟自动选择最优线路</li>
+    47|        <li>需要部门级预算控制和用量审计</li>
+    48|        <li>企业合规要求：PII 脱敏、内容过滤、不可篡改日志</li>
+    49|      </ul>
+    50|    </section>
+    51|
+    52|    <!-- Feature Tiers -->
+    53|    <section class="product-section">
+    54|      <h2>能力分层</h2>
+    55|      <table class="comparison-table">
+    56|        <thead>
+    57|          <tr>
+    58|            <th>能力</th>
+    59|            <th>Community</th>
+    60|            <th>Pro</th>
+    61|            <th>Runtime</th>
+    62|          </tr>
+    63|        </thead>
+    64|        <tbody>
+    65|          <tr>
+    66|            <td>多账号池（轮询 + 故障转移）</td>
+    67|            <td>✓ 基础</td>
+    68|            <td>✓ 完整</td>
+    69|            <td>✓ 完整</td>
+    70|          </tr>
+    71|          <tr>
+    72|            <td>智能路由（质量/成本/延迟权重）</td>
+    73|            <td>✓ 基础</td>
+    74|            <td>✓ 完整</td>
+    75|            <td>✓ 完整</td>
+    76|          </tr>
+    77|          <tr>
+    78|            <td>流量治理（限流、预算）</td>
+    79|            <td>✓ 基础</td>
+    80|            <td>✓ 完整</td>
+    81|            <td>✓ 完整</td>
+    82|          </tr>
+    83|          <tr>
+    84|            <td>审计留痕（不可篡改日志）</td>
+    85|            <td>—</td>
+    86|            <td>✓</td>
+    87|            <td>✓</td>
+    88|          </tr>
+    89|          <tr>
+    90|            <td>内容安全（PII 脱敏 + 过滤）</td>
+    91|            <td>—</td>
+    92|            <td>—</td>
+    93|            <td>✓</td>
+    94|          </tr>
+    95|          <tr>
+    96|            <td>SLA 运维（多活 + 降级 + 告警）</td>
+    97|            <td>—</td>
+    98|            <td>—</td>
+    99|            <td>✓</td>
+   100|          </tr>
+   101|        </tbody>
+   102|      </table>
+   103|    </section>
+   104|
+   105|    <!-- Architecture -->
+   106|    <section class="product-section">
+   107|      <h2>架构概览</h2>
+   108|      <div class="arch-block">客户端请求
+   109|    ↓
+   110|┌─────────────────────────────┐
+   111|│  Assayer Gateway            │
+   112|│  ┌───────────┐ ┌─────────┐ │
+   113|│  │ 智能路由  │ │ 限流器  │ │
+   114|│  └─────┬─────┘ └────┬────┘ │
+   115|│        ↓             ↓      │
+   116|│  ┌───────────────────────┐  │
+   117|│  │    账号池管理器       │  │
+   118|│  │  (轮询/故障转移/权重) │  │
+   119|│  └───────────┬───────────┘  │
+   120|│              ↓              │
+   121|│  ┌───────────────────────┐  │
+   122|│  │  审计 + 内容安全层    │  │
+   123|│  └───────────┬───────────┘  │
+   124|└──────────────┼──────────────┘
+   125|               ↓
+   126|    多供应商 LLM API</div>
+   127|    </section>
+   128|
+   129|
+   130|    <!-- Screenshots -->
+   131|    <section class="product-section">
+   132|      <h2>产品截图</h2>
+   133|      <div class="screenshot-main">
+   134|        <img src="../screenshots/LLM01.svg" alt="Assayer 主图">
+   135|      </div>
+   136|      <div class="screenshot-grid">
+   137|        <img src="../screenshots/LLM02.svg" alt="Assayer 截图 2">
+   138|        <img src="../screenshots/LLM03.svg" alt="Assayer 截图 3">
+   139|        <img src="../screenshots/LLM04.svg" alt="Assayer 截图 4">
+   140|        <img src="../screenshots/LLM05.svg" alt="Assayer 截图 5">
+   141|      </div>
+   142|    </section>
+   143|    <!-- Pricing -->
+   144|    <section class="pricing-section">
+   145|      <h2>定价</h2>
+   146|
+   147|      <h3 style="text-align:center;margin-bottom:24px;font-size:18px;font-weight:600;">Community（开源 Apache 2.0）</h3>
+   148|      <div class="pricing-card" style="margin-bottom:32px;">
+   149|        <div class="price">免费</div>
+   150|        <div class="price-note">6 个下游端口，能力条 1-3 基础版</div>
+   151|      </div>
+   152|
+   153|      <h3 style="text-align:center;margin-bottom:24px;font-size:18px;font-weight:600;">Pro（按端口阶梯计费）</h3>
+   154|      <table class="pricing-table">
+   155|        <thead>
+   156|          <tr>
+   157|            <th>端口数</th>
+   158|            <th>月付</th>
+   159|            <th>年付（8折）</th>
+   160|            <th>单价/端口/月</th>
+   161|          </tr>
+   162|        </thead>
+   163|        <tbody>
+   164|          <tr><td>6</td><td>¥0</td><td>¥0</td><td>—</td></tr>
+   165|          <tr><td>10</td><td>¥500</td><td>¥4,800</td><td>¥50</td></tr>
+   166|          <tr><td>20</td><td>¥900</td><td>¥8,640</td><td>¥45</td></tr>
+   167|          <tr><td>50</td><td>¥1,800</td><td>¥17,280</td><td>¥36</td></tr>
+   168|          <tr><td>100</td><td>¥3,000</td><td>¥28,800</td><td>¥30</td></tr>
+   169|          <tr><td>200</td><td>¥5,000</td><td>¥48,000</td><td>¥25</td></tr>
+   170|          <tr><td>500</td><td>¥10,000</td><td>¥96,000</td><td>¥20</td></tr>
+   171|          <tr><td>1000</td><td>¥17,000</td><td>¥163,200</td><td>¥17</td></tr>
+   172|          <tr><td>>1000</td><td>+¥1,500/100端口/月</td><td>+¥14,400/100端口/年</td><td>¥15</td></tr>
+   173|        </tbody>
+   174|      </table>
+   175|
+   176|      <h3 style="text-align:center;margin:32px 0 24px;font-size:18px;font-weight:600;">Runtime（合规旗舰）</h3>
+   177|      <table class="pricing-table">
+   178|        <thead>
+   179|          <tr>
+   180|            <th>端口区间</th>
+   181|            <th>月付/端口</th>
+   182|            <th>年付/端口（8折）</th>
+   183|          </tr>
+   184|        </thead>
+   185|        <tbody>
+   186|          <tr><td>1-50</td><td>¥150</td><td>¥1,440</td></tr>
+   187|          <tr><td>51-200</td><td>¥120</td><td>¥1,152</td></tr>
+   188|          <tr><td>201-500</td><td>¥100</td><td>¥960</td></tr>
+   189|          <tr><td>500+</td><td>¥80</td><td>¥768</td></tr>
+   190|        </tbody>
+   191|      </table>
+   192|      <p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-top:16px;">Runtime 包含能力条 1-6 + 私有化部署 + 合规咨询</p>
+   193|
+   194|      <div class="cta-group">
+   195|        <a href="#" class="cta-button">联系咨询</a>
+   196|        <a href="https://github.com" class="cta-button cta-secondary" target="_blank">GitHub 开源版</a>
+   197|      </div>
+   198|    </section>
+   199|
+   200|  </div>
+   201|
+   202|  <!-- Footer -->
+   203|  <footer class="footer">
+   204|    <div class="container">
+   205|      <div class="footer-content">
+   206|        <span>© 2026 DeepKit 深工坊</span>
+   207|        <span class="footer-divider">|</span>
+   208|        <a href="https://github.com" target="_blank">GitHub</a>
+   209|        <span class="footer-divider">|</span>
+   210|        <a href="mailto:contact@deepkit.top">联系</a>
+   211|      </div>
+   212|    </div>
+   213|  </footer>
+   214|
+   215|</body>
+   216|</html>
+   217|

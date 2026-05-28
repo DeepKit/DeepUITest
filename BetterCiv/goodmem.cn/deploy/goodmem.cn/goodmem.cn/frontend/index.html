@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="思维越狱：先做背锅预看，再判断要不要进入识局处方。">
+    <link rel="icon" href="data:,">
+    <title>思维越狱 | 背锅预看与识局处方</title>
+    <style>
+        :root {
+            --bg: #f4efe7;
+            --paper: rgba(255, 255, 255, 0.78);
+            --paper-strong: #fffdf8;
+            --ink: #171411;
+            --muted: #655d53;
+            --line: rgba(23, 20, 17, 0.12);
+            --accent: #80592d;
+            --accent-soft: rgba(128, 89, 45, 0.1);
+            --danger: #8a3f3f;
+            --shadow: 0 18px 44px rgba(32, 23, 13, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(128, 89, 45, 0.12), transparent 24%),
+                radial-gradient(circle at bottom right, rgba(23, 20, 17, 0.08), transparent 18%),
+                var(--bg);
+            font-family: "Noto Serif SC", Georgia, "Source Han Serif SC", serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 28px 18px 80px;
+        }
+
+        .card {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            padding: 28px 24px;
+            margin-bottom: 18px;
+            backdrop-filter: blur(8px);
+        }
+
+        .hero {
+            padding: 38px 30px 30px;
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            font-size: 0.8rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 4.8vw, 3.2rem);
+            line-height: 1.1;
+            letter-spacing: -0.04em;
+            margin-bottom: 14px;
+        }
+
+        h2 {
+            font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+            line-height: 1.22;
+            margin-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 1.14rem;
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        p,
+        li {
+            color: var(--muted);
+            line-height: 1.8;
+        }
+
+        .copy-strong {
+            color: var(--ink);
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: transparent;
+            color: var(--ink);
+            padding: 14px 22px;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            text-decoration: none;
+            transition: 0.18s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .btn.primary {
+            background: var(--ink);
+            border-color: var(--ink);
+            color: #fff7eb;
+        }
+
+        .btn.primary:hover {
+            background: #0e0c09;
+        }
+
+        .btn.full {
+            width: 100%;
+        }
+
+        .subline {
+            display: block;
+            margin-top: 4px;
+            font-size: 0.82rem;
+            font-weight: 400;
+            color: var(--muted);
+        }
+
+        .note {
+            padding: 16px 18px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.64);
+            margin-top: 18px;
+        }
+
+        .split {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 18px;
+        }
+
+        .mini-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .mini-item {
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.52);
+        }
+
+        .mini-item strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--ink);
+        }
+
+        .quiz-intro {
+            margin-bottom: 16px;
+        }
+
+        .question-card {
+            padding: 18px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            margin-bottom: 12px;
+        }
+
+        .question-card strong {
+            display: block;
+            margin-bottom: 10px;
+            line-height: 1.65;
+        }
+
+        .options {
+            display: grid;
+            gap: 8px;
+        }
+
+        .options label {
+            display: block;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.74);
+            cursor: pointer;
+            transition: 0.14s ease;
+        }
+
+        .options label:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .options input {
+            margin-right: 10px;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .metric {
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.58);
+        }
+
+        .metric .label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .metric .value {
+            font-weight: 700;
+            line-height: 1.6;
+        }
+
+        .quote-box {
+            border-left: 4px solid var(--accent);
+            padding: 14px 16px;
+            background: var(--accent-soft);
+            border-radius: 16px;
+            margin-top: 16px;
+        }
+
+        .sku-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 18px;
+        }
+
+        .sku-card {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 22px 18px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: var(--paper-strong);
+            box-shadow: var(--shadow);
+        }
+
+        .sku-top {
+            min-height: 124px;
+        }
+
+        .sku-name {
+            font-size: 1.18rem;
+            font-weight: 800;
+            color: var(--ink);
+            margin-bottom: 4px;
+        }
+
+        .sku-price {
+            font-size: 1.9rem;
+            font-weight: 900;
+            color: var(--ink);
+            margin-bottom: 6px;
+        }
+
+        .sku-card ul {
+            padding-left: 18px;
+        }
+
+        .sku-card li {
+            margin-bottom: 8px;
+        }
+
+        .sku-card.active {
+            border-color: var(--ink);
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 12px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .helper-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .pay-box {
+            margin-top: 18px;
+            padding: 18px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.66);
+        }
+
+        .pay-box strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .pay-sections {
+            display: grid;
+            gap: 14px;
+            margin-top: 18px;
+        }
+
+        .pay-section {
+            padding: 18px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.62);
+        }
+
+        .pay-section h3 {
+            margin-bottom: 10px;
+        }
+
+        .pay-section ul {
+            padding-left: 18px;
+        }
+
+        .pay-section li {
+            margin-bottom: 8px;
+        }
+
+        .official-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .official-item {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.54);
+        }
+
+        .official-item strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .sku-preview-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .sku-preview-item {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.54);
+        }
+
+        .sku-preview-item strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .faq-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .faq-item {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.52);
+        }
+
+        .faq-item strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .review-box {
+            margin-top: 18px;
+            padding: 18px;
+            border-radius: 20px;
+            border: 1px solid rgba(128, 89, 45, 0.26);
+            background: rgba(255, 251, 245, 0.78);
+        }
+
+        .review-links {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .review-link {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .review-link strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .review-link code {
+            display: block;
+            color: var(--accent);
+            word-break: break-all;
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        .pay-status {
+            margin-top: 12px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.56);
+        }
+
+        .pay-status.error {
+            border-color: rgba(138, 63, 63, 0.28);
+            background: rgba(138, 63, 63, 0.08);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .summary-item {
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.58);
+        }
+
+        .summary-item strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .flow-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .flow-step {
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.56);
+        }
+
+        .flow-step strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .selection-summary {
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: var(--accent-soft);
+            color: var(--ink);
+            line-height: 1.7;
+        }
+
+        .kv-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .kv-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed rgba(23, 20, 17, 0.12);
+            font-size: 0.94rem;
+        }
+
+        .kv-item span:first-child {
+            color: var(--muted);
+        }
+
+        .kv-item span:last-child {
+            color: var(--ink);
+            font-weight: 700;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        .bookmark-box {
+            margin-top: 18px;
+            padding: 16px 18px;
+            border-radius: 18px;
+            border: 1px dashed rgba(128, 89, 45, 0.4);
+            background: rgba(255, 255, 255, 0.46);
+        }
+
+        .bookmark-box strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+
+        .muted-title {
+            font-size: 0.82rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .path-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .path-item {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.56);
+        }
+
+        .path-item strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--ink);
+        }
+
+        .footer-actions {
+            margin-top: 24px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .sticky-pay-bar {
+            position: sticky;
+            bottom: 12px;
+            z-index: 8;
+            margin-top: 18px;
+            padding: 14px 16px;
+            border-radius: 22px;
+            border: 1px solid rgba(23, 20, 17, 0.14);
+            background: rgba(255, 253, 248, 0.94);
+            box-shadow: 0 14px 28px rgba(32, 23, 13, 0.12);
+            backdrop-filter: blur(10px);
+        }
+
+        .sticky-pay-bar .meta {
+            margin-bottom: 10px;
+        }
+
+        .sticky-pay-bar .meta strong {
+            display: block;
+            color: var(--ink);
+        }
+
+        .sticky-pay-bar .meta p {
+            font-size: 0.94rem;
+        }
+
+        .sticky-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .sticky-actions .btn {
+            flex: 1;
+        }
+
+        @media (max-width: 900px) {
+            .split,
+            .sku-grid,
+            .helper-grid,
+            .result-grid,
+            .sku-preview-grid,
+            .official-grid,
+            .summary-grid,
+            .flow-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 20px 14px 64px;
+            }
+
+            .hero {
+                padding: 28px 20px 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="page active" id="page-landing">
+    <div class="container">
+        <section class="card hero">
+            <div class="eyebrow">WSM / 思维越狱</div>
+            <h1>你不是能力不行，<br>是你没看清责任是怎么流的。</h1>
+            <p>很多人不是输在努力不够，而是没看清自己正站在什么局里。思维越狱先帮你做一次背锅预看，再决定要不要进入识局处方。</p>
+            <div class="actions">
+                <button class="btn primary" onclick="navigateTo('page-quiz')">
+                    开始背锅预看
+                    <span class="subline">5题，先看你现在最像哪种锅感</span>
+                </button>
+                <button class="btn" onclick="document.getElementById('landing-proof').scrollIntoView({ behavior: 'smooth' })">
+                    先看 1 个真实片段
+                    <span class="subline">先确认这套东西是不是在说你</span>
+                </button>
+            </div>
+            <div class="bookmark-box">
+                <strong>建议先收藏本站</strong>
+                <p>这不是一次看完就够的页。下一次你又开始觉得“怎么又落到我头上”时，可以回来对照。</p>
+            </div>
+        </section>
+
+        <section class="split" id="landing-proof">
+            <div class="card">
+                <div class="eyebrow">真实片段</div>
+                <h2>你以为只是顺手帮一下，后来它却慢慢长成了你的职责。</h2>
+                <p>很多锅不是突然砸下来的。它一开始只是一句“你先顶一下”，后来慢慢变成“这一直都是你在管”。你不是突然被绑定，是默认责任一点点长到了你身上。</p>
+                <div class="note">
+                    <p class="copy-strong">如果你看到这里已经开始点头，那就别再靠直觉扛了。先做背锅预看，看看你现在最强的锅感是什么。</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="eyebrow">你在这里得到什么</div>
+                <div class="mini-list">
+                    <div class="mini-item">
+                        <strong>先命中</strong>
+                        <p>先看你最近最像在背什么样的锅。</p>
+                    </div>
+                    <div class="mini-item">
+                        <strong>再分层</strong>
+                        <p>你自己选：先止血，拿完整路径，还是建立判断基站。</p>
+                    </div>
+                    <div class="mini-item">
+                        <strong>最后才进交付</strong>
+                        <p>付款后第一眼就给动作、路径和起始阅读，不让你停在空白页。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="page" id="page-quiz">
+    <div class="container">
+        <section class="card">
+            <div class="eyebrow">背锅预看</div>
+            <h2>先别急着扛，先看你最近最像哪一种锅感。</h2>
+            <p class="quiz-intro">这不是完整处理，也不是人格测试。只看你最近 1 到 3 个月，责任更容易怎么落到你身上。</p>
+            <div id="quiz-area"></div>
+            <div class="actions">
+                <button class="btn primary" onclick="submitPreview()">看预看结果</button>
+                <button class="btn" onclick="navigateTo('page-landing')">返回入口页</button>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div class="page" id="page-result">
+    <div class="container">
+        <section class="card" id="result-card"></section>
+    </div>
+</div>
+
+<div class="page" id="page-pay">
+    <div class="container">
+        <section class="card">
+            <div class="eyebrow">识局处方</div>
+            <h2>先别比哪个更高级。先看哪一档更适合你现在的场景。</h2>
+            <p>三档等权陈列。这里不替你做选择，只把每一档适合谁、解决什么、拿到什么写清楚。</p>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <strong>适用场景</strong>
+                    <p>适合近期反复背锅、责任下滑、越帮越多、有责无权的人，先看清自己该进入哪一档。</p>
+                </div>
+                <div class="summary-item">
+                    <strong>交付节奏</strong>
+                    <p>选档、生成订单、完成支付、进入对应购后首屏，整个链路都在 H5 页面内完成承接。</p>
+                </div>
+                <div class="summary-item">
+                    <strong>购买后入口</strong>
+                    <p>不是只给目录，而是直接进入对应档位的动作、起始路径或判断基站入口。</p>
+                </div>
+            </div>
+            <div class="sku-grid" id="sku-grid"></div>
+            <div class="pay-box" id="pay-box"></div>
+            <div class="pay-sections">
+                <div class="pay-section">
+                    <div class="eyebrow">商品信息</div>
+                    <div class="official-grid">
+                        <div class="official-item">
+                            <strong>商品名称</strong>
+                            <p>思维越狱｜识局处方数字产品</p>
+                        </div>
+                        <div class="official-item">
+                            <strong>商品类型</strong>
+                            <p>数字内容 / H5 页面交付 / 数字化处理入口</p>
+                        </div>
+                        <div class="official-item">
+                            <strong>支付方式</strong>
+                            <p>微信 H5 支付</p>
+                        </div>
+                        <div class="official-item">
+                            <strong>交付形式</strong>
+                            <p>支付成功后直接进入对应档位的购后首屏</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">交付说明</div>
+                    <h3>付款后你拿到的，不是一页结果，而是一段可以继续使用的处理入口。</h3>
+                    <div class="sku-preview-grid">
+                        <div class="sku-preview-item">
+                            <strong>299｜识局·急情</strong>
+                            <p>先给你今天就能用的动作、边界句和 5 篇起始内容，不让你空着回去继续扛。</p>
+                        </div>
+                        <div class="sku-preview-item">
+                            <strong>399｜识局·处方系统</strong>
+                            <p>把 108 篇系统内容排成可执行的起始路径，告诉你先看哪几篇、为什么、先别做什么。</p>
+                        </div>
+                        <div class="sku-preview-item">
+                            <strong>999｜识局·全档基站</strong>
+                            <p>交付 236 篇全档内容入口，不只处理你当前这条线，而是开始建立长期回看的判断基站。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">付款后流程</div>
+                    <h3>下单不是结束，而是进入对应交付链路的开始。</h3>
+                    <div class="flow-grid">
+                        <div class="flow-step">
+                            <strong>1. 选择档位</strong>
+                            <p>三档并列展示，你按自己的场景决定先进入哪一层。</p>
+                        </div>
+                        <div class="flow-step">
+                            <strong>2. 生成订单</strong>
+                            <p>系统生成订单号、金额和当前商品的支付参数。</p>
+                        </div>
+                        <div class="flow-step">
+                            <strong>3. 完成支付</strong>
+                            <p>支付完成后，不跳空页，直接进入该档位对应的购后首屏。</p>
+                        </div>
+                        <div class="flow-step">
+                            <strong>4. 开始处理</strong>
+                            <p>先拿到动作、边界句、起始路径或判断基站入口，再往下走。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">购买须知</div>
+                    <ul>
+                        <li>当前页面交付的是数字内容与数字化处理入口，不含人工 1 对 1 咨询。</li>
+                        <li>付款后会进入对应档位的购后首屏与起始内容，不会出现“买完只剩空页”的情况。</li>
+                        <li>这不是医疗、法律或心理治疗服务，页面内容仅用于结构识别、路径判断与数字阅读交付。</li>
+                        <li>若你只是想要一个“立刻翻盘”的承诺，这个产品并不适合你。</li>
+                    </ul>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">适合谁 / 不适合谁</div>
+                    <div class="helper-grid">
+                        <div class="card" style="margin:0;padding:18px;">
+                            <div class="muted-title">更适合</div>
+                            <ul>
+                                <li>最近反复觉得“怎么又落到我头上”的人。</li>
+                                <li>不是不做事，而是越做越容易背锅的人。</li>
+                                <li>愿意先看清局面，再决定下一步的人。</li>
+                            </ul>
+                        </div>
+                        <div class="card" style="margin:0;padding:18px;">
+                            <div class="muted-title">不适合</div>
+                            <ul>
+                                <li>只想得到一句“你已经很棒了”的安慰。</li>
+                                <li>只想立刻获得翻盘承诺，不愿先看清结构。</li>
+                                <li>期待人工长期陪跑或 1 对 1 咨询的人。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">付款后第一眼</div>
+                    <h3>这页的重点不是把你劝下单，而是让你下单之后立刻知道自己该先做什么。</h3>
+                    <p>所以这三个商品页后面都会直连对应的购后首屏：299 先止血，399 先按路径走，999 先进入基站。重点不是把人停在付款动作，而是让付款后立刻进入对应档位的真实交付入口。</p>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">交付方式</div>
+                    <ul>
+                        <li>当前以 H5 页面形式完成数字化交付。</li>
+                        <li>支付成功后，系统按所选档位进入对应购后首屏与内容入口。</li>
+                        <li>本页展示的是支付前的商品说明、购买须知、订单生成与支付入口。</li>
+                    </ul>
+                </div>
+
+                <div class="pay-section">
+                    <div class="eyebrow">常见问题</div>
+                    <div class="faq-list">
+                        <div class="faq-item">
+                            <strong>Q1：三档有什么本质区别？</strong>
+                            <p>不是篇数装饰，而是处理深度不同：299 先止血，399 先按路径走，999 先建立长期回看的判断基站。</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q2：付款后会先看到什么？</strong>
+                            <p>不会先看到空目录。每一档都会直接进入对应购后首屏，先给你动作、起始内容或入口，而不是让你自己乱翻。</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q3：这是人工咨询服务吗？</strong>
+                            <p>不是。当前交付形态是数字内容和数字化处理入口，不含人工 1 对 1 咨询。</p>
+                        </div>
+                        <div class="faq-item">
+                            <strong>Q4：为什么建议先收藏？</strong>
+                            <p>因为这不是一次性消费页。后面你再次遇到相似锅感时，可以回来对照这页，再决定是否进入更深处理。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="review-box" id="review-box"></div>
+            <div class="footer-actions">
+                <button class="btn" onclick="navigateTo('page-result')">返回预看结果</button>
+            </div>
+            <div class="sticky-pay-bar" id="sticky-pay-bar"></div>
+        </section>
+    </div>
+</div>
+
+<div class="page" id="page-post">
+    <div class="container">
+        <section class="card" id="post-card"></section>
+    </div>
+</div>
+
+<script src="/static/wsm-config.js"></script>
+<script>
+const PRODUCT_CONFIG = WSM_CONFIG.product;
+const PREVIEW_QUESTIONS = WSM_CONFIG.previewQuestions;
+const RESULT_MAP = WSM_CONFIG.resultMap;
+const SKU_CONFIG = WSM_CONFIG.skuConfig;
+let previewResult = null;
+let selectedSku = "emergency";
+let currentPrepayState = {
+    loading: false,
+    error: "",
+    order: null,
+};
+
+function ensurePreviewResult() {
+    if (!previewResult) {
+        previewResult = RESULT_MAP.B;
+    }
+}
+
+function navigateTo(pageId) {
+    if (pageId === "page-pay" || pageId === "page-post" || pageId === "page-result") {
+        ensurePreviewResult();
+    }
+    document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+    document.getElementById(pageId).classList.add("active");
+    syncRouteState(pageId);
+    window.scrollTo(0, 0);
+    if (pageId === "page-pay") renderSkuCards();
+    if (pageId === "page-post") renderPostPurchase();
+}
+
+function syncRouteState(pageId) {
+    const params = new URLSearchParams(window.location.search);
+    const pageMap = {
+        "page-landing": "landing",
+        "page-quiz": "quiz",
+        "page-result": "result",
+        "page-pay": "pay",
+        "page-post": "post",
+    };
+    params.set("view", pageMap[pageId] || "landing");
+    params.set("sku", selectedSku);
+    const nextUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, "", nextUrl);
+}
+
+function initRouteFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const sku = params.get("sku");
+    if (sku && SKU_CONFIG[sku]) {
+        selectedSku = sku;
+    }
+
+    const view = params.get("view");
+    const pageMap = {
+        landing: "page-landing",
+        quiz: "page-quiz",
+        result: "page-result",
+        pay: "page-pay",
+        post: "page-post",
+    };
+    const targetPage = pageMap[view] || "page-landing";
+    if (targetPage === "page-pay" || targetPage === "page-post" || targetPage === "page-result") {
+        ensurePreviewResult();
+        if (targetPage === "page-result") {
+            renderResult();
+        }
+    }
+    navigateTo(targetPage);
+}
+
+function renderQuiz() {
+    const area = document.getElementById("quiz-area");
+    area.innerHTML = PREVIEW_QUESTIONS.map((q, index) => `
+        <div class="question-card">
+            <strong>Q${index + 1}. ${q.prompt}</strong>
+            <div class="options">
+                ${Object.entries(q.options).map(([key, text]) => `
+                    <label>
+                        <input type="radio" name="${q.id}" value="${key}">
+                        ${text}
+                    </label>
+                `).join("")}
+            </div>
+        </div>
+    `).join("");
+}
+
+function submitPreview() {
+    const answers = {};
+    let missing = false;
+
+    PREVIEW_QUESTIONS.forEach((q) => {
+        const checked = document.querySelector(`input[name="${q.id}"]:checked`);
+        if (!checked) {
+            missing = true;
+        } else {
+            answers[q.id] = checked.value;
+        }
+    });
+
+    if (missing) {
+        alert("请先把这组题答完。");
+        return;
+    }
+
+    const counts = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+    Object.values(answers).forEach((value) => {
+        counts[value] += 1;
+    });
+
+    const topKey = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    previewResult = RESULT_MAP[topKey];
+    renderResult();
+    navigateTo("page-result");
+}
+
+function renderResult() {
+    const card = document.getElementById("result-card");
+    if (!previewResult) return;
+
+    card.innerHTML = `
+        <div class="eyebrow">背锅预看结果</div>
+        <h2>你现在最强的锅感，更像是：${previewResult.strongest}</h2>
+        <p class="copy-strong">${previewResult.quote}</p>
+
+        <div class="result-grid">
+            <div class="metric">
+                <span class="label">当前锅型倾向</span>
+                <div class="value">${previewResult.tendency}</div>
+            </div>
+            <div class="metric">
+                <span class="label">一句风险提醒</span>
+                <div class="value">${previewResult.warning}</div>
+            </div>
+        </div>
+
+        <div class="quote-box">
+            <p class="copy-strong">这只是预看，不是正式处理的全部内容。</p>
+            <p>现在你只是先看见了最强的锅感。继续进入处理后，才会看到更完整的判断、动作和路径。</p>
+        </div>
+
+        <div class="helper-grid" style="margin-top:18px;">
+            <div class="card" style="margin:0;padding:18px;">
+                <div class="muted-title">继续进入处理后，你会知道</div>
+                <p>${previewResult.bridge}</p>
+            </div>
+            <div class="card" style="margin:0;padding:18px;">
+                <div class="muted-title">建议先收藏本站</div>
+                <p>下一次你又开始觉得“怎么又落到我头上”时，可以回来对照这页，再决定下一步。</p>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn primary" onclick="navigateTo('page-pay')">查看三档识局处方</button>
+            <button class="btn" onclick="navigateTo('page-quiz')">重新做一次背锅预看</button>
+        </div>
+    `;
+}
+
+function renderSkuCards() {
+    const grid = document.getElementById("sku-grid");
+    grid.innerHTML = Object.values(SKU_CONFIG).map((sku) => `
+        <div class="sku-card ${selectedSku === sku.key ? "active" : ""}">
+            <div class="sku-top">
+                <div class="sku-name">${sku.name}</div>
+                <div class="sku-price">${sku.price}</div>
+                <p>${sku.tagline}</p>
+            </div>
+            <div>
+                <div class="muted-title">适合谁</div>
+                <p>${sku.suitable}</p>
+            </div>
+            <div>
+                <div class="muted-title">你会拿到什么</div>
+                <ul>
+                    ${sku.features.map((item) => `<li>${item}</li>`).join("")}
+                </ul>
+            </div>
+            <button class="btn full ${selectedSku === sku.key ? "primary" : ""}" onclick="selectSku('${sku.key}')">${sku.button}</button>
+        </div>
+    `).join("");
+    renderPayBox();
+}
+
+function selectSku(key) {
+    selectedSku = key;
+    currentPrepayState = {
+        loading: false,
+        error: "",
+        order: null,
+    };
+    renderSkuCards();
+}
+
+function renderPayBox() {
+    const sku = SKU_CONFIG[selectedSku];
+    const box = document.getElementById("pay-box");
+    const stickyBar = document.getElementById("sticky-pay-bar");
+    const reviewBox = document.getElementById("review-box");
+    const order = currentPrepayState.order;
+    const selectionNote = order
+        ? "你已经为当前档位生成过订单信息。如果切换档位，需要重新生成对应商品的订单。"
+        : "切换档位后，下方下单区会按当前所选商品重新生成订单信息。";
+    const statusHtml = currentPrepayState.loading
+        ? `<div class="pay-status"><p>正在生成 ${sku.name} 的下单信息，请稍候…</p></div>`
+        : currentPrepayState.error
+            ? `<div class="pay-status error"><p>${currentPrepayState.error}</p></div>`
+            : order
+                ? `
+                    <div class="pay-status">
+                        <p class="copy-strong">订单信息已生成。当前页面已经具备商品说明、订单号、金额与 H5 支付参数展示结构。</p>
+                        <div class="kv-list">
+                            <div class="kv-item"><span>商品</span><span>${sku.name}</span></div>
+                            <div class="kv-item"><span>订单号</span><span>${order.out_trade_no}</span></div>
+                            <div class="kv-item"><span>金额</span><span>${formatFen(order.amount)}</span></div>
+                            <div class="kv-item"><span>支付包</span><span>${order.pay_params.package}</span></div>
+                        </div>
+                    </div>
+                `
+                : "";
+
+    box.innerHTML = `
+        <strong>下单区</strong>
+        <p>你当前选择的是 <span class="copy-strong">${sku.name}</span>。下单后会生成该商品对应的金额、订单号与支付参数；正式接入微信 H5 支付后，这里会直接拉起支付流程。</p>
+        <div class="selection-summary">当前选择：<span class="copy-strong">${sku.name} ${sku.price}</span>。${selectionNote}</div>
+        ${statusHtml}
+        <div class="actions">
+            <button class="btn primary" onclick="requestPrepay()" ${currentPrepayState.loading ? "disabled" : ""}>生成订单并准备支付</button>
+            <button class="btn" onclick="navigateTo('page-post')">查看付款后首屏</button>
+        </div>
+    `;
+
+    stickyBar.innerHTML = `
+        <div class="meta">
+            <strong>${sku.name} ${sku.price}</strong>
+            <p>${order ? "订单信息已生成，可继续支付或查看购后首屏。" : "选定档位后，可直接生成订单或先预览付款后进入页。"}</p>
+        </div>
+        <div class="sticky-actions">
+            <button class="btn primary" onclick="requestPrepay()" ${currentPrepayState.loading ? "disabled" : ""}>生成订单</button>
+            <button class="btn" onclick="navigateTo('page-post')">预览购后页</button>
+        </div>
+    `;
+
+    renderReviewBox(reviewBox, sku);
+}
+
+function buildReviewUrl(view, skuKey) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    url.searchParams.set("sku", skuKey);
+    return url.toString();
+}
+
+function renderReviewBox(reviewBox, sku) {
+    const landingUrl = buildReviewUrl("landing", sku.key);
+    const payUrl = buildReviewUrl("pay", sku.key);
+    const postUrl = buildReviewUrl("post", sku.key);
+
+    reviewBox.innerHTML = `
+        <div class="eyebrow">申报展示路径</div>
+        <h3>当前这 3 个页面可以直接用于商品展示与支付申请截图。</h3>
+        <p>建议按“入口页 -> 支付页 -> 付款后首屏”顺序截图。当前所选档位会同步到支付页和购后页路径里。</p>
+        <div class="review-links">
+            <div class="review-link">
+                <strong>1. 入口页截图</strong>
+                <p>展示产品定位、预看入口和收藏建议。</p>
+                <code>${landingUrl}</code>
+            </div>
+            <div class="review-link">
+                <strong>2. 支付页截图</strong>
+                <p>展示三档商品、商品说明、购买须知、订单生成与支付入口。</p>
+                <code>${payUrl}</code>
+            </div>
+            <div class="review-link">
+                <strong>3. 付款后首屏截图</strong>
+                <p>展示付款后的真实交付承接，不是空目录或空白页。</p>
+                <code>${postUrl}</code>
+            </div>
+        </div>
+    `;
+}
+
+async function requestPrepay() {
+    const sku = SKU_CONFIG[selectedSku];
+    currentPrepayState = {
+        loading: true,
+        error: "",
+        order: null,
+    };
+    renderPayBox();
+
+    try {
+        const response = await fetch("/api/v1/pay/prepay", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                product_tier: sku.key,
+                novel_key: PRODUCT_CONFIG.novelKey,
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.detail || "生成订单失败，请稍后重试。");
+        }
+
+        currentPrepayState = {
+            loading: false,
+            error: "",
+            order: data,
+        };
+    } catch (error) {
+        currentPrepayState = {
+            loading: false,
+            error: error.message || "生成订单失败，请稍后重试。",
+            order: null,
+        };
+    }
+
+    renderPayBox();
+}
+
+function formatFen(amount) {
+    if (typeof amount !== "number") return "";
+    return `¥${(amount / 100).toFixed(2)}`;
+}
+
+function renderPostPurchase() {
+    const sku = SKU_CONFIG[selectedSku];
+    const card = document.getElementById("post-card");
+
+    if (selectedSku === "emergency") {
+        card.innerHTML = `
+            <div class="eyebrow">${sku.name}｜购后首屏</div>
+            <h2>你不用先看完，你只需要先处理你现在这一局。</h2>
+            <div class="result-grid">
+                <div class="metric">
+                    <span class="label">今日先做</span>
+                    <div class="value">先把当前责任边界写成一句话，留痕确认。</div>
+                </div>
+                <div class="metric">
+                    <span class="label">今天先别做</span>
+                    <div class="value">别在责任没写清前继续口头接活。</div>
+                </div>
+            </div>
+            <div class="quote-box">
+                <p class="copy-strong">你今天可以直接拿去用的一句话：</p>
+                <p>我可以配合推进，但先把主责、拍板人与结果口径写清。</p>
+            </div>
+            <div class="path-list">
+                <div class="path-item"><strong>现在先看这 2 篇</strong><p>先看 1 篇证明件，再看 1 篇主局陪读件。</p></div>
+            </div>
+            <div class="actions">
+                <button class="btn primary">先做今天这一动作</button>
+                <button class="btn" onclick="navigateTo('page-pay')">回看三档处方</button>
+            </div>
+        `;
+        return;
+    }
+
+    if (selectedSku === "system") {
+        card.innerHTML = `
+            <div class="eyebrow">${sku.name}｜购后首屏</div>
+            <h2>你不用全部看完，你只需要先按你的路径走。</h2>
+            <div class="quote-box">
+                <p class="copy-strong">这不是内容堆料，而是一条已经替你排好的起始路径。</p>
+            </div>
+            <div class="path-list">
+                <div class="path-item"><strong>今天先读这 5 篇</strong><p>先从最容易让你继续吃亏的那条线开始，不让你乱跳。</p></div>
+                <div class="path-item"><strong>为什么先这 5 篇</strong><p>先把最常重复出现的锅感看清，再补动作和边界。</p></div>
+                <div class="path-item"><strong>先记住这句判断</strong><p>你不是主责，却正在被慢慢推向最后解释结果的人。</p></div>
+                <div class="path-item"><strong>先别做这个动作</strong><p>不要在权责未清前继续替别人补定义。</p></div>
+            </div>
+            <div class="actions">
+                <button class="btn primary">按路径开始阅读</button>
+                <button class="btn" onclick="navigateTo('page-pay')">回看三档处方</button>
+            </div>
+        `;
+        return;
+    }
+
+    card.innerHTML = `
+        <div class="eyebrow">${sku.name}｜购后首屏</div>
+        <h2>从今天起，你不只是在解自己的局。</h2>
+        <div class="path-list">
+            <div class="path-item"><strong>先从哪一层开始</strong><p>主局深挖层 / 通用基础层 / 旁观四局层</p></div>
+            <div class="path-item"><strong>今日建议入口</strong><p>先进入主局深挖层，把你最常反复撞到的结构看透。</p></div>
+            <div class="path-item"><strong>为什么先这里</strong><p>先稳住自己的主线，再去看整张棋盘，不会空转。</p></div>
+        </div>
+        <div class="actions">
+            <button class="btn primary">进入我的判断基站</button>
+            <button class="btn" onclick="navigateTo('page-pay')">回看三档处方</button>
+        </div>
+    `;
+}
+
+renderQuiz();
+initRouteFromUrl();
+</script>
+</body>
+</html>

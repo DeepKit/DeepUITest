@@ -1,0 +1,216 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepLLM 深汇 - LLM 网关代理 | DeepKit</title>
+  <meta name="description" content="DeepLLM 深汇 - 智选省钱线路，让你省钱省心的LLM代理。多供应商账号池、智能路由、流量治理。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+SC:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="container">
+      <a href="../index.html" class="nav-logo">DeepKit 深工坊</a>
+      <ul class="nav-links">
+        <li><a href="../index.html#products">产品</a></li>
+        <li><a href="https://github.com" target="_blank">开源</a></li>
+        <li><a href="../index.html#footer">关于</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    <a href="../index.html#products" class="back-link">← 返回产品列表</a>
+  </div>
+
+  <!-- Product Hero -->
+  <section class="product-hero">
+    <img src="../icons/deepllm.svg" alt="DeepLLM" class="product-icon">
+    <h1 class="product-name-en">DeepLLM</h1>
+    <p class="product-name-cn">深汇</p>
+    <p class="product-tagline">智选省钱线路，让你省钱省心的LLM代理</p>
+  </section>
+
+  <div class="container">
+
+    <!-- Use Cases -->
+    <section class="product-section">
+      <h2>适用场景</h2>
+      <ul>
+        <li>团队使用多个 LLM 供应商，需要统一网关管理</li>
+        <li>希望按质量/成本/延迟自动选择最优线路</li>
+        <li>需要部门级预算控制和用量审计</li>
+        <li>企业合规要求：PII 脱敏、内容过滤、不可篡改日志</li>
+      </ul>
+    </section>
+
+    <!-- Feature Tiers -->
+    <section class="product-section">
+      <h2>能力分层</h2>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>能力</th>
+            <th>Community</th>
+            <th>Pro</th>
+            <th>Runtime</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>多账号池（轮询 + 故障转移）</td>
+            <td>✓ 基础</td>
+            <td>✓ 完整</td>
+            <td>✓ 完整</td>
+          </tr>
+          <tr>
+            <td>智能路由（质量/成本/延迟权重）</td>
+            <td>✓ 基础</td>
+            <td>✓ 完整</td>
+            <td>✓ 完整</td>
+          </tr>
+          <tr>
+            <td>流量治理（限流、预算）</td>
+            <td>✓ 基础</td>
+            <td>✓ 完整</td>
+            <td>✓ 完整</td>
+          </tr>
+          <tr>
+            <td>审计留痕（不可篡改日志）</td>
+            <td>—</td>
+            <td>✓</td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>内容安全（PII 脱敏 + 过滤）</td>
+            <td>—</td>
+            <td>—</td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>SLA 运维（多活 + 降级 + 告警）</td>
+            <td>—</td>
+            <td>—</td>
+            <td>✓</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Architecture -->
+    <section class="product-section">
+      <h2>架构概览</h2>
+      <div class="arch-block">客户端请求
+    ↓
+┌─────────────────────────────┐
+│  DeepLLM Gateway            │
+│  ┌───────────┐ ┌─────────┐ │
+│  │ 智能路由  │ │ 限流器  │ │
+│  └─────┬─────┘ └────┬────┘ │
+│        ↓             ↓      │
+│  ┌───────────────────────┐  │
+│  │    账号池管理器       │  │
+│  │  (轮询/故障转移/权重) │  │
+│  └───────────┬───────────┘  │
+│              ↓              │
+│  ┌───────────────────────┐  │
+│  │  审计 + 内容安全层    │  │
+│  └───────────┬───────────┘  │
+└──────────────┼──────────────┘
+               ↓
+    多供应商 LLM API</div>
+    </section>
+
+
+    <!-- Screenshots -->
+    <section class="product-section">
+      <h2>产品截图</h2>
+      <div class="screenshot-main">
+        <img src="../screenshots/LLM01.svg" alt="DeepLLM 主图">
+      </div>
+      <div class="screenshot-grid">
+        <img src="../screenshots/LLM02.svg" alt="DeepLLM 截图 2">
+        <img src="../screenshots/LLM03.svg" alt="DeepLLM 截图 3">
+        <img src="../screenshots/LLM04.svg" alt="DeepLLM 截图 4">
+        <img src="../screenshots/LLM05.svg" alt="DeepLLM 截图 5">
+      </div>
+    </section>
+    <!-- Pricing -->
+    <section class="pricing-section">
+      <h2>定价</h2>
+
+      <h3 style="text-align:center;margin-bottom:24px;font-size:18px;font-weight:600;">Community（开源 Apache 2.0）</h3>
+      <div class="pricing-card" style="margin-bottom:32px;">
+        <div class="price">免费</div>
+        <div class="price-note">6 个下游端口，能力条 1-3 基础版</div>
+      </div>
+
+      <h3 style="text-align:center;margin-bottom:24px;font-size:18px;font-weight:600;">Pro（按端口阶梯计费）</h3>
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th>端口数</th>
+            <th>月付</th>
+            <th>年付（8折）</th>
+            <th>单价/端口/月</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>6</td><td>¥0</td><td>¥0</td><td>—</td></tr>
+          <tr><td>10</td><td>¥500</td><td>¥4,800</td><td>¥50</td></tr>
+          <tr><td>20</td><td>¥900</td><td>¥8,640</td><td>¥45</td></tr>
+          <tr><td>50</td><td>¥1,800</td><td>¥17,280</td><td>¥36</td></tr>
+          <tr><td>100</td><td>¥3,000</td><td>¥28,800</td><td>¥30</td></tr>
+          <tr><td>200</td><td>¥5,000</td><td>¥48,000</td><td>¥25</td></tr>
+          <tr><td>500</td><td>¥10,000</td><td>¥96,000</td><td>¥20</td></tr>
+          <tr><td>1000</td><td>¥17,000</td><td>¥163,200</td><td>¥17</td></tr>
+          <tr><td>>1000</td><td>+¥1,500/100端口/月</td><td>+¥14,400/100端口/年</td><td>¥15</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="text-align:center;margin:32px 0 24px;font-size:18px;font-weight:600;">Runtime（合规旗舰）</h3>
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th>端口区间</th>
+            <th>月付/端口</th>
+            <th>年付/端口（8折）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>1-50</td><td>¥150</td><td>¥1,440</td></tr>
+          <tr><td>51-200</td><td>¥120</td><td>¥1,152</td></tr>
+          <tr><td>201-500</td><td>¥100</td><td>¥960</td></tr>
+          <tr><td>500+</td><td>¥80</td><td>¥768</td></tr>
+        </tbody>
+      </table>
+      <p style="text-align:center;font-size:13px;color:var(--text-secondary);margin-top:16px;">Runtime 包含能力条 1-6 + 私有化部署 + 合规咨询</p>
+
+      <div class="cta-group">
+        <a href="#" class="cta-button">联系咨询</a>
+        <a href="https://github.com" class="cta-button cta-secondary" target="_blank">GitHub 开源版</a>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <span>© 2026 DeepKit 深工坊</span>
+        <span class="footer-divider">|</span>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <span class="footer-divider">|</span>
+        <a href="mailto:contact@deepkit.top">联系</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

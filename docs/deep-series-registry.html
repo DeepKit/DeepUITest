@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep 系列软件资产总册</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --surface3: #222d44;
+    --border: #2a3654;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --accent: #38bdf8;
+    --accent2: #0ea5e9;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --orange: #fb923c;
+    --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 32px 40px 24px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header h1 {
+    font-size: 28px; font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: 1px;
+  }
+  .header .subtitle { color: var(--text2); font-size: 14px; margin-top: 4px; }
+  .header-stats {
+    display: flex; gap: 24px; margin-top: 16px;
+  }
+  .header-stats .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px 16px;
+    font-size: 13px;
+  }
+  .header-stats .stat strong { color: var(--accent); font-size: 18px; margin-right: 4px; }
+
+  /* ── Layout ── */
+  .container { display: flex; min-height: calc(100vh - 130px); }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 280px; min-width: 280px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+    overflow-y: auto;
+    position: sticky; top: 130px; height: calc(100vh - 130px);
+  }
+  .sidebar-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 2px; color: var(--text2);
+    padding: 8px 20px; margin-bottom: 4px;
+  }
+  .sidebar-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px; cursor: pointer;
+    font-size: 14px; color: var(--text2);
+    transition: all .15s; border-left: 3px solid transparent;
+  }
+  .sidebar-item:hover { background: var(--surface2); color: var(--text); }
+  .sidebar-item.active {
+    background: var(--surface2); color: var(--accent);
+    border-left-color: var(--accent);
+  }
+  .sidebar-item .num {
+    font-size: 11px; font-weight: 700;
+    background: var(--surface3); color: var(--text2);
+    width: 24px; height: 24px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .sidebar-item.active .num { background: var(--accent); color: var(--bg); }
+  .sidebar-item .sname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Main ── */
+  .main {
+    flex: 1; padding: 32px 40px; max-width: 1100px;
+    overflow-y: auto; height: calc(100vh - 130px);
+  }
+
+  /* ── Overview Table ── */
+  .overview { display: none; }
+  .overview.active { display: block; }
+  .overview h2 { font-size: 20px; margin-bottom: 16px; }
+  .overview-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .overview-table th {
+    text-align: left; padding: 10px 12px;
+    background: var(--surface2); color: var(--text2);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 2px solid var(--border);
+    position: sticky; top: 0;
+  }
+  .overview-table td {
+    padding: 12px; border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .overview-table tr:hover td { background: var(--surface); }
+  .overview-table .pname {
+    font-weight: 600; color: var(--accent); cursor: pointer;
+  }
+  .overview-table .pname:hover { text-decoration: underline; }
+  .overview-table .cname { color: var(--purple); font-weight: 500; white-space: nowrap; }
+  .overview-table .desc { color: var(--text2); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-pending { background: var(--surface3); color: var(--text2); }
+  .badge-dev { background: rgba(251,191,36,.15); color: var(--yellow); }
+  .badge-done { background: rgba(52,211,153,.15); color: var(--green); }
+
+  /* ── Product Detail ── */
+  .product-detail { display: none; }
+  .product-detail.active { display: block; }
+  .product-header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 24px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .product-header .icon {
+    width: 56px; height: 56px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent2), var(--purple));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 800; color: #fff; flex-shrink: 0;
+  }
+  .product-header h2 { font-size: 22px; }
+  .product-header .cn { color: var(--purple); font-size: 18px; margin-left: 8px; }
+  .product-header .tagline { color: var(--text2); font-size: 14px; margin-top: 2px; }
+  .back-btn {
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    padding: 6px 14px; border-radius: var(--radius); cursor: pointer;
+    font-size: 13px; margin-left: auto;
+    transition: all .15s;
+  }
+  .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex; gap: 2px; margin-bottom: 0;
+    background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 10px 16px; font-size: 13px; cursor: pointer;
+    color: var(--text2); background: transparent;
+    border: none; border-bottom: 2px solid transparent;
+    transition: all .15s; white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); background: var(--surface2); }
+  .tab.active {
+    color: var(--accent); border-bottom-color: var(--accent);
+    background: var(--surface2);
+  }
+
+  /* ── Tab Content ── */
+  .tab-panels {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 24px 28px;
+    min-height: 300px;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .tab-panel h3 {
+    font-size: 16px; margin-bottom: 12px;
+    color: var(--accent);
+  }
+  .tab-panel p, .tab-panel li { color: var(--text2); font-size: 14px; }
+  .tab-panel ul { padding-left: 20px; }
+  .tab-panel li { margin-bottom: 6px; }
+  .tab-panel strong { color: var(--text); }
+
+  /* ── Editable area ── */
+  .editable {
+    border: 1px dashed var(--border); border-radius: var(--radius);
+    padding: 16px; min-height: 120px; margin-top: 12px;
+    background: var(--surface2);
+    outline: none; font-size: 14px; color: var(--text);
+    line-height: 1.8;
+  }
+  .editable:focus { border-color: var(--accent); }
+  .editable:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text2); font-style: italic;
+  }
+  .edit-hint {
+    font-size: 11px; color: var(--text2); margin-top: 8px;
+    display: flex; align-items: center; gap: 4px;
+  }
+
+  /* ── Table inside tabs ── */
+  .detail-table {
+    width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px;
+  }
+  .detail-table th {
+    text-align: left; padding: 8px 10px;
+    background: var(--surface3); color: var(--text2);
+    font-size: 11px; letter-spacing: .5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-table td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    color: var(--text2);
+  }
+
+  /* ── Status dots ── */
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: var(--green); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-red { background: var(--red); }
+  .dot-gray { background: var(--text2); }
+
+  /* ── Export ── */
+  .export-bar {
+    position: fixed; bottom: 20px; right: 20px;
+    display: flex; gap: 8px; z-index: 200;
+  }
+  .export-btn {
+    background: var(--accent2); color: #fff; border: none;
+    padding: 10px 20px; border-radius: var(--radius);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all .15s;
+  }
+  .export-btn:hover { background: var(--accent); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+  /* ── Print ── */
+  @media print {
+    .header, .sidebar, .export-bar, .tabs, .back-btn { display: none !important; }
+    .main { padding: 0; max-width: 100%; height: auto; overflow: visible; }
+    .product-detail { display: block !important; page-break-after: always; }
+    .tab-panel { display: block !important; }
+    .tab-panels { border: 1px solid #ccc; }
+    body { background: #fff; color: #222; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>◆ Deep 系列软件资产总册</h1>
+  <div class="subtitle">BetterCiv · ODD 工程方法论 · 22 款软件产品清单</div>
+  <div class="header-stats">
+    <div class="stat"><strong>22</strong> 款产品</div>
+    <div class="stat"><strong id="statPending">22</strong> 待确认</div>
+    <div class="stat"><strong id="statDev">0</strong> 研发中</div>
+    <div class="stat"><strong id="statDone">0</strong> 已完成</div>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-title">导航</div>
+    <div class="sidebar-item active" onclick="showOverview()">
+      <div class="num">☰</div>
+      <div class="sname">总览</div>
+    </div>
+    <div class="sidebar-title" style="margin-top:12px">产品列表</div>
+    <div id="sidebarList"></div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+    <!-- Overview -->
+    <div class="overview active" id="overviewSection">
+      <h2>📊 产品总览</h2>
+      <table class="overview-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>产品名</th>
+            <th>中文名</th>
+            <th>一句话定位</th>
+            <th>状态</th>
+            <th>完成度</th>
+          </tr>
+        </thead>
+        <tbody id="overviewBody"></tbody>
+      </table>
+    </div>
+    <!-- Product Details (generated by JS) -->
+    <div id="productDetails"></div>
+  </div>
+</div>
+
+<!-- Export Bar -->
+<div class="export-bar">
+  <button class="export-btn" onclick="exportAll()">📄 导出全部 Markdown</button>
+  <button class="export-btn" onclick="window.print()">🖨️ 打印</button>
+</div>
+
+<script>
+// ── Data ──
+const products = [
+  { id:1, name:"DeepBase", cn:"深擎", desc:"Delphi 企业级应用开发基础框架，让 Delphi 企业级开发像 Spring Boot 一样简单", status:"pending", progress:"?", cat:"框架" },
+  { id:2, name:"DeepSync", cn:"深联", desc:"跨平台多功能同步与协作工具，集文件同步 + 快传 + 屏幕协作于一身", status:"pending", progress:"?", cat:"工具" },
+  { id:3, name:"DeepLLM", cn:"深汇", desc:"多模型 LLM 代理平台，统一管理模型、Token 控制、权限，让用户直接调用最近的模型", status:"pending", progress:"?", cat:"AI" },
+  { id:4, name:"DeepInput", cn:"深触", desc:"Windows 触屏输入助手，提供虚拟键盘、短语库、笔记、触摸鼠标和语音输入", status:"pending", progress:"?", cat:"工具" },
+  { id:5, name:"DeepDev", cn:"深构", desc:"AI 辅助软件开发治理工具（代码易/Progee），支持代码分析、契约生成、测试验证", status:"pending", progress:"?", cat:"开发" },
+  { id:6, name:"DeepDevLite", cn:"深构 Lite", desc:"Progee 轻量入门版，单文件验证闭环，支持代码输入、AI 分析契约、自动测试生成", status:"pending", progress:"?", cat:"开发" },
+  { id:7, name:"DeepClip", cn:"深辑", desc:"本地优先剪贴板、语音输入与 AI 研究素材工作台，把每次复制转化为可搜索、可复用的素材库", status:"pending", progress:"?", cat:"效率" },
+  { id:8, name:"DeepStory", cn:"深撰", desc:"长篇小说创作系统，支持 AI 辅助写作、去 AI 痕迹、多轮修改、可分发追踪", status:"pending", progress:"?", cat:"创作" },
+  { id:9, name:"DeepShine", cn:"深耀", desc:"Win11 本地内容运营工具，让内容发布从手工摸索升级为可验证、可恢复、可审计的运营流程", status:"pending", progress:"?", cat:"运营" },
+  { id:10, name:"DeepRenew", cn:"深焕", desc:"CTO 级代码 CT 扫描工具，提供决策置信度指数、影响推演和审计报告，帮助避免错误的技术决策", status:"pending", progress:"?", cat:"开发" },
+  { id:11, name:"DeepMoveC", cn:"深腾", desc:"C 盘瘦身神器，智能目录迁移专家，支持安全迁移、Junction 链接、智能清理和完整回滚", status:"pending", progress:"?", cat:"工具" },
+  { id:12, name:"DeepSVG", cn:"深矢", desc:"SVG 图形设计平台，支持静态/动态 SVG 预览、编辑、多格式导出（PNG/GIF/ICO/WebP）", status:"pending", progress:"?", cat:"设计" },
+  { id:13, name:"DeepLaunch", cn:"深启", desc:"Windows 桌面键盘启动器（双键快启），按两下键启动任何程序，不翻菜单、不等搜索、不用鼠标", status:"pending", progress:"?", cat:"效率" },
+  { id:14, name:"DeepConfig", cn:"深配", desc:"配置文件编辑器与交付体系，支持 INI/JSON 混合配置、树形浏览、属性编辑、配置验证", status:"pending", progress:"?", cat:"开发" },
+  { id:15, name:"DeepCharset", cn:"深转", desc:"高性能文本编码检测与转换工具，支持 30+ 种编码互转、批量处理、预览、自动备份", status:"pending", progress:"?", cat:"工具" },
+  { id:16, name:"DeepInsight", cn:"深觉", desc:"个人决策显影室，每周用一次把重要问题从混乱走到可执行的决策，并留下可回看的思维胶片", status:"pending", progress:"?", cat:"效率" },
+  { id:17, name:"DeepCompare", cn:"深鉴", desc:"多 Provider LLM 对比测试工具，直接复用已有网页账号，在多个 AI 网页上发送相同 Prompt 并对比结果", status:"pending", progress:"?", cat:"AI" },
+  { id:18, name:"DeepUITest", cn:"深测", desc:"Windows 桌面程序 UI 行为 Mock 测试系统，用配置驱动测试，用红绿灯反馈质量", status:"pending", progress:"?", cat:"开发" },
+  { id:19, name:"DeepGuide", cn:"深导", desc:"企业专家能力化平台，让新员工也能像专家一样完成工作，核心是 Journey Package 编排执行反馈闭环", status:"pending", progress:"?", cat:"企业" },
+  { id:20, name:"DeepSpec", cn:"深范", desc:"软件开发文档规范化与工程引导系统，把混乱的开发文档整理成可读、可查、可执行、可测试、可交接的工程规范", status:"pending", progress:"?", cat:"开发" },
+  { id:21, name:"GuidedUse", cn:"善用", desc:"桌面悬浮式软件任务陪跑系统，新软件不会用时悬浮在旁边，用步骤、图卡、视觉锚点和迷路恢复一步步带用户完成真实任务", status:"pending", progress:"?", cat:"效率", note:"改名自 DeepUse" },
+  { id:22, name:"OCGS-Delphi", cn:"OCGS-Delphi", desc:"Delphi 项目能力治理与窗体减肥，让 Delphi 项目的窗体不再膨胀，让功能入口有序可治理", status:"pending", progress:"?", cat:"开发", note:"中文名与产品名统一" },
+];
+
+const tabDefs = [
+  { num:"01", file:"01-产品一句话定位.md", title:"产品一句话定位" },
+  { num:"02", file:"02-目标用户与使用场景.md", title:"目标用户与使用场景" },
+  { num:"03", file:"03-最小发行功能清单.md", title:"最小发行功能清单" },
+  { num:"04", file:"04-安装与快速开始.md", title:"安装与快速开始" },
+  { num:"05", file:"05-测试清单.md", title:"测试清单" },
+  { num:"06", file:"06-Bug记录表.md", title:"Bug 记录表" },
+  { num:"07", file:"07-已知问题与下一版计划.md", title:"已知问题与下一版计划" },
+  { num:"08", file:"08-发布页文案.md", title:"发布页文案" },
+];
+
+// ── Load saved content from localStorage ──
+function getSavedContent(pid, fnum) {
+  try {
+    const saved = localStorage.getItem(`deep-${pid}-${fnum}`);
+    return saved || '';
+  } catch(e) { return ''; }
+}
+function saveContent(pid, fnum, content) {
+  try { localStorage.setItem(`deep-${pid}-${fnum}`, content); } catch(e) {}
+}
+
+// ── Render Overview Table ──
+function renderOverview() {
+  const tbody = document.getElementById('overviewBody');
+  tbody.innerHTML = products.map(p => `
+    <tr>
+      <td style="color:var(--text2)">${p.id}</td>
+      <td><span class="pname" onclick="showProduct(${p.id})">${p.name}</span></td>
+      <td class="cname">${p.cn}</td>
+      <td class="desc">${p.desc}</td>
+      <td><span class="badge badge-${p.status}">${statusLabel(p.status)}</span></td>
+      <td style="color:var(--text2)">${p.progress}${p.note ? '<br><span style="font-size:11px;color:var(--orange)">'+p.note+'</span>' : ''}</td>
+    </tr>
+  `).join('');
+}
+
+function statusLabel(s) {
+  return { pending:'待确认', dev:'研发中', done:'已完成' }[s] || s;
+}
+
+// ── Render Sidebar ──
+function renderSidebar() {
+  const list = document.getElementById('sidebarList');
+  list.innerHTML = products.map(p => `
+    <div class="sidebar-item" id="sb-${p.id}" onclick="showProduct(${p.id})">
+      <div class="num">${p.id}</div>
+      <div class="sname">${p.name}<br><span style="font-size:11px;color:var(--text2)">${p.cn}</span></div>
+    </div>
+  `).join('');
+}
+
+// ── Render Product Details ──
+function renderProducts() {
+  const container = document.getElementById('productDetails');
+  container.innerHTML = products.map(p => {
+    const tabs = tabDefs.map((t,i) => `
+      <button class="tab${i===0?' active':''}" onclick="switchTab(${p.id},'${t.num}',this)">${t.num} ${t.title}</button>
+    `).join('');
+    const panels = tabDefs.map((t,i) => {
+      const saved = getSavedContent(p.id, t.num);
+      const placeholders = getPlaceholders(p, t.num);
+      return `
+        <div class="tab-panel${i===0?' active':''}" id="panel-${p.id}-${t.num}">
+          <h3>${t.num} · ${t.title}</h3>
+          ${placeholders}
+          <div class="editable"
+               contenteditable="true"
+               data-placeholder="在此输入 ${t.title} 内容…"
+               id="edit-${p.id}-${t.num}"
+               onblur="saveContent(${p.id},'${t.num}',this.innerHTML)">${saved}</div>
+          <div class="edit-hint">💡 内容自动保存到浏览器本地存储</div>
+        </div>
+      `;
+    }).join('');
+    return `
+      <div class="product-detail" id="pd-${p.id}">
+        <div class="product-header">
+          <div class="icon">${p.id}</div>
+          <div>
+            <h2>${p.name} <span class="cn">${p.cn}</span></h2>
+            <div class="tagline">${p.desc}</div>
+            ${p.note ? '<div style="font-size:12px;color:var(--orange);margin-top:2px">📌 '+p.note+'</div>' : ''}
+          </div>
+          <button class="back-btn" onclick="showOverview()">← 返回总览</button>
+        </div>
+        <div class="tabs">${tabs}</div>
+        <div class="tab-panels">${panels}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function getPlaceholders(p, num) {
+  const hints = {
+    '01': `<p style="margin-bottom:8px"><strong>产品名</strong>：${p.name}（${p.cn}）</p><p><strong>一句话定位</strong>：${p.desc}</p>`,
+    '02': `<p style="margin-bottom:8px">请描述：</p><ul><li>核心目标用户是谁？（个人/企业/开发者/创作者…）</li><li>典型使用场景（3-5 个）</li><li>用户当前痛点与替代方案</li></ul>`,
+    '03': `<p style="margin-bottom:8px">请列出 MVP 必须具备的功能：</p><table class="detail-table"><thead><tr><th>功能项</th><th>优先级</th><th>说明</th><th>状态</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--text2)">点击下方编辑区填写…</td></tr></tbody></table>`,
+    '04': `<p style="margin-bottom:8px">请描述：</p><ul><li>系统要求（OS 版本、运行时依赖）</li><li>安装步骤</li><li>首次运行配置</li><li>5 分钟快速体验流程</li></ul>`,
+    '05': `<p style="margin-bottom:8px">请列出测试项：</p><table class="detail-table"><thead><tr><th>编号</th><th>测试项</th><th>前置条件</th><th>预期结果</th><th>状态</th></tr></thead><tbody><tr><td colspan="5" style="color:var(--text2)">点击下方编辑区填写…</td></tr></tbody></table>`,
+    '06': `<p style="margin-bottom:8px">Bug 记录：</p><table class="detail-table"><thead><tr><th>#</th><th>描述</th><th>严重度</th><th>重现步骤</th><th>状态</th><th>修复版本</th></tr></thead><tbody><tr><td colspan="6" style="color:var(--text2)">点击下方编辑区填写…</td></tr></tbody></table>`,
+    '07': `<p style="margin-bottom:8px">请列出：</p><ul><li>已知问题（未修复的 Bug / 设计限制）</li><li>下一版本计划（功能路线图）</li><li>长期规划（如果有）</li></ul>`,
+    '08': `<p style="margin-bottom:8px">用于 deepkit.top 发布页、下载站、GitHub Release 的文案：</p><ul><li>标题（≤30字）</li><li>副标题（≤50字）</li><li>核心卖点 ×3</li><li>功能列表</li><li>截图说明</li><li>下载/安装引导</li></ul>`,
+  };
+  return hints[num] || '';
+}
+
+// ── Navigation ──
+function hideAll() {
+  document.getElementById('overviewSection').classList.remove('active');
+  document.querySelectorAll('.product-detail').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+}
+
+function showOverview() {
+  hideAll();
+  document.getElementById('overviewSection').classList.add('active');
+  document.querySelector('.sidebar-item').classList.add('active');
+}
+
+function showProduct(id) {
+  hideAll();
+  const pd = document.getElementById(`pd-${id}`);
+  if (pd) pd.classList.add('active');
+  const sb = document.getElementById(`sb-${id}`);
+  if (sb) sb.classList.add('active');
+}
+
+function switchTab(pid, num, btn) {
+  const parent = btn.closest('.product-detail');
+  parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  parent.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  const panel = document.getElementById(`panel-${pid}-${num}`);
+  if (panel) panel.classList.add('active');
+}
+
+// ── Export to Markdown ──
+function exportAll() {
+  let md = '# Deep 系列软件资产总册\n\n';
+  md += `> 生成日期：${new Date().toISOString().slice(0,10)}\n\n`;
+  md += '## 产品总览\n\n';
+  md += '| # | 产品名 | 中文名 | 一句话定位 | 状态 | 完成度 |\n';
+  md += '|---|--------|--------|------------|------|--------|\n';
+  products.forEach(p => {
+    md += `| ${p.id} | ${p.name} | ${p.cn} | ${p.desc} | ${statusLabel(p.status)} | ${p.progress} |\n`;
+  });
+  md += '\n---\n\n';
+  products.forEach(p => {
+    md += `## ${p.id}. ${p.name}（${p.cn}）\n\n`;
+    md += `> ${p.desc}\n\n`;
+    if (p.note) md += `> 📌 ${p.note}\n\n`;
+    tabDefs.forEach(t => {
+      const content = getSavedContent(p.id, t.num);
+      const plainText = content.replace(/<[^>]+>/g, '').trim();
+      md += `### ${t.file}\n\n`;
+      if (plainText) {
+        md += plainText + '\n\n';
+      } else {
+        md += '*(待填写)*\n\n';
+      }
+    });
+    md += '---\n\n';
+  });
+
+  const blob = new Blob([md], { type:'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Deep系列软件资产总册_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Init ──
+renderOverview();
+renderSidebar();
+renderProducts();
+
+// Update stats
+let counts = { pending:0, dev:0, done:0 };
+products.forEach(p => counts[p.status] = (counts[p.status]||0) + 1);
+document.getElementById('statPending').textContent = counts.pending;
+document.getElementById('statDev').textContent = counts.dev;
+document.getElementById('statDone').textContent = counts.done;
+</script>
+
+</body>
+</html>

@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow 租户控制台</title>
+  <link rel="stylesheet" href="css/console.css">
+</head>
+<body>
+  <!-- 侧边栏 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">UniFlow</span>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-view="dashboard">
+        <span class="nav-icon">📊</span>
+        <span class="nav-text">仪表板</span>
+      </a>
+      <a href="#" class="nav-item" data-view="tenants">
+        <span class="nav-icon">🏢</span>
+        <span class="nav-text">租户管理</span>
+      </a>
+      <a href="#" class="nav-item" data-view="quotas">
+        <span class="nav-icon">📏</span>
+        <span class="nav-text">配额管理</span>
+      </a>
+      <a href="#" class="nav-item" data-view="usage">
+        <span class="nav-icon">📈</span>
+        <span class="nav-text">用量统计</span>
+      </a>
+      <a href="#" class="nav-item" data-view="workflows">
+        <span class="nav-icon">🔄</span>
+        <span class="nav-text">工作流</span>
+      </a>
+      <a href="#" class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-text">系统设置</span>
+      </a>
+    </nav>
+    
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <span class="user-avatar">👤</span>
+        <span class="user-name" id="currentUser">Admin</span>
+      </div>
+    </div>
+  </aside>
+  
+  <!-- 主内容区 -->
+  <main class="main-content">
+    <!-- 顶部栏 -->
+    <header class="header">
+      <div class="header-left">
+        <h1 class="page-title" id="pageTitle">仪表板</h1>
+      </div>
+      <div class="header-right">
+        <div class="search-box">
+          <input type="text" placeholder="搜索..." id="globalSearch">
+          <span class="search-icon">🔍</span>
+        </div>
+        <button class="btn-icon" id="refreshBtn" title="刷新">🔄</button>
+        <button class="btn-icon" id="notificationBtn" title="通知">
+          🔔
+          <span class="notification-badge" id="notificationBadge">3</span>
+        </button>
+      </div>
+    </header>
+    
+    <!-- 仪表板视图 -->
+    <section class="view" id="dashboardView">
+      <!-- 摘要卡片 -->
+      <div class="summary-cards">
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-blue)">🏢</div>
+          <div class="card-content">
+            <div class="card-label">活跃租户</div>
+            <div class="card-value" id="activeTenants">-</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-green)">🔄</div>
+          <div class="card-content">
+            <div class="card-label">今日流程</div>
+            <div class="card-value" id="todayFlows">-</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-yellow)">⚡</div>
+          <div class="card-content">
+            <div class="card-label">API 调用</div>
+            <div class="card-value" id="apiCalls">-</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-red)">⚠️</div>
+          <div class="card-content">
+            <div class="card-label">配额告警</div>
+            <div class="card-value" id="quotaAlerts">-</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 图表区 -->
+      <div class="charts-row">
+        <div class="card chart-card">
+          <div class="card-header">
+            <h3>租户分布</h3>
+          </div>
+          <div class="card-body">
+            <div class="chart-container" id="tenantDistChart"></div>
+          </div>
+        </div>
+        <div class="card chart-card">
+          <div class="card-header">
+            <h3>流程趋势</h3>
+            <select id="flowTrendRange" class="select-sm">
+              <option value="7d">近 7 天</option>
+              <option value="30d">近 30 天</option>
+              <option value="90d">近 90 天</option>
+            </select>
+          </div>
+          <div class="card-body">
+            <div class="chart-container" id="flowTrendChart"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 最近活动 -->
+      <div class="card">
+        <div class="card-header">
+          <h3>最近活动</h3>
+          <a href="#" class="link" data-view="tenants">查看全部</a>
+        </div>
+        <div class="card-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>租户</th>
+                <th>事件</th>
+                <th>时间</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="recentActivityTable">
+              <!-- 动态填充 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 租户管理视图 -->
+    <section class="view hidden" id="tenantsView">
+      <div class="view-header">
+        <div class="view-actions">
+          <button class="btn btn-primary" id="createTenantBtn">
+            <span>➕</span> 创建租户
+          </button>
+          <div class="filter-group">
+            <select id="tenantStatusFilter" class="select">
+              <option value="">全部状态</option>
+              <option value="active">活跃</option>
+              <option value="suspended">暂停</option>
+              <option value="archived">归档</option>
+            </select>
+            <select id="tenantPlanFilter" class="select">
+              <option value="">全部计划</option>
+              <option value="free">免费版</option>
+              <option value="basic">基础版</option>
+              <option value="professional">专业版</option>
+              <option value="enterprise">企业版</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-body">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>
+                  <input type="checkbox" id="selectAllTenants">
+                </th>
+                <th>租户名称</th>
+                <th>计划</th>
+                <th>状态</th>
+                <th>活跃流程</th>
+                <th>存储用量</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="tenantsTable">
+              <!-- 动态填充 -->
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer">
+          <div class="pagination" id="tenantsPagination">
+            <!-- 动态填充 -->
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 配额管理视图 -->
+    <section class="view hidden" id="quotasView">
+      <div class="card">
+        <div class="card-header">
+          <h3>计划配额配置</h3>
+        </div>
+        <div class="card-body">
+          <div class="tabs">
+            <button class="tab active" data-plan="free">免费版</button>
+            <button class="tab" data-plan="basic">基础版</button>
+            <button class="tab" data-plan="professional">专业版</button>
+            <button class="tab" data-plan="enterprise">企业版</button>
+          </div>
+          
+          <div class="quota-form" id="quotaForm">
+            <div class="form-section">
+              <h4>流程配额</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>最大活跃流程数</label>
+                  <input type="number" id="quotaMaxActiveFlows" class="input">
+                  <span class="hint">0 = 无限制</span>
+                </div>
+                <div class="form-group">
+                  <label>每日最大流程数</label>
+                  <input type="number" id="quotaMaxFlowsPerDay" class="input">
+                </div>
+                <div class="form-group">
+                  <label>每流程最大事件数</label>
+                  <input type="number" id="quotaMaxEventsPerFlow" class="input">
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-section">
+              <h4>存储配额</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>最大存储 (MB)</label>
+                  <input type="number" id="quotaMaxStorageMB" class="input">
+                </div>
+                <div class="form-group">
+                  <label>每流程最大快照数</label>
+                  <input type="number" id="quotaMaxSnapshotsPerFlow" class="input">
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-section">
+              <h4>API 配额</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>每分钟最大请求数</label>
+                  <input type="number" id="quotaMaxRequestsPerMinute" class="input">
+                </div>
+                <div class="form-group">
+                  <label>每日最大请求数</label>
+                  <input type="number" id="quotaMaxRequestsPerDay" class="input">
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-section">
+              <h4>LLM 配额</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>每日最大 LLM 请求数</label>
+                  <input type="number" id="quotaMaxLLMRequestsPerDay" class="input">
+                </div>
+                <div class="form-group">
+                  <label>每日最大 Token 数</label>
+                  <input type="number" id="quotaMaxTokensPerDay" class="input">
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-section">
+              <h4>功能开关</h4>
+              <div class="form-row">
+                <div class="form-group checkbox-group">
+                  <label>
+                    <input type="checkbox" id="quotaAllowParallel">
+                    允许并行执行
+                  </label>
+                </div>
+                <div class="form-group checkbox-group">
+                  <label>
+                    <input type="checkbox" id="quotaAllowSubworkflows">
+                    允许子工作流
+                  </label>
+                </div>
+                <div class="form-group checkbox-group">
+                  <label>
+                    <input type="checkbox" id="quotaAllowCustomSkills">
+                    允许自定义 Skill
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-actions">
+              <button class="btn btn-primary" id="saveQuotaBtn">保存配置</button>
+              <button class="btn btn-secondary" id="resetQuotaBtn">重置默认</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 用量统计视图 -->
+    <section class="view hidden" id="usageView">
+      <div class="view-header">
+        <div class="view-actions">
+          <select id="usageTenantSelect" class="select">
+            <option value="">全部租户</option>
+            <!-- 动态填充 -->
+          </select>
+          <select id="usageTimeRange" class="select">
+            <option value="today">今天</option>
+            <option value="7d">近 7 天</option>
+            <option value="30d" selected>近 30 天</option>
+            <option value="90d">近 90 天</option>
+          </select>
+          <button class="btn btn-secondary" id="exportUsageBtn">
+            <span>📥</span> 导出报告
+          </button>
+        </div>
+      </div>
+      
+      <!-- 用量摘要 -->
+      <div class="summary-cards">
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-blue)">🔄</div>
+          <div class="card-content">
+            <div class="card-label">总流程数</div>
+            <div class="card-value" id="usageTotalFlows">-</div>
+            <div class="card-trend up" id="usageFlowsTrend">+12%</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-green)">⚡</div>
+          <div class="card-content">
+            <div class="card-label">API 调用</div>
+            <div class="card-value" id="usageTotalAPI">-</div>
+            <div class="card-trend up" id="usageAPITrend">+8%</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-yellow)">🤖</div>
+          <div class="card-content">
+            <div class="card-label">LLM Token</div>
+            <div class="card-value" id="usageTotalTokens">-</div>
+            <div class="card-trend down" id="usageTokensTrend">-3%</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background: var(--color-purple)">💾</div>
+          <div class="card-content">
+            <div class="card-label">存储用量</div>
+            <div class="card-value" id="usageTotalStorage">-</div>
+            <div class="card-trend up" id="usageStorageTrend">+5%</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 用量图表 -->
+      <div class="charts-row">
+        <div class="card chart-card wide">
+          <div class="card-header">
+            <h3>用量趋势</h3>
+            <div class="legend">
+              <span class="legend-item"><span class="dot" style="background: var(--color-blue)"></span>流程</span>
+              <span class="legend-item"><span class="dot" style="background: var(--color-green)"></span>API</span>
+              <span class="legend-item"><span class="dot" style="background: var(--color-yellow)"></span>Token</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-container large" id="usageTrendChart"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 租户用量排行 -->
+      <div class="card">
+        <div class="card-header">
+          <h3>租户用量排行</h3>
+        </div>
+        <div class="card-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>排名</th>
+                <th>租户</th>
+                <th>流程数</th>
+                <th>API 调用</th>
+                <th>Token 用量</th>
+                <th>存储</th>
+                <th>配额占用</th>
+              </tr>
+            </thead>
+            <tbody id="usageRankingTable">
+              <!-- 动态填充 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 工作流视图 -->
+    <section class="view hidden" id="workflowsView">
+      <div class="view-header">
+        <div class="view-actions">
+          <select id="workflowTenantSelect" class="select">
+            <option value="">全部租户</option>
+            <!-- 动态填充 -->
+          </select>
+          <select id="workflowStatusFilter" class="select">
+            <option value="">全部状态</option>
+            <option value="running">运行中</option>
+            <option value="succeeded">成功</option>
+            <option value="failed">失败</option>
+            <option value="cancelled">已取消</option>
+          </select>
+          <input type="text" placeholder="搜索工作流..." id="workflowSearch" class="input">
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-body">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>流程 ID</th>
+                <th>租户</th>
+                <th>类型</th>
+                <th>状态</th>
+                <th>步骤</th>
+                <th>开始时间</th>
+                <th>耗时</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="workflowsTable">
+              <!-- 动态填充 -->
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer">
+          <div class="pagination" id="workflowsPagination">
+            <!-- 动态填充 -->
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 设置视图 -->
+    <section class="view hidden" id="settingsView">
+      <div class="card">
+        <div class="card-header">
+          <h3>系统设置</h3>
+        </div>
+        <div class="card-body">
+          <div class="settings-section">
+            <h4>常规设置</h4>
+            <div class="form-group">
+              <label>系统名称</label>
+              <input type="text" id="settingSystemName" class="input" value="UniFlow">
+            </div>
+            <div class="form-group">
+              <label>默认时区</label>
+              <select id="settingTimezone" class="select">
+                <option value="UTC">UTC</option>
+                <option value="Asia/Shanghai" selected>Asia/Shanghai (北京时间)</option>
+                <option value="America/New_York">America/New_York (东部时间)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="settings-section">
+            <h4>告警设置</h4>
+            <div class="form-group">
+              <label>配额告警阈值 (%)</label>
+              <input type="number" id="settingQuotaAlertThreshold" class="input" value="80">
+            </div>
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="settingEmailAlerts" checked>
+                启用邮件告警
+              </label>
+            </div>
+            <div class="form-group">
+              <label>告警邮箱</label>
+              <input type="email" id="settingAlertEmail" class="input" placeholder="admin@example.com">
+            </div>
+          </div>
+          
+          <div class="settings-section">
+            <h4>数据保留</h4>
+            <div class="form-group">
+              <label>事件保留天数</label>
+              <input type="number" id="settingEventRetention" class="input" value="90">
+            </div>
+            <div class="form-group">
+              <label>快照保留天数</label>
+              <input type="number" id="settingSnapshotRetention" class="input" value="30">
+            </div>
+          </div>
+          
+          <div class="form-actions">
+            <button class="btn btn-primary" id="saveSettingsBtn">保存设置</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  
+  <!-- 模态框: 创建/编辑租户 -->
+  <div class="modal" id="tenantModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="tenantModalTitle">创建租户</h3>
+        <button class="modal-close" id="closeTenantModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="tenantForm">
+          <input type="hidden" id="tenantId">
+          <div class="form-group">
+            <label>租户名称 *</label>
+            <input type="text" id="tenantName" class="input" required>
+            <span class="hint">唯一标识符，只能包含字母、数字、下划线</span>
+          </div>
+          <div class="form-group">
+            <label>显示名称 *</label>
+            <input type="text" id="tenantDisplayName" class="input" required>
+          </div>
+          <div class="form-group">
+            <label>计划</label>
+            <select id="tenantPlan" class="select">
+              <option value="free">免费版</option>
+              <option value="basic">基础版</option>
+              <option value="professional">专业版</option>
+              <option value="enterprise">企业版</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>所有者邮箱</label>
+            <input type="email" id="tenantOwnerEmail" class="input">
+          </div>
+          <div class="form-group">
+            <label>备注</label>
+            <textarea id="tenantNotes" class="textarea" rows="3"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelTenantBtn">取消</button>
+        <button class="btn btn-primary" id="saveTenantBtn">保存</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 模态框: 确认操作 -->
+  <div class="modal" id="confirmModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">确认操作</h3>
+        <button class="modal-close" id="closeConfirmModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalMessage">确定要执行此操作吗？</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="confirmCancelBtn">取消</button>
+        <button class="btn btn-danger" id="confirmOkBtn">确认</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Toast 通知 -->
+  <div class="toast-container" id="toastContainer"></div>
+  
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/console.js"></script>
+</body>
+</html>

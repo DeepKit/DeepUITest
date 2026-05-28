@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/data-tree.schema.json",
+  "title": "DeepSpec Data Tree File",
+  "description": "Schema for data-tree.yaml. Tracks entities, fields, relations, state transitions, migrations, persistence boundaries, and constraints.",
+  "type": "object",
+  "required": ["version", "tree", "generated_at", "generator", "nodes"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0", "1.1", "1.2"]},
+    "tree": {"type": "string", "const": "data"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "generator": {"type": "string"},
+    "nodes": {"type": "array", "items": {"$ref": "tree.schema.json#/$defs/node"}}
+  }
+}
+

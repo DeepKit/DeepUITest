@@ -1,0 +1,25 @@
+id: filter
+name: 数据过滤器契约
+description: 数据过滤/清洗逻辑的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["filter", "Filter", "where", "query", "search", "exclude"]
+      reason: 必须包含过滤或查询逻辑
+      severity: critical
+  must_not_contain:
+    - patterns: ["eval(", "exec("]
+      reason: 禁止动态执行过滤条件
+      severity: critical
+    - patterns: ["SELECT *", "select *"]
+      reason: 禁止 SELECT * 查询，应明确字段
+      severity: high
+  should_contain:
+    - patterns: ["validate", "sanitize", "strip", "clean", "escape"]
+      reason: 建议对过滤输入做清洗/转义，防止注入
+      severity: high
+    - patterns: ["limit", "max", "page", "offset"]
+      reason: 建议对过滤结果数量加上限，防止全表扫描
+      severity: medium
+    - patterns: ["index", "indexed", "cache"]
+      reason: 建议确保过滤字段有索引
+      severity: low

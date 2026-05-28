@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow Analytics Dashboard</title>
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/charts.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <h1 class="logo">
+        <span class="logo-icon">📊</span>
+        UniFlow Analytics
+      </h1>
+    </div>
+    <div class="header-center">
+      <div class="time-range-selector">
+        <button class="range-btn" data-range="today">Today</button>
+        <button class="range-btn active" data-range="7days">7 Days</button>
+        <button class="range-btn" data-range="30days">30 Days</button>
+        <button class="range-btn" data-range="custom">Custom</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-icon" id="refreshBtn" title="Refresh">🔄</button>
+      <button class="btn btn-icon" id="exportBtn" title="Export Report">📥</button>
+      <span class="last-updated" id="lastUpdated">Updated: --</span>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Summary Cards Row -->
+    <section class="summary-cards">
+      <div class="card summary-card">
+        <div class="card-icon">🔄</div>
+        <div class="card-content">
+          <div class="card-value" id="totalFlows">--</div>
+          <div class="card-label">Total Flows</div>
+        </div>
+      </div>
+      <div class="card summary-card success">
+        <div class="card-icon">✅</div>
+        <div class="card-content">
+          <div class="card-value" id="completedFlows">--</div>
+          <div class="card-label">Completed</div>
+        </div>
+      </div>
+      <div class="card summary-card error">
+        <div class="card-icon">❌</div>
+        <div class="card-content">
+          <div class="card-value" id="failedFlows">--</div>
+          <div class="card-label">Failed</div>
+        </div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-icon">📈</div>
+        <div class="card-content">
+          <div class="card-value" id="successRate">--%</div>
+          <div class="card-label">Success Rate</div>
+        </div>
+      </div>
+      <div class="card summary-card">
+        <div class="card-icon">⏱️</div>
+        <div class="card-content">
+          <div class="card-value" id="avgDuration">--</div>
+          <div class="card-label">Avg Duration</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Charts Row -->
+    <section class="charts-row">
+      <!-- Execution Trend Chart -->
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Execution Trend</h3>
+          <div class="chart-controls">
+            <select id="trendGranularity" class="select-control">
+              <option value="hour">Hourly</option>
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+            </select>
+          </div>
+        </div>
+        <div class="chart-container" id="executionTrendChart"></div>
+      </div>
+
+      <!-- Success Rate Trend Chart -->
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Success Rate Trend</h3>
+        </div>
+        <div class="chart-container" id="successRateTrendChart"></div>
+      </div>
+    </section>
+
+    <!-- Second Row -->
+    <section class="content-row">
+      <!-- Workflow Table -->
+      <div class="card table-card">
+        <div class="card-header">
+          <h3>Workflows</h3>
+          <input type="text" class="search-input" id="workflowSearch" placeholder="Search workflows...">
+        </div>
+        <div class="table-container">
+          <table class="data-table" id="workflowTable">
+            <thead>
+              <tr>
+                <th>Workflow</th>
+                <th>Executions</th>
+                <th>Success</th>
+                <th>Failed</th>
+                <th>Success Rate</th>
+                <th>Avg Duration</th>
+              </tr>
+            </thead>
+            <tbody id="workflowTableBody">
+              <!-- Dynamic content -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Latency Distribution -->
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Latency Distribution</h3>
+        </div>
+        <div class="chart-container" id="latencyChart"></div>
+      </div>
+    </section>
+
+    <!-- Third Row -->
+    <section class="content-row">
+      <!-- Error Table -->
+      <div class="card table-card">
+        <div class="card-header">
+          <h3>Recent Errors</h3>
+          <span class="badge" id="errorCount">0</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table" id="errorTable">
+            <thead>
+              <tr>
+                <th>Error Code</th>
+                <th>Message</th>
+                <th>Count</th>
+                <th>Last Seen</th>
+                <th>Affected</th>
+              </tr>
+            </thead>
+            <tbody id="errorTableBody">
+              <!-- Dynamic content -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Anomalies Panel -->
+      <div class="card anomalies-card">
+        <div class="card-header">
+          <h3>Anomalies & Alerts</h3>
+        </div>
+        <div class="anomalies-list" id="anomaliesList">
+          <!-- Dynamic content -->
+          <div class="empty-state">No anomalies detected</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Timeline Section -->
+    <section class="timeline-section">
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Timeline</h3>
+          <div class="timeline-controls">
+            <button class="btn btn-sm" id="timelineZoomIn">+</button>
+            <button class="btn btn-sm" id="timelineZoomOut">-</button>
+            <button class="btn btn-sm" id="timelineReset">Reset</button>
+          </div>
+        </div>
+        <div class="timeline-container" id="timelineContainer">
+          <div class="timeline-track" id="timelineTrack">
+            <!-- Dynamic timeline events -->
+          </div>
+          <div class="timeline-axis" id="timelineAxis"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <span>UniFlow Analytics v1.0</span>
+    <span class="separator">|</span>
+    <span id="connectionStatus" class="status-indicator">
+      <span class="status-dot"></span>
+      Connected
+    </span>
+  </footer>
+
+  <!-- Custom Date Range Modal -->
+  <div class="modal" id="dateRangeModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Custom Date Range</h3>
+        <button class="modal-close" id="closeDateModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Start Date</label>
+          <input type="datetime-local" id="startDate" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>End Date</label>
+          <input type="datetime-local" id="endDate" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelDateRange">Cancel</button>
+        <button class="btn btn-primary" id="applyDateRange">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/utils.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/timeline.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+---
+name: Bug Report
+description: Report incorrect behavior in parsing, validation, storage, rendering, or review workflow
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / reproduction
+      description: Include sample files, .deepspec snippets, logs, or steps. Remove secrets.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Parser
+        - Protocol / schema
+        - Validation
+        - Review / decisions
+        - Rendering / UI
+        - LLM / context pack
+        - Storage / .deepspec
+        - Documentation
+        - Other
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - label: Breaks traceability.
+        - label: Breaks review or rejection flow.
+        - label: Breaks partial success behavior.
+        - label: Can cause stale or wrong specs to look accepted.
+---

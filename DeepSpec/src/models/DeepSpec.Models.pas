@@ -15,9 +15,13 @@ uses
   System.Generics.Collections;
 
 type
-  TTreeType = (ttFunction, ttModule, ttView);
+  TTreeType = (ttFunction, ttModule, ttView, ttData);
 
   TNodeStatus = (nsCandidate, nsConfirmed, nsUncertain, nsRejected, nsSuperseded);
+
+  TGenStatus = (gsDraft, gsGenerated, gsConfirmed, gsSkipped);
+
+  TReviewStatus = (rsUnreviewed, rsAccepted, rsRejected, rsDeferred);
 
   TConfidenceLevel = (clLow, clMedium, clHigh);
 
@@ -31,6 +35,10 @@ type
 
   TViewKind = (vkApplication, vkWindow, vkDialog, vkPage, vkFrame,
     vkPanel, vkControl, vkMenu, vkToolbar, vkStatusbar, vkTray, vkExtended);
+
+  TDataKind = (dkEntity, dkField, dkRelation, dkState, dkMigration, dkConstraint, dkExtended);
+
+  TRiskLevel = (rlLow, rlMedium, rlHigh, rlCritical);
 
   TRelationType = (rtContains, rtDependsOn, rtImplements, rtPresentedBy,
     rtOwnedBy, rtConstrainedBy, rtConflictsWith, rtDerivedFrom,
@@ -83,6 +91,8 @@ type
     Revision: Integer;
     Summary: string;
     Status: TNodeStatus;
+    GenStatus: TGenStatus;
+    ReviewStatus: TReviewStatus;
     Confidence: TConfidenceLevel;
     SourceLayer: TSourceLayer;
     SourceRefs: TSourceRefArray;
@@ -91,6 +101,27 @@ type
     RelatedFunctions: TArray<string>;
     RelatedModules: TArray<string>;
     RelatedViews: TArray<string>;
+    RelatedData: TArray<string>;
+    RiskScore: TRiskLevel;
+    HasRiskScore: Boolean;
+    DataType: string;
+    Nullable: Boolean;
+    HasNullable: Boolean;
+    DefaultValue: string;
+    FieldConstraints: TArray<string>;
+    Persistence: string;
+    SourceEntity: string;
+    TargetEntity: string;
+    Cardinality: string;
+    Cascade: string;
+    ValidStates: TArray<string>;
+    Transitions: TArray<TPair<string, string>>;
+    BackwardCompatible: Boolean;
+    HasBackwardCompatible: Boolean;
+    HasRollback: Boolean;
+    HasHasRollback: Boolean;
+    Scope: string;
+    Enforcement: string;
     Children: TArray<string>;
     Tags: TArray<string>;
     AcceptanceCriteria: TArray<string>;
@@ -100,6 +131,15 @@ type
   end;
 
   TSpecNodeList = TList<TSpecNode>;
+
+  TSemanticBundle = record
+    Id: string;
+    Title: string;
+    Description: string;
+    NodeIds: TArray<string>;
+    CreatedAt: TDateTime;
+    UpdatedAt: TDateTime;
+  end;
 
   TSpecRelation = record
     Id: string;
@@ -200,6 +240,29 @@ type
       ADefault: TConfidenceLevel = clMedium): TConfidenceLevel; static;
     class function SourceLayerFromStr(const AValue: string;
       ADefault: TSourceLayer = slAiInferred): TSourceLayer; static;
+    class function DataKindToStr(AValue: TDataKind): string; static;
+    class function DataKindFromStr(const AValue: string;
+      ADefault: TDataKind = dkEntity): TDataKind; static;
+    class function RiskLevelToStr(AValue: TRiskLevel): string; static;
+    class function RiskLevelFromStr(const AValue: string;
+      ADefault: TRiskLevel = rlMedium): TRiskLevel; static;
+    class function GenStatusToStr(AValue: TGenStatus): string; static;
+    class function GenStatusFromStr(const AValue: string;
+      ADefault: TGenStatus = gsDraft): TGenStatus; static;
+    class function ReviewStatusToStr(AValue: TReviewStatus): string; static;
+    class function ReviewStatusFromStr(const AValue: string;
+      ADefault: TReviewStatus = rsUnreviewed): TReviewStatus; static;
+
+    /// <summary>Validate GenStatus transition. Returns True if allowed.</summary>
+    class function CanTransitionGen(AFrom, ATo: TGenStatus): Boolean; static;
+    /// <summary>Validate ReviewStatus transition. Returns True if allowed.</summary>
+    class function CanTransitionReview(AFrom, ATo: TReviewStatus): Boolean; static;
+    /// <summary>Attempt GenStatus transition. Returns error message or ''.</summary>
+    class function TryTransitionGen(var ACurrent: TGenStatus; ATo: TGenStatus;
+      out AError: string): Boolean; static;
+    /// <summary>Attempt ReviewStatus transition. Returns error message or ''.</summary>
+    class function TryTransitionReview(var ACurrent: TReviewStatus; ATo: TReviewStatus;
+      out AError: string): Boolean; static;
   end;
 
 implementation
@@ -218,6 +281,8 @@ begin
   Result.Title := ATitle;
   Result.Kind := AKind;
   Result.Status := nsCandidate;
+  Result.GenStatus := gsDraft;
+  Result.ReviewStatus := rsUnreviewed;
   Result.Confidence := clMedium;
   Result.SourceLayer := slAiInferred;
   Result.Revision := 1;
@@ -233,6 +298,7 @@ begin
     ttFunction: Result := 'function';
     ttModule:   Result := 'module';
     ttView:     Result := 'view';
+    ttData:     Result := 'data';
   end;
 end;
 
@@ -351,7 +417,7 @@ end;
 
 class function TSpecEnums.DecidedByToStr(AValue: TDecidedBy): string;
 begin
-  Result := if AValue = dbHuman then 'human' else 'system';
+  if AValue = dbHuman then Result := 'human' else Result := 'system';
 end;
 
 class function TSpecEnums.PriorityToStr(AValue: TPriorityLevel): string;
@@ -371,6 +437,7 @@ begin
   if LLower = 'function' then Result := ttFunction
   else if LLower = 'module' then Result := ttModule
   else if LLower = 'view' then Result := ttView
+  else if LLower = 'data' then Result := ttData
   else Result := ADefault;
 end;
 
@@ -405,6 +472,168 @@ begin
   else if LLower = 'ai_inferred' then Result := slAiInferred
   else if LLower = 'generated_summary' then Result := slGeneratedSummary
   else Result := ADefault;
+end;
+
+class function TSpecEnums.DataKindToStr(AValue: TDataKind): string;
+begin
+  case AValue of
+    dkEntity:    Result := 'entity';
+    dkField:     Result := 'field';
+    dkRelation:  Result := 'relation';
+    dkState:     Result := 'state';
+    dkMigration: Result := 'migration';
+    dkConstraint:Result := 'constraint';
+    dkExtended:  Result := 'x_extended';
+  end;
+end;
+
+class function TSpecEnums.DataKindFromStr(const AValue: string;
+  ADefault: TDataKind): TDataKind;
+begin
+  var LLower := LowerCase(AValue.Trim);
+  if LLower = 'entity' then Result := dkEntity
+  else if LLower = 'field' then Result := dkField
+  else if LLower = 'relation' then Result := dkRelation
+  else if LLower = 'state' then Result := dkState
+  else if LLower = 'migration' then Result := dkMigration
+  else if LLower = 'constraint' then Result := dkConstraint
+  else Result := ADefault;
+end;
+
+class function TSpecEnums.RiskLevelToStr(AValue: TRiskLevel): string;
+begin
+  case AValue of
+    rlLow:      Result := 'low';
+    rlMedium:   Result := 'medium';
+    rlHigh:     Result := 'high';
+    rlCritical: Result := 'critical';
+  end;
+end;
+
+class function TSpecEnums.RiskLevelFromStr(const AValue: string;
+  ADefault: TRiskLevel): TRiskLevel;
+begin
+  var LLower := LowerCase(AValue.Trim);
+  if LLower = 'low' then Result := rlLow
+  else if LLower = 'medium' then Result := rlMedium
+  else if LLower = 'high' then Result := rlHigh
+  else if LLower = 'critical' then Result := rlCritical
+  else Result := ADefault;
+end;
+
+class function TSpecEnums.GenStatusToStr(AValue: TGenStatus): string;
+begin
+  case AValue of
+    gsDraft:     Result := 'draft';
+    gsGenerated: Result := 'generated';
+    gsConfirmed: Result := 'confirmed';
+    gsSkipped:   Result := 'skipped';
+  end;
+end;
+
+class function TSpecEnums.GenStatusFromStr(const AValue: string;
+  ADefault: TGenStatus): TGenStatus;
+begin
+  var LLower := LowerCase(AValue.Trim);
+  if LLower = 'draft' then Result := gsDraft
+  else if LLower = 'generated' then Result := gsGenerated
+  else if LLower = 'confirmed' then Result := gsConfirmed
+  else if LLower = 'skipped' then Result := gsSkipped
+  else Result := ADefault;
+end;
+
+class function TSpecEnums.ReviewStatusToStr(AValue: TReviewStatus): string;
+begin
+  case AValue of
+    rsUnreviewed: Result := 'unreviewed';
+    rsAccepted:   Result := 'accepted';
+    rsRejected:   Result := 'rejected';
+    rsDeferred:   Result := 'deferred';
+  end;
+end;
+
+class function TSpecEnums.ReviewStatusFromStr(const AValue: string;
+  ADefault: TReviewStatus): TReviewStatus;
+begin
+  var LLower := LowerCase(AValue.Trim);
+  if LLower = 'unreviewed' then Result := rsUnreviewed
+  else if LLower = 'accepted' then Result := rsAccepted
+  else if LLower = 'rejected' then Result := rsRejected
+  else if LLower = 'deferred' then Result := rsDeferred
+  else Result := ADefault;
+end;
+
+class function TSpecEnums.CanTransitionGen(AFrom, ATo: TGenStatus): Boolean;
+begin
+  // GenStatus state machine:
+  //   draft → generated → confirmed
+  //   draft → skipped
+  //   generated → skipped
+  //   confirmed is terminal
+  //   skipped is terminal
+  //   Any → same (no-op)
+  if AFrom = ATo then Exit(True);
+  case AFrom of
+    gsDraft:     Result := ATo in [gsGenerated, gsSkipped];
+    gsGenerated: Result := ATo in [gsConfirmed, gsSkipped];
+    gsConfirmed: Result := False; // terminal
+    gsSkipped:   Result := False; // terminal
+  else
+    Result := False;
+  end;
+end;
+
+class function TSpecEnums.CanTransitionReview(AFrom, ATo: TReviewStatus): Boolean;
+begin
+  // ReviewStatus state machine:
+  //   unreviewed → accepted / rejected / deferred
+  //   deferred → accepted / rejected
+  //   accepted is terminal
+  //   rejected is terminal
+  //   Any → same (no-op)
+  if AFrom = ATo then Exit(True);
+  case AFrom of
+    rsUnreviewed: Result := ATo in [rsAccepted, rsRejected, rsDeferred];
+    rsDeferred:   Result := ATo in [rsAccepted, rsRejected];
+    rsAccepted:   Result := False; // terminal
+    rsRejected:   Result := False; // terminal
+  else
+    Result := False;
+  end;
+end;
+
+class function TSpecEnums.TryTransitionGen(var ACurrent: TGenStatus;
+  ATo: TGenStatus; out AError: string): Boolean;
+begin
+  if CanTransitionGen(ACurrent, ATo) then
+  begin
+    ACurrent := ATo;
+    AError := '';
+    Result := True;
+  end
+  else
+  begin
+    AError := Format('Invalid GenStatus transition: %s -> %s',
+      [GenStatusToStr(ACurrent), GenStatusToStr(ATo)]);
+    Result := False;
+  end;
+end;
+
+class function TSpecEnums.TryTransitionReview(var ACurrent: TReviewStatus;
+  ATo: TReviewStatus; out AError: string): Boolean;
+begin
+  if CanTransitionReview(ACurrent, ATo) then
+  begin
+    ACurrent := ATo;
+    AError := '';
+    Result := True;
+  end
+  else
+  begin
+    AError := Format('Invalid ReviewStatus transition: %s -> %s',
+      [ReviewStatusToStr(ACurrent), ReviewStatusToStr(ATo)]);
+    Result := False;
+  end;
 end;
 
 end.

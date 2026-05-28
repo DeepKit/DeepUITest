@@ -1,0 +1,143 @@
+object FrameWelcome: TFrameWelcome
+  Align = Client
+  Size.Width = 800.000000
+  Size.Height = 600.000000
+  Size.PlatformDefault = False
+  object LayoutRoot: TLayout
+    Align = Center
+    Size.Width = 700.000000
+    Size.Height = 580.000000
+    Size.PlatformDefault = False
+    Position.X = 50.000000
+    Position.Y = 10.000000
+    object LayoutContent: TLayout
+      Align = Client
+      Size.Width = 700.000000
+      Size.Height = 580.000000
+      Size.PlatformDefault = False
+      object LblTitle: TLabel
+        StyledSettings = [Family, Style, FontColor]
+        Position.X = 200.000000
+        Position.Y = 30.000000
+        Size.Width = 300.000000
+        Size.Height = 50.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 36.000000
+        TextSettings.FontStyle = [Bold]
+        TextSettings.HorzAlign = Center
+        Text = 'DeepDevLite'
+        object LblSubtitle: TLabel
+          StyledSettings = [Family, Style, FontColor]
+          Position.Y = 50.000000
+          Size.Width = 300.000000
+          Size.Height = 30.000000
+          Size.PlatformDefault = False
+          TextSettings.FontSize = 18.000000
+          TextSettings.HorzAlign = Center
+          Text = 'AI 原生软件工厂'
+      end
+      object LblDivider: TLabel
+        Position.Y = 130.000000
+        Size.Width = 700.000000
+        Size.Height = 20.000000
+        Size.PlatformDefault = False
+        TextSettings.HorzAlign = Center
+        Text = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+        TextSettings.FontColor = xFF0D5C4A
+      end
+      object LblWhatIsODD: TLabel
+        Position.X = 50.000000
+        Position.Y = 160.000000
+        Size.Width = 600.000000
+        Size.Height = 25.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 18.000000
+        TextSettings.FontStyle = [Bold]
+        Text = '什么是 ODD？'
+      end
+      object LblODDDesc: TLabel
+        Position.X = 50.000000
+        Position.Y = 185.000000
+        Size.Width = 600.000000
+        Size.Height = 40.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 14.000000
+        Text = 'ODD = Output-Driven Development'#13#10'输出驱动开发，让 AI 代码有据可循'
+      end
+      object LayoutTraditional: TLayout
+        Position.X = 50.000000
+        Position.Y = 240.000000
+        Size.Width = 270.000000
+        Size.Height = 120.000000
+        Size.PlatformDefault = False
+        object LblTraditionalTitle: TLabel
+          Size.Width = 270.000000
+          Size.Height = 25.000000
+          Size.PlatformDefault = False
+          TextSettings.FontSize = 14.000000
+          TextSettings.FontColor = xFF7A9088
+          Text = '传统方式'
+        end
+        object LblTraditionalDesc: TLabel
+          Position.Y = 25.000000
+          Size.Width = 270.000000
+          Size.Height = 90.000000
+          Size.PlatformDefault = False
+          TextSettings.FontSize = 12.000000
+          Text = '写代码 → 人工测试 → 上线'#13#10#13#10'❌ 依赖开发者经验'#13#10'❌ 难以复现'
+        end
+      end
+      object LayoutODD: TLayout
+        Position.X = 380.000000
+        Position.Y = 240.000000
+        Size.Width = 270.000000
+        Size.Height = 120.000000
+        Size.PlatformDefault = False
+        object LblODDTitle: TLabel
+          Size.Width = 270.000000
+          Size.Height = 25.000000
+          Size.PlatformDefault = False
+          TextSettings.FontSize = 14.000000
+          TextSettings.FontColor = xFF00E5A0
+          Text = 'ODD 方式'
+        end
+        object LblODDDesc2: TLabel
+          Position.Y = 25.000000
+          Size.Width = 270.000000
+          Size.Height = 90.000000
+          Size.PlatformDefault = False
+          TextSettings.FontSize = 12.000000
+          Text = '定义契约 → AI生成 → 自动验证 → 封存'#13#10#13#10'✅ 有据可循'#13#10'✅ 可复现'
+        end
+      end
+      object LblDivider2: TLabel
+        Position.Y = 380.000000
+        Size.Width = 700.000000
+        Size.Height = 20.000000
+        Size.PlatformDefault = False
+        TextSettings.HorzAlign = Center
+        Text = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+        TextSettings.FontColor = xFF0D5C4A
+      end
+      object BtnStartVerify: TButton
+        Position.X = 250.000000
+        Position.Y = 420.000000
+        Size.Width = 200.000000
+        Size.Height = 50.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 18.000000
+        Text = '开始验证 →'
+        TintColor = xFF0D5C4A
+      end
+      object LblSupported: TLabel
+        Position.Y = 550.000000
+        Size.Width = 700.000000
+        Size.Height = 25.000000
+        Size.PlatformDefault = False
+        TextSettings.HorzAlign = Center
+        TextSettings.FontColor = xFF7A9088
+        Text = '支持: Python JavaScript TypeScript Go Java...'
+      end
+    end
+  end
+end

@@ -1,0 +1,32 @@
+﻿version: "1.0"
+scan_time: "2026-05-15T22:38:40+08:00"
+project_path: "."
+project_type: "unknown"
+
+file_classification:
+  documents:
+    - "CHANGELOG.md"
+    - "d13-migration-notes.md"
+    - "DeepDevLite-Badge-PG15.md"
+    - "DeepDevLite-Core-Spec.md"
+    - "DeepDevLite-Dev-Spec.md"
+    - "DeepDevLite-开发指南.md"
+    - "用户故事.md"
+  code:
+  ui:
+    - "DeepDev-card-generator-v2.html"
+    - "DeepDev-report.html"
+  config:
+  ai_rules:
+  ignored:
+
+stats:
+  total_files: 9
+  documents: 7
+  code: 0
+  ui: 2
+  config: 0
+  ai_rules: 0
+  ignored: 0
+
+warnings: []

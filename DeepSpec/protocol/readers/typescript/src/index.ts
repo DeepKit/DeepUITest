@@ -1,5 +1,5 @@
 /**
- * @deepspec/reader - Minimal DeepSpec Protocol Reader (Level 1)
+ * @deepspec/reader - Minimal DeepSpec Protocol Reader (Level 1, v1.2-draft aware)
  *
  * Reads .deepspec/ directories and provides typed access to
  * project facts, trees, and decisions.
@@ -11,7 +11,7 @@ import { parse as parseYaml } from 'yaml';
 
 // --- Types ---
 
-export type TreeType = 'function' | 'module' | 'view';
+export type TreeType = 'function' | 'module' | 'view' | 'data';
 export type NodeStatus = 'candidate' | 'confirmed' | 'uncertain' | 'rejected' | 'superseded';
 export type Confidence = 'low' | 'medium' | 'high';
 export type SourceLayer = 'parsed_from_a' | 'human_decision' | 'ai_inferred' | 'generated_summary';
@@ -77,6 +77,7 @@ export interface ProjectSpec {
     function_tree: string;
     module_tree: string;
     view_tree: string;
+    data_tree?: string;
   };
 }
 
@@ -152,8 +153,14 @@ export class DeepSpecReader {
 
   /** Get all nodes across all trees */
   allNodes(): TreeNode[] {
-    const types: TreeType[] = ['function', 'module', 'view'];
-    return types.flatMap(t => this.tree(t).nodes);
+    const types: TreeType[] = ['function', 'module', 'view', 'data'];
+    return types.flatMap(t => {
+      try {
+        return this.tree(t).nodes;
+      } catch {
+        return [];
+      }
+    });
   }
 
   /** Find a node by ID */

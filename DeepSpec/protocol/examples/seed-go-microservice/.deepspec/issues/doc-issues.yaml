@@ -1,0 +1,19 @@
+version: "1.0"
+
+issues:
+  - id: "issue-001"
+    severity: medium
+    type: missing_requirement
+    title: "Profile update fields not specified"
+    description: "README mentions profile CRUD but does not specify which fields are updatable"
+    affected_nodes:
+      - "func-profile"
+    source_refs:
+      - ref_id: "ev-readme"
+    suggested_action: "Confirm updatable profile fields (name, avatar, bio?)"
+    suggested_prompt: "Which user profile fields should be updatable via PUT /api/v1/users/:id?"
+    status: open
+    resolved_by: null
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    resolved_at: null

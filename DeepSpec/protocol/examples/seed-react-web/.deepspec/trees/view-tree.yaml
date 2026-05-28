@@ -1,0 +1,49 @@
+version: "1.0"
+tree: view
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+nodes:
+  - id: "view-app"
+    tree: view
+    title: "TodoMVC App"
+    kind: application
+    parent_id: null
+    summary: "Single page todo application"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+    children:
+      - "view-header"
+      - "view-todo-list"
+      - "view-footer"
+
+  - id: "view-header"
+    tree: view
+    title: "Header"
+    kind: panel
+    parent_id: "view-app"
+    summary: "Contains title and new todo input"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+
+  - id: "view-todo-list"
+    tree: view
+    title: "Todo List"
+    kind: panel
+    parent_id: "view-app"
+    summary: "Displays all todo items with checkboxes"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+
+  - id: "view-footer"
+    tree: view
+    title: "Footer"
+    kind: panel
+    parent_id: "view-app"
+    summary: "Shows item count and filter buttons"
+    status: candidate
+    confidence: low
+    source_layer: ai_inferred

@@ -1,0 +1,45 @@
+version: "1.0"
+tree: module
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+nodes:
+  - id: "mod-cmd"
+    tree: module
+    title: "cmd"
+    kind: package
+    parent_id: null
+    summary: "Application entry point"
+    status: candidate
+    confidence: high
+    source_layer: parsed_from_a
+
+  - id: "mod-handler"
+    tree: module
+    title: "handler"
+    kind: controller
+    parent_id: null
+    summary: "HTTP request handlers"
+    status: candidate
+    confidence: medium
+    source_layer: parsed_from_a
+
+  - id: "mod-service"
+    tree: module
+    title: "service"
+    kind: service
+    parent_id: null
+    summary: "Business logic layer"
+    status: candidate
+    confidence: medium
+    source_layer: ai_inferred
+
+  - id: "mod-repository"
+    tree: module
+    title: "repository"
+    kind: repository
+    parent_id: null
+    summary: "Data access layer (PostgreSQL)"
+    status: candidate
+    confidence: medium
+    source_layer: parsed_from_a

@@ -1,0 +1,30 @@
+version: "1.0"
+
+decisions:
+  - id: "dec-001"
+    type: scope
+    title: "MVP is device discovery + basic dashboard"
+    decision: "First release focuses on device discovery and status dashboard. Automation and voice control are post-MVP."
+    rationale: "Team capacity is limited. Discovery is the core differentiator."
+    target_nodes:
+      - "func-product"
+      - "func-automation"
+      - "func-voice-control"
+    affected_relations: []
+    affected_requirements: []
+    affected_views: []
+    affected_modules: []
+    resolved_issues: []
+    source_refs:
+      - ref_id: "ev-prd-intro"
+        relevance: supporting
+    ai_instruction: "Only describe device discovery and dashboard features as MVP scope. Automation and voice control are explicitly deferred to v2."
+    priority: P0
+    release: "v1.0"
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    decided_by: human
+    confidence: high
+    status: accepted
+    superseded_by: null
+    supersedes: []

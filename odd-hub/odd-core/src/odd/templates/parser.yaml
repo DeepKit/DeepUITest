@@ -1,0 +1,25 @@
+id: parser
+name: 解析器契约
+description: 数据/文本解析模块的基础契约
+verification_hints:
+  must_contain_any:
+    - patterns: ["parse", "decode", "deserialize", "load", "read"]
+      reason: 必须包含解析/反序列化操作
+      severity: critical
+  must_not_contain:
+    - patterns: ["eval(", "exec("]
+      reason: 禁止使用 eval/exec 解析数据
+      severity: critical
+    - patterns: ["pickle.loads(", "yaml.load(input", "yaml.load(data"]
+      reason: 禁止不安全的反序列化（使用 yaml.safe_load）
+      severity: critical
+  should_contain:
+    - patterns: ["try", "except", "catch", "ParseError", "ValueError", "SyntaxError"]
+      reason: 建议捕获解析异常
+      severity: high
+    - patterns: ["validate", "schema", "assert", "check"]
+      reason: 建议对解析结果做格式校验
+      severity: medium
+    - patterns: ['"""', "'''", "//", "/**"]
+      reason: 建议添加文档注释说明输入格式
+      severity: low

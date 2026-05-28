@@ -1,0 +1,13 @@
+{
+  "run_id": "1391718e-5bfc-4848-bcdb-c91fc5707cb7",
+  "exit_code": 3,
+  "reason": "startup_timeout",
+  "fatal_class": "HardCrash",
+  "fatal_msg": "startup timeout: 20s elapsed without health-signal",
+  "module_name": "",
+  "rva": "$00000000",
+  "stack": [],
+  "total_errors": 0,
+  "scenario": "smoke",
+  "timestamp": "2026-05-28T04:33:14.349+08:00"
+}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}差异一元论 · Difference Monism — asto.cc{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>差异一元论</h1>
+  <p class="hero-en">Difference Monism</p>
+  <p class="hero-tagline">{{ site.tagline }}</p>
+  <div class="hero-actions">
+    <a href="#layers" class="btn">快速理解</a>
+    <a href="https://zenodo.org/communities/oddfounder" class="btn btn-outline" target="_blank">Zenodo 预印本</a>
+  </div>
+</section>
+
+<section class="overview">
+  <h2>30 秒理解</h2>
+  <p>
+    DM 给地基，ASTO 给语法，ECET 给治理边界，
+    TAT 给责任门槛，ODD 给工程闭环。
+    八层一体，从哲学到工程。
+  </p>
+  <p class="chain">
+    公开法源链：DM → ASTO → ECET → TAT → ODD → COP → LMM → RT6
+  </p>
+</section>
+
+<section class="reading-paths">
+  <h2>三条阅读路径</h2>
+  <div class="paths-grid">
+    <div class="path-card">
+      <span class="path-label">学者 / 哲学家</span>
+      <a href="/dm" class="path-target">DM</a>
+      <p>P00-P11 完整主链，从存在论到政治学</p>
+    </div>
+    <div class="path-card">
+      <span class="path-label">工程师 / 实践者</span>
+      <a href="/odd" class="path-target">ODD</a>
+      <p>Contract → Execute → Verify → Seal，172 任务实证</p>
+    </div>
+    <div class="path-card">
+      <span class="path-label">治理 / 制度设计者</span>
+      <a href="/tat" class="path-target">TAT</a>
+      <p>五合同模型 + 责任闭合度谱系</p>
+    </div>
+  </div>
+</section>
+
+<section class="layers" id="layers">
+  <h2>八层架构</h2>
+  <div class="layers-grid">
+    {% for l in layers %}
+    <a href="/{{ l.slug }}" class="layer-card">
+      <span class="layer-pos">{{ l.chain_position }}</span>
+      <span class="layer-slug">{{ l.slug | upper }}</span>
+      <span class="layer-title-en">{{ l.title_en }}</span>
+      <p class="layer-one-liner">{{ l.one_liner }}</p>
+      {% if l.doi %}
+      <span class="layer-doi">DOI: {{ l.doi }}</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

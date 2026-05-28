@@ -1,0 +1,110 @@
+object FrameCodeInput: TFrameCodeInput
+  Align = Client
+  Size.Width = 800.000000
+  Size.Height = 600.000000
+  Size.PlatformDefault = False
+  object LayoutRoot: TLayout
+    Align = Center
+    Size.Width = 720.000000
+    Size.Height = 560.000000
+    Size.PlatformDefault = False
+    Position.X = 40.000000
+    Position.Y = 20.000000
+    object LayoutHeader: TLayout
+      Position.Y = 20.000000
+      Size.Width = 720.000000
+      Size.Height = 80.000000
+      Size.PlatformDefault = False
+      object LblTitle: TLabel
+        Position.X = 20.000000
+        Size.Width = 350.000000
+        Size.Height = 40.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 24.000000
+        TextSettings.FontStyle = [Bold]
+        Text = '粘贴代码'
+      end
+      object LblSubtitle: TLabel
+        Position.Y = 40.000000
+        Size.Width = 350.000000
+        Size.Height = 30.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 14.000000
+        TextSettings.FontColor = xFF7A9088
+        Text = '将待验证的代码粘贴到下方输入框'
+      end
+    end
+    object LayoutInputArea: TLayout
+      Position.Y = 110.000000
+      Size.Width = 720.000000
+      Size.Height = 340.000000
+      Size.PlatformDefault = False
+      object LblPrompt: TLabel
+        Size.Width = 200.000000
+        Size.Height = 20.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 12.000000
+        TextSettings.FontColor = xFF7A9088
+        Text = '代码输入'
+      end
+      object MemoCode: TMemo
+        Position.Y = 25.000000
+        Size.Width = 720.000000
+        Size.Height = 310.000000
+        Size.PlatformDefault = False
+        StyledSettings = [Family, Style]
+        Font.Size = 13.000000
+        Font.Family = 'Consolas'
+        ItemHeight = 20.000000
+        ShowScrollBars = True
+        WordWrap = False
+      end
+    end
+    object LayoutLanguage: TLayout
+      Position.Y = 460.000000
+      Size.Width = 720.000000
+      Size.Height = 40.000000
+      Size.PlatformDefault = False
+      object LblLanguage: TLabel
+        Size.Width = 100.000000
+        Size.Height = 30.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 12.000000
+        TextSettings.FontColor = xFF7A9088
+        Text = '检测语言:'
+      end
+      object LblDetectedLang: TLabel
+        Position.X = 100.000000
+        Size.Width = 200.000000
+        Size.Height = 30.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 14.000000
+        TextSettings.FontStyle = [Bold]
+        TextSettings.FontColor = xFF0D5C4A
+      end
+    end
+    object LayoutButtons: TLayout
+      Position.Y = 510.000000
+      Size.Width = 720.000000
+      Size.Height = 50.000000
+      Size.PlatformDefault = False
+      object BtnPaste: TButton
+        Position.X = 230.000000
+        Size.Width = 120.000000
+        Size.Height = 40.000000
+        Size.PlatformDefault = False
+        Text = '清空'
+        TintColor = xFFE0E8E4
+      end
+      object BtnStartVerify: TButton
+        Position.X = 370.000000
+        Size.Width = 150.000000
+        Size.Height = 40.000000
+        Size.PlatformDefault = False
+        TextSettings.FontSize = 14.000000
+        Text = '开始验证'
+        TintColor = xFF0D5C4A
+      end
+    end
+  end
+end

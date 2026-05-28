@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}八层统一走通 — asto.cc{% endblock %}
+
+{% block content %}
+<article class="walkthrough-page">
+  <header>
+    <a href="/" class="back-link">← 八层架构</a>
+    <h1>八层统一走通</h1>
+    <p class="walkthrough-sub">一个案例走完全部八层</p>
+  </header>
+
+  <section class="walkthrough-nav">
+    {% for l in layers %}
+    <a href="/{{ l.slug }}" class="wt-layer-link">
+      <span class="wt-pos">{{ l.chain_position }}</span>
+      {{ l.slug | upper }}
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="walkthrough-body">
+    {{ body | safe }}
+  </section>
+</article>
+{% endblock %}

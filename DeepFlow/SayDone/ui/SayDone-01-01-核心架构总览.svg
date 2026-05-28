@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650">
+  <defs>
+    <linearGradient id="userGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="transGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f093fb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5576c;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="dataGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="3" dy="3" stdDeviation="4" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="900" height="650" fill="#f8fafc"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="40" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="24" font-weight="bold" fill="#1e293b">所说即所见 · 核心架构总览</text>
+  <text x="450" y="65" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#64748b">"Say &amp; See" Core Architecture</text>
+  
+  <!-- 用户层 -->
+  <rect x="50" y="90" width="800" height="130" rx="15" fill="url(#userGrad)" filter="url(#shadow)"/>
+  <text x="80" y="120" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="white">用户层 User Layer</text>
+  <text x="80" y="145" font-family="Microsoft YaHei, sans-serif" font-size="13" fill="rgba(255,255,255,0.9)">只管说、只管看 / Just speak and see</text>
+  
+  <!-- 用户层内容 -->
+  <rect x="80" y="160" width="150" height="45" rx="8" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+  <text x="155" y="187" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="white">"做个登录页面"</text>
+  
+  <text x="260" y="187" font-family="Arial" font-size="24" fill="white">→</text>
+  
+  <rect x="290" y="160" width="150" height="45" rx="8" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+  <text x="365" y="187" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="white">[看到登录页面]</text>
+  
+  <text x="470" y="187" font-family="Arial" font-size="24" fill="white">→</text>
+  
+  <rect x="500" y="160" width="120" height="45" rx="8" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+  <text x="560" y="187" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="white">"蓝色的"</text>
+  
+  <text x="650" y="187" font-family="Arial" font-size="24" fill="white">→</text>
+  
+  <rect x="680" y="160" width="140" height="45" rx="8" fill="rgba(255,255,255,0.2)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+  <text x="750" y="187" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="white">[页面变蓝]</text>
+  
+  <!-- 魔法分隔线 -->
+  <rect x="50" y="235" width="800" height="50" fill="#fef3c7"/>
+  <text x="450" y="265" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="16" font-weight="bold" fill="#92400e">✨ 魔法发生的地方 / Where Magic Happens ✨</text>
+  
+  <!-- 双向箭头 -->
+  <path d="M 450 225 L 450 235" stroke="#64748b" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <path d="M 450 285 L 450 295" stroke="#64748b" stroke-width="2" marker-end="url(#arrowDown)"/>
+  
+  <!-- 转换层 -->
+  <rect x="50" y="300" width="800" height="140" rx="15" fill="url(#transGrad)" filter="url(#shadow)"/>
+  <text x="80" y="330" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="white">转换层 Translation Layer</text>
+  <text x="80" y="355" font-family="Microsoft YaHei, sans-serif" font-size="13" fill="rgba(255,255,255,0.9)">自然语言 ↔ 结构化数据 / Natural Language ↔ Structured Data</text>
+  
+  <!-- 转换层流程 -->
+  <rect x="80" y="375" width="110" height="50" rx="8" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)"/>
+  <text x="135" y="395" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">意图解析</text>
+  <text x="135" y="412" text-anchor="middle" font-family="Arial" font-size="10" fill="rgba(255,255,255,0.8)">Intent Parse</text>
+  
+  <text x="205" y="402" font-family="Arial" font-size="18" fill="white">→</text>
+  
+  <rect x="225" y="375" width="110" height="50" rx="8" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)"/>
+  <text x="280" y="395" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">实体提取</text>
+  <text x="280" y="412" text-anchor="middle" font-family="Arial" font-size="10" fill="rgba(255,255,255,0.8)">Entity Extract</text>
+  
+  <text x="350" y="402" font-family="Arial" font-size="18" fill="white">→</text>
+  
+  <rect x="370" y="375" width="110" height="50" rx="8" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)"/>
+  <text x="425" y="395" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">状态更新</text>
+  <text x="425" y="412" text-anchor="middle" font-family="Arial" font-size="10" fill="rgba(255,255,255,0.8)">State Update</text>
+  
+  <text x="495" y="402" font-family="Arial" font-size="18" fill="white">→</text>
+  
+  <rect x="515" y="375" width="110" height="50" rx="8" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)"/>
+  <text x="570" y="395" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">差异计算</text>
+  <text x="570" y="412" text-anchor="middle" font-family="Arial" font-size="10" fill="rgba(255,255,255,0.8)">Diff Compute</text>
+  
+  <text x="640" y="402" font-family="Arial" font-size="18" fill="white">→</text>
+  
+  <rect x="660" y="375" width="110" height="50" rx="8" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.5)"/>
+  <text x="715" y="395" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="white">渲染指令</text>
+  <text x="715" y="412" text-anchor="middle" font-family="Arial" font-size="10" fill="rgba(255,255,255,0.8)">Render CMD</text>
+  
+  <!-- 数据层 -->
+  <rect x="50" y="460" width="800" height="120" rx="15" fill="url(#dataGrad)" filter="url(#shadow)"/>
+  <text x="80" y="490" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="white">数据层 Data Layer</text>
+  <text x="80" y="515" font-family="Microsoft YaHei, sans-serif" font-size="13" fill="rgba(255,255,255,0.9)">纯结构化，用户不可见 / Pure structured, invisible to user</text>
+  
+  <!-- JSON示例 -->
+  <rect x="80" y="530" width="720" height="35" rx="6" fill="rgba(0,0,0,0.15)"/>
+  <text x="95" y="553" font-family="Consolas, monospace" font-size="13" fill="white">{ "type": "page", "subtype": "login", "theme": "blue", "components": [...], "layout": {...} }</text>
+  
+  <!-- 底部说明 -->
+  <rect x="50" y="600" width="800" height="40" rx="8" fill="#e0f2fe"/>
+  <text x="450" y="625" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" fill="#0369a1">
+    用户只管"说人话"，系统在背后"做翻译"。翻译的结果就是结构化数据——用户不需要知道它存在。
+  </text>
+</svg>

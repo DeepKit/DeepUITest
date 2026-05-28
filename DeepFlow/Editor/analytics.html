@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow Analytics Dashboard</title>
+  <link rel="stylesheet" href="css/analytics.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <div class="analytics-container">
+    <!-- Header -->
+    <header class="analytics-header">
+      <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3v18h18"/>
+          <path d="m19 9-5 5-4-4-3 3"/>
+        </svg>
+        UniFlow Analytics
+      </h1>
+      
+      <div class="header-controls">
+        <div class="control-group">
+          <label for="timeRange">Time Range:</label>
+          <select id="timeRange">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7days" selected>Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+            <option value="thisMonth">This Month</option>
+          </select>
+        </div>
+        
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="autoRefresh"> Auto-refresh
+          </label>
+        </div>
+        
+        <button id="refreshBtn" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Refresh
+        </button>
+        
+        <button id="exportBtn" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7,10 12,15 17,10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export
+        </button>
+      </div>
+    </header>
+
+    <!-- Overview Cards -->
+    <section class="overview-grid">
+      <div class="stat-card total">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Total Executions</span>
+          <div class="stat-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+        </div>
+        <div id="totalFlows" class="stat-card-value">-</div>
+        <div class="stat-card-change neutral">All workflows combined</div>
+      </div>
+      
+      <div class="stat-card success">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Success Rate</span>
+          <div class="stat-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+        </div>
+        <div id="successRate" class="stat-card-value">-</div>
+        <div class="stat-card-change neutral">Completed / Total</div>
+      </div>
+      
+      <div class="stat-card failed">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Failed</span>
+          <div class="stat-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          </div>
+        </div>
+        <div id="failedFlows" class="stat-card-value">-</div>
+        <div class="stat-card-change neutral">Requires attention</div>
+      </div>
+      
+      <div class="stat-card active">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Active</span>
+          <div class="stat-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+        </div>
+        <div id="activeFlows" class="stat-card-value">-</div>
+        <div class="stat-card-change neutral">Currently running</div>
+      </div>
+      
+      <div class="stat-card latency">
+        <div class="stat-card-header">
+          <span class="stat-card-title">Avg Latency</span>
+          <div class="stat-card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+        </div>
+        <div id="avgLatency" class="stat-card-value">-</div>
+        <div class="stat-card-change neutral">Average duration</div>
+      </div>
+    </section>
+
+    <!-- Anomalies -->
+    <section class="anomalies-section">
+      <div class="section-header">
+        <h2 class="section-title">Anomalies</h2>
+      </div>
+      <div id="anomaliesList" class="anomaly-list">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="charts-grid">
+      <!-- Time Series Chart -->
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <h3 class="chart-card-title">Execution Timeline</h3>
+          <div class="chart-legend">
+            <div class="legend-item">
+              <span class="legend-dot" style="background: #89b4fa;"></span>
+              Executions
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: #a6e3a1;"></span>
+              Successes
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: #f38ba8;"></span>
+              Failures
+            </div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="timeSeriesChart"></canvas>
+        </div>
+      </div>
+      
+      <!-- Error Distribution -->
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <h3 class="chart-card-title">Error Distribution</h3>
+        </div>
+        <div class="chart-container">
+          <canvas id="errorPieChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Workflow Table -->
+    <section class="table-card">
+      <div class="table-header">
+        <h3 class="table-title">Workflow Statistics</h3>
+        <div class="table-search">
+          <input type="text" id="workflowSearch" class="search-input" placeholder="Search workflows...">
+        </div>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-sort="name">Workflow <span class="sort-icon">↕</span></th>
+            <th data-sort="total">Total <span class="sort-icon">↕</span></th>
+            <th data-sort="success">Success <span class="sort-icon">↕</span></th>
+            <th data-sort="failed">Failed <span class="sort-icon">↕</span></th>
+            <th data-sort="successRate">Success Rate <span class="sort-icon">↕</span></th>
+            <th data-sort="avgDuration">Avg Duration <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="workflowTableBody">
+          <!-- Rendered by JS -->
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Timeline Preview (placeholder for TASK-1031) -->
+    <section class="timeline-preview">
+      <div class="section-header">
+        <h2 class="section-title">Event Timeline</h2>
+        <div class="tabs">
+          <button class="tab active">Overview</button>
+          <button class="tab">Details</button>
+        </div>
+      </div>
+      <div id="timelineContainer" class="timeline-preview-container">
+        <!-- Timeline component will be loaded here -->
+        <div class="empty-state">
+          <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 8v4l3 3"/>
+            <circle cx="12" cy="12" r="10"/>
+          </svg>
+          <div class="empty-state-title">Timeline Visualization</div>
+          <div class="empty-state-message">Select a workflow to view its execution timeline</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="js/analytics.js"></script>
+</body>
+</html>

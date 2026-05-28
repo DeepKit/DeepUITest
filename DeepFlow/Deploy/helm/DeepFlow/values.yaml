@@ -1,0 +1,337 @@
+# UniFlow Helm Chart Values
+# 默认配置 - 可根据环境覆盖
+
+# 全局配置
+global:
+  imagePullSecrets: []
+  storageClass: ""
+
+# API 服务配置
+api:
+  enabled: true
+  replicaCount: 3
+  
+  image:
+    repository: uniflow/api
+    tag: ""  # 默认使用 Chart.AppVersion
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+    annotations: {}
+  
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    hosts:
+      - host: uniflow.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: uniflow-tls
+        hosts:
+          - uniflow.example.com
+  
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # 健康检查
+  livenessProbe:
+    enabled: true
+    path: /live
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    enabled: true
+    path: /ready
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  startupProbe:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 30
+
+# Worker 服务配置
+worker:
+  enabled: true
+  replicaCount: 5
+  
+  image:
+    repository: uniflow/worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  
+  args:
+    - "--mode=worker"
+    - "--concurrency=10"
+    - "--queue=workflows,skills,sessions"
+  
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  terminationGracePeriodSeconds: 120
+
+# Scheduler 服务配置
+scheduler:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: uniflow/scheduler
+    tag: ""
+    pullPolicy: IfNotPresent
+  
+  args:
+    - "--mode=scheduler"
+    - "--leader-election=true"
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# 应用配置
+config:
+  # 服务器配置
+  server:
+    host: "0.0.0.0"
+    port: 8080
+    workerThreads: 8
+    maxConnections: 10000
+  
+  # 工作流配置
+  workflow:
+    maxConcurrent: 1000
+    defaultTimeout: 300
+    retryAttempts: 3
+    retryBackoff: exponential
+  
+  # 缓存配置
+  cache:
+    backend: Redis
+    ttl: 3600
+    maxMemory: "2GB"
+  
+  # 队列配置
+  queue:
+    backend: RabbitMQ
+    prefetchCount: 10
+    autoAck: false
+  
+  # 监控配置
+  monitoring:
+    enabled: true
+    metricsPort: 9090
+    healthCheckPath: /health
+    readinessPath: /ready
+    livenessPath: /live
+  
+  # 追踪配置
+  tracing:
+    enabled: true
+    exporter: OTLP
+    samplingRate: 0.1
+    endpoint: "http://otel-collector:4317"
+  
+  # 安全配置
+  security:
+    tokenExpiry: "24h"
+    rateLimitRPS: 1000
+
+# Secrets 配置
+secrets:
+  # 数据库凭证
+  database:
+    host: ""  # 留空时使用内置 PostgreSQL
+    port: "5432"
+    name: uniflow
+    user: uniflow_user
+    password: ""  # 生产环境必须修改
+  
+  # Redis 凭证
+  redis:
+    host: ""  # 留空时使用内置 Redis
+    port: "6379"
+    password: ""
+  
+  # RabbitMQ 凭证
+  rabbitmq:
+    host: ""  # 留空时使用内置 RabbitMQ
+    port: "5672"
+    user: uniflow_user
+    password: ""
+  
+  # JWT Secret
+  jwtSecret: ""  # 生产环境必须设置随机值
+  
+  # LLM API Keys (可选)
+  llm:
+    openaiApiKey: ""
+    anthropicApiKey: ""
+    googleApiKey: ""
+    azureApiKey: ""
+    azureEndpoint: ""
+
+# Service Account
+serviceAccount:
+  create: true
+  name: uniflow
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+
+# Pod Security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+
+# PostgreSQL 子图表配置
+postgresql:
+  enabled: true
+  auth:
+    username: uniflow_user
+    password: ""
+    database: uniflow
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+
+# Redis 子图表配置
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: ""
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# RabbitMQ 子图表配置
+rabbitmq:
+  enabled: true
+  auth:
+    username: uniflow_user
+    password: ""
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# 网络策略
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+# 额外环境变量
+extraEnv: []
+
+# 额外 Volume Mounts
+extraVolumeMounts: []
+
+# 额外 Volumes
+extraVolumes: []

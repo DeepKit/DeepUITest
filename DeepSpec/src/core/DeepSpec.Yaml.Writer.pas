@@ -32,6 +32,7 @@ type
     procedure WriteBoolKV(const AKey: string; AValue: Boolean);
     procedure WriteStringList(const AKey: string; const AValues: TArray<string>);
     procedure WriteSourceRefs(const AKey: string; const ARefs: TSourceRefArray);
+    procedure WriteDataNodeFields(const ANode: TSpecNode);
   public
     constructor Create;
     destructor Destroy; override;
@@ -57,7 +58,8 @@ type
 implementation
 
 uses
-  System.DateUtils;
+  System.DateUtils,
+  System.StrUtils;
 
 constructor TYamlWriter.Create;
 begin
@@ -89,8 +91,10 @@ end;
 
 function TYamlWriter.FormatTimestamp(ADt: TDateTime): string;
 begin
-  Result := if ADt = 0 then ''
-            else FormatDateTime('yyyy-mm-dd"T"hh:nn:ss"+08:00"', ADt);
+  if ADt = 0 then
+    Result := ''
+  else
+    Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss"+08:00"', ADt);
 end;
 
 procedure TYamlWriter.WriteScalarKV(const AKey, AValue: string);
@@ -113,7 +117,7 @@ end;
 
 procedure TYamlWriter.WriteBoolKV(const AKey: string; AValue: Boolean);
 begin
-  FBuilder.AppendLine(Pad + AKey + ': ' + if AValue then 'true' else 'false');
+  FBuilder.AppendLine(Pad + AKey + ': ' + IfThen(AValue, 'true', 'false'));
 end;
 
 procedure TYamlWriter.WriteStringList(const AKey: string; const AValues: TArray<string>);
@@ -194,6 +198,8 @@ begin
     if ANode.Summary <> '' then
       WriteQuotedKV('summary', ANode.Summary);
     WriteScalarKV('status', TSpecEnums.NodeStatusToStr(ANode.Status));
+    WriteScalarKV('gen_status', TSpecEnums.GenStatusToStr(ANode.GenStatus));
+    WriteScalarKV('review_status', TSpecEnums.ReviewStatusToStr(ANode.ReviewStatus));
     WriteScalarKV('confidence', TSpecEnums.ConfidenceToStr(ANode.Confidence));
     WriteScalarKV('source_layer', TSpecEnums.SourceLayerToStr(ANode.SourceLayer));
     WriteSourceRefs('source_refs', ANode.SourceRefs);
@@ -202,13 +208,57 @@ begin
     WriteStringList('related_functions', ANode.RelatedFunctions);
     WriteStringList('related_modules', ANode.RelatedModules);
     WriteStringList('related_views', ANode.RelatedViews);
+    WriteStringList('related_data', ANode.RelatedData);
     WriteStringList('children', ANode.Children);
     WriteStringList('tags', ANode.Tags);
     WriteStringList('acceptance_criteria', ANode.AcceptanceCriteria);
     WriteStringList('not_doing', ANode.NotDoing);
+    if ANode.Tree = ttData then
+      WriteDataNodeFields(ANode);
   finally
     FIndent := 0;
   end;
+end;
+
+procedure TYamlWriter.WriteDataNodeFields(const ANode: TSpecNode);
+begin
+  if ANode.HasRiskScore then
+    WriteScalarKV('risk_score', TSpecEnums.RiskLevelToStr(ANode.RiskScore));
+  if ANode.DataType <> '' then
+    WriteQuotedKV('data_type', ANode.DataType);
+  if ANode.HasNullable then
+    WriteBoolKV('nullable', ANode.Nullable);
+  if ANode.DefaultValue <> '' then
+    WriteQuotedKV('default_value', ANode.DefaultValue);
+  WriteStringList('field_constraints', ANode.FieldConstraints);
+  if ANode.Persistence <> '' then
+    WriteScalarKV('persistence', ANode.Persistence);
+  if ANode.SourceEntity <> '' then
+    WriteQuotedKV('source_entity', ANode.SourceEntity);
+  if ANode.TargetEntity <> '' then
+    WriteQuotedKV('target_entity', ANode.TargetEntity);
+  if ANode.Cardinality <> '' then
+    WriteScalarKV('cardinality', ANode.Cardinality);
+  if ANode.Cascade <> '' then
+    WriteQuotedKV('cascade', ANode.Cascade);
+  WriteStringList('valid_states', ANode.ValidStates);
+  if Length(ANode.Transitions) > 0 then
+  begin
+    FBuilder.AppendLine(Pad + 'transitions:');
+    for var LTrans in ANode.Transitions do
+    begin
+      FBuilder.AppendLine(Pad + '  - from: "' + EscapeStr(LTrans.Key) + '"');
+      FBuilder.AppendLine(Pad + '    to: "' + EscapeStr(LTrans.Value) + '"');
+    end;
+  end;
+  if ANode.HasBackwardCompatible then
+    WriteBoolKV('backward_compatible', ANode.BackwardCompatible);
+  if ANode.HasHasRollback then
+    WriteBoolKV('has_rollback', ANode.HasRollback);
+  if ANode.Scope <> '' then
+    WriteQuotedKV('scope', ANode.Scope);
+  if ANode.Enforcement <> '' then
+    WriteScalarKV('enforcement', ANode.Enforcement);
 end;
 
 procedure TYamlWriter.WriteRelationsFile(ARelations: TList<TSpecRelation>);

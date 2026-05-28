@@ -1,0 +1,226 @@
+{
+  "$schema": "../schemas/workflow-v1.json",
+  "id": "wf_DeepInsight_decision_gold",
+  "version": "1.0.0",
+  "name": "洞见·决策思维显影金路�?,
+  "description": "基于多角色推演的决策思维显影流程",
+  "metadata": {
+    "category": "DeepInsight",
+    "tags": ["decision", "multi-role", "gold-path"],
+    "author": "UniFlow Team",
+    "created": "2025-12-07",
+    "entropy_task": "DeepInsight-001"
+  },
+  "config": {
+    "timeout_ms": 300000,
+    "max_retries": 2,
+    "run_as": "user"
+  },
+  "steps": [
+    {
+      "id": "receive_input",
+      "name": "接收决策问题",
+      "type": "action",
+      "action": {
+        "type": "system",
+        "skill": "receive_decision_problem"
+      },
+      "guards": [
+        {
+          "type": "required",
+          "fields": ["problem"]
+        },
+        {
+          "type": "minLength",
+          "field": "problem",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "id": "enrich_context",
+      "name": "补齐上下�?,
+      "type": "action",
+      "action": {
+        "type": "system",
+        "skill": "enrich_context"
+      },
+      "input_mapping": {
+        "problem": "{{ steps.receive_input.output.problem }}",
+        "session_id": "{{ context.session_id }}"
+      }
+    },
+    {
+      "id": "fork_roles",
+      "name": "多角色并行推�?,
+      "type": "parallel",
+      "parallel_config": {
+        "fail_fast": false,
+        "max_parallel": 4
+      },
+      "branches": [
+        {
+          "id": "coach",
+          "name": "教练视角",
+          "steps": [
+            {
+              "id": "run_coach",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skill": "decision_coach"
+              },
+              "input_mapping": {
+                "problem": "{{ steps.receive_input.output.problem }}",
+                "context": "{{ steps.enrich_context.output.context }}"
+              }
+            }
+          ]
+        },
+        {
+          "id": "critic",
+          "name": "批评者视�?,
+          "steps": [
+            {
+              "id": "run_critic",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skill": "decision_critic"
+              },
+              "input_mapping": {
+                "problem": "{{ steps.receive_input.output.problem }}",
+                "context": "{{ steps.enrich_context.output.context }}"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mirror",
+          "name": "镜像视角",
+          "steps": [
+            {
+              "id": "run_mirror",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skill": "decision_mirror"
+              },
+              "input_mapping": {
+                "problem": "{{ steps.receive_input.output.problem }}",
+                "context": "{{ steps.enrich_context.output.context }}"
+              }
+            }
+          ]
+        },
+        {
+          "id": "observer",
+          "name": "观察者视�?,
+          "steps": [
+            {
+              "id": "run_observer",
+              "type": "action",
+              "action": {
+                "type": "skill",
+                "skill": "decision_observer"
+              },
+              "input_mapping": {
+                "problem": "{{ steps.receive_input.output.problem }}",
+                "context": "{{ steps.enrich_context.output.context }}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aggregate_views",
+      "name": "聚合多视角结�?,
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skill": "decision_aggregator"
+      },
+      "input_mapping": {
+        "coach_view": "{{ steps.fork_roles.branches.coach.output }}",
+        "critic_view": "{{ steps.fork_roles.branches.critic.output }}",
+        "mirror_view": "{{ steps.fork_roles.branches.mirror.output }}",
+        "observer_view": "{{ steps.fork_roles.branches.observer.output }}"
+      }
+    },
+    {
+      "id": "generate_film",
+      "name": "生成决策胶片",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skill": "film_generator"
+      },
+      "input_mapping": {
+        "problem": "{{ steps.receive_input.output.problem }}",
+        "aggregated": "{{ steps.aggregate_views.output }}"
+      },
+      "guards": [
+        {
+          "type": "custom",
+          "rule": "DeepInsight_philosophy_check",
+          "params": {
+            "check_conclusion_tone": true,
+            "require_self_questions": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "check_mode",
+      "name": "检查用户模�?,
+      "type": "condition",
+      "condition": {
+        "expression": "{{ context.user_mode == 'action' }}"
+      },
+      "branches": {
+        "true": "generate_actions",
+        "false": "write_memory"
+      }
+    },
+    {
+      "id": "generate_actions",
+      "name": "生成行动建议",
+      "type": "action",
+      "action": {
+        "type": "skill",
+        "skill": "action_suggester"
+      },
+      "input_mapping": {
+        "aggregated": "{{ steps.aggregate_views.output }}",
+        "film": "{{ steps.generate_film.output }}"
+      },
+      "next": "write_memory"
+    },
+    {
+      "id": "write_memory",
+      "name": "写入记忆",
+      "type": "action",
+      "action": {
+        "type": "system",
+        "skill": "write_decision_memory"
+      },
+      "input_mapping": {
+        "problem": "{{ steps.receive_input.output.problem }}",
+        "film": "{{ steps.generate_film.output }}",
+        "views": "{{ steps.aggregate_views.output }}"
+      }
+    },
+    {
+      "id": "end",
+      "name": "结束",
+      "type": "end",
+      "output_mapping": {
+        "film": "{{ steps.generate_film.output }}",
+        "views": "{{ steps.aggregate_views.output.views }}",
+        "self_questions": "{{ steps.generate_film.output.self_questions }}",
+        "actions": "{{ steps.generate_actions.output.actions || [] }}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+Generate a runnable test script for the following {LANGUAGE} code.
+
+Contract to verify:
+{CONTRACT_YAML}
+
+Source code:
+```{LANGUAGE_LOWER}
+{SOURCE_CODE}
+```
+
+Requirements:
+1. Generate ONE self-contained test file
+2. Test each scenario in the contract
+3. Output PASS/FAIL for each scenario ID (e.g. S001: PASS)
+4. Final line must be: OVERALL: PASS or OVERALL: FAIL
+5. No external dependencies beyond standard library
+6. Output ONLY the code, no explanation

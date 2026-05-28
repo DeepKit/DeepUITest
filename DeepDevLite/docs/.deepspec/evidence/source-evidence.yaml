@@ -1,0 +1,29 @@
+﻿version: "1.0"
+
+evidence:
+  - id: "ev-deepdev-card-generator-v2-html"
+    source_layer: parsed_from_a
+    path: "DeepDev-card-generator-v2.html"
+    lines: null
+    excerpt: "File: DeepDev-card-generator-v2.html"
+    excerpt_truncated: false
+    note: null
+    confidence: high
+    created_at: "2026-05-15T22:38:40+08:00"
+    updated_at: "2026-05-15T22:38:40+08:00"
+    source_file_hash: null
+    is_stale: false
+    referenced_by: []
+  - id: "ev-deepdev-report-html"
+    source_layer: parsed_from_a
+    path: "DeepDev-report.html"
+    lines: null
+    excerpt: "File: DeepDev-report.html"
+    excerpt_truncated: false
+    note: null
+    confidence: high
+    created_at: "2026-05-15T22:38:40+08:00"
+    updated_at: "2026-05-15T22:38:40+08:00"
+    source_file_hash: null
+    is_stale: false
+    referenced_by: []

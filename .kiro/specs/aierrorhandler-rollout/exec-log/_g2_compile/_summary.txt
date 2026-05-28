@@ -1,0 +1,7 @@
+DeepLLMProxy          ExitCode=0  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepLLMProxy.log
+DeepCharset           ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepCharset.log
+DeepClip              ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepClip.log
+DeepClipLite          ExitCode=0  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepClipLite.log
+DeepCompare           ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepCompare.log
+DeepCompareDebug      ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepCompareDebug.log
+DeepCompareU          ExitCode=0  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g2_compile\DeepCompareU.log

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniFlow Workflow Editor</title>
+  <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/nodes.css">
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.294.0/font/lucide.min.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <h1 class="logo">
+          <span class="logo-icon">⚡</span>
+          UniFlow Editor
+        </h1>
+        <span class="workflow-name" id="workflowName">Untitled Workflow</span>
+      </div>
+      <div class="header-center">
+        <div class="toolbar">
+          <button class="toolbar-btn" id="btnNew" title="新建 (Ctrl+N)">
+            <i class="lucide-file-plus"></i>
+          </button>
+          <button class="toolbar-btn" id="btnOpen" title="打开 (Ctrl+O)">
+            <i class="lucide-folder-open"></i>
+          </button>
+          <button class="toolbar-btn" id="btnSave" title="保存 (Ctrl+S)">
+            <i class="lucide-save"></i>
+          </button>
+          <div class="toolbar-divider"></div>
+          <button class="toolbar-btn" id="btnUndo" title="撤销 (Ctrl+Z)">
+            <i class="lucide-undo-2"></i>
+          </button>
+          <button class="toolbar-btn" id="btnRedo" title="重做 (Ctrl+Y)">
+            <i class="lucide-redo-2"></i>
+          </button>
+          <div class="toolbar-divider"></div>
+          <button class="toolbar-btn" id="btnZoomIn" title="放大">
+            <i class="lucide-zoom-in"></i>
+          </button>
+          <button class="toolbar-btn" id="btnZoomOut" title="缩小">
+            <i class="lucide-zoom-out"></i>
+          </button>
+          <button class="toolbar-btn" id="btnFitView" title="适应视图">
+            <i class="lucide-maximize-2"></i>
+          </button>
+          <div class="toolbar-divider"></div>
+          <button class="toolbar-btn" id="btnValidate" title="验证">
+            <i class="lucide-check-circle"></i>
+          </button>
+          <button class="toolbar-btn" id="btnExport" title="导出 JSON">
+            <i class="lucide-download"></i>
+          </button>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-primary" id="btnRun">
+          <i class="lucide-play"></i>
+          运行
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Left Sidebar - Node Palette -->
+      <aside class="sidebar sidebar-left">
+        <div class="sidebar-header">
+          <h3>节点库</h3>
+          <input type="text" class="search-input" id="nodeSearch" placeholder="搜索节点...">
+        </div>
+        <div class="node-palette" id="nodePalette">
+          <!-- 基础节点 -->
+          <div class="palette-group">
+            <div class="palette-group-title">基础</div>
+            <div class="palette-node" draggable="true" data-type="start">
+              <span class="palette-node-icon node-icon-start">▶</span>
+              <span class="palette-node-label">开始</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="end">
+              <span class="palette-node-icon node-icon-end">⏹</span>
+              <span class="palette-node-label">结束</span>
+            </div>
+          </div>
+          <!-- 动作节点 -->
+          <div class="palette-group">
+            <div class="palette-group-title">动作</div>
+            <div class="palette-node" draggable="true" data-type="llm">
+              <span class="palette-node-icon node-icon-llm">🤖</span>
+              <span class="palette-node-label">LLM 调用</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="skill">
+              <span class="palette-node-icon node-icon-skill">⚙️</span>
+              <span class="palette-node-label">Skill</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="http">
+              <span class="palette-node-icon node-icon-http">🌐</span>
+              <span class="palette-node-label">HTTP 请求</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="script">
+              <span class="palette-node-icon node-icon-script">📜</span>
+              <span class="palette-node-label">脚本</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="assign">
+              <span class="palette-node-icon node-icon-assign">📝</span>
+              <span class="palette-node-label">赋值</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="log">
+              <span class="palette-node-icon node-icon-log">📋</span>
+              <span class="palette-node-label">日志</span>
+            </div>
+          </div>
+          <!-- 流程控制 -->
+          <div class="palette-group">
+            <div class="palette-group-title">流程控制</div>
+            <div class="palette-node" draggable="true" data-type="condition">
+              <span class="palette-node-icon node-icon-condition">🔀</span>
+              <span class="palette-node-label">条件分支</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="loop">
+              <span class="palette-node-icon node-icon-loop">🔄</span>
+              <span class="palette-node-label">循环</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="parallel">
+              <span class="palette-node-icon node-icon-parallel">⫘</span>
+              <span class="palette-node-label">并行</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="wait">
+              <span class="palette-node-icon node-icon-wait">⏳</span>
+              <span class="palette-node-label">等待</span>
+            </div>
+          </div>
+          <!-- 高级 -->
+          <div class="palette-group">
+            <div class="palette-group-title">高级</div>
+            <div class="palette-node" draggable="true" data-type="subworkflow">
+              <span class="palette-node-icon node-icon-subworkflow">📦</span>
+              <span class="palette-node-label">子工作流</span>
+            </div>
+            <div class="palette-node" draggable="true" data-type="guard">
+              <span class="palette-node-icon node-icon-guard">🛡️</span>
+              <span class="palette-node-label">校验</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Canvas Area -->
+      <main class="canvas-container">
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <svg class="connections-layer" id="connectionsLayer"></svg>
+          <div class="nodes-layer" id="nodesLayer"></div>
+        </div>
+        <!-- Mini Map -->
+        <div class="minimap" id="minimap">
+          <div class="minimap-viewport" id="minimapViewport"></div>
+        </div>
+        <!-- Zoom Info -->
+        <div class="zoom-info" id="zoomInfo">100%</div>
+      </main>
+
+      <!-- Right Sidebar - Properties -->
+      <aside class="sidebar sidebar-right" id="propertiesPanel">
+        <div class="sidebar-header">
+          <h3>属性</h3>
+        </div>
+        <div class="properties-content" id="propertiesContent">
+          <div class="empty-state">
+            <p>选择一个节点查看属性</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+      <div class="status-left">
+        <span id="statusMessage">就绪</span>
+      </div>
+      <div class="status-right">
+        <span id="nodeCount">0 个节点</span>
+        <span class="status-divider">|</span>
+        <span id="connectionCount">0 条连接</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Hidden file input for import -->
+  <input type="file" id="fileInput" accept=".json" style="display: none;">
+
+  <!-- Templates -->
+  <template id="nodeTemplate">
+    <div class="workflow-node" data-id="">
+      <div class="node-header">
+        <span class="node-icon"></span>
+        <span class="node-title"></span>
+        <button class="node-delete" title="删除">×</button>
+      </div>
+      <div class="node-body">
+        <div class="node-description"></div>
+      </div>
+      <div class="node-ports">
+        <div class="node-port node-port-in" data-port="in"></div>
+        <div class="node-port node-port-out" data-port="out"></div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Scripts -->
+  <script src="js/utils.js"></script>
+  <script src="js/node-types.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/properties.js"></script>
+  <script src="js/editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+version: "1.0"
+
+decisions:
+  - id: "dec-001"
+    type: terminology
+    title: "SKU is the unique product identifier"
+    decision: "Every product must have a unique SKU (Stock Keeping Unit). SKU is the business key, database ID is internal only."
+    rationale: "Warehouse team uses SKU for all operations. API consumers should reference products by SKU."
+    target_nodes:
+      - "func-inventory"
+      - "func-product-crud"
+    affected_relations: []
+    affected_requirements: []
+    affected_views: []
+    affected_modules: []
+    resolved_issues: []
+    source_refs:
+      - ref_id: "ev-readme"
+        relevance: supporting
+    ai_instruction: "Always use SKU as the primary product identifier in API design. Database auto-increment ID is internal and never exposed in API responses."
+    priority: P0
+    release: "v1.0"
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    decided_by: human
+    confidence: high
+    status: accepted
+    superseded_by: null
+    supersedes: []

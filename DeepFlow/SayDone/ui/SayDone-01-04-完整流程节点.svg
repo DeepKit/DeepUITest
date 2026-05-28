@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 1400">
+  <defs>
+    <linearGradient id="nodeGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="320" height="1400" fill="#f8fafc"/>
+  
+  <!-- 标题 -->
+  <text x="160" y="30" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="16" font-weight="bold" fill="#1e293b">完整流程节点图</text>
+  <text x="160" y="50" text-anchor="middle" font-family="Arial" font-size="11" fill="#64748b">Complete Flow Nodes</text>
+  
+  <!-- 用户输入 -->
+  <ellipse cx="160" cy="90" rx="50" ry="25" fill="#10b981" filter="url(#shadow)"/>
+  <text x="160" y="95" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" font-weight="bold" fill="white">用户输入</text>
+  
+  <path d="M 160 115 L 160 140" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点1：请求接收 -->
+  <rect x="30" y="150" width="260" height="80" rx="8" fill="url(#nodeGrad1)" filter="url(#shadow)"/>
+  <text x="50" y="175" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">1. 请求接收</text>
+  <text x="50" y="195" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：调度员 | AI：无</text>
+  <text x="50" y="215" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">解析请求，创建执行计划</text>
+  
+  <path d="M 160 230 L 160 255" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点2：上下文加载 -->
+  <rect x="30" y="265" width="260" height="80" rx="8" fill="url(#nodeGrad2)" filter="url(#shadow)"/>
+  <text x="50" y="290" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">2. 上下文加载</text>
+  <text x="50" y="310" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：记忆官 | AI：Embedding</text>
+  <text x="50" y="330" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">获取会话上下文，检索相关历史</text>
+  
+  <path d="M 160 345 L 160 370" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点3：意图理解 -->
+  <rect x="30" y="380" width="260" height="80" rx="8" fill="url(#nodeGrad3)" filter="url(#shadow)"/>
+  <text x="50" y="405" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">3. 意图理解</text>
+  <text x="50" y="425" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：AI代理 | AI：LLM</text>
+  <text x="50" y="445" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">理解用户真正想要什么，指代消解</text>
+  
+  <path d="M 160 460 L 160 485" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点4：内容生成 -->
+  <rect x="30" y="495" width="260" height="80" rx="8" fill="url(#nodeGrad3)" filter="url(#shadow)"/>
+  <text x="50" y="520" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">4. 内容生成</text>
+  <text x="50" y="540" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：AI代理+监工 | AI：LLM/Vision</text>
+  <text x="50" y="560" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">生成设计稿、代码或其他内容</text>
+  
+  <path d="M 160 575 L 160 600" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点5：AI自检 -->
+  <rect x="30" y="610" width="260" height="80" rx="8" fill="url(#nodeGrad4)" filter="url(#shadow)"/>
+  <text x="50" y="635" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">5. AI自检</text>
+  <text x="50" y="655" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：自检员 | AI：LLM审查</text>
+  <text x="50" y="675" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">检查完整性、正确性、一致性</text>
+  
+  <!-- 自检不通过回路 -->
+  <path d="M 290 650 L 305 650 L 305 537 L 290 537" stroke="#ef4444" stroke-width="1.5" fill="none" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+  <text x="305" y="595" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#ef4444" transform="rotate(-90 305 595)">不通过</text>
+  
+  <path d="M 160 690 L 160 715" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="175" y="705" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#10b981">通过</text>
+  
+  <!-- 节点6：系统守卫检查 -->
+  <rect x="30" y="725" width="260" height="80" rx="8" fill="url(#nodeGrad5)" filter="url(#shadow)"/>
+  <text x="50" y="750" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">6. 系统守卫检查 🔒</text>
+  <text x="50" y="770" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：守卫员 | AI：无（硬编码）</text>
+  <text x="50" y="790" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">Schema验证、语法检查、安全检查</text>
+  
+  <!-- 守卫不通过回路 -->
+  <path d="M 290 765 L 315 765 L 315 537 L 290 537" stroke="#ef4444" stroke-width="1.5" fill="none" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+  <text x="315" y="650" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#ef4444" transform="rotate(-90 315 650)">不通过(最多3次)</text>
+  
+  <path d="M 160 805 L 160 830" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="175" y="820" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#10b981">通过</text>
+  
+  <!-- 节点7：影响分析 -->
+  <rect x="30" y="840" width="260" height="80" rx="8" fill="url(#nodeGrad2)" filter="url(#shadow)"/>
+  <text x="50" y="865" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">7. 影响分析</text>
+  <text x="50" y="885" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：比对员 | AI：代码LLM</text>
+  <text x="50" y="905" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">分析变更影响范围，检测破坏风险</text>
+  
+  <path d="M 160 920 L 160 945" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点8：创建快照 -->
+  <rect x="30" y="955" width="260" height="80" rx="8" fill="url(#nodeGrad1)" filter="url(#shadow)"/>
+  <text x="50" y="980" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">8. 创建快照</text>
+  <text x="50" y="1000" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">角色：回滚员 | AI：无</text>
+  <text x="50" y="1020" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">保存当前状态快照，支持后续回滚</text>
+  
+  <path d="M 160 1035 L 160 1060" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 节点9：用户确认 -->
+  <rect x="30" y="1070" width="260" height="80" rx="8" fill="#10b981" filter="url(#shadow)"/>
+  <text x="50" y="1095" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">9. 用户确认</text>
+  <text x="50" y="1115" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="rgba(255,255,255,0.9)">负责人：用户 | AI：无</text>
+  <text x="50" y="1135" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">展示结果，等待确认/调整/重来</text>
+  
+  <!-- 三个分支 -->
+  <path d="M 90 1150 L 90 1180" stroke="#10b981" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 160 1150 L 160 1180" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 230 1150 L 230 1180" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- 确认 -->
+  <rect x="50" y="1190" width="80" height="40" rx="6" fill="#dcfce7" stroke="#10b981" stroke-width="2"/>
+  <text x="90" y="1215" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#15803d">✓ 确认</text>
+  
+  <!-- 调整 -->
+  <rect x="145" y="1190" width="50" height="40" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+  <text x="170" y="1215" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#92400e">调整</text>
+  
+  <!-- 重来 -->
+  <rect x="210" y="1190" width="50" height="40" rx="6" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+  <text x="235" y="1215" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#dc2626">重来</text>
+  
+  <!-- 调整回路 -->
+  <path d="M 170 1230 L 170 1250 L 15 1250 L 15 420 L 30 420" stroke="#f59e0b" stroke-width="1.5" fill="none" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+  <text x="20" y="850" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#f59e0b" transform="rotate(-90 20 850)">返回节点3</text>
+  
+  <!-- 重来回路 -->
+  <path d="M 235 1230 L 235 1260 L 5 1260 L 5 190 L 30 190" stroke="#ef4444" stroke-width="1.5" fill="none" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+  <text x="10" y="750" font-family="Microsoft YaHei, sans-serif" font-size="8" fill="#ef4444" transform="rotate(-90 10 750)">返回节点1</text>
+  
+  <!-- 节点10：应用变更 -->
+  <path d="M 90 1230 L 90 1270" stroke="#10b981" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <rect x="30" y="1280" width="200" height="60" rx="8" fill="url(#nodeGrad1)" filter="url(#shadow)"/>
+  <text x="130" y="1305" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" font-weight="bold" fill="white">10. 应用变更</text>
+  <text x="130" y="1325" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)">记忆官保存状态 ✓</text>
+  
+  <!-- 完成 -->
+  <ellipse cx="130" cy="1370" rx="40" ry="20" fill="#10b981"/>
+  <text x="130" y="1375" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" font-weight="bold" fill="white">完成</text>
+  <path d="M 130 1340 L 130 1350" stroke="#10b981" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

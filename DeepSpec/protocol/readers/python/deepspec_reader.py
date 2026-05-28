@@ -1,5 +1,5 @@
 """
-deepspec_reader - Minimal DeepSpec Protocol Reader (Level 1)
+deepspec_reader - Minimal DeepSpec Protocol Reader (Level 1, v1.2-draft aware)
 
 Zero dependencies beyond PyYAML. Reads .deepspec/ directories
 and provides typed access to project facts, trees, and decisions.
@@ -89,7 +89,7 @@ class DeepSpecReader:
         return self._project
 
     def tree(self, tree_type: str) -> TreeFile:
-        """Load a tree by type: 'function', 'module', or 'view'."""
+        """Load a tree by type: 'function', 'module', 'view', or 'data'."""
         if tree_type not in self._trees:
             proj = self.project()
             path = proj.trees[f"{tree_type}_tree"]
@@ -105,10 +105,13 @@ class DeepSpecReader:
         return self._trees[tree_type]
 
     def all_nodes(self) -> list[dict[str, Any]]:
-        """Get all nodes across all three trees."""
+        """Get all nodes across all available projection trees."""
         result = []
-        for t in ("function", "module", "view"):
-            result.extend(self.tree(t).nodes)
+        for t in ("function", "module", "view", "data"):
+            try:
+                result.extend(self.tree(t).nodes)
+            except (FileNotFoundError, KeyError):
+                continue
         return result
 
     def find_node(self, node_id: str) -> dict[str, Any] | None:

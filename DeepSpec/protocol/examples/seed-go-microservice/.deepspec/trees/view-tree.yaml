@@ -1,0 +1,8 @@
+version: "1.0"
+tree: view
+generated_at: "2026-05-15T09:00:00+08:00"
+generator: "deepspec-llm-v1"
+
+# Backend service - no user-facing views
+# View tree is empty but file must exist per protocol
+nodes: []

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepspec.dev/schemas/v1/review-decision.schema.json",
+  "title": "DeepSpec Review Decisions",
+  "type": "object",
+  "required": ["version", "review_decisions"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0", "1.1", "1.2"]},
+    "review_decisions": {"type": "array", "items": {"$ref": "#/$defs/review_decision"}}
+  },
+  "$defs": {
+    "review_decision": {
+      "type": "object",
+      "required": ["id", "decision_action", "target_nodes", "created_at", "reviewer"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string"},
+        "decision_action": {"type": "string", "enum": ["accept", "reject", "request_changes", "lock", "unlock"]},
+        "accept_level": {"type": ["string", "null"], "enum": ["low_risk", "provisional", "release", "accountable", null]},
+        "lock_status": {"type": "string", "enum": ["unlocked", "locked"]},
+        "target_nodes": {"type": "array", "items": {"type": "string"}},
+        "rationale": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "reviewer": {"type": "string"},
+        "source_refs": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+version: "1.0"
+
+issues:
+  - id: "issue-001"
+    severity: medium
+    type: no_source
+    title: "Low stock alert mechanism undefined"
+    description: "README mentions 'low stock alerts (planned)' but no spec defines: notification channel, threshold config, or alert frequency"
+    affected_nodes:
+      - "func-low-stock-alert"
+    source_refs: []
+    suggested_action: "Define alert delivery mechanism and threshold configuration"
+    suggested_prompt: null
+    status: open
+    resolved_by: null
+    created_at: "2026-05-15T09:00:00+08:00"
+    updated_at: "2026-05-15T09:00:00+08:00"
+    resolved_at: null

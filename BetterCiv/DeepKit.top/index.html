@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepKit 深工坊 - 一个独立开发者的桌面工具矩阵</title>
+  <meta name="description" content="DeepKit 深工坊 - AI · 创作 · 效率 · 合规。一个独立开发者的桌面工具矩阵。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+SC:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* ---- Status badges ---- */
+    .status-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .status-released  { background: #d3f9d8; color: #2b8a3e; }
+    .status-beta      { background: #fff3bf; color: #e67700; }
+    .status-dev       { background: #e8eaed; color: #5f6368; }
+
+    /* ---- Category sections ---- */
+    .category-section {
+      margin-bottom: 56px;
+    }
+    .category-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    /* ---- Foundation block ---- */
+    .foundation-card {
+      background: var(--bg-card);
+      border-radius: var(--radius-card);
+      padding: 24px 28px;
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .foundation-card .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      flex-shrink: 0;
+    }
+    .foundation-card .foundation-info { flex: 1; }
+    .foundation-card .foundation-name {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .foundation-card .foundation-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .foundation-modules {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .foundation-modules span {
+      font-size: 11px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 2px 8px;
+      color: var(--text-secondary);
+    }
+
+    /* ---- Products header count ---- */
+    .products-header .header-meta {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+
+    @media (max-width: 768px) {
+      .category-grid {
+        grid-template-columns: 1fr;
+      }
+      .foundation-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="container">
+      <a href="#" class="nav-logo">DeepKit 深工坊</a>
+      <ul class="nav-links">
+        <li><a href="#products">产品</a></li>
+        <li><a href="#footer">关于</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <h1 class="hero-title">DeepKit 深工坊</h1>
+    <p class="hero-subtitle">一个独立开发者的桌面工具矩阵</p>
+    <p class="hero-tags">AI · 创作 · 效率 · 开发</p>
+  </section>
+
+  <!-- Products Section -->
+  <section class="products" id="products">
+    <div class="container">
+
+      <div class="products-header">
+        <h2>产品矩阵</h2>
+        <p class="header-meta">21 款工具 &nbsp;·&nbsp;
+          <span style="color:#2b8a3e">● 已发布</span> &nbsp;
+          <span style="color:#e67700">● Beta</span> &nbsp;
+          <span style="color:#aaa">● 开发中</span>
+        </p>
+      </div>
+
+      <!-- ===== 效率工具 ===== -->
+      <div class="category-section">
+        <div class="category-title">效率工具</div>
+        <div class="category-grid">
+
+          <a href="products/deeplaunch.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deeplaunch.svg" alt="DeepLaunch" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepLaunch <span class="status-badge status-released">已发布</span></span>
+                <span class="card-name-cn">深启</span>
+              </div>
+            </div>
+            <p class="card-tagline">Windows 启动遥控器，一键直达</p>
+            <ul class="card-features">
+              <li>网格式布局，4层×30格自由编排</li>
+              <li>工作流自动化，串联多步操作</li>
+              <li>Everything 集成，全盘秒搜</li>
+            </ul>
+          </a>
+
+          <a href="products/deepmovec.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepmovec.svg" alt="DeepMoveC" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepMoveC <span class="status-badge status-released">已发布</span></span>
+                <span class="card-name-cn">深腾</span>
+              </div>
+            </div>
+            <p class="card-tagline">C 盘又满了？一键搬家</p>
+            <ul class="card-features">
+              <li>可视化扫描空间占用</li>
+              <li>智能推荐可迁移项目</li>
+              <li>一键迁移，自动创建链接</li>
+            </ul>
+          </a>
+
+          <a href="products/deepcharset.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepcharset.svg" alt="DeepCharset" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepCharset <span class="status-badge status-released">已发布</span></span>
+                <span class="card-name-cn">深转</span>
+              </div>
+            </div>
+            <p class="card-tagline">乱码？一键转正</p>
+            <ul class="card-features">
+              <li>批量检测文件编码</li>
+              <li>一键转换 GBK/UTF-8/BIG5</li>
+              <li>详细转换日志</li>
+            </ul>
+          </a>
+
+          <a href="products/deepsvg.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepsvg.svg" alt="DeepSVG" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepSVG <span class="status-badge status-beta">Beta</span></span>
+                <span class="card-name-cn">深矢</span>
+              </div>
+            </div>
+            <p class="card-tagline">一站式的 SVG 文件管理器</p>
+            <ul class="card-features">
+              <li>Skia 高性能渲染预览</li>
+              <li>AI 辅助生成 SVG</li>
+              <li>批量导出多格式（PNG/ICO/Android VD）</li>
+            </ul>
+          </a>
+
+          <a href="products/deepinput.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepinput.svg" alt="DeepInput" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepInput <span class="status-badge status-beta">Beta</span></span>
+                <span class="card-name-cn">深触</span>
+              </div>
+            </div>
+            <p class="card-tagline">指触语触，思维不受限</p>
+            <ul class="card-features">
+              <li>触屏手写 + 语音识别双模式</li>
+              <li>按住说话，文字直达光标</li>
+              <li>支持多语言识别</li>
+            </ul>
+          </a>
+
+          <a href="products/deepsync.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepsync.svg" alt="DeepSync" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepSync <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深联</span>
+              </div>
+            </div>
+            <p class="card-tagline">硬盘做网盘，不交云盘费</p>
+            <ul class="card-features">
+              <li>P2P 直连，不经过云端</li>
+              <li>多设备实时同步</li>
+              <li>内置屏幕共享</li>
+            </ul>
+          </a>
+
+        </div>
+      </div>
+
+      <!-- ===== AI 工具 ===== -->
+      <div class="category-section">
+        <div class="category-title">AI 工具</div>
+        <div class="category-grid">
+
+          <a href="products/deepclip.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepclip.svg" alt="DeepClip" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepClip <span class="status-badge status-beta">Beta</span></span>
+                <span class="card-name-cn">深辑</span>
+              </div>
+            </div>
+            <p class="card-tagline">配上语音助手的素材管理中心</p>
+            <ul class="card-features">
+              <li>智能隐私检测，敏感信息自动遮蔽</li>
+              <li>AI 标签 + 语义搜索 + 语音粘贴</li>
+              <li>抽屉/项目分组，素材井井有条</li>
+            </ul>
+          </a>
+
+          <a href="products/assayer.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/assayer.svg" alt="Assayer" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">Assayer <span class="status-badge status-released">已发布</span></span>
+                <span class="card-name-cn">深汇</span>
+              </div>
+            </div>
+            <p class="card-tagline">智选省钱线路，让你省钱省心的 LLM 代理</p>
+            <ul class="card-features">
+              <li>多供应商账号池，自动轮询故障转移</li>
+              <li>智能路由，按质量/成本/延迟权重选线路</li>
+              <li>流量治理，部门级预算和限流</li>
+            </ul>
+          </a>
+
+          <a href="products/deepcompare.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepcompare.svg" alt="DeepCompare" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepCompare <span class="status-badge status-beta">Beta</span></span>
+                <span class="card-name-cn">深鉴</span>
+              </div>
+            </div>
+            <p class="card-tagline">多模型对比总结，免费更智能的 AI 助手</p>
+            <ul class="card-features">
+              <li>同一 prompt 多模型并行生成</li>
+              <li>AI 自动打分 + 参数化批量测试</li>
+              <li>可视化报告，数据驱动选型</li>
+            </ul>
+          </a>
+
+          <a href="products/deepinsight.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepinsight.svg" alt="DeepInsight" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepInsight <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深觉</span>
+              </div>
+            </div>
+            <p class="card-tagline">想不清楚的事，交给显影觉察</p>
+            <ul class="card-features">
+              <li>五段显影流程，结构化决策</li>
+              <li>NPC 角色系统，多视角碰撞</li>
+              <li>决策胶片 + X光片，可视化思维</li>
+            </ul>
+          </a>
+
+        </div>
+      </div>
+
+      <!-- ===== 创作工具 ===== -->
+      <div class="category-section">
+        <div class="category-title">创作工具</div>
+        <div class="category-grid">
+
+          <a href="products/deepshine.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepshine.svg" alt="DeepShine" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepShine <span class="status-badge status-beta">Beta</span></span>
+                <span class="card-name-cn">深耀</span>
+              </div>
+            </div>
+            <p class="card-tagline">你的（多个）IP，值得一套专属工具链</p>
+            <ul class="card-features">
+              <li>多平台素材收集，一键归档</li>
+              <li>AI 辅助撰写，风格一致性保障</li>
+              <li>定时发文，多账号管理</li>
+            </ul>
+          </a>
+
+          <a href="products/deepstory.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepstory.svg" alt="DeepStory" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepStory <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深撰</span>
+              </div>
+            </div>
+            <p class="card-tagline">契约帮你管 AI，5000 集也不跑偏</p>
+            <ul class="card-features">
+              <li>L0-L3 多层契约系统，角色/情节/设定不崩</li>
+              <li>盲区补偿，AI 主动发现遗漏</li>
+              <li>文学抽卡，高光片段自动生产</li>
+            </ul>
+          </a>
+
+        </div>
+      </div>
+
+      <!-- ===== 开发工具 ===== -->
+      <div class="category-section">
+        <div class="category-title">开发工具</div>
+        <div class="category-grid">
+
+          <a href="products/deepforge.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepforge.svg" alt="DeepForge" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepForge <span class="status-badge status-beta">Beta</span></span>
+                <span class="card-name-cn">深构</span>
+              </div>
+            </div>
+            <p class="card-tagline">可审计可复用的 AI 开发驯兽器</p>
+            <ul class="card-features">
+              <li>ODD 方法论：AI 输出可验证、可追溯、可回滚</li>
+              <li>内置知识库 + 契约生成 + 代码重构</li>
+              <li>任务看板 + LSP 集成 + 多模型协作</li>
+            </ul>
+          </a>
+
+          <a href="products/deepforge.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepforge.svg" alt="DeepForgeLite" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepForgeLite <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深构 Lite</span>
+              </div>
+            </div>
+            <p class="card-tagline">单文件验证闭环，DeepForge 轻量入门版</p>
+            <ul class="card-features">
+              <li>代码输入 → AI 分析契约 → 自动测试生成</li>
+              <li>零配置，单文件即可运行</li>
+              <li>适合个人开发者快速上手</li>
+            </ul>
+          </a>
+
+          <a href="products/deeprenew.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deeprenew.svg" alt="DeepRenew" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepRenew <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深焕</span>
+              </div>
+            </div>
+            <p class="card-tagline">老系统维护风险，它来做 CT</p>
+            <ul class="card-features">
+              <li>TreeSitter 深度解析代码结构</li>
+              <li>AI 评估系统健康度和维护成本</li>
+              <li>生成可视化诊断报告</li>
+            </ul>
+          </a>
+
+          <a href="products/deepconfig.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepconfig.svg" alt="DeepConfig" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepConfig <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深配</span>
+              </div>
+            </div>
+            <p class="card-tagline">配置可视化，用户不迷糊</p>
+            <ul class="card-features">
+              <li>树形浏览任意配置文件</li>
+              <li>内置 Python 脚本执行</li>
+              <li>分发客户端独立运行</li>
+            </ul>
+          </a>
+
+          <a href="products/deepuitest.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepforge.svg" alt="DeepUITest" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepUITest <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深测</span>
+              </div>
+            </div>
+            <p class="card-tagline">配置驱动测试，红绿灯反馈质量</p>
+            <ul class="card-features">
+              <li>Windows 桌面程序 UI 行为 Mock 测试</li>
+              <li>配置驱动，无需写测试代码</li>
+              <li>红绿灯可视化质量反馈</li>
+            </ul>
+          </a>
+
+          <a href="products/deepguide.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepforge.svg" alt="DeepGuide" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">DeepGuide <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深导</span>
+              </div>
+            </div>
+            <p class="card-tagline">让新员工也能像专家一样完成工作</p>
+            <ul class="card-features">
+              <li>Journey Package 编排执行反馈闭环</li>
+              <li>企业专家能力沉淀与复用</li>
+              <li>可量化的执行质量追踪</li>
+            </ul>
+          </a>
+
+          <a href="products/ocgs-delphi.html" class="product-card">
+            <div class="card-header">
+              <img src="icons/deepforge.svg" alt="OCGS-Delphi" class="card-icon">
+              <div class="card-title">
+                <span class="card-name-en">OCGS-Delphi <span class="status-badge status-dev">开发中</span></span>
+                <span class="card-name-cn">深导 Delphi</span>
+              </div>
+            </div>
+            <p class="card-tagline">Delphi 项目能力治理与窗体减肥</p>
+            <ul class="card-features">
+              <li>窗体不再膨胀，功能入口有序可治理</li>
+              <li>OCGS 对象能力门禁系统</li>
+              <li>专为 Delphi 遗留项目设计</li>
+            </ul>
+          </a>
+
+        </div>
+      </div>
+
+      <!-- ===== 技术底座 ===== -->
+      <div class="category-section">
+        <div class="category-title">技术底座</div>
+        <a href="products/deepbase.html" class="foundation-card" style="text-decoration:none; color:inherit;">
+          <img src="icons/deepbase.svg" alt="DeepBase" class="card-icon">
+          <div class="foundation-info">
+            <div class="foundation-name">
+              DeepBase 深擎
+              <span class="status-badge status-beta">Beta</span>
+            </div>
+            <div class="foundation-desc">所有 Deep 系列产品的技术底座，让 Delphi 企业级开发像 Spring Boot 一样简单</div>
+            <div class="foundation-modules">
+              <span>Manager</span><span>Config</span><span>Logger</span>
+              <span>i18n</span><span>Theme</span><span>Security</span>
+              <span>Governance</span><span>Speech</span>
+            </div>
+          </div>
+        </a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer" id="footer">
+    <div class="container">
+      <div class="footer-content">
+        <span>© 2026 DeepKit 深工坊</span>
+        <span class="footer-divider">|</span>
+        <a href="mailto:contact@deepkit.top">联系</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

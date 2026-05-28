@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 550">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="900" height="550" fill="#f8fafc"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="35" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="20" font-weight="bold" fill="#1e293b">草稿箱界面 · Draft Box Interface</text>
+  <text x="450" y="58" text-anchor="middle" font-family="Arial" font-size="12" fill="#64748b">"不丢弃用户的任何努力，哪怕他自己说算了"</text>
+  
+  <!-- 草稿箱面板 -->
+  <rect x="50" y="80" width="400" height="380" rx="12" fill="white" stroke="#e2e8f0" stroke-width="2" filter="url(#shadow)"/>
+  
+  <!-- 草稿箱标题栏 -->
+  <rect x="50" y="80" width="400" height="50" rx="12" fill="url(#headerGrad)"/>
+  <rect x="50" y="115" width="400" height="15" fill="url(#headerGrad)"/>
+  <text x="80" y="112" font-family="Microsoft YaHei, sans-serif" font-size="16" font-weight="bold" fill="white">📁 我的草稿</text>
+  <rect x="180" y="95" width="30" height="22" rx="11" fill="rgba(255,255,255,0.3)"/>
+  <text x="195" y="111" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="white">2</text>
+  <text x="380" y="112" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="rgba(255,255,255,0.8)">[展开/收起]</text>
+  
+  <!-- 草稿项1 -->
+  <rect x="65" y="145" width="370" height="90" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <rect x="75" y="155" width="50" height="50" rx="6" fill="#3b82f6"/>
+  <text x="100" y="185" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">登录</text>
+  
+  <text x="140" y="175" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="#1e293b">登录页</text>
+  <text x="140" y="195" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#64748b">蓝色 + 微信登录</text>
+  <text x="140" y="220" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#94a3b8">10分钟前 · 已自动保存</text>
+  
+  <rect x="310" y="160" width="55" height="28" rx="6" fill="#10b981"/>
+  <text x="337" y="179" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white">继续</text>
+  <rect x="370" y="160" width="55" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="397" y="179" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">删除</text>
+  
+  <!-- 草稿项2 -->
+  <rect x="65" y="250" width="370" height="90" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="75" y="260" width="50" height="50" rx="6" fill="#8b5cf6"/>
+  <text x="100" y="290" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">用户</text>
+  
+  <text x="140" y="280" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="#1e293b">用户中心页</text>
+  <text x="140" y="300" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#64748b">简约风格 · 个人信息</text>
+  <text x="140" y="325" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#94a3b8">昨天 · 已自动保存</text>
+  
+  <rect x="310" y="265" width="55" height="28" rx="6" fill="#3b82f6"/>
+  <text x="337" y="284" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="white">继续</text>
+  <rect x="370" y="265" width="55" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="397" y="284" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">删除</text>
+  
+  <!-- 设置说明 -->
+  <rect x="65" y="360" width="370" height="85" rx="8" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="85" y="385" font-family="Microsoft YaHei, sans-serif" font-size="11" font-weight="bold" fill="#475569">草稿保留设置</text>
+  <text x="85" y="410" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">• 自动清理：</text>
+  <rect x="165" y="398" width="80" height="22" rx="4" fill="white" stroke="#cbd5e1"/>
+  <text x="205" y="413" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#1e293b">1个月 ▼</text>
+  <text x="260" y="410" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#64748b">无交互则清理</text>
+  <text x="85" y="435" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#94a3b8">💡 草稿不占用配额，放心保存</text>
+  
+  <!-- 右侧说明 -->
+  <rect x="480" y="80" width="370" height="380" rx="12" fill="white" stroke="#e2e8f0" stroke-width="2" filter="url(#shadow)"/>
+  
+  <!-- "算了"的处理 -->
+  <rect x="495" y="95" width="340" height="170" rx="8" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="665" y="120" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="#92400e">用户说"算了"时的处理</text>
+  
+  <rect x="510" y="135" width="310" height="30" rx="6" fill="#dbeafe"/>
+  <text x="530" y="155" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#1d4ed8">用户："算了，不做登录了，做个商品列表页"</text>
+  
+  <rect x="510" y="175" width="310" height="75" rx="6" fill="#dcfce7"/>
+  <text x="530" y="195" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#15803d">系统："好的，登录页怎么处理？"</text>
+  
+  <rect x="520" y="205" width="90" height="25" rx="4" fill="#10b981"/>
+  <text x="565" y="222" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">保存草稿</text>
+  <rect x="620" y="205" width="90" height="25" rx="4" fill="#ef4444"/>
+  <text x="665" y="222" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">直接删除</text>
+  <rect x="720" y="205" width="90" height="25" rx="4" fill="#f59e0b"/>
+  <text x="765" y="222" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">替换项目</text>
+  
+  <!-- "还是做登录吧"的处理 -->
+  <rect x="495" y="280" width="340" height="165" rx="8" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="665" y="305" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" font-weight="bold" fill="#15803d">用户说"还是做登录吧"时</text>
+  
+  <rect x="510" y="320" width="310" height="30" rx="6" fill="#dbeafe"/>
+  <text x="530" y="340" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#1d4ed8">用户："还是做登录吧"</text>
+  
+  <rect x="510" y="360" width="310" height="70" rx="6" fill="#dcfce7"/>
+  <text x="530" y="380" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#15803d">系统："您之前有个登录页草稿（蓝色+微信登录）"</text>
+  <text x="530" y="400" font-family="Microsoft YaHei, sans-serif" font-size="10" fill="#15803d">"要继续那个还是重新做？"</text>
+  
+  <rect x="580" y="410" width="90" height="25" rx="4" fill="#10b981"/>
+  <text x="625" y="427" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">继续之前的</text>
+  <rect x="680" y="410" width="90" height="25" rx="4" fill="#3b82f6"/>
+  <text x="725" y="427" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="9" fill="white">重新做一个</text>
+  
+  <!-- 底部设计原则 -->
+  <rect x="50" y="475" width="800" height="55" rx="10" fill="#1e293b"/>
+  <text x="450" y="500" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" fill="white">设计原则：不丢弃用户的任何努力，哪怕他自己说"算了"</text>
+  <text x="450" y="520" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="11" fill="#94a3b8">用户的"算了"可能只是一时的想法，系统要帮他留后路</text>
+</svg>
