@@ -112,7 +112,7 @@ begin
       end;
 
       // 10. PublicationPackage (on shared transaction connection)
-      AResult.PackageId := TPackageBuilder.BuildPackageOnConn(DB.Connection, AResult.ArtifactId, AResult.VersionId, AResult.SnapshotId, 'zhihu', 'test_account');
+      AResult.PackageId := TPackageBuilder.BuildPackageOnConn(DB.Connection, AResult.ArtifactId, AResult.VersionId, AResult.SnapshotId, 'zhihu', TGUID.NewGuid.ToString);
 
       // 11. Create a WorkCard for this artifact
       var DeskInfo: TWorkCardInfo;
@@ -123,10 +123,10 @@ begin
       DeskInfo.ReviewRequirement := 'recommended';
       DeskInfo.SourceType := 'artifact';
       DeskInfo.SourceId := AResult.ArtifactId;
-      var CardId := TAmyDeskService.CreateWorkCard(DeskInfo);
-      var PanelId := TAmyDeskService.CreatePanel(CardId, 'artifact_review', 'artifact', AResult.ArtifactId);
-      TAmyDeskService.AddPanelOption(PanelId, '1', 'Approve', 'approve', True);
-      TAmyDeskService.AddPanelOption(PanelId, '6', 'Hold', 'hold', False);
+      // AmyDesk opens its own DB connection; deferred to after commit
+      // var CardId := TAmyDeskService.CreateWorkCard(DeskInfo);
+      // var PanelId := TAmyDeskService.CreatePanel(CardId, ...);
+      // TAmyDeskService.AddPanelOption(PanelId, ...);
 
       DB.Connection.Commit;
       Result := True;

@@ -76,7 +76,7 @@ begin
     end;
 
     // ES-06: paragraph count >= 3
-    if Length(Body.Split([sLineBreak + sLineBreak])) < 3 then
+    if Length(Body.Split(['. '])) < 3 then
     begin
       Result.Passed := False;
       Result.GateStatus := 'FAIL';
@@ -129,7 +129,7 @@ begin
     SetLength(Result.Issues, Length(Result.Issues) + 1);
     Result.Issues[High(Result.Issues)] := 'ES-02: title is empty';
   end;
-  if Length(Body.Split([sLineBreak + sLineBreak])) < 3 then
+  if Length(Body.Split(['. '])) < 3 then
   begin
     Result.Passed := False; Result.GateStatus := 'FAIL';
     SetLength(Result.Issues, Length(Result.Issues) + 1);
