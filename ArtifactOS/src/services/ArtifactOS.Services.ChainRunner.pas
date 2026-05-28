@@ -148,12 +148,13 @@ begin
   try
     DB.Connection.StartTransaction;
     try
+      // Cleanup in reverse dependency order
       DB.Execute('DELETE FROM artifactos.publication_package WHERE id=''' + AResult.PackageId + '''');
       DB.Execute('DELETE FROM artifactos.quality_snapshot WHERE id=''' + AResult.SnapshotId + '''');
       DB.Execute('DELETE FROM artifactos.quality_run WHERE id=''' + AResult.RunId + '''');
       DB.Execute('DELETE FROM artifactos.artifact_version WHERE id=''' + AResult.VersionId + '''');
       DB.Execute('DELETE FROM artifactos.artifact WHERE id=''' + AResult.ArtifactId + '''');
-      DB.Execute('DELETE FROM artifactos.sub_studio WHERE studio_id=''' + AResult.StudioId + '''');
+      DB.Execute('DELETE FROM artifactos.sub_studio WHERE id = (SELECT id FROM artifactos.sub_studio WHERE artifact_plan_id = (SELECT id FROM artifactos.artifact_plan WHERE studio_id = ''' + AResult.StudioId + '''))');
       DB.Execute('DELETE FROM artifactos.artifact_plan WHERE studio_id=''' + AResult.StudioId + '''');
       DB.Execute('DELETE FROM artifactos.studio WHERE id=''' + AResult.StudioId + '''');
       DB.Execute('DELETE FROM artifactos.case_record WHERE id=''' + AResult.CaseId + '''');

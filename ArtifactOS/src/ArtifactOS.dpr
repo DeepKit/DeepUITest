@@ -73,13 +73,13 @@ begin
           try
             WriteLn;
             WriteLn('Verification:');
-            WriteLn('  Artifact:          ', ArtifactOS_DB.ExecuteScalarJson('SELECT status FROM artifactos.artifact WHERE id=:id::uuid',
-              '{"id":"' + R.ArtifactId + '"}'));
-            WriteLn('  Quality:           ', ArtifactOS_DB.ExecuteScalarJson('SELECT qualified_status FROM artifactos.quality_snapshot WHERE id=:id::uuid',
-              '{"id":"' + R.SnapshotId + '"}'));
-            WriteLn('  Package:           ', ArtifactOS_DB.ExecuteScalarJson('SELECT status FROM artifactos.publication_package WHERE id=:id::uuid',
-              '{"id":"' + R.PackageId + '"}'));
-            WriteLn('  RealPublishGate:   ', ArtifactOS_DB.ExecuteScalar('SELECT gate_status::text FROM artifactos.check_real_publish_gate()'));
+            WriteLn('  Artifact:          ', ArtifactOS_DB.ExecuteScalar('SELECT status FROM artifactos.artifact WHERE id=''' + R.ArtifactId + ''''));
+            WriteLn('  Quality:           ', ArtifactOS_DB.ExecuteScalar('SELECT qualified_status FROM artifactos.quality_snapshot WHERE id=''' + R.SnapshotId + ''''));
+            WriteLn('  Package:           ', ArtifactOS_DB.ExecuteScalar('SELECT status FROM artifactos.publication_package WHERE id=''' + R.PackageId + ''''));
+            WriteLn('  RealPublishGate:   ', ArtifactOS_DB.ExecuteScalarJson('SELECT (artifactos.check_real_publish_gate() ->> ''gate_status'')::text', ''));
+            WriteLn('  State machine:     ', ArtifactOS_DB.ExecuteScalar('SELECT COUNT(*)::text FROM artifactos.substudio_execution_task'), ' tasks');
+            WriteLn('  Event ledger:      ', ArtifactOS_DB.ExecuteScalar('SELECT COUNT(*)::text FROM artifactos.event_ledger'), ' entries');
+            WriteLn('  RealPublishGate:   ', ArtifactOS_DB.ExecuteScalarJson('SELECT (artifactos.check_real_publish_gate() ->> ''gate_status'')::text', ''));
             WriteLn('  State machine:     ', ArtifactOS_DB.ExecuteScalar('SELECT COUNT(*)::text FROM artifactos.substudio_execution_task'), ' tasks');
             WriteLn('  Event ledger:      ', ArtifactOS_DB.ExecuteScalar('SELECT COUNT(*)::text FROM artifactos.event_ledger'), ' entries');
           finally
