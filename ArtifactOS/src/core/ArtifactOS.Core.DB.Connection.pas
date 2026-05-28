@@ -3,10 +3,11 @@ unit ArtifactOS.Core.DB.Connection;
 interface
 
 uses
-  System.SysUtils, System.SyncObjs,
+  System.SysUtils, System.SyncObjs, System.Variants,
   FireDAC.Comp.Client,
-  FireDAC.Stan.Error,
-  DeepBase.Config;
+  FireDAC.Comp.DataSet,
+  DeepBase.Config,
+  DeepBase.DB.DoQry;
 
 type
   TArtifactDB = class
@@ -22,13 +23,14 @@ type
     procedure Disconnect;
     function IsConnected: Boolean;
     function Query(const ASQL: string): TFDQuery;
-    function QueryP(const ASQL: string; const AParams: array of const): TFDQuery;
+    function QueryJson(const ASQL, AParamsJson: string): TFDMemTable;
     function Execute(const ASQL: string): Integer;
-    function ExecuteP(const ASQL: string; const AParams: array of const): Integer;
+    function ExecuteJson(const ASQL, AParamsJson: string): Integer;
     function ExecuteScalar(const ASQL: string): string;
-    function ExecuteScalarP(const ASQL: string; const AParams: array of const): string;
+    function ExecuteScalarJson(const ASQL, AParamsJson: string): string;
     function InsertAndReturnId(const ASQL: string): string;
-    function InsertAndReturnIdP(const ASQL: string; const AParams: array of const): string;
+    function InsertAndReturnIdJson(const ASQL, AParamsJson: string): string;
+    function Context(const ATimeoutSec: Integer = 30): TUniQueryContext;
     function ConnectLocked: Boolean;
     procedure DisconnectLocked;
     property Connection: TFDConnection read FConnection;
@@ -41,7 +43,7 @@ function ArtifactOS_DB: TArtifactDB;
 implementation
 
 uses
-  DeepBase.DB.PostgreSQL,
+  DeepBase.Security,
   FireDAC.Stan.Def;
 
 var
@@ -80,11 +82,11 @@ var
   Host, Port, User, Pwd, Db: string;
 begin
   if IsConnected then Exit;
-  Host  := DeepBase.GetConfig('ArtifactOS.DB.Host',  '127.0.0.1');
-  Port  := DeepBase.GetConfig('ArtifactOS.DB.Port',  '5432');
-  User  := DeepBase.GetConfig('ArtifactOS.DB.User',  'fuyi01');
-  Pwd   := DeepBase.GetConfig('ArtifactOS.DB.Pass',  '');
-  Db    := DeepBase.GetConfig('ArtifactOS.DB.Name',  FDatabaseName);
+  Host  := GetConfig('ArtifactOS.DB.Host',  '127.0.0.1');
+  Port  := GetConfig('ArtifactOS.DB.Port',  '5432');
+  User  := GetConfig('ArtifactOS.DB.User',  '');
+  Pwd   := LoadSecret('ArtifactOS.DB.Pass');
+  Db    := GetConfig('ArtifactOS.DB.Name',  FDatabaseName);
 
   FConnection.DriverName := 'PG';
   FConnection.Params.Values['Server']   := Host;
@@ -141,120 +143,62 @@ begin
   end;
 end;
 
-function TArtifactDB.Execute(const ASQL: string): Integer;
+function TArtifactDB.Context(const ATimeoutSec: Integer): TUniQueryContext;
 begin
-  FLock.Enter;
-  try
-    Result := FConnection.ExecSQL(ASQL);
-  finally
-    FLock.Leave;
-  end;
+  Connect;
+  Result := UniDbMakeContext(FConnection, udbPostgreSQL, ATimeoutSec, UniDbNewCorrelationId);
 end;
 
-function TArtifactDB.ExecuteScalar(const ASQL: string): string;
-var
-  Qry: TFDQuery;
+function TArtifactDB.QueryJson(const ASQL, AParamsJson: string): TFDMemTable;
 begin
-  Qry := Query(ASQL);
+  Result := TFDMemTable.Create(nil);
   try
-    if Qry.IsEmpty or Qry.Fields[0].IsNull then
-      Result := ''
-    else
-      Result := Qry.Fields[0].AsString;
-  finally
-    Qry.Free;
-  end;
-end;
-
-function TArtifactDB.InsertAndReturnId(const ASQL: string): string;
-var
-  Q: TFDQuery;
-begin
-  Q := Query(ASQL);
-  try
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
-end;
-
-function TArtifactDB.QueryP(const ASQL: string; const AParams: array of const): TFDQuery;
-var
-  I: Integer;
-begin
-  Result := TFDQuery.Create(nil);
-  try
-    Result.Connection := FConnection;
-    Result.SQL.Text := ASQL;
-    for I := 0 to High(AParams) do
-      Result.Params[I].Value := TVarRec(AParams[I]).VInteger;
-    Result.Open;
+    UniDbSelect(ASQL, AParamsJson, Result, Context);
   except
     Result.Free;
     raise;
   end;
 end;
 
-function TArtifactDB.ExecuteP(const ASQL: string; const AParams: array of const): Integer;
-var
-  I: Integer;
-  Q: TFDQuery;
+function TArtifactDB.Execute(const ASQL: string): Integer;
+begin
+  Result := ExecuteJson(ASQL, '');
+end;
+
+function TArtifactDB.ExecuteJson(const ASQL, AParamsJson: string): Integer;
 begin
   FLock.Enter;
   try
-    Q := TFDQuery.Create(nil);
-    try
-      Q.Connection := FConnection;
-      Q.SQL.Text := ASQL;
-      for I := 0 to High(AParams) do
-        Q.Params[I].Value := TVarRec(AParams[I]).VInteger;
-      Q.ExecSQL;
-      Result := Q.RowsAffected;
-    finally
-      Q.Free;
-    end;
+    Result := UniDbExec(ASQL, AParamsJson, Context);
   finally
     FLock.Leave;
   end;
 end;
 
-function TArtifactDB.ExecuteScalarP(const ASQL: string; const AParams: array of const): string;
-var
-  Q: TFDQuery;
-  I: Integer;
+function TArtifactDB.ExecuteScalar(const ASQL: string): string;
 begin
-  Q := TFDQuery.Create(nil);
-  try
-    Q.Connection := FConnection;
-    Q.SQL.Text := ASQL;
-    for I := 0 to High(AParams) do
-      Q.Params[I].Value := TVarRec(AParams[I]).VInteger;
-    Q.Open;
-    if Q.IsEmpty or Q.Fields[0].IsNull then
-      Result := ''
-    else
-      Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  Result := ExecuteScalarJson(ASQL, '');
 end;
 
-function TArtifactDB.InsertAndReturnIdP(const ASQL: string; const AParams: array of const): string;
+function TArtifactDB.ExecuteScalarJson(const ASQL, AParamsJson: string): string;
 var
-  Q: TFDQuery;
-  I: Integer;
+  V: Variant;
 begin
-  Q := TFDQuery.Create(nil);
-  try
-    Q.Connection := FConnection;
-    Q.SQL.Text := ASQL;
-    for I := 0 to High(AParams) do
-      Q.Params[I].Value := TVarRec(AParams[I]).VInteger;
-    Q.Open;
-    Result := Q.Fields[0].AsString;
-  finally
-    Q.Free;
-  end;
+  V := UniDbScalar(ASQL, AParamsJson, Context);
+  if VarIsNull(V) or VarIsEmpty(V) then
+    Result := ''
+  else
+    Result := VarToStr(V);
+end;
+
+function TArtifactDB.InsertAndReturnId(const ASQL: string): string;
+begin
+  Result := InsertAndReturnIdJson(ASQL, '');
+end;
+
+function TArtifactDB.InsertAndReturnIdJson(const ASQL, AParamsJson: string): string;
+begin
+  Result := ExecuteScalarJson(ASQL, AParamsJson);
 end;
 
 initialization

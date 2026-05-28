@@ -60,19 +60,19 @@ begin
   return result;
 end $$;
 
--- 4. Guard trigger: publication_package must pass RealPublishGate before queued/submitting
+-- 4. Guard trigger: publication_package must pass RealPublishGate before queued/submitting/published
 create or replace function artifactos.fn_guard_publish_requires_gate()
 returns trigger language plpgsql as $$
 declare
   g text;
 begin
-  if new.status in ('queued', 'submitting') and new.run_mode = 'real' then
+  if new.status in ('queued', 'submitting', 'published') and new.run_mode = 'real' then
     select gate_status into g
     from artifactos.real_publish_gate_run
     where publication_package_id = new.id
     order by created_at desc limit 1;
     if g is null or g != 'passed' then
-      raise exception 'publication_package cannot enter queued/submitting without a passed RealPublishGateRun';
+      raise exception 'publication_package cannot enter queued/submitting/published without a passed RealPublishGateRun';
     end if;
   end if;
   return new;

@@ -75,7 +75,7 @@ begin
     end;
 
     // ES-06: paragraph count >= 3
-    if Body.Split(['\n\n']).Length < 3 then
+    if Length(Body.Split([sLineBreak + sLineBreak])) < 3 then
     begin
       Result.Passed := False;
       Result.GateStatus := 'FAIL';

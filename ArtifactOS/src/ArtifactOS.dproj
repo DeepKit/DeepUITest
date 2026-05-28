@@ -4,13 +4,15 @@
     <ProjectVersion>19.0</ProjectVersion>
     <MainSource>ArtifactOS.dpr</MainSource>
     <Config Condition="'$(Config)'==''">Debug</Config>
-    <DCC_DcuOutput>.\dcu\$(Config)</DCC_DcuOutput>
-    <DCC_ExeOutput>.\bin\$(Config)</DCC_ExeOutput>
-    <DCC_UnitSearchPath>..\DeepBase\Core;..\DeepBase\Persistence;..\DeepBase\ThirdParty\DB;..\DeepBase\Governance;src\core;src\services</DCC_UnitSearchPath>
-    <DCC_Namespace>System;System.SysUtils;System.Classes;System.Generics.Collections;FireDAC;FireDAC.Comp.Client;FireDAC.Stan.Def;DeepBase;DeepBase.Config;DeepBase.Manager;DeepBase.Persistence.Manager.FireDAC;DeepBase.DB.PostgreSQL</DCC_Namespace>
-    <DCC_Define>DEBUG;ARTIFACTOS_PHASE1A;ARTIFACTOS_SHADOW_ONLY</DCC_Define>
+    <Platform Condition="'$(Platform)'==''">Win64</Platform>
     <SanitizedProjectName>ArtifactOS</SanitizedProjectName>
     <DCC_Platform>Win64</DCC_Platform>
-    <DCC_UsePackage>DeepBaseCore;DeepBasePersistence;DeepBaseGovernance</DCC_UsePackage>
+    <DCC_DcuOutput>..\dcu\$(Platform)\$(Config)</DCC_DcuOutput>
+    <DCC_ExeOutput>..\bin\$(Platform)\$(Config)</DCC_ExeOutput>
+    <DCC_UnitSearchPath>.;core;services;..\..\DeepBase\Core;..\..\DeepBase\Services;..\..\DeepBase\Persistence;..\..\DeepBase\ThirdParty\DB;..\..\DeepBase\Governance;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+    <DCC_Namespace>System;System.SysUtils;System.Classes;System.Generics.Collections;FireDAC;FireDAC.Comp.Client;FireDAC.Stan.Def;DeepBase;DeepBase.Config;DeepBase.Manager;DeepBase.Persistence.Manager.FireDAC;DeepBase.DB.DoQry;DeepBase.Security</DCC_Namespace>
+    <DCC_Define>DEBUG;ARTIFACTOS_PHASE1A;ARTIFACTOS_SHADOW_ONLY;$(DCC_Define)</DCC_Define>
+    <DCC_UsePackage>DeepBaseCore;DeepBaseServices;DeepBasePersistence;DeepBaseGovernance</DCC_UsePackage>
   </PropertyGroup>
+  <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')" />
 </Project>

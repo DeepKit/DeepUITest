@@ -9,11 +9,11 @@ uses
   DeepBase.Persistence.Manager.FireDAC,
   ArtifactOS.Core.DB.Connection,
   ArtifactOS.Core.Dashboard,
-  ArtifactOS.Core.ChainRunner;
+  ArtifactOS.Services.ChainRunner;
 
 begin
   try
-    DeepBase.InitializeOrRaise;
+    DeepBase.Manager.DeepBase.InitializeOrRaise;
     try
       WriteLn('ArtifactOS Phase 1A');
       WriteLn('==================');
@@ -68,7 +68,7 @@ begin
           WriteLn('Chain creation failed: ES gate rejected the content.');
       end;
     finally
-      DeepBase.Finalize;
+      DeepBase.Manager.DeepBase.Finalize;
     end;
   except
     on E: Exception do

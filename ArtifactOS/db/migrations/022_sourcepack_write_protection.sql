@@ -5,7 +5,10 @@
 
 begin;
 
--- 1. Guard: source_pack.allow_production may only be set via loading_decision
+alter table artifactos.source_pack
+add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+-- 1. Guard: source_pack mutations must be tied to human decision metadata
 create or replace function artifactos.fn_guard_source_pack_update()
 returns trigger language plpgsql as $$
 begin
@@ -14,13 +17,14 @@ begin
     return new;
   end if;
 
-  -- Block modification of display_name, source_root, pack_type unless
-  -- the caller has a valid human_decision_id in metadata
+  -- Block modification of display_name, source_root, pack_type, loading_level unless
+  -- the caller has a human_decision_id in metadata
   if new.display_name <> old.display_name
      or new.source_root <> old.source_root
-     or new.pack_type <> old.pack_type then
+     or new.pack_type <> old.pack_type
+     or new.loading_level <> old.loading_level then
     if new.metadata->>'human_decision_id' is null then
-      raise exception 'SourcePack core fields (display_name/source_root/pack_type) may only be modified via human decision. Set metadata.human_decision_id.';
+      raise exception 'SourcePack core fields (display_name/source_root/pack_type/loading_level) may only be modified via human decision. Set metadata.human_decision_id.';
     end if;
   end if;
 

@@ -82,7 +82,9 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.shadow_run SET status=''aborted'', final_report_payload=''{"abort_reason":"' + AReason + '"}"' WHERE id=''' + ARunId + '''');
+    DB.ExecuteJson(
+      'UPDATE artifactos.shadow_run SET status=:status, final_report_payload=:payload::jsonb WHERE id=:id',
+      Format('{"status":"aborted","payload":{"abort_reason":"%s"},"id":"%s"}', [AReason, ARunId]));
     Result := ARunId;
   finally
     DB.Disconnect;

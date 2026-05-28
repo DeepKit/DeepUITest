@@ -5,7 +5,7 @@ interface
 uses
   System.SysUtils, System.Generics.Collections,
   ArtifactOS.Core.DB.Connection,
-  ArtifactOS.Core.ChainRunner,
+  ArtifactOS.Services.ChainRunner,
   ArtifactOS.Services.QualityGate,
   ArtifactOS.Services.PackageBuilder,
   ArtifactOS.Services.Notification,

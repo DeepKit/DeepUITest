@@ -30,7 +30,11 @@ do $$
 declare
   sp_id uuid;
 begin
-  select id into sp_id from artifactos.source_pack limit 1;
+  select id into sp_id from artifactos.source_pack order by created_at limit 1;
+  if sp_id is null then
+    raise notice 'skip source_core_file seed: no source_pack found';
+    return;
+  end if;
 
   -- Governance files (7)
   insert into artifactos.source_core_file (source_pack_id, file_path, source_layer, claim_strength)
