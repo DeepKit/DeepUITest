@@ -1,5 +1,5 @@
 -- ArtifactOS SubStudioExecutionTask Phase 1A draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- This is the three-axis state machine engine referenced in docs/06.
 -- FK to sub_studio, artifact_plan, strategy_unit relaxed for Phase 1A.
 

@@ -1,5 +1,5 @@
 -- ArtifactOS artifact + artifact_version + artifact_part Phase 1A draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- FK to sub_studio, artifact_plan, blueprint relaxed for Phase 1A.
 
 begin;

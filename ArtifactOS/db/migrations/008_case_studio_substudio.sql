@@ -1,5 +1,5 @@
 -- ArtifactOS case_record + studio + sub_studio Phase 1A draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- Self-referencing FK (parent_case_id, root_case_id) relaxed for Phase 1A.
 -- Phase 1A defaults: single tenant_id placeholder, single default case.
 

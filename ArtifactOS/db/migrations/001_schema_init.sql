@@ -1,5 +1,5 @@
 -- ArtifactOS Phase 1A schema initialization draft
--- Target: artifactos_test first, then progee_db after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- This file is a draft and has not been executed by Claude.
 
 begin;

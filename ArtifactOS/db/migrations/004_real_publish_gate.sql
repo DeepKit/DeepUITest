@@ -1,5 +1,5 @@
 -- ArtifactOS RealPublishGate Phase 1A draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- This file is a draft and has not been executed by Claude.
 
 begin;

@@ -11,7 +11,7 @@ first_operational_surface:
   audience_stage_scope: [S1, S2, S3]
   theory_visibility: medium
   database:
-    main: progee_db
+    main: artifactos
     test: artifactos_test
     schemas: [artifactos, media_publish, legacy_bridge]
   safety:

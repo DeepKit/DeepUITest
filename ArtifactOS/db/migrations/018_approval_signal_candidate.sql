@@ -1,5 +1,5 @@
 -- ArtifactOS ApprovalRecord + SignalEvent + SignalInterpretation + CandidateProposal Phase 1A
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 
 begin;
 

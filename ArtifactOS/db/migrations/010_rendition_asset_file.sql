@@ -1,5 +1,5 @@
 -- ArtifactOS rendition + asset_file Phase 1A draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- publication_package was created in 006 with relaxed FK; this migration
 -- hardens it by adding FK references to artifact, artifact_version, rendition,
 -- and quality_snapshot (when they exist).

@@ -1,5 +1,5 @@
 -- ArtifactOS state_transition_rule seed Phase 1A draft
--- Target:  artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- Rules define valid transitions for the three-axis state machine (docs/06).
 -- NOT all rules from docs/06 are seeded here — only the Phase 1A minimum set.
 

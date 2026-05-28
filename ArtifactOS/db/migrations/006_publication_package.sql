@@ -1,5 +1,5 @@
 -- ArtifactOS PublicationPackage Phase 1A minimal draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- Note: FK references to artifact, artifact_version, rendering are relaxed
 --       and will be hardened in subsequent migrations.
 

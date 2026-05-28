@@ -1,5 +1,5 @@
 -- ArtifactOS ArtifactBlueprint seed Phase 1A
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- Defines the three canonical blueprints: Zhihu longform, WeChat article, Xiaohongshu note.
 -- Blueprint FK references are intentionally loose for Phase 1A.
 

@@ -1,5 +1,5 @@
 -- ArtifactOS case_snapshot + meeting_protocol + meeting_record Phase 1A draft
--- Target: artifactos_test first, then progee_db.artifactos after review.
+-- Target: artifactos_test first, then artifactos production after review.
 -- FK to case_record references are fully bound (case_record was created in 008).
 
 begin;
