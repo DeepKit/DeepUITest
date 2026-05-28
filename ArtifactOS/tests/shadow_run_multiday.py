@@ -10,7 +10,7 @@ import psycopg2, sys, time, json, uuid, hashlib, os
 from datetime import date, timedelta, datetime
 from pathlib import Path
 
-CONN = "host=127.0.0.1 port=5432 dbname=artifactos_test user=fuyi01 password=a29806588-run"
+CONN = f"host={os.environ.get('ARTIFACTOS_DB_HOST','127.0.0.1')} port={os.environ.get('ARTIFACTOS_DB_PORT','5432')} dbname={os.environ.get('ARTIFACTOS_DB_NAME','artifactos_test')} user={os.environ.get('ARTIFACTOS_DB_USER','fuyi01')} password={os.environ.get('ARTIFACTOS_DB_PASS','')}"
 
 def main():
     conn = psycopg2.connect(CONN)

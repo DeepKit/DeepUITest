@@ -66,7 +66,7 @@ returns trigger language plpgsql as $$
 declare
   g text;
 begin
-  if new.status in ('queued', 'submitting') then
+  if new.status in ('queued', 'submitting') and new.run_mode = 'real' then
     select gate_status into g
     from artifactos.real_publish_gate_run
     where publication_package_id = new.id
@@ -77,5 +77,11 @@ begin
   end if;
   return new;
 end $$;
+
+drop trigger if exists trg_real_publish_gate_required on artifactos.publication_package;
+create trigger trg_real_publish_gate_required
+before insert or update on artifactos.publication_package
+for each row
+execute function artifactos.fn_guard_publish_requires_gate();
 
 commit;

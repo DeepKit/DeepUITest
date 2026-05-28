@@ -8,10 +8,14 @@ Exercises the full chain against artifactos_test:
 No real publishing.  All test data cleaned up after run.
 """
 
-import psycopg2, sys, time, json, uuid, hashlib
+import psycopg2, sys, time, json, uuid, hashlib, os
 
-DB = 'artifactos_test'
-CONN = f"host=127.0.0.1 port=5432 dbname={DB} user=fuyi01 password=a29806588-run"
+DB = os.environ.get('ARTIFACTOS_DB_NAME', 'artifactos_test')
+DB_USER = os.environ.get('ARTIFACTOS_DB_USER', 'fuyi01')
+DB_PASS = os.environ.get('ARTIFACTOS_DB_PASS', '')
+DB_HOST = os.environ.get('ARTIFACTOS_DB_HOST', '127.0.0.1')
+DB_PORT = os.environ.get('ARTIFACTOS_DB_PORT', '5432')
+CONN = f"host={DB_HOST} port={DB_PORT} dbname={DB} user={DB_USER} password={DB_PASS}"
 
 def main():
     passed = 0

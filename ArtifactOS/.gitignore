@@ -1,0 +1,22 @@
+# ArtifactOS .gitignore
+.env
+*.dcu
+*.exe
+*.dll
+*.bpl
+*.dcp
+*.dsk
+*.local
+*.identcache
+*.otares
+*.rsm
+__history/
+__recovery/
+Win64/
+Win32/
+bin/
+dcu/
+*.db-shm
+*.db-wal
+node_modules/
+.claude/

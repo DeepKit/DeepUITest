@@ -6,11 +6,11 @@ a comprehensive ShadowRunReviewReport, validating against
 the acceptance checklist in config/phase1a/shadow_run_7d_checklist.md.
 """
 
-import psycopg2, json, sys
+import psycopg2, json, sys, os
 from datetime import date
 from collections import Counter
 
-CONN = "host=127.0.0.1 port=5432 dbname=artifactos_test user=fuyi01 password=a29806588-run"
+CONN = f"host={os.environ.get('ARTIFACTOS_DB_HOST','127.0.0.1')} port={os.environ.get('ARTIFACTOS_DB_PORT','5432')} dbname={os.environ.get('ARTIFACTOS_DB_NAME','artifactos_test')} user={os.environ.get('ARTIFACTOS_DB_USER','fuyi01')} password={os.environ.get('ARTIFACTOS_DB_PASS','')}"
 
 def main():
     conn = psycopg2.connect(CONN)
