@@ -57,6 +57,7 @@ button {{ background:#2563eb; color:white; border:0; border-radius:8px; padding:
 <a href="/amy/today">Today</a>
 <a href="/amy/week">Week</a>
 <a href="/amy/verify">Verify</a>
+<a href="/amy/accounts">Accounts</a>
 <a href="/amy/run">7-Day Run</a>
 </div>
 <h1>{html.escape(title)}</h1>
@@ -152,6 +153,50 @@ def verify_queue():
         body += f"<tr><td><a href='/amy/package?id={pid}'>{html.escape(title or str(pid))}</a></td><td>{status}</td><td>{verify}</td><td><form method='post' action='/amy/verify?id={pid}'><button>Verify</button></form></td></tr>"
     body += '</table></div>'
     return page("Published Verification Queue", body)
+
+
+def accounts():
+    rows = q(
+        """
+        SELECT pp.platform,
+               coalesce(pp.metadata->>'account_id', pp.account_id::text, 'unknown') as account_id,
+               count(*) as packages,
+               max(pp.created_at) as last_seen,
+               count(*) filter (where pp.status in ('queued','submitting','submitted')) as active_tasks,
+               count(*) filter (where pp.publish_verification_status='published_confirmed') as confirmed,
+               count(*) filter (where pp.publish_verification_status in ('verify_unknown','failed')) as needs_attention
+        FROM artifactos.publication_package pp
+        GROUP BY 1, 2
+        ORDER BY last_seen DESC
+        """
+    )
+    body = """
+<div class="card">
+<p class="small">硬规则：一个浏览器 = 一个平台 + 一个账号。禁止同一 browser/profile 跨平台切换。</p>
+<table><tr><th>Platform</th><th>Account</th><th>Session Key</th><th>Runtime State</th><th>Packages</th><th>Confirmed</th><th>Needs Attention</th><th>Last Seen</th></tr>
+"""
+    for platform, account_id, packages, last_seen, active, confirmed, needs_attention in rows:
+        if active:
+            state = '<span class="warn">busy</span>'
+        elif needs_attention:
+            state = '<span class="bad">needs_review</span>'
+        else:
+            state = '<span class="ok">ready_or_idle</span>'
+        session_key = f"{platform}/{account_id}"
+        body += f"<tr><td>{html.escape(platform or '')}</td><td>{html.escape(account_id or '')}</td><td>{html.escape(session_key)}</td><td>{state}</td><td>{packages}</td><td>{confirmed}</td><td>{needs_attention}</td><td>{last_seen}</td></tr>"
+    body += "</table></div>"
+    body += """
+<div class="card">
+<h2>Runtime actions planned</h2>
+<ul>
+<li>启动/显示某个 platform+account 浏览器</li>
+<li>截图当前页面并写入证据</li>
+<li>检查登录态 / 风控 / 验证码</li>
+<li>只关闭指定 platform+account 浏览器，不影响同账号其他平台</li>
+</ul>
+</div>
+"""
+    return page("Platform Account Browser Sessions", body)
 
 
 def week():
@@ -250,6 +295,8 @@ class Handler(BaseHTTPRequestHandler):
             data = week()
         elif path.path == '/amy/verify':
             data = verify_queue()
+        elif path.path == '/amy/accounts':
+            data = accounts()
         elif path.path == '/amy/run':
             data = run_board()
         elif path.path == '/amy/package':
