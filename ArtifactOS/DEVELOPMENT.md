@@ -140,7 +140,7 @@ export MEDIA_PUBLISH_RUNTIME_ROOT='D:/_Progs/.BetterCiv/tools/media_publish/.med
 db/migrations/
 ```
 
-当前迁移文件为 `001_schema_init.sql` 到 `027_publish_runtime_contract.sql`。开始任何数据库任务前，先确认目标库已经应用到对应迁移版本。
+当前迁移文件为 `001_schema_init.sql` 到 `028_artifactos_runtime_command.sql`。开始任何数据库任务前，先确认目标库已经应用到对应迁移版本。
 
 当前仓库还没有统一迁移 runner。临时执行方式应由负责人确认后再运行，例如按编号对 `artifactos_test` 应用 SQL。不要对 `artifactos` 正式库直接试跑新迁移。
 

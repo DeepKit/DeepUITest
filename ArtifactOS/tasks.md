@@ -59,6 +59,19 @@
 | 23 | 裁决：Phase 1A 表数 | pending |
 | 25 | 裁决："不做 MVP"条款修正 | pending |
 
+## P5 — Delphi Runtime Stack（进行中）
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 30 | 裁决：VCL Desk + Delphi Agent/Engine + PG 直连，不采用 FastAPI core backend | done |
+| 31 | 迁移：`028_artifactos_runtime_command.sql` 定义 runtime_instance / runtime_command / runtime_command_event | done |
+| 32 | 测试：runtime command contract 静态测试接入 `tests/run_all_tests.py` | done |
+| 33 | 待做：ArtifactOS.Core runtime contract Delphi units | pending |
+| 34 | 待做：ArtifactOS.Engine command claim / heartbeat / idle lifecycle | pending |
+| 35 | 待做：ArtifactOS.Desk DeepShell 骨架 | pending |
+| 36 | 待做：ArtifactOS.Agent Tray / Amy command launcher | pending |
+| 37 | 待做：AutoFix wiring + smoke scenarios | pending |
+
 ## 数据库落点
 
 ```text

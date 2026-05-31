@@ -43,7 +43,7 @@ DB_ENV = {
     "ARTIFACTOS_DB_PASS": os.environ.get("ARTIFACTOS_DB_PASS", ""),
 }
 
-MIGRATION_MIN = 27
+MIGRATION_MIN = 28
 
 
 class Report:
@@ -100,11 +100,14 @@ def check_files(report: Report) -> None:
         "docs/15.[交互]-Amy工作台-Amy-Desk.md",
         "docs/17.[交互]-前夜审阅与影子运行-Evening-Shadow.md",
         "docs/24.[数据]-数据库模型与治理-Database.md",
+        "docs/26.[技术]-技术选型与运行时架构-Stack-Decision.md",
+        "db/migrations/028_artifactos_runtime_command.sql",
         "config/phase1a/day0_dry_run_report.md",
         "config/phase1a/shadow_run_7d_checklist.md",
         "backend/amy_desk.py",
         "backend/diagnostics/publishing_runtime_bridge.py",
         "tests/run_all_tests.py",
+        "tests/test_runtime_command_contract.py",
     ]
     missing = [path for path in required if not _exists(path)]
     if missing:
@@ -182,6 +185,9 @@ def check_database(report: Report) -> None:
         checks = [
             ("artifactos.source_pack", "select count(*) from artifactos.source_pack"),
             ("artifactos.publication_package", "select count(*) from artifactos.publication_package"),
+            ("artifactos.runtime_instance", "select count(*) from artifactos.runtime_instance"),
+            ("artifactos.runtime_command", "select count(*) from artifactos.runtime_command"),
+            ("artifactos.runtime_command_event", "select count(*) from artifactos.runtime_command_event"),
             ("media_publish.runtime_command", "select count(*) from media_publish.runtime_command"),
             ("media_publish.platform_account_session", "select count(*) from media_publish.platform_account_session"),
             ("legacy_bridge.legacy_external_ref", "select count(*) from legacy_bridge.legacy_external_ref"),
