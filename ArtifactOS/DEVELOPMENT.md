@@ -72,6 +72,12 @@ python -m pip install -r requirements.txt
 ./build.bat --run
 ```
 
+应用迁移 `028_artifactos_runtime_command.sql` 并配置本机数据库后，可单独验证 Delphi runtime contract：
+
+```bash
+bin/Win64/Debug/ArtifactOS.exe --smoke-runtime
+```
+
 `build.bat` 会寻找：
 
 - `C:\Program Files (x86)\Embarcadero\Studio\37.0\bin64\dcc64.exe`

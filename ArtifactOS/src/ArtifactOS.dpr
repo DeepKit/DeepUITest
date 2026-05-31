@@ -25,6 +25,7 @@ uses
   DeepBase.Persistence.Manager.FireDAC,
   ArtifactOS.Core.DB.Connection,
   ArtifactOS.Core.Dashboard,
+  ArtifactOS.Core.Runtime.Smoke,
   ArtifactOS.Services.ChainRunner;
 
 begin
@@ -32,6 +33,22 @@ begin
     FDManager().SilentMode := True;
     DeepBase.Manager.DeepBase.InitializeOrRaise;
     try
+      if FindCmdLineSwitch('smoke-runtime', True) then
+      begin
+        var SmokeMessage: string;
+        if TRuntimeSmoke.Run(SmokeMessage) then
+        begin
+          WriteLn('Runtime smoke PASS: ', SmokeMessage);
+          ExitCode := 0;
+        end
+        else
+        begin
+          WriteLn('Runtime smoke FAIL: ', SmokeMessage);
+          ExitCode := 1;
+        end;
+        Exit;
+      end;
+
       WriteLn('ArtifactOS Phase 1A');
       WriteLn('==================');
       WriteLn;
