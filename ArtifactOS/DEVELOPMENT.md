@@ -7,6 +7,8 @@
 - ArtifactOS 不是 MVP 项目；当前目标是可发布、可追溯、可校正、可反哺的完整媒体产出物操作系统。
 - 真实发布由既有系统兜底；ArtifactOS 开发默认走 `shadow` / `simulation_only` / `manual-review`。
 - ArtifactOS 不直接控制浏览器会话；浏览器自动化属于 PublishingRuntime / media_publish。
+- 本版本不考虑 FastAPI core backend；正式 Desk、Agent、Engine 均为 Delphi 项目。
+- 所有 ArtifactOS 程序可以直接读写 PostgreSQL，但必须遵守 schema、command/status contract、RealPublishGate 和测试库隔离。
 - PostgreSQL 测试必须使用 `artifactos_test`，不要使用 `progee_db_test`。
 - 开发任务必须能被测试、脚本或清单验证；不能只完成文档级闭环。
 
@@ -21,6 +23,7 @@
 | `docs/02.[蓝图]-系统架构-Architecture.md` | 系统架构、media_publish 边界、PG 存储边界 |
 | `docs/03.[蓝图]-实施路线图-Roadmap.md` | Phase 1A 范围、开工顺序、运行模式 |
 | `docs/24.[数据]-数据库模型与治理-Database.md` | PostgreSQL schema、约束、迁移顺序 |
+| `docs/26.[技术]-技术选型与运行时架构-Stack-Decision.md` | VCL Desk、Delphi Engine/Agent、PG 直连、DeepBase 复用、AutoFix、Python 诊断层 |
 | `tasks.md` | 已完成任务和剩余产品裁决 |
 
 ### 按开发方向补读
@@ -45,11 +48,13 @@
 
 ### Python 依赖
 
-当前仓库没有统一依赖文件。测试和后端脚本至少需要：
+Python 依赖入口：
 
 ```bash
-python -m pip install psycopg2-binary
+python -m pip install -r requirements.txt
 ```
+
+当前至少包含 `psycopg2-binary`，用于连接 PostgreSQL。
 
 如果需要运行 media_publish 相关检查，还需要在 media_publish 项目自身环境中安装它的依赖，包括 Playwright / browser runtime；具体以 `D:\_Progs\.BetterCiv\tools\media_publish` 项目为准。
 
@@ -100,7 +105,13 @@ ArtifactOS 与 PublishingRuntime 共享同一个 PostgreSQL 实例，但通过 s
 
 ### 连接环境变量
 
-Python 脚本默认读取：
+复制模板后填写本机值：
+
+```bash
+cp .env.example .env
+```
+
+Python readiness 脚本会自动读取 `.env`，其它命令也可以在 Windows bash 会话中使用 `export` 覆盖：
 
 ```bash
 export ARTIFACTOS_DB_HOST=127.0.0.1
@@ -110,7 +121,16 @@ export ARTIFACTOS_DB_USER=fuyi01
 export ARTIFACTOS_DB_PASS=''
 ```
 
-Windows bash 会话中也使用上面的 `export` 形式。不要把真实密码提交进仓库。
+可选本机路径变量：
+
+```bash
+export DELPHI_DCC64='D:/Program Files (x86)/Embarcadero/Studio/37.0/bin64/dcc64.exe'
+export DEEPBASE_ROOT='../../DeepBase'
+export MEDIA_PUBLISH_ROOT='D:/_Progs/.BetterCiv/tools/media_publish'
+export MEDIA_PUBLISH_RUNTIME_ROOT='D:/_Progs/.BetterCiv/tools/media_publish/.media_publish'
+```
+
+不要把真实密码、cookie、浏览器 profile 或本机私有路径提交进仓库。
 
 ### 迁移文件
 
@@ -156,7 +176,18 @@ python tests/shadow_run_multiday.py
 python tests/shadow_run_review_report.py
 ```
 
-### Delphi 测试
+### Delphi / AutoFix 测试
+
+DeepBase AutoFix 需要接入所有相关 Delphi 项目：
+
+```text
+ArtifactOS.Desk
+ArtifactOS.Agent
+ArtifactOS.Engine
+ArtifactOSTests
+```
+
+AutoFix boundary 默认只允许修改 ArtifactOS 源码，不允许自动修改 DeepBase、数据库迁移或发布运行数据。每个可执行项目至少应注册 smoke scenario；Desk / Agent 使用 VCL hook，Engine / Tests 使用适合自身类型的 scenario runner。
 
 Delphi DUnitX 入口：
 
@@ -233,33 +264,55 @@ D:\_Progs\.BetterCiv\tools\media_publish
 
 ## 6. Amy Desk / 工作台准备
 
-当前实现：
+正式 Amy Desk 使用 Delphi VCL + DeepBase DeepShell。目标主窗体继承 `TDeepMainForm`，通过 Service / Command / Provider 注入业务能力，不从空 `TForm` 重复搭主界面基础设施。
+
+当前 Python 页面：
 
 ```text
 backend/amy_desk.py
 ```
 
-它是 Python 服务端渲染 HTML 的最小工作台，不是 React/Vue 项目。开始 UI 任务前确认：
+保留为诊断页面，不作为正式主前端，不承载正式 Amy Desk 主交互。
 
-- [ ] 是否继续使用服务端渲染 HTML。
-- [ ] 如需交互，是用 vanilla JS、HTMX/Alpine，还是维持纯 HTML 表单。
-- [ ] 所有状态变更是否只写入 ArtifactOS / media_publish 的契约表。
-- [ ] 是否需要 PublishingRuntime 回写 `platform_account_session` 后才能验收。
-- [ ] 手机/桌面视图是否都要满足 `docs/15` 和 `docs/17`。
+Desk / Agent / Engine 的目标拆分：
+
+```text
+ArtifactOS.Desk   VCL DeepShell 主前端，人工启动 Engine
+ArtifactOS.Agent  轻量 Tray/Agent，Desk 未打开时接 Amy 命令并启动 Engine
+ArtifactOS.Engine Delphi 按需启动后端，活跃期间保持运行
+ArtifactOS.Core   共享类型、PG contract helper、DB adapter、服务接口
+```
+
+所有程序可以直接读写 PostgreSQL，但必须遵守契约：
+
+- Desk 可读状态、写人工 command / review signal。
+- Agent 可读 pending command、写启动状态。
+- Engine 可 claim command、写执行状态和事件账本。
+- PublishingRuntime 回写平台会话和发布结果。
+- 高风险发布动作仍必须经过 RealPublishGate 和人工授权语义。
+
+开始 Desk 任务前确认：
+
+- [ ] 已阅读 DeepBase `docs/70.vcl.DeepShell-总览与AI入口.md` 到 `docs/78.vcl.DeepShell-验收清单.md`。
+- [ ] 主窗体从 `TDeepMainForm` 起步。
+- [ ] 业务 UI 通过 Provider 注入。
+- [ ] Command 声明风险和门禁语义。
+- [ ] 长耗时任务不在 UI 线程同步执行。
+- [ ] Python `backend/amy_desk.py` 只作为诊断页面维护。
 
 可立即做的小任务：
 
-- Today Desk 页面增加只读状态信息。
-- Accounts 页面展示更多 `platform_account_session` 字段。
-- DailyReport / EveningWorkPage 的静态详情页。
-- 将不可操作原因显示为明确的人类可读状态。
+- 设计 Desk / Agent / Engine / Core 分项目目录和 `.dproj`。
+- 设计 Today / Accounts / Verify / 7-Day Run / Readiness / Engine Control Provider。
+- 定义 Desk/Agent 启动 Engine 的状态和 heartbeat。
+- 为 Python 诊断页增加“diagnostic only”提示。
 
-需要先裁决或补契约的任务：
+需要先补契约的任务：
 
-- 十键规则按钮的真实状态变更。
-- WebSocket / 实时轮询。
-- 发布命令的跨平台执行。
-- DailyReportDetailView 的最终渲染协议。
+- Engine command claim / lease / heartbeat / idle lifecycle。
+- Agent 接 Amy 命令后的启动流程。
+- 十键规则按钮对应的 PG command / review signal。
+- DailyReportDetailView 的 VCL Provider 协议。
 
 ## 7. 可立即认领的任务
 
@@ -309,11 +362,21 @@ backend/amy_desk.py
 | 影子运行 vs 平行运行 | 影响 Day1-Day7 验收、发布状态、真实平台动作边界 |
 | Phase 1A 表数 | 影响迁移收敛、表设计、schema hardening |
 | “不做 MVP”条款修正 | 影响范围表达和发布前可用性标准 |
-| 前端交互技术方案 | 影响 Amy Desk 的实现方式和测试方式 |
+| Desk Provider / Command 细化 | 影响 VCL Amy Desk 的视图拆分、命令门禁和测试方式 |
 | 非 zhihu adapter 策略 | 影响 PublishingRuntime 集成路径 |
 | 迁移 runner 标准 | 影响新人是否能安全初始化 DB |
 
-## 9. 开工前自检
+## 9. 机器自检脚本
+
+开发前可以先运行只读 readiness check。脚本会自动读取本地 `.env`，但环境变量优先级高于 `.env`：
+
+```bash
+python check_readiness.py
+```
+
+该脚本只做本机环境、文件、PostgreSQL schema / table、RealPublishGate、media_publish doctor 等检查；不会执行迁移、不会启动浏览器、不会触发发布。失败项用于判断当前任务是否可开始，不能用来替代人工裁决。
+
+## 10. 开工前自检
 
 新开发者在认领任务前完成：
 
@@ -323,11 +386,11 @@ backend/amy_desk.py
 - [ ] `python tests/run_all_tests.py` 的当前结果已记录。
 - [ ] 如涉及 Delphi，`./build.bat` 当前结果已记录。
 - [ ] 如涉及发布，`media_publish doctor` 当前结果已记录。
-- [ ] 如涉及 UI，已明确如何手工打开页面验证。
+- [ ] 如涉及 UI，已在 Delphi VCL Desk 中手工验证；若仅改 Python 诊断页，已在浏览器中验证。
 - [ ] 如涉及数据库，已明确迁移编号、目标 schema、回滚/重建方式。
 - [ ] 不会触发真实发布，除非任务明确要求并经过人工批准。
 
-## 10. 交付前自检
+## 11. 交付前自检
 
 提交开发结果前完成：
 
@@ -335,7 +398,7 @@ backend/amy_desk.py
 - [ ] 没有把凭据、cookie、浏览器 profile、`.media_publish/` 运行数据提交进仓库。
 - [ ] Python 测试或相关单项测试已运行。
 - [ ] Delphi 编译或相关 DUnitX 测试已运行，若任务涉及 Delphi。
-- [ ] UI 任务已在浏览器中验证，若任务涉及 Amy Desk。
+- [ ] UI 任务已在 Delphi VCL Desk 中验证；Python 诊断页任务已在浏览器中验证。
 - [ ] 发布任务没有绕过 RealPublishGate。
 - [ ] 文档中的命令、路径、schema 名称与代码一致。
 - [ ] 剩余阻塞点已写清楚，不用“已完成”掩盖未裁决事项。
