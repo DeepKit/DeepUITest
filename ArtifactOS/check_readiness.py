@@ -43,7 +43,7 @@ DB_ENV = {
     "ARTIFACTOS_DB_PASS": os.environ.get("ARTIFACTOS_DB_PASS", ""),
 }
 
-MIGRATION_MIN = 28
+MIGRATION_MIN = 29
 
 
 class Report:

@@ -108,6 +108,8 @@ begin
         try
           TRuntimeRepository.MarkInstanceStopped(InstanceId, RuntimeInstanceStatusFailed);
         except
+          on E2: Exception do
+            WriteLn(ErrOutput, 'runtime smoke cleanup failed: ', E2.ClassName, ' ', E2.Message);
         end;
       end;
       AMessage := E.ClassName + ': ' + E.Message;

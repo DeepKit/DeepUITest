@@ -63,14 +63,14 @@
 
 | # | 任务 | 状态 |
 |---|------|------|
-| 30 | 裁决：VCL Desk + Delphi Agent/Engine + PG 直连，不采用 FastAPI core backend | done |
-| 31 | 迁移：`028_artifactos_runtime_command.sql` 定义 runtime_instance / runtime_command / runtime_command_event | done |
+| 30 | 裁决：VCL Desk + Delphi Engine + PG 直连，不采用 FastAPI；去掉 Agent | done |
+| 31 | 迁移：`028_artifactos_runtime_command.sql` + `029_runtime_command_parent_and_cleanup.sql` | done |
 | 32 | 测试：runtime command contract 静态测试接入 `tests/run_all_tests.py` | done |
-| 33 | 待做：ArtifactOS.Core runtime contract Delphi units | pending |
+| 33 | Delphi Core runtime contract units（Types、Repository、Smoke） | done |
 | 34 | 待做：ArtifactOS.Engine command claim / heartbeat / idle lifecycle | pending |
 | 35 | 待做：ArtifactOS.Desk DeepShell 骨架 | pending |
-| 36 | 待做：ArtifactOS.Agent Tray / Amy command launcher | pending |
-| 37 | 待做：AutoFix wiring + smoke scenarios | pending |
+| 36 | 待做：AutoFix wiring + smoke scenarios | pending |
+| 37 | 修 Bug：`ConnectLocked` 死锁、`ArtifactOS_DB()` 双重检查锁、DPR SQL 拼接、Smoke 空异常、build.bat 硬编码用户 | done |
 
 ## 数据库落点
 

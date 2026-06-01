@@ -7,7 +7,7 @@
 - ArtifactOS 不是 MVP 项目；当前目标是可发布、可追溯、可校正、可反哺的完整媒体产出物操作系统。
 - 真实发布由既有系统兜底；ArtifactOS 开发默认走 `shadow` / `simulation_only` / `manual-review`。
 - ArtifactOS 不直接控制浏览器会话；浏览器自动化属于 PublishingRuntime / media_publish。
-- 本版本不考虑 FastAPI core backend；正式 Desk、Agent、Engine 均为 Delphi 项目。
+- 本版本不考虑 FastAPI core backend；正式 Desk、Engine 均为 Delphi 项目。不再需要独立的 Agent 常驻程序；Engine 可由 Desk 或 Windows 计划任务启动。
 - 所有 ArtifactOS 程序可以直接读写 PostgreSQL，但必须遵守 schema、command/status contract、RealPublishGate 和测试库隔离。
 - PostgreSQL 测试必须使用 `artifactos_test`，不要使用 `progee_db_test`。
 - 开发任务必须能被测试、脚本或清单验证；不能只完成文档级闭环。
@@ -23,7 +23,7 @@
 | `docs/02.[蓝图]-系统架构-Architecture.md` | 系统架构、media_publish 边界、PG 存储边界 |
 | `docs/03.[蓝图]-实施路线图-Roadmap.md` | Phase 1A 范围、开工顺序、运行模式 |
 | `docs/24.[数据]-数据库模型与治理-Database.md` | PostgreSQL schema、约束、迁移顺序 |
-| `docs/26.[技术]-技术选型与运行时架构-Stack-Decision.md` | VCL Desk、Delphi Engine/Agent、PG 直连、DeepBase 复用、AutoFix、Python 诊断层 |
+| `docs/26.[技术]-技术选型与运行时架构-Stack-Decision.md` | VCL Desk、Delphi Engine、PG 直连、DeepBase 复用、AutoFix、Python 诊断层 |
 | `tasks.md` | 已完成任务和剩余产品裁决 |
 
 ### 按开发方向补读
@@ -188,12 +188,11 @@ DeepBase AutoFix 需要接入所有相关 Delphi 项目：
 
 ```text
 ArtifactOS.Desk
-ArtifactOS.Agent
 ArtifactOS.Engine
 ArtifactOSTests
 ```
 
-AutoFix boundary 默认只允许修改 ArtifactOS 源码，不允许自动修改 DeepBase、数据库迁移或发布运行数据。每个可执行项目至少应注册 smoke scenario；Desk / Agent 使用 VCL hook，Engine / Tests 使用适合自身类型的 scenario runner。
+AutoFix boundary 默认只允许修改 ArtifactOS 源码，不允许自动修改 DeepBase、数据库迁移或发布运行数据。每个可执行项目至少应注册 smoke scenario；Desk 使用 VCL hook，Engine / Tests 使用适合自身类型的 scenario runner。
 
 Delphi DUnitX 入口：
 
@@ -280,19 +279,17 @@ backend/amy_desk.py
 
 保留为诊断页面，不作为正式主前端，不承载正式 Amy Desk 主交互。
 
-Desk / Agent / Engine 的目标拆分：
+Desk / Engine 的目标拆分：
 
 ```text
 ArtifactOS.Desk   VCL DeepShell 主前端，人工启动 Engine
-ArtifactOS.Agent  轻量 Tray/Agent，Desk 未打开时接 Amy 命令并启动 Engine
-ArtifactOS.Engine Delphi 按需启动后端，活跃期间保持运行
+ArtifactOS.Engine Delphi 按需启动后端，活跃期间保持运行；可由 Desk 或 Windows 计划任务启动
 ArtifactOS.Core   共享类型、PG contract helper、DB adapter、服务接口
 ```
 
 所有程序可以直接读写 PostgreSQL，但必须遵守契约：
 
 - Desk 可读状态、写人工 command / review signal。
-- Agent 可读 pending command、写启动状态。
 - Engine 可 claim command、写执行状态和事件账本。
 - PublishingRuntime 回写平台会话和发布结果。
 - 高风险发布动作仍必须经过 RealPublishGate 和人工授权语义。
@@ -308,15 +305,14 @@ ArtifactOS.Core   共享类型、PG contract helper、DB adapter、服务接口
 
 可立即做的小任务：
 
-- 设计 Desk / Agent / Engine / Core 分项目目录和 `.dproj`。
+- 设计 Desk / Engine / Core 分项目目录和 `.dproj`。
 - 设计 Today / Accounts / Verify / 7-Day Run / Readiness / Engine Control Provider。
-- 定义 Desk/Agent 启动 Engine 的状态和 heartbeat。
+- 定�� Desk 启动 Engine 的状态和 heartbeat。
 - 为 Python 诊断页增加“diagnostic only”提示。
 
 需要先补契约的任务：
 
 - Engine command claim / lease / heartbeat / idle lifecycle。
-- Agent 接 Amy 命令后的启动流程。
 - 十键规则按钮对应的 PG command / review signal。
 - DailyReportDetailView 的 VCL Provider 协议。
 

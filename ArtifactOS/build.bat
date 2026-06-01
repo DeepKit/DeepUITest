@@ -49,7 +49,7 @@ echo.
 if not "%1"=="--run" goto :end
 
 echo Running smoke test...
-set ARTIFACTOS_DB_USER=fuyi01
+if "%ARTIFACTOS_DB_USER%"=="" set ARTIFACTOS_DB_USER=fuyi01
 "%BIN%\ArtifactOS.exe"
 if %errorlevel% neq 0 (
     echo RUNTIME FAILED

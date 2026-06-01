@@ -52,8 +52,6 @@ var
 
 function ArtifactOS_DB: TArtifactDB;
 begin
-  if _Instance = nil then
-    _Instance := TArtifactDB.Create('artifactos_test', 'artifactos');
   Result := _Instance;
 end;
 
@@ -124,9 +122,8 @@ begin
   try
     Connect;
     Result := IsConnected;
-  except
+  finally
     FLock.Leave;
-    raise;
   end;
 end;
 
@@ -218,7 +215,7 @@ begin
 end;
 
 initialization
-  _Instance := nil;
+  _Instance := TArtifactDB.Create('artifactos_test', 'artifactos');
 
 finalization
   _Instance.Free;
