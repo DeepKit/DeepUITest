@@ -201,7 +201,7 @@ def main():
             cur.execute("select artifactos.check_real_publish_gate()")
             gate_json = cur.fetchone()[0]
             gate = (gate_json.get('gate_status'), gate_json.get('reason'))
-            if gate and gate[0] == 'blocked' and 'Phase 1A' in (gate[1] or ''):
+            if gate and gate[0] == 'blocked' and 'RealPublishGate' in (gate[1] or ''):
                 ok(f"RealPublishGate: {gate[0]} — {gate[1]}")
             else:
                 fail(f"RealPublishGate: unexpected status {gate}")
