@@ -67,7 +67,7 @@
 | 31 | 迁移：`028_artifactos_runtime_command.sql` + `029_runtime_command_parent_and_cleanup.sql` | done |
 | 32 | 测试：runtime command contract 静态测试接入 `tests/run_all_tests.py` | done |
 | 33 | Delphi Core runtime contract units（Types、Repository、Smoke） | done |
-| 34 | 待做：ArtifactOS.Engine command claim / heartbeat / idle lifecycle | pending |
+| 34 | ArtifactOS.Engine command claim / heartbeat / idle lifecycle（进行中） | in_progress |
 | 35 | 待做：ArtifactOS.Desk DeepShell 骨架 | pending |
 | 36 | 待做：AutoFix wiring + smoke scenarios | pending |
 | 37 | 修 Bug：`ConnectLocked` 死锁、`ArtifactOS_DB()` 双重检查锁、DPR SQL 拼接、Smoke 空异常、build.bat 硬编码用户 | done |

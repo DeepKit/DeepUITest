@@ -26,6 +26,7 @@ uses
   ArtifactOS.Core.DB.Connection,
   ArtifactOS.Core.Dashboard,
   ArtifactOS.Core.Runtime.Smoke,
+  ArtifactOS.Core.Runtime.Engine,
   ArtifactOS.Services.ChainRunner;
 
 begin
@@ -46,6 +47,19 @@ begin
           WriteLn('Runtime smoke FAIL: ', SmokeMessage);
           ExitCode := 1;
         end;
+        Exit;
+      end;
+
+      if FindCmdLineSwitch('engine', True) then
+      begin
+        var Config := DefaultEngineConfig;
+        Config.AppVersion := '1.0';
+        WriteLn(Format('Engine idle timeout: %d minutes', [Config.IdleTimeoutMs div 60000]));
+        TRuntimeEngine.Create(Config).Run(
+          procedure(const ACmdId, ACmdType, APayload: string)
+          begin
+            WriteLn(Format('executing command %s type=%s payload=%s', [ACmdId, ACmdType, APayload]));
+          end);
         Exit;
       end;
 
