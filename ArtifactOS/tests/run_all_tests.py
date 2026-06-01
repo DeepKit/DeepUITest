@@ -6,6 +6,10 @@ No real publishing.  All test data cleaned up after each run.
 """
 
 import subprocess, sys, os, time, json, psycopg2
+from dotenv import load_dotenv
+
+# Load .env from project root (parent of tests/)
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 CONN = f"host={os.environ.get('ARTIFACTOS_DB_HOST','127.0.0.1')} port={os.environ.get('ARTIFACTOS_DB_PORT','5432')} dbname={os.environ.get('ARTIFACTOS_DB_NAME','artifactos_test')} user={os.environ.get('ARTIFACTOS_DB_USER','fuyi01')} password={os.environ.get('ARTIFACTOS_DB_PASS','')}"
 RESULTS: list[tuple[str, bool, str]] = []

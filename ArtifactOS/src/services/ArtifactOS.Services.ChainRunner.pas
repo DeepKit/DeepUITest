@@ -48,14 +48,15 @@ begin
     DB.Connection.StartTransaction;
     try
       // Pre-generate all UUIDs client-side to avoid FireDAC transaction visibility issues
-      AResult.CaseId     := TGUID.NewGuid.ToString;
-      AResult.StudioId   := TGUID.NewGuid.ToString;
-      var PlanId         := TGUID.NewGuid.ToString;
-      var SubId          := TGUID.NewGuid.ToString;
-      AResult.ArtifactId := TGUID.NewGuid.ToString;
-      AResult.VersionId  := TGUID.NewGuid.ToString;
-      AResult.RunId      := TGUID.NewGuid.ToString;
-      AResult.SnapshotId := TGUID.NewGuid.ToString;
+      // NOTE: TGUID.ToString returns {braced} format; strip braces for PG ::uuid
+      AResult.CaseId     := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      AResult.StudioId   := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      var PlanId         := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      var SubId          := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      AResult.ArtifactId := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      AResult.VersionId  := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      AResult.RunId      := TGUID.NewGuid.ToString.Trim(['{', '}']);
+      AResult.SnapshotId := TGUID.NewGuid.ToString.Trim(['{', '}']);
 
       var Q := TFDQuery.Create(nil);
       try
@@ -112,7 +113,7 @@ begin
       end;
 
       // 10. PublicationPackage (on shared transaction connection)
-      AResult.PackageId := TPackageBuilder.BuildPackageOnConn(DB.Connection, AResult.ArtifactId, AResult.VersionId, AResult.SnapshotId, 'zhihu', TGUID.NewGuid.ToString);
+      AResult.PackageId := TPackageBuilder.BuildPackageOnConn(DB.Connection, AResult.ArtifactId, AResult.VersionId, AResult.SnapshotId, 'zhihu', TGUID.NewGuid.ToString.Trim(['{', '}']));
 
       // 11. Create a WorkCard for this artifact
       var DeskInfo: TWorkCardInfo;

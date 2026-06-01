@@ -27,6 +27,7 @@ uses
   ArtifactOS.Core.Dashboard,
   ArtifactOS.Core.Runtime.Smoke,
   ArtifactOS.Core.Runtime.Engine,
+  ArtifactOS.Core.Runtime.EngineCallbacks,
   ArtifactOS.Services.ChainRunner;
 
 begin
@@ -58,7 +59,7 @@ begin
         TRuntimeEngine.Create(Config).Run(
           procedure(const ACmdId, ACmdType, APayload: string)
           begin
-            WriteLn(Format('executing command %s type=%s payload=%s', [ACmdId, ACmdType, APayload]));
+            TEngineCallbacks.DispatchCommand(ACmdId, ACmdType, APayload);
           end);
         Exit;
       end;

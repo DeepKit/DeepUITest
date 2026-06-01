@@ -9,6 +9,10 @@ No real publishing.  All test data cleaned up after run.
 """
 
 import psycopg2, sys, time, json, uuid, hashlib, os
+from dotenv import load_dotenv
+
+# Load .env from project root
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 DB = os.environ.get('ARTIFACTOS_DB_NAME', 'artifactos_test')
 DB_USER = os.environ.get('ARTIFACTOS_DB_USER', 'fuyi01')
