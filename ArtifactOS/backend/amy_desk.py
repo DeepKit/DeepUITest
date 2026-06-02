@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""ArtifactOS Amy Desk 1.0 minimal browser workspace.
+"""ArtifactOS Amy Desk 1.0 human workspace.
 
 Server-rendered HTML; no frontend build step. Shows today's plan/publish cards,
-verification status, and seven-day L3 real publish run board.
+verification status, platform-account session state, and seven-day L3 real publish run board.
 """
 
 from __future__ import annotations
@@ -10,8 +10,6 @@ from __future__ import annotations
 import html
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-from publishing_runtime_bridge import session_status, start_browser
 from urllib.parse import parse_qs, urlparse
 
 import psycopg2
@@ -31,6 +29,20 @@ def q(sql: str, params=()):
     try:
         cur.execute(sql, params)
         return cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def execute(sql: str, params=()):
+    conn = psycopg2.connect(CONN)
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, params)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cur.close()
         conn.close()
@@ -160,16 +172,27 @@ def verify_queue():
 def accounts():
     rows = q(
         """
-        SELECT pp.platform,
-               coalesce(pp.metadata->>'account_id', pp.account_id::text, 'unknown') as account_id,
-               count(*) as packages,
-               max(pp.created_at) as last_seen,
-               count(*) filter (where pp.status in ('queued','submitting','submitted')) as active_tasks,
-               count(*) filter (where pp.publish_verification_status='published_confirmed') as confirmed,
-               count(*) filter (where pp.publish_verification_status in ('verify_unknown','failed')) as needs_attention
-        FROM artifactos.publication_package pp
-        GROUP BY 1, 2
-        ORDER BY last_seen DESC
+        WITH package_sessions AS (
+          SELECT pp.platform,
+                 coalesce(pp.metadata->>'account_id', pp.account_id::text, 'unknown') as account_id,
+                 count(*) as packages,
+                 max(pp.created_at) as last_seen,
+                 count(*) filter (where pp.status in ('queued','submitting','submitted')) as active_tasks,
+                 count(*) filter (where pp.publish_verification_status='published_confirmed') as confirmed,
+                 count(*) filter (where pp.publish_verification_status in ('verify_unknown','failed')) as needs_attention
+          FROM artifactos.publication_package pp
+          GROUP BY 1, 2
+        )
+        SELECT ps.platform, ps.account_id, ps.packages, ps.last_seen, ps.active_tasks,
+               ps.confirmed, ps.needs_attention,
+               coalesce(s.state, 'unknown') as browser_state,
+               s.profile_ref,
+               s.current_url,
+               s.last_screenshot_ref
+        FROM package_sessions ps
+        LEFT JOIN media_publish.platform_account_session s
+          ON s.platform_id = ps.platform AND s.account_id = ps.account_id
+        ORDER BY ps.last_seen DESC
         """
     )
     body = """
@@ -177,32 +200,37 @@ def accounts():
 <p class="small">硬规则：一个浏览器 = 一个平台 + 一个账号。禁止同一 browser/profile 跨平台切换。</p>
 <table><tr><th>Platform</th><th>Account</th><th>Session Key</th><th>Runtime State</th><th>Browser</th><th>Profile</th><th>Packages</th><th>Confirmed</th><th>Needs Attention</th><th>Last Seen</th><th>Action</th></tr>
 """
-    for platform, account_id, packages, last_seen, active, confirmed, needs_attention in rows:
+    for platform, account_id, packages, last_seen, active, confirmed, needs_attention, browser_state, profile_ref, current_url, screenshot_ref in rows:
         if active:
             state = '<span class="warn">busy</span>'
         elif needs_attention:
             state = '<span class="bad">needs_review</span>'
         else:
             state = '<span class="ok">ready_or_idle</span>'
-        rt = session_status(platform or 'unknown', account_id or 'unknown')
         session_key = f"{platform}/{account_id}"
-        browser_state = rt.get('state', 'offline')
-        profile_dir = rt.get('profile_dir', '')
-        if browser_state == 'started':
-            browser_badge = '<span class="ok">started</span>'
+        if browser_state in ('ready', 'busy'):
+            browser_badge = f'<span class="ok">{html.escape(browser_state)}</span>'
+        elif browser_state in ('needs_login', 'risk_control', 'captcha', 'error'):
+            browser_badge = f'<span class="bad">{html.escape(browser_state)}</span>'
         else:
             browser_badge = f'<span class="warn">{html.escape(browser_state)}</span>'
-        action = f"<form method='post' action='/amy/accounts/start?platform={html.escape(platform or '')}&account={html.escape(account_id or '')}'><button>启动浏览器</button></form>"
-        body += f"<tr><td>{html.escape(platform or '')}</td><td>{html.escape(account_id or '')}</td><td>{html.escape(session_key)}</td><td>{state}</td><td>{browser_badge}</td><td class='small'>{html.escape(profile_dir)}</td><td>{packages}</td><td>{confirmed}</td><td>{needs_attention}</td><td>{last_seen}</td><td>{action}</td></tr>"
+        actions = (
+            f"<form method='post' action='/amy/accounts/command?platform={html.escape(platform or '')}&account={html.escape(account_id or '')}&command=start_browser'><button>请求启动</button></form>"
+            f"<form method='post' action='/amy/accounts/command?platform={html.escape(platform or '')}&account={html.escape(account_id or '')}&command=check_login'><button>检查登录</button></form>"
+            f"<form method='post' action='/amy/accounts/command?platform={html.escape(platform or '')}&account={html.escape(account_id or '')}&command=capture_screenshot'><button>请求截图</button></form>"
+        )
+        current_link = f'<a target="_blank" href="{html.escape(current_url)}">当前页</a>' if current_url else ''
+        screenshot_link = f'<a target="_blank" href="{html.escape(screenshot_ref)}">截图</a>' if screenshot_ref else ''
+        body += f"<tr><td>{html.escape(platform or '')}</td><td>{html.escape(account_id or '')}</td><td>{html.escape(session_key)}</td><td>{state}</td><td>{browser_badge}<br>{current_link} {screenshot_link}</td><td class='small'>{html.escape(profile_ref or '')}</td><td>{packages}</td><td>{confirmed}</td><td>{needs_attention}</td><td>{last_seen}</td><td>{actions}</td></tr>"
     body += "</table></div>"
     body += """
 <div class="card">
 <h2>Runtime actions planned</h2>
 <ul>
-<li>启动/显示某个 platform+account 浏览器</li>
-<li>截图当前页面并写入证据</li>
-<li>检查登录态 / 风控 / 验证码</li>
-<li>只关闭指定 platform+account 浏览器，不影响同账号其他平台</li>
+<li>Amy Desk 只写入 media_publish.runtime_command 意图</li>
+<li>PublishingRuntime 负责启动/显示某个 platform+account 浏览器</li>
+<li>PublishingRuntime 负责截图、检查登录态 / 风控 / 验证码</li>
+<li>Amy Desk 读取 media_publish.platform_account_session 展示状态</li>
 </ul>
 </div>
 """
@@ -274,6 +302,19 @@ def mark_package(package_id: str, status: str):
         cur.close(); conn.close()
 
 
+def enqueue_runtime_command(platform_id: str, account_id: str, command_type: str):
+    allowed = {'start_browser', 'show_browser', 'check_login', 'capture_screenshot', 'pause_session', 'close_browser'}
+    if command_type not in allowed:
+        raise ValueError(f'unsupported runtime command: {command_type}')
+    execute(
+        """
+        INSERT INTO media_publish.runtime_command (command_type, platform_id, account_id, requested_by)
+        VALUES (%s, %s, %s, 'amy_desk')
+        """,
+        (command_type, platform_id, account_id),
+    )
+
+
 def run_board():
     rows = q(
         """
@@ -322,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path)
         qs = parse_qs(path.query)
         if path.path == '/amy/verify' and qs.get('id'):
-            from tests.verify_published_url import verify
+            from verify_published_url import verify
             verify(qs['id'][0])
             self.send_response(303)
             self.send_header('Location', f"/amy/package?id={qs['id'][0]}")
@@ -334,8 +375,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Location', f"/amy/package?id={qs['id'][0]}")
             self.end_headers()
             return
-        if path.path == '/amy/accounts/start' and qs.get('platform') and qs.get('account'):
-            start_browser(qs['platform'][0], qs['account'][0])
+        if path.path == '/amy/accounts/command' and qs.get('platform') and qs.get('account') and qs.get('command'):
+            enqueue_runtime_command(qs['platform'][0], qs['account'][0], qs['command'][0])
             self.send_response(303)
             self.send_header('Location', '/amy/accounts')
             self.end_headers()

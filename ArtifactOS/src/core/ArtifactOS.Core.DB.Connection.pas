@@ -129,6 +129,7 @@ end;
 
 procedure TArtifactDB.DisconnectLocked;
 begin
+  FLock.Enter;
   try
     Disconnect;
   finally

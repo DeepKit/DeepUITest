@@ -6,7 +6,7 @@ set BDS=C:\Program Files (x86)\Embarcadero\Studio\37.0
 if exist "D:\Program Files (x86)\Embarcadero\Studio\37.0\bin64\dcc64.exe" set BDS=D:\Program Files (x86)\Embarcadero\Studio\37.0
 
 set DCC64=%BDS%\bin64\dcc64.exe
-set DEEPBASE=..\..\DeepBase
+set DEEPBASE=..\DeepBase
 set DCU=dcu\Win64\Debug
 set BIN=bin\Win64\Debug
 
