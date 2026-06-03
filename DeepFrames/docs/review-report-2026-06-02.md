@@ -123,7 +123,7 @@
 
 1. **已做对的最优决策**（不需要改）：
    - Agent 分层架构（Splitter/Worker/Assembler/QA/Style Keeper）的职责边界
-   - Video IR 后端���关抽象
+   - Video IR 后端无关抽象
    - Worker 协议 v0 的最小性（request/progress/result 三文件）
    - 文档链版本化（不可覆盖、只增不改）
    - 质量门控的分级设计（pass/warn/fail + 降级蔓延检测）

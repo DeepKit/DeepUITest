@@ -1,0 +1,25 @@
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "DeepFrames"
+      VALUE "FileDescription", "DeepFrames Phase 1 Desktop Shell"
+      VALUE "FileVersion", "1.0.0.0"
+      VALUE "InternalName", "DeepFrames"
+      VALUE "OriginalFilename", "DeepFrames.exe"
+      VALUE "ProductName", "DeepFrames"
+      VALUE "ProductVersion", "1.0.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 0x04B0
+  END
+END

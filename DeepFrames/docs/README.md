@@ -6,9 +6,10 @@
 
 0. `00.quickstart-快速上手-quickstart.md` — 用户操作视角的端到端生产流程（新用户入口）。
 1. `01.arch-系统架构-architecture.md` — 系统边界、战略基线、核心流水线和模块关系。
-2. `09.engineer-工程化基础-engineering.md` — 工程结构、DB1/DB2/DB3、任务、状态、worker、测试。
-3. `10.dev-roadmap-development-roadmap.md` — 按依赖顺序推进的开发阶段和验收口径。
-4. 专项规格：
+2. `ENGINEERING_HANDOFF.md` — 工程实现交接说明、Phase 1 启动任务、风险清单和验收脚本。
+3. `09.engineer-工程化基础-engineering.md` — 工程结构、DB1/DB2/DB3、任务、状态、worker、测试。
+4. `10.dev-roadmap-development-roadmap.md` — 按依赖顺序推进的开发阶段和验收口径。
+5. 专项规格：
    - `02.api-阶跃星辰集成-step-plan-api.md`
    - `03.agent-Agent工作流-agent-workflow.md`
    - `04.video-视频流水线-video-pipeline.md`
@@ -16,7 +17,7 @@
    - `06.dist-内容分发-distribution.md`
    - `07.platform-多平台适配-multi-platform.md`
    - `08.quality-质量门控-quality-gate.md`
-5. 深化规范：
+6. 深化规范：
    - `12.db-state-数据库与状态机-db-state.md` — DB2 PostgreSQL 字段契约、状态机、事务边界，不是 SQL migration。
    - `13.worker-Worker协议-worker-contract.md` — 外部 worker 最小协议 v0。
    - `14.prompt-structured-output-Prompt结构化输出.md` — Agent 输出解析、校验、修复和重试策略。
@@ -28,6 +29,8 @@
 以下文件是历史评审、决策或优化记录，用于追溯设计来源；它们不覆盖上面的正式规格文档。
 
 - `review-report-2026-06-02.md` — 第二轮三专家综合评价报告（架构师 8.2 + AI/Agent 8.2 + 视频/媒体 7.8 = 综合 8.1）。
+- `review-report-2026-06-02-feasibility.md` — 第三轮实施可行性评审。
+- `review-三专家综合评价报告-expert-review.md` — 2026-06-03 三专家综合评价报告。
 - `review-report-2026-06-01.md` — 第一轮多专家评审报告。
 - `review-decisions-2026-06-01.md` — 已完成的逐项决策记录。
 - `better.md` — 8.4 → 9.5 的历史优化笔记。

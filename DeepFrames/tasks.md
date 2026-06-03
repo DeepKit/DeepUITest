@@ -2,7 +2,7 @@
 
 ## 第二轮外部评价修复任务（2026-06-03）
 
-> 来源：`docs/DEEPFRAMES_EVALUATION_2026-06-03.md` 外部评价。该评价文件仅作为临时输入，任务同步后删除。
+> 来源：2026-06-03 外部评价与 `docs/review-三专家综合评价报告-expert-review.md` / `docs/review-report-2026-06-02-feasibility.md` 的后续一致性审查。临时评价输入已同步为本任务清单。
 
 ### P0 — 开工前必须补齐
 
@@ -25,3 +25,14 @@
 
 - [x] **T6 content_type adapter 就绪诊断规格**  
   在 `01.arch-系统架构-architecture.md` 中补充未来 adapter 的 readiness check / readiness report 规格；当前仅对 `longform_zh_article` / `webnovel_zh` 启用内置诊断。
+
+## 工程实现前最终校正（2026-06-03）
+
+- [x] **F1 Gate / 状态机最终一致性**  
+  修正业务对象 `done` 与资产 `ready` 的状态边界，补齐 `skipped`、`cancelled` 恢复、新增 `preprocess` job_type。
+
+- [x] **F2 音频 / API 最终一致性**  
+  修正 B站 AAC 采样率为 48kHz，loudnorm 改为双遍流程，TTS 451 全文统一为 `tts_text_variant` + Gate 3a 判定。
+
+- [x] **F3 文档就绪度最终一致性**  
+  补 README 历史评审索引、Phase 7 adapter/readiness、H.264/AAC 合规复核、DB 表契约与 UTC 时间策略。
