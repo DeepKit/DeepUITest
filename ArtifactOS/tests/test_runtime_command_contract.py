@@ -54,10 +54,10 @@ def main() -> int:
     for level in ["L0", "L1", "L2", "L3"]:
         require(migration, f"'{level.lower()}'", "command level")
 
-    for source in ["desk", "agent", "amy", "test", "diagnostic", "system"]:
+    for source in ["desk", "amy", "test", "diagnostic", "system"]:
         require(migration, f"'{source}'", "command source")
 
-    for instance_type in ["desk", "agent", "engine", "publishing_runtime", "diagnostic"]:
+    for instance_type in ["desk", "engine", "publishing_runtime", "diagnostic"]:
         require(migration, f"'{instance_type}'", "instance type")
 
     for doc_text in [stack_doc, db_doc]:

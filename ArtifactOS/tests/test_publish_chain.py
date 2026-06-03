@@ -10,7 +10,10 @@ import os
 import time
 import uuid
 
+from dotenv import load_dotenv
 import psycopg2
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 CONN = (
     f"host={os.environ.get('ARTIFACTOS_DB_HOST', '127.0.0.1')} "
@@ -63,13 +66,39 @@ def main():
         package_id = new_id()
         account_id = new_id()
 
+        # Build proper hierarchy: year → quarter → month → week → day → day_sub
+        chain = f'pub_{ts}'
+        cur.execute(
+            "INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "VALUES (%s, 'quarter', %s, 'active', 'strategic_arrangement', %s, %s) RETURNING id",
+            (f'pub_q_{chain}', f'Pub Q {chain}', year_id, year_id)
+        )
+        quarter_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "VALUES (%s, 'month', %s, 'active', 'strategic_landing', %s, %s) RETURNING id",
+            (f'pub_month_{chain}', f'Pub Month {chain}', quarter_id, year_id)
+        )
+        month_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "VALUES (%s, 'week', %s, 'active', 'tactical_arrangement', %s, %s) RETURNING id",
+            (f'pub_week_{chain}', f'Pub Week {chain}', month_id, year_id)
+        )
+        week_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "VALUES (%s, 'day', %s, 'active', 'tactical_execution', %s, %s) RETURNING id",
+            (f'pub_day_{chain}', f'Pub Day {chain}', week_id, year_id)
+        )
+        day_id = cur.fetchone()[0]
         cur.execute(
             """
             INSERT INTO artifactos.case_record
               (id, case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id)
             VALUES (%s, %s, 'day_sub', %s, 'active', 'tactical_execution', %s, %s)
             """,
-            (case_id, f"daycase_publish_{ts}", f"DayCase: {TOPIC_TITLE}", year_id, year_id),
+            (case_id, f"daycase_publish_{ts}", f"DayCase: {TOPIC_TITLE}", day_id, year_id),
         )
 
         cur.execute(

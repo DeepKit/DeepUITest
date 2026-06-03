@@ -60,6 +60,7 @@ if __name__ == '__main__':
     # ── Unit: smoke integration ──
     run("smoke_integration.py")
     run("test_runtime_command_contract.py")
+    run("test_contract_pipeline.py")
 
     # ── Database integrity ──
     db_check("SourcePack loaded",

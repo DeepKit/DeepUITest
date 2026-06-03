@@ -1,10 +1,20 @@
--- ArtifactOS cross-table status sync trigger
+-- ArtifactOS cross-table status sync trigger (FIXED: prevent infinite recursion)
 -- Enforces docs/06 §8.2a: Artifact ↔ SubStudioExecutionTask status coupling
 -- Rule 1: Artifact cannot enter 'sealed' before Task enters 'approved'
 -- Rule 2: Task cannot enter 'publishing' before Artifact enters 'sealed'
 -- Rule 3: Either side entering 'frozen' syncs the other side in the same transaction
+--
+-- Fix: session-level recursion guard via set_config('artifactos.frozen_sync_active')
+-- The WHERE status != 'frozen' guard alone is insufficient because the outer UPDATE
+-- has not committed yet, so the DB still sees the old value when the nested trigger fires.
 
 begin;
+
+-- Drop existing triggers and functions (idempotent re-run)
+drop trigger if exists trg_artifact_status_sync on artifactos.artifact;
+drop trigger if exists trg_task_status_sync on artifactos.substudio_execution_task;
+drop function if exists artifactos.fn_guard_artifact_status_sync();
+drop function if exists artifactos.fn_guard_task_status_sync();
 
 -- Guard: Artifact status transitions must respect Task state
 create or replace function artifactos.fn_guard_artifact_status_sync()
@@ -13,6 +23,11 @@ declare
   task_pipeline text;
   task_id uuid;
 begin
+  -- Recursion guard: if we're already in a frozen-sync chain, skip
+  if current_setting('artifactos.frozen_sync_active', true) = '1' then
+    return new;
+  end if;
+
   -- Only enforce when transitioning TO sealed
   if new.status = 'sealed' and (old.status is null or old.status != 'sealed') then
     select id, pipeline_status into task_id, task_pipeline
@@ -29,11 +44,13 @@ begin
     end if;
   end if;
 
-  -- Frozen sync: artifact → task
+  -- Frozen sync: artifact → task (with recursion guard)
   if new.status = 'frozen' and (old.status is null or old.status != 'frozen') then
+    perform set_config('artifactos.frozen_sync_active', '1', true);
     update artifactos.substudio_execution_task
     set pipeline_status = 'frozen', updated_at = now()
     where artifact_id = new.id and pipeline_status != 'frozen';
+    perform set_config('artifactos.frozen_sync_active', '', true);
   end if;
 
   return new;
@@ -49,6 +66,11 @@ returns trigger language plpgsql as $$
 declare
   art_status text;
 begin
+  -- Recursion guard: if we're already in a frozen-sync chain, skip
+  if current_setting('artifactos.frozen_sync_active', true) = '1' then
+    return new;
+  end if;
+
   -- Only enforce when transitioning TO publishing
   if new.pipeline_status = 'publishing' and (old.pipeline_status is null or old.pipeline_status != 'publishing') then
     select status into art_status
@@ -65,11 +87,13 @@ begin
     end if;
   end if;
 
-  -- Frozen sync: task → artifact
+  -- Frozen sync: task → artifact (with recursion guard)
   if new.pipeline_status = 'frozen' and (old.pipeline_status is null or old.pipeline_status != 'frozen') then
+    perform set_config('artifactos.frozen_sync_active', '1', true);
     update artifactos.artifact
     set status = 'frozen', updated_at = now()
     where id = new.artifact_id and status != 'frozen';
+    perform set_config('artifactos.frozen_sync_active', '', true);
   end if;
 
   return new;
