@@ -14,7 +14,8 @@ type
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  ArtifactOS.Services.ContractPipeline;
 
 class function TEngineCallbacks.DispatchCommand(const ACommandId, ACommandType, APayloadJson: string): Boolean;
 begin
@@ -49,6 +50,35 @@ begin
   begin
     WriteLn('dispatch: engine.warmup (', ACommandId, ')');
     Result := True;
+  end
+  else if SameText(ACommandType, 'contract_pipeline.create_minimal') then
+  begin
+    WriteLn('dispatch: contract_pipeline.create_minimal (', ACommandId, ')');
+    var ContractId: string;
+    var ChainJson: string;
+    if TContractPipelineService.RunMinimalContractPipeline(
+      'Smoke: Contract Pipeline', 'Verify minimal contract chain creation from the Delphi runtime.',
+      'zhihu', 'sub', 'theory_driven', ContractId, ChainJson) then
+    begin
+      WriteLn('  contract_id=', ContractId);
+      WriteLn('  chain=', ChainJson);
+      Result := True;
+    end
+    else
+      WriteLn(ErrOutput, '  FAILED: contract pipeline creation failed');
+  end
+  else if SameText(ACommandType, 'contract_pipeline.validate') then
+  begin
+    WriteLn('dispatch: contract_pipeline.validate (', ACommandId, ')');
+    // Parse contract_id from payload
+    var ContractId := APayloadJson;
+    if TContractPipelineService.ValidateContractChain(ContractId) then
+    begin
+      WriteLn('  chain valid: ', ContractId);
+      Result := True;
+    end
+    else
+      WriteLn(ErrOutput, '  chain broken: ', ContractId);
   end
   else
   begin
