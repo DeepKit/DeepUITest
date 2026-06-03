@@ -99,4 +99,4 @@
 
 | 编号 | 文件 | 说明 |
 |------|------|------|
-| 26 | `26.[技术]-技术选型与运行时架构-Stack-Decision.md` | VCL Desk、Delphi Engine/Agent、PG 直连、DeepBase 复用、AutoFix 和 Python 诊断层决策 |
+| 26 | `26.[技术]-技术选型与运行时架构-Stack-Decision.md` | VCL Desk、Delphi Engine、PG 直连、DeepBase 复用、AutoFix 和 Python 诊断层决策 |

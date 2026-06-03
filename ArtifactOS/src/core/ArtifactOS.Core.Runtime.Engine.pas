@@ -2,6 +2,9 @@ unit ArtifactOS.Core.Runtime.Engine;
 
 interface
 
+uses
+  System.Classes;
+
 type
   TEngineConfig = record
     HostName: string;
@@ -9,6 +12,7 @@ type
     PollIntervalMs: Integer;
     HeartbeatIntervalMs: Integer;
     LeaseSeconds: Integer;
+    LeaseRenewalIntervalMs: Integer;
     IdleTimeoutMs: Integer;
     CleanupIntervalMs: Integer;
     MaxConsecutiveErrors: Integer;
@@ -17,6 +21,21 @@ type
   TEngineStatus = (esIdle, esRunning, esStopping);
 
   TEngineProc = reference to procedure(const ACommandId, ACommandType: string; const APayloadJson: string);
+
+  TLeaseRenewalThread = class(TThread)
+  private
+    FCommandId: string;
+    FInstanceId: string;
+    FLeaseSeconds: Integer;
+    FRenewalIntervalMs: Integer;
+    FStopEvent: THandle;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create(const ACommandId, AInstanceId: string; ALeaseSeconds, ARenewalIntervalMs: Integer);
+    destructor Destroy; override;
+    procedure RequestStop;
+  end;
 
   TRuntimeEngine = class
   private
@@ -29,9 +48,12 @@ type
     FLastCleanup: TDateTime;
     FConsecutiveErrors: Integer;
     FCommandProc: TEngineProc;
+    FLeaseRenewalThread: TLeaseRenewalThread;
     procedure DoHeartbeat;
     procedure DoPollAndProcess;
     procedure DoCleanup;
+    procedure StartLeaseRenewal(const ACommandId: string);
+    procedure StopLeaseRenewal;
     function IdleMs: Int64;
     function IsRunning: Boolean;
   public
@@ -51,6 +73,7 @@ const
     PollIntervalMs: 5000;
     HeartbeatIntervalMs: 15000;
     LeaseSeconds: 300;
+    LeaseRenewalIntervalMs: 60000;
     IdleTimeoutMs: 600000;
     CleanupIntervalMs: 3600000;
     MaxConsecutiveErrors: 5;
@@ -65,6 +88,55 @@ uses
   ArtifactOS.Core.DB.Connection,
   ArtifactOS.Core.Runtime.Repository,
   ArtifactOS.Core.Runtime.Types;
+
+{ TLeaseRenewalThread }
+
+constructor TLeaseRenewalThread.Create(const ACommandId, AInstanceId: string;
+  ALeaseSeconds, ARenewalIntervalMs: Integer);
+begin
+  inherited Create(False);
+  FreeOnTerminate := False;
+  FCommandId := ACommandId;
+  FInstanceId := AInstanceId;
+  FLeaseSeconds := ALeaseSeconds;
+  FRenewalIntervalMs := ARenewalIntervalMs;
+  FStopEvent := CreateEvent(nil, True, False, nil);
+end;
+
+destructor TLeaseRenewalThread.Destroy;
+begin
+  if FStopEvent <> 0 then
+    CloseHandle(FStopEvent);
+  inherited;
+end;
+
+procedure TLeaseRenewalThread.RequestStop;
+begin
+  if FStopEvent <> 0 then
+    SetEvent(FStopEvent);
+end;
+
+procedure TLeaseRenewalThread.Execute;
+var
+  WaitResult: Cardinal;
+begin
+  while not Terminated do
+  begin
+    WaitResult := WaitForSingleObject(FStopEvent, FRenewalIntervalMs);
+    if WaitResult = WAIT_OBJECT_0 then
+      Break;
+
+    try
+      if TRuntimeRepository.ExtendCommandLease(FCommandId, FInstanceId, FLeaseSeconds) <> 1 then
+        WriteLn(ErrOutput, 'lease renewal failed for command: ', FCommandId);
+    except
+      on E: Exception do
+        WriteLn(ErrOutput, 'lease renewal error: ', E.ClassName, ' ', E.Message);
+    end;
+  end;
+end;
+
+{ TRuntimeEngine }
 
 constructor TRuntimeEngine.Create(const AConfig: TEngineConfig);
 begin
@@ -95,6 +167,7 @@ end;
 procedure TRuntimeEngine.RequestStop;
 begin
   FStatus := esStopping;
+  StopLeaseRenewal;
 end;
 
 procedure TRuntimeEngine.DoHeartbeat;
@@ -115,6 +188,24 @@ begin
       Inc(FConsecutiveErrors);
       WriteLn(ErrOutput, 'heartbeat failed: ', E.ClassName, ' ', E.Message, ' (errors=', FConsecutiveErrors, ')');
     end;
+  end;
+end;
+
+procedure TRuntimeEngine.StartLeaseRenewal(const ACommandId: string);
+begin
+  StopLeaseRenewal;
+  FLeaseRenewalThread := TLeaseRenewalThread.Create(
+    ACommandId, FInstanceId, FConfig.LeaseSeconds, FConfig.LeaseRenewalIntervalMs);
+end;
+
+procedure TRuntimeEngine.StopLeaseRenewal;
+begin
+  if FLeaseRenewalThread <> nil then
+  begin
+    FLeaseRenewalThread.RequestStop;
+    FLeaseRenewalThread.WaitFor;
+    FLeaseRenewalThread.Free;
+    FLeaseRenewalThread := nil;
   end;
 end;
 
@@ -164,10 +255,14 @@ begin
       Exit;
     end;
 
+    StartLeaseRenewal(Cmd.Id);
+
     if Assigned(FCommandProc) then
     begin
       FCommandProc(Cmd.Id, Cmd.CommandType, Cmd.PayloadJson);
     end;
+
+    StopLeaseRenewal;
 
     TRuntimeRepository.MarkCommandSucceeded(Cmd.Id, FInstanceId, '{"engine":"' + FInstanceId + '"}');
     FConsecutiveErrors := 0;
@@ -175,6 +270,7 @@ begin
   except
     on E: Exception do
     begin
+      StopLeaseRenewal;
       Inc(FConsecutiveErrors);
       WriteLn(ErrOutput, 'command failed: ', Cmd.CommandType, ' (', Cmd.Id, ') - ', E.ClassName, ': ', E.Message);
       try

@@ -1,4 +1,4 @@
--- ArtifactOS Desk/Agent/Engine runtime command contract
+-- ArtifactOS Desk/Engine runtime command contract
 -- All ArtifactOS programs may read/write PG, but cross-process coordination uses this contract.
 
 begin;
@@ -17,7 +17,7 @@ create table if not exists artifactos.runtime_instance (
   metadata jsonb not null default '{}'::jsonb,
 
   constraint chk_runtime_instance_type check (
-    instance_type in ('desk', 'agent', 'engine', 'publishing_runtime', 'diagnostic')
+    instance_type in ('desk', 'engine', 'publishing_runtime', 'diagnostic')
   ),
   constraint chk_runtime_instance_status check (
     status in ('starting', 'running', 'idle', 'stopping', 'stopped', 'failed')
@@ -64,7 +64,7 @@ create table if not exists artifactos.runtime_command (
     )
   ),
   constraint chk_runtime_command_source check (
-    requested_source in ('desk', 'agent', 'amy', 'test', 'diagnostic', 'system')
+    requested_source in ('desk', 'amy', 'test', 'diagnostic', 'system')
   ),
   constraint chk_runtime_command_level check (
     command_level in ('L0', 'L1', 'L2', 'L3')

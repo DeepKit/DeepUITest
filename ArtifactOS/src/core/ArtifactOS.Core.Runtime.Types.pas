@@ -4,7 +4,6 @@ interface
 
 const
   RuntimeInstanceTypeDesk = 'desk';
-  RuntimeInstanceTypeAgent = 'agent';
   RuntimeInstanceTypeEngine = 'engine';
   RuntimeInstanceTypePublishingRuntime = 'publishing_runtime';
   RuntimeInstanceTypeDiagnostic = 'diagnostic';
@@ -32,7 +31,6 @@ const
   RuntimeCommandLevelL3 = 'L3';
 
   RuntimeCommandSourceDesk = 'desk';
-  RuntimeCommandSourceAgent = 'agent';
   RuntimeCommandSourceAmy = 'amy';
   RuntimeCommandSourceTest = 'test';
   RuntimeCommandSourceDiagnostic = 'diagnostic';
