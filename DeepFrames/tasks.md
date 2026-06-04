@@ -60,7 +60,7 @@
 - [ ] 集成测试：端到端 fake provider 链路
 - [ ] 错误处理增强：Workflow 异常恢复路径
 - [ ] 日志完善：关键路径日志插桩
-- [ ] StepFun Image API 接入（image_gen / image_edit）— `docs/02.api` 已定义接口，provider 已留 capability
+- [x] StepFun Image API 接入（`IDeepFramesImageProvider` — fake + StepFun 真实 HTTP /images/generations）
 
 ---
 
