@@ -55,33 +55,39 @@ var
     Role: string;
     SystemPrompt: string;
     UserPrompt: string;
+    OutputSchema: string;
   end;
   I: Integer;
 begin
   LogicalKey := BuildLogicalKey(ProjectId, ContentUnitId, ShotDocumentId);
 
-  // Define agent pipeline steps with meaningful prompts
+  // Define agent pipeline steps with meaningful prompts and output schemas
   SetLength(AgentSteps, 5);
   AgentSteps[0].StepType := STEP_TYPE_AGENT_SPLITTER;
   AgentSteps[0].Role := AGENT_ROLE_SPLITTER;
   AgentSteps[0].SystemPrompt := 'You are a content splitter. Analyze the input article and divide it into logical segments (shots). Output structured JSON with shots array.';
   AgentSteps[0].UserPrompt := 'Split the following Chinese article into shots for a documentary video. Each shot should have text, duration_sec estimate, and tone. Article: "这是一篇测试文章，用于DeepFrames视频生成流水线的Agent链验证。"';
+  AgentSteps[0].OutputSchema := '{"type":"object","required":["schema_version","shots"],"properties":{"schema_version":{"type":"string"},"chapter_summary":{"type":"string"},"style_anchor":{"type":"object"},"shots":{"type":"array","items":{"type":"object","required":["shot_id","text","duration_sec"],"properties":{"shot_id":{"type":"string"},"group_id":{"type":"string"},"text":{"type":"string"},"duration_sec":{"type":"number"},"tone":{"type":"string"}}}}}}';
   AgentSteps[1].StepType := STEP_TYPE_AGENT_WORKER;
   AgentSteps[1].Role := AGENT_ROLE_WORKER;
   AgentSteps[1].SystemPrompt := 'You are a video worker agent. Given a shot specification, produce detailed audio (voice, emotion, pace) and visual (background, transition) instructions. Output structured JSON.';
   AgentSteps[1].UserPrompt := 'For shot_001 with text "测试段落内容", produce detailed audio and visual production instructions in JSON format.';
+  AgentSteps[1].OutputSchema := '{"type":"object","required":["schema_version","shot_id","audio","visual"],"properties":{"schema_version":{"type":"string"},"shot_id":{"type":"string"},"group_id":{"type":"string"},"audio":{"type":"object","required":["text","voice"],"properties":{"text":{"type":"string"},"voice":{"type":"string"},"emotion":{"type":"string"},"pace":{"type":"number"},"pitch":{"type":"number"},"instruction":{"type":"string"}}},"visual":{"type":"object","required":["background_prompt"],"properties":{"background_prompt":{"type":"string"},"target_aspect_ratios":{"type":"array"},"transition":{"type":"string"}}}}}';
   AgentSteps[2].StepType := STEP_TYPE_AGENT_ASSEMBLER;
   AgentSteps[2].Role := AGENT_ROLE_ASSEMBLER;
   AgentSteps[2].SystemPrompt := 'You are an assembler agent. Given multiple worker outputs, merge them into a coherent sequence. Detect and fill gaps, identify continuity issues. Output structured JSON.';
   AgentSteps[2].UserPrompt := 'Assemble the worker outputs for the current project into a coherent video sequence. Report total duration, gaps filled, and continuity issues.';
+  AgentSteps[2].OutputSchema := '{"type":"object","required":["schema_version","assembled","total_duration_sec"],"properties":{"schema_version":{"type":"string"},"assembled":{"type":"boolean"},"total_duration_sec":{"type":"number"},"gaps_filled":{"type":"integer"},"continuity_issues":{"type":"array"}}}';
   AgentSteps[3].StepType := STEP_TYPE_AGENT_QA;
   AgentSteps[3].Role := AGENT_ROLE_QA;
   AgentSteps[3].SystemPrompt := 'You are a QA agent (Gate 2). Review the assembled shot document for production quality. Check coverage ratio, degradation, and issues. Output structured JSON with gate result.';
   AgentSteps[3].UserPrompt := 'Run Gate 2 QA review on the assembled shot document. Output: {schema_version, gate, gate_result, score, coverage_ratio, degraded_ratio, issues}. Pass if score >= 0.85.';
+  AgentSteps[3].OutputSchema := '{"type":"object","required":["schema_version","gate","gate_result","score"],"properties":{"schema_version":{"type":"string"},"gate":{"type":"string","enum":["gate2"]},"gate_result":{"type":"string","enum":["pass","warn","fail"]},"score":{"type":"number"},"coverage_ratio":{"type":"number"},"degraded_ratio":{"type":"number"},"issues":{"type":"array"}}}';
   AgentSteps[4].StepType := STEP_TYPE_STYLE_KEEPER;
   AgentSteps[4].Role := AGENT_ROLE_STYLE_KEEPER;
   AgentSteps[4].SystemPrompt := 'You are a style keeper. Verify visual consistency across shots: art style match, color consistency, intra/inter-group similarity. Output structured JSON. Use deterministic metrics, do not gate on subjective preference.';
   AgentSteps[4].UserPrompt := 'Check style consistency across all shots in the current project. Output: {schema_version, style_consistent, intra_group_similarity, inter_group_similarity, color_consistency, art_style_match, warnings}.';
+  AgentSteps[4].OutputSchema := '{"type":"object","required":["schema_version","style_consistent"],"properties":{"schema_version":{"type":"string"},"style_consistent":{"type":"boolean"},"intra_group_similarity":{"type":"number"},"inter_group_similarity":{"type":"number"},"color_consistency":{"type":"boolean"},"art_style_match":{"type":"number"},"warnings":{"type":"array"}}}';
 
   // Get LLM provider
   Provider := TProviderRegistry.Instance.LLMProvider;
@@ -132,7 +138,7 @@ begin
       ChatReq.SystemPrompt := AgentSteps[I].SystemPrompt;
       ChatReq.UserMessage := AgentSteps[I].UserPrompt;
       ChatReq.AgentRole := AgentSteps[I].Role; // fake provider routing key
-      ChatReq.OutputSchemaJson := '{}';
+      ChatReq.OutputSchemaJson := AgentSteps[I].OutputSchema;
       ChatReq.Model := 'stepfun-flash-3.5';
       ChatReq.Temperature := 0.7;
       ChatReq.MaxTokens := 4096;

@@ -130,6 +130,7 @@
         <DCCReference Include="src\App\DeepFrames.App.Constants.pas"/>
         <DCCReference Include="src\App\DeepFrames.App.Services.pas"/>
         <DCCReference Include="src\Shared\DeepFrames.Shared.Consts.pas"/>
+        <DCCReference Include="src\Shared\DeepFrames.Shared.JsonSchema.pas"/>
         <DCCReference Include="src\Domain\DeepFrames.Domain.Types.pas"/>
         <DCCReference Include="src\Domain\DeepFrames.Domain.Project.pas"/>
         <DCCReference Include="src\Persistence\DeepFrames.Persistence.Connection.pas"/>

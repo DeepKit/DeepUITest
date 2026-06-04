@@ -67,7 +67,8 @@ implementation
 uses
   System.SysUtils,
   System.JSON,
-  DeepFrames.Shared.Consts;
+  DeepFrames.Shared.Consts,
+  DeepFrames.Shared.JsonSchema;
 
 { TFakeLLMProvider }
 
@@ -206,10 +207,28 @@ begin
   ResponseJson := BuildRoleOutput(ARequest.AgentRole);
 
   AResult.ResponseJson := ResponseJson;
-  AResult.NormalizedJson := ResponseJson;
   AResult.ValidationError := '';
   AResult.RepairCount := 0;
   AResult.FinishReason := 'stop';
+
+  // Schema validation + auto-repair when output schema is provided
+  if (Trim(ARequest.OutputSchemaJson) <> '') and
+     (ARequest.OutputSchemaJson <> '{}') then
+  begin
+    var SchemaResult := TJsonSchemaValidator.Validate(
+      ARequest.OutputSchemaJson, AResult.ResponseJson, True);
+    if SchemaResult.HasErrors then
+    begin
+      AResult.ValidationError := string.Join('; ', SchemaResult.Errors);
+      AResult.RepairCount := SchemaResult.RepairCount;
+    end;
+    if SchemaResult.HasRepairs then
+      AResult.NormalizedJson := SchemaResult.RepairedJson
+    else
+      AResult.NormalizedJson := ResponseJson;
+  end
+  else
+    AResult.NormalizedJson := ResponseJson;
 
   AMetrics.ProviderName := GetProviderName;
   AMetrics.Model := ARequest.Model;

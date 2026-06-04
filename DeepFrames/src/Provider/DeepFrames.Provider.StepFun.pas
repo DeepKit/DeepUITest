@@ -92,7 +92,8 @@ uses
   System.Net.URLClient,
   System.NetConsts,
   DeepBase.Security,
-  DeepFrames.Shared.Consts;
+  DeepFrames.Shared.Consts,
+  DeepFrames.Shared.JsonSchema;
 
 const
   STEPFUN_STEP_PLAN_URL = 'https://api.stepfun.com/step_plan/v1';
@@ -305,9 +306,30 @@ begin
 
     AResult.ResponseJson := MsgContent.GetValue<string>('content');
     AResult.FinishReason := ChoiceObj.GetValue<string>('finish_reason');
-    AResult.NormalizedJson := AResult.ResponseJson;
     AResult.ValidationError := '';
     AResult.RepairCount := 0;
+
+    // Schema validation + auto-repair when output schema is provided
+    if (Trim(ARequest.OutputSchemaJson) <> '') and
+       (ARequest.OutputSchemaJson <> '{}') then
+    begin
+      var SchemaResult := TJsonSchemaValidator.Validate(
+        ARequest.OutputSchemaJson, AResult.ResponseJson, True);
+      if SchemaResult.HasErrors then
+      begin
+        AResult.ValidationError := string.Join('; ', SchemaResult.Errors);
+        AResult.RepairCount := SchemaResult.RepairCount;
+      end;
+      if SchemaResult.HasRepairs then
+      begin
+        AResult.NormalizedJson := SchemaResult.RepairedJson;
+        AResult.RepairCount := SchemaResult.RepairCount;
+      end
+      else
+        AResult.NormalizedJson := AResult.ResponseJson;
+    end
+    else
+      AResult.NormalizedJson := AResult.ResponseJson;
 
     // Extract usage
     UsageObj := ResponseObj.GetValue<TJSONObject>('usage');
