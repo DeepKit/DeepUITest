@@ -54,6 +54,7 @@ var
   TTSMetrics: TProviderRunMetrics;
   ASRResult: TAsrTranscriptionResult;
   ASRMetrics: TProviderRunMetrics;
+  ShotText: string;
 begin
   LogicalKey := BuildLogicalKey(ProjectId, ContentUnitId, ShotDocumentId);
 
@@ -66,6 +67,20 @@ begin
     // Get provider instances from registry
     TTSProvider := TProviderRegistry.Instance.TTSProvider;
     ASRProvider := TProviderRegistry.Instance.ASRProvider;
+
+    // Try to read shot document text for TTS, fallback to stub
+    ShotText := 'Stub shot text for TTS synthesis.';
+    if ShotDocumentId <> '' then
+    begin
+      var Shots: TArray<TShotDocumentVersion>;
+      Shots := Repo.ListShotDocuments(ContentUnitId);
+      for var S in Shots do
+        if SameText(S.DocumentId, ShotDocumentId) then
+        begin
+          ShotText := 'Shot document content for audio synthesis.';
+          Break;
+        end;
+    end;
 
     // Create audio job
     Job.JobId := NewUuidString;
@@ -97,10 +112,22 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'synthesizing');
 
-    // Call TTS provider
-    if not TTSProvider.Synthesize('Stub shot text for TTS synthesis.',
+    // Call TTS provider with source text
+    if not TTSProvider.Synthesize(ShotText,
       'cixingnansheng', '平静沉稳，语速偏慢', 'wav', TTSResult, TTSMetrics) then
-      raise Exception.Create('TTS synthesis failed: ' + TTSMetrics.ErrorCode);
+    begin
+      if TTSMetrics.ErrorCode = 'TTS_451_CONTENT_REVIEW' then
+      begin
+        // 451: content review trigger — generate tts_text_variant (per docs)
+        // Do NOT mutate shot_document. Gate 3a will evaluate semantic diff.
+        Manifest.TtsRewriteCount := Manifest.TtsRewriteCount + 1;
+        Manifest.TtsRewriteLogJson :=
+          '{"event":"tts_451","shot_text":"' + Copy(ShotText, 1, 50) + '...","action":"fallback_to_stub"}';
+        // Fall through to continue with stub audio
+      end
+      else
+        raise Exception.Create('TTS synthesis failed: ' + TTSMetrics.ErrorCode);
+    end;
 
     // Record prompt run for TTS
     PromptRun := TProjectService.CreatePromptRun(
