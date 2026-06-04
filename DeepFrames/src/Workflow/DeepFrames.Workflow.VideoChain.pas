@@ -107,9 +107,10 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateVideoIRStatus(VideoIR.VideoIRId, STATUS_RUNNING);
 
-    // Compile timeline via VideoCompiler utility
+    // Compile timeline via VideoCompiler utility (aspect-aware)
+    var VideoAspect: TVideoAspect := TVideoCompiler.AspectFromSpec(PlatformSpec);
     TimelineJson := TVideoCompiler.CompileTimeline(
-      ShotDocumentId, AudioManifestId, PlatformSpec.PlatformSpecId);
+      ShotDocumentId, AudioManifestId, VideoAspect);
     EstimatedDuration := TVideoCompiler.EstimateDuration(TimelineJson);
 
     VideoIR.TimelineJson := TimelineJson;
@@ -145,7 +146,7 @@ begin
       VideoJob.VideoJobId, STEP_TYPE_VIDEO_LINT,
       VideoJob.VideoJobId + ':' + STEP_TYPE_VIDEO_LINT);
     VideoStep.MetricsJson := TVideoCompiler.Lint(
-      TimelineJson, PlatformSpec.PlatformSpecId);
+      TimelineJson, VideoAspect);
     VideoStep.Status := STATUS_RUNNING;
     Repo.InsertVideoStep(VideoStep);
     Repo.UpdateVideoStepStatus(VideoStep.VideoStepId, STATUS_DONE);
@@ -205,7 +206,8 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
 
     // Try to get word timestamps from ASR for subtitle timing
-    var SafeZone: TSafeZone := TSubtitleEngine.BilibiliSafeZone;
+    var SafeZone: TSafeZone := TSubtitleEngine.SafeZoneFor(
+      VideoAspect.Width, VideoAspect.Height, 10.0, 10.0, 36);
     var SubCues: TArray<TSubtitleCue>;
     if AudioManifestId <> '' then
     begin
@@ -283,7 +285,7 @@ begin
       VideoJob.VideoJobId, STEP_TYPE_VIDEO_RENDER,
       VideoJob.VideoJobId + ':' + STEP_TYPE_VIDEO_RENDER);
     VideoStep.MetricsJson := TVideoCompiler.RenderMetrics(
-      RENDER_BACKEND_HYPERFRAMES, EstimatedDuration);
+      RENDER_BACKEND_HYPERFRAMES, EstimatedDuration, VideoAspect);
     VideoStep.AssetId := FinalVideoAsset.AssetId;
     VideoStep.Status := STATUS_RUNNING;
     Repo.InsertVideoStep(VideoStep);
