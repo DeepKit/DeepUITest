@@ -1,33 +1,21 @@
 # DeepFrames Bugfix Log
 
-## 未记录任何 bug
+## 2026-06-04 — AudioProcessor: 错误使用 TProcess (FreePascal 类，Delphi 不可用)
 
-> 截至 2026-06-04，DeepFrames 处于 Phase 1-7 fake provider 骨架阶段，尚未发现和修复需要记录的 bug。
-> 
-> 后续 bug 修复请按以下格式记录：
+**文件**: `src/Workflow/DeepFrames.Workflow.AudioProcessor.pas:143`
+**严重性**: P0 (编译阻断)
+**发现方式**: 代码审查
 
----
+**现象**: `RunFFmpeg` 函数使用了 `TProcess` 类（`System.Diagnostics.TProcess`），该类仅在 Lazarus/FreePascal 中存在，Delphi VCL 没有这个类。编译时直接报错 `Identifier not found "TProcess"`。
 
-### 模板
+**根因**: 手写代码时未区分 FreePascal TProcess 和 Delphi WinAPI CreateProcess。
 
-```markdown
-## YYYY-MM-DD — 简短标题
+**修复**: 将 `RunFFmpeg` 中的 `TProcess` 调用改为 `Winapi.Windows.CreateProcess` + 匿名管道（`CreatePipe` / `ReadFile` / `WaitForSingleObject`）：
+- 创建管道捕获 stdout/stderr
+- `STARTF_USESTDHANDLES` 将写端句柄传给子进程
+- `CREATE_NO_WINDOW` 隐藏控制台窗口
+- 60 秒超时通过 `WaitForSingleObject` 实现
+- 超时后 `TerminateProcess` 强制结束
+- 管道读取用 `PeekNamedPipe` + `ReadFile`
 
-**文件**: `path/to/file.pas:line`
-**严重性**: P0 / P1 / P2
-**发现方式**: 编译 / 运行时 / 评审 / 测试
-
-**现象**: 描述观察到的错误行为
-
-**根因**: 描述根本原因
-
-**修复**: 描述修复方式
-
-**提交**: `commit_hash`
-```
-
----
-
-### 修复记录
-
-（暂无）
+**提交**: `fix(DeepFrames): replace TProcess with WinAPI CreateProcess in AudioProcessor`

@@ -135,33 +135,94 @@ uses
   System.SysUtils,
   System.Classes,
   System.IOUtils,
-  System.Diagnostics,
+  Winapi.Windows,
   DeepFrames.Shared.Consts;
 
 function RunFFmpeg(const AArgs: string; out AStdOut, AStdErr: string): Integer;
 var
-  Proc: TProcess;
-  OutStr, ErrStr: TStringStream;
+  Security: TSecurityAttributes;
+  ReadPipe, WritePipe: THandle;
+  StartInfo: TStartupInfo;
+  ProcInfo: TProcessInformation;
+  Buffer: array[0..4095] of Byte;
+  BytesRead: DWORD;
+  CmdLine: string;
+  OutStr: TStringBuilder;
+  WaitRes: DWORD;
 begin
-  OutStr := TStringStream.Create('', TEncoding.UTF8);
-  ErrStr := TStringStream.Create('', TEncoding.UTF8);
-  Proc := TProcess.Create(nil);
+  Result := -1;
+  AStdOut := '';
+  AStdErr := '';
+  OutStr := TStringBuilder.Create;
   try
-    Proc.Executable := TAudioProcessor.FindFFmpeg;
-    Proc.Parameters.Text := AArgs;
-    Proc.Options := [poUsePipes, poStderrToOutPut, poNoConsole];
-    Proc.ShowWindow := swoHIDE;
-    Proc.Execute;
-    Proc.WaitForExit(60000); // 60s timeout for audio processing
+    // Create pipe for stdout capture
+    Security.nLength := SizeOf(TSecurityAttributes);
+    Security.bInheritHandle := True;
+    Security.lpSecurityDescriptor := nil;
 
-    OutStr.CopyFrom(Proc.Output, Proc.Output.Size);
-    AStdOut := OutStr.DataString;
-    AStdErr := ''; // stderr merged with stdout via poStderrToOutPut
-    Result := Proc.ExitStatus;
+    if not CreatePipe(ReadPipe, WritePipe, @Security, 0) then
+      Exit;
+
+    try
+      // Ensure the write end is inherited by the child process
+      SetHandleInformation(ReadPipe, HANDLE_FLAG_INHERIT, 0);
+
+      FillChar(StartInfo, SizeOf(TStartupInfo), 0);
+      StartInfo.cb := SizeOf(TStartupInfo);
+      StartInfo.hStdOutput := WritePipe;
+      StartInfo.hStdError := WritePipe;
+      StartInfo.dwFlags := STARTF_USESTDHANDLES or STARTF_USESHOWWINDOW;
+      StartInfo.wShowWindow := SW_HIDE;
+
+      CmdLine := '"' + TAudioProcessor.FindFFmpeg + '" ' + AArgs;
+
+      if CreateProcess(nil, PChar(CmdLine), nil, nil, True,
+        CREATE_NO_WINDOW or NORMAL_PRIORITY_CLASS, nil, nil, StartInfo, ProcInfo) then
+      begin
+        try
+          // Close write end so ReadFile gets EOF when process exits
+          CloseHandle(WritePipe);
+          WritePipe := 0;
+
+          // Read stdout
+          repeat
+            WaitRes := WaitForSingleObject(ProcInfo.hProcess, 60000);
+            if WaitRes = WAIT_TIMEOUT then
+            begin
+              TerminateProcess(ProcInfo.hProcess, 1);
+              Exit;
+            end;
+
+            if PeekNamedPipe(ReadPipe, nil, 0, nil, @BytesRead, nil) and (BytesRead > 0) then
+            begin
+              ReadFile(ReadPipe, Buffer, SizeOf(Buffer) - 1, BytesRead, nil);
+              Buffer[BytesRead] := 0;
+              OutStr.Append(TEncoding.UTF8.GetString(Buffer, BytesRead));
+            end;
+          until WaitRes = WAIT_OBJECT_0;
+
+          // Drain remaining
+          while PeekNamedPipe(ReadPipe, nil, 0, nil, @BytesRead, nil) and (BytesRead > 0) do
+          begin
+            ReadFile(ReadPipe, Buffer, SizeOf(Buffer) - 1, BytesRead, nil);
+            Buffer[BytesRead] := 0;
+            OutStr.Append(TEncoding.UTF8.GetString(Buffer, BytesRead));
+          end;
+
+          GetExitCodeProcess(ProcInfo.hProcess, Cardinal(Result));
+        finally
+          CloseHandle(ProcInfo.hProcess);
+          CloseHandle(ProcInfo.hThread);
+        end;
+      end;
+    finally
+      CloseHandle(ReadPipe);
+      if WritePipe <> 0 then
+        CloseHandle(WritePipe);
+    end;
   finally
-    Proc.Free;
+    AStdOut := OutStr.ToString;
     OutStr.Free;
-    ErrStr.Free;
   end;
 end;
 
