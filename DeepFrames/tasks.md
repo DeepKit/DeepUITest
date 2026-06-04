@@ -4,24 +4,33 @@
 
 Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复任务已归档至 [history.md](history.md)。
 
-**2026-06-04 更新**: Provider 抽象层已完成，StepFun LLM provider 已实现真实 HTTP 调用（API Key 可用时走真实 API，不可用时降级为 stub）。
+**2026-06-04 更新**: Provider 抽象层完成，StepFun LLM 真实 HTTP 调用就绪。三个 workflow（DocumentChain、AgentChain、AudioChain）全部通过 Provider 调用 LLM/TTS/ASR。
 
-下阶段目标：POC 2 ASR SSE 验证 → Phase 2 文档链真实 LLM 调用，按 POC → Phase 2 → Phase 3 → ... 顺序推进。
+**当前瓶颈**: 无 Delphi 编译环境验证语法正确性。Phase 2/3 剩余任务集中在 JSON Schema 校验、Gate 门控逻辑、Style Keeper 规则引擎。
+
+下阶段核心任务（按优先级）：
+1. **P2.3** JSON Schema 校验 — LLM 输出质量保障的基础设施
+2. **P2.5+P2.8** Gate 1/2 门控 — pass/warn/fail 分流 + blocked_review
+3. **P3.6** Style Keeper 确定性规则引擎
+4. **P2.9** 失败重试与断点续跑
 
 ---
 
-## 已完成（2026-06-04 Provider 抽象层 + StepFun LLM HTTP）
+## 已完成（2026-06-04）
 
 - [x] **Provider Types** — `src/Provider/DeepFrames.Provider.Types.pas`
-- [x] **Provider Interfaces** — `src/Provider/DeepFrames.Provider.Intf.pas`
-- [x] **Provider Registry** — `src/Provider/DeepFrames.Provider.Registry.pas`
-- [x] **Fake Provider** — `src/Provider/DeepFrames.Provider.Fake.pas`
-- [x] **StepFun LLM Provider (real HTTP)** — `src/Provider/DeepFrames.Provider.StepFun.pas`（真实 HTTP POST + OpenAI 兼容解析 + 重试 + stub 降级）
-- [x] **StepFun TTS/ASR Skeleton** — 同上文件（`ENotImplemented`，Phase 4 接入）
+- [x] **Provider Interfaces** — `src/Provider/DeepFrames.Provider.Intf.pas`（LLM / TTS / ASR 分离）
+- [x] **Provider Registry** — `src/Provider/DeepFrames.Provider.Registry.pas`（fake 默认，可切换 stepfun）
+- [x] **Fake Provider** — `src/Provider/DeepFrames.Provider.Fake.pas`（回归测试夹具）
+- [x] **StepFun LLM (real HTTP)** — `src/Provider/DeepFrames.Provider.StepFun.pas`（真实 HTTP POST + OpenAI 兼容解析 + 重试 + Key 缺失时 stub 降级）
+- [x] **StepFun TTS/ASR Skeleton** — 同上（`ENotImplemented`，Phase 4 接入）
 - [x] **VideoCompiler Utility** — `src/Workflow/DeepFrames.Workflow.VideoCompiler.pas`
-- [x] **Workflow Refactor** — AgentChain/AudioChain/VideoChain/PackageChain 全部改用 Provider
-- [x] **AgentChain 真实 Prompt** — 每个 agent role 有专用 SystemPrompt + UserPrompt
-- [x] **Domain Service** — `TProjectService.BuildQualitySnapshotJson` / `BuildSourceTraceJson`
+- [x] **DocumentChain → Provider** — source_document 注入 prompt，LLM 调用 build_script/accuracy_check/build_variant/build_shot，失败时 stub 降级
+- [x] **AgentChain → Provider** — 每个 agent role 有专用 SystemPrompt + UserPrompt
+- [x] **AudioChain → Provider** — TTS/ASR provider 调用
+- [x] **VideoChain → VideoCompiler** — 确定性工具类
+- [x] **PackageChain → Domain Service** — BuildQualitySnapshotJson / BuildSourceTraceJson
+- [x] **Repository.FindSourceDocument** — 按 ID 查找 + payload_json 解析
 - [x] **UI** — "Switch AI Provider" 命令 + 启动时显示 provider 状态
 - [x] **Build Config** — `dproj` + `compile_test.bat` 更新
 
@@ -56,32 +65,32 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 
 ## Phase 2：文档链真实实现
 
-> 当前状态：stub 数据，不调用真实 LLM
-> 目标：`source_document → script_document → accuracy_report → variant_document → shot_document` 全部通过真实 LLM 调用产出
+> 当前状态：DocumentChain workflow 已通过 Provider 调用真实 LLM（StepFun Key 可用时），Key 不可用时 stub 降级。
+> 剩余：JSON Schema 校验、Gate 1/2 门控逻辑（pass/warn/fail 分流）、失败重试与断点续跑
 
-- [ ] **P2.1** 接入 StepFun Chat API，替换 stub script_document 生成为真实 LLM 调用
-- [ ] **P2.2** 实现 prompt template 加载与渲染（注入 source_document 内容）
-- [ ] **P2.3** 实现 schema 校验：LLM 输出必须通过 `output_schema_json` 定义的 JSON Schema
-- [ ] **P2.4** 实现 accuracy_report 真实计算（coverage_score / distortion_score）
-- [ ] **P2.5** 实现 Gate 1 质量门控：pass → 继续，warn → 记录+继续，fail → blocked_review
-- [ ] **P2.6** 实现 build_variant 真实 LLM 调用（按 variant_kind 生成变体）
-- [ ] **P2.7** 实现 build_shot 真实 LLM 调用（拆分变体为 shot 序列）
-- [ ] **P2.8** 实现 Gate 2 质量门控（shot 级生产质量检查）
-- [ ] **P2.9** 实现失败重试与断点续跑（不产生重复业务对象）
+- [x] **P2.1** 接入 StepFun Chat API，替换 stub script_document 生成为真实 LLM 调用
+- [x] **P2.2** 实现 prompt template 加载与渲染（注入 source_document 内容）
+- [ ] **P2.3** 实现 schema 校验：LLM 输出必须通过 `output_schema_json` 定义的 JSON Schema（当前 `output_schema_json` 始终为 `'{}'`，无校验）
+- [x] **P2.4** 实现 accuracy_report 真实计算（coverage_score / distortion_score）— 真实 provider 时由 LLM 计算，fake 时 stub 1.0/0.0
+- [ ] **P2.5** 实现 Gate 1 质量门控：pass → 继续，warn → 记录+继续，fail → blocked_review（当前只硬编码 pass）
+- [x] **P2.6** 实现 build_variant 真实 LLM 调用（按 variant_kind 生成变体）
+- [x] **P2.7** 实现 build_shot 真实 LLM 调用（拆分变体为 shot 序列）
+- [ ] **P2.8** 实现 Gate 2 质量门控（shot 级生产质量检查）— 当前只硬编码 pass
+- [ ] **P2.9** 实现失败重试与断点续跑（Provider 层已有 HTTP 重试，workflow 层无断点续跑）
 
 ## Phase 3：Agent 生产链真实实现
 
-> 当前状态：fake provider 固化结构
-> 目标：Splitter / Worker / Assembler / QA 通过真实 StepFun LLM 调用
+> 当前状态：AgentChain workflow 已通过 Provider 调用真实 LLM，每个 agent role 有专用 SystemPrompt + UserPrompt。StepFun provider 已接入。
+> 剩余：Style Keeper 确定性规则引擎、prompt version 可复现性
 
-- [ ] **P3.1** 实现 StepFun provider adapter（替换 fake provider）
-- [ ] **P3.2** 实现 Splitter agent 真实调用（source_document → 拆分计划）
-- [ ] **P3.3** 实现 Worker agent 真实调用（逐段生成脚本内容）
-- [ ] **P3.4** 实现 Assembler agent 真实调用（合并为完整 script_document）
-- [ ] **P3.5** 实现 QA agent 真实调用（Gate 2 质量门控结果）
-- [ ] **P3.6** 实现 Style Keeper 确定性规则引擎（不调用 LLM）
-- [ ] **P3.7** 实现 prompt version 可复现性（同一输入 + 同一 prompt version + 同一 model binding = 可复现调用记录）
-- [ ] **P3.8** 实现 prompt run 记录（token 用量、latency、retry、error）
+- [x] **P3.1** 实现 StepFun provider adapter（`TStepFunLLMProvider` 已完成，真实 HTTP + stub 降级）
+- [x] **P3.2** 实现 Splitter agent 真实调用（source_document → 拆分计划）
+- [x] **P3.3** 实现 Worker agent 真实调用（逐段生成脚本内容）
+- [x] **P3.4** 实现 Assembler agent 真实调用（合并为完整 script_document）
+- [x] **P3.5** 实现 QA agent 真实调用（Gate 2 质量门控结果）
+- [ ] **P3.6** 实现 Style Keeper 确定性规则引擎（不调用 LLM）— 当前 fake provider 输出 stub 数据，无真实规则引擎
+- [ ] **P3.7** 实现 prompt version 可复现性（同一输入 + 同一 prompt version + 同一 model binding = 可复现调用记录）— 当前记录 prompt_run 但无 version 校验
+- [x] **P3.8** 实现 prompt run 记录（token 用量、latency、retry、error）— 每次调用自动记录
 
 ## Phase 4：音频生产线真实实现
 
