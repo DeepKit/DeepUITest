@@ -23,6 +23,7 @@ uses
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
   DeepFrames.Workflow.GateEvaluator,
+  DeepFrames.Workflow.PackageExporter,
   DeepFrames.Shared.Consts;
 
 class function TPackageChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -119,10 +120,44 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Gate 4: package integrity check
+    // Step 2: Export package to disk
+    // ---------------------------------------------------------------
+    Step.StepId := NewUuidString;
+    Step.JobId := Job.JobId;
+    Step.StepType := 'package.export';
+    Step.StepKey := Job.JobId + ':package.export';
+    Step.Status := STATUS_PENDING;
+    Repo.InsertJobStep(Step);
+
+    Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
+
+    var ExportAssets: TArray<TAssetRecord>;
+    ExportAssets := Repo.ListAssets(ContentUnitId);
+    var BiliMeta: TBilibiliMetadata := TPackageExporter.DefaultBilibiliMetadata('');
+    var ExportResult: TPackageExportResult;
+    var StubManifest: TAudioManifest;
+    var StubVIR: TVideoIR;
+    var StubVJob: TVideoJob;
+
+    if SameText(TargetPlatform, PLATFORM_BILIBILI) then
+      ExportResult := TPackageExporter.ExportBilibiliPackage(
+        Pkg, StubManifest, StubVIR, StubVJob, ExportAssets, BiliMeta, 'packages')
+    else
+      ExportResult := TPackageExporter.ExportAudioPackage(
+        Pkg, StubManifest, ExportAssets, 'packages');
+
+    if not ExportResult.Success then
+      raise Exception.Create('Package export failed: ' + ExportResult.ErrorMessage);
+
+    Pkg.ManifestAssetId := ManifestAsset.AssetId;
+    Pkg.OutputRootUri := ExportResult.OutputDir;
+    Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
+
+    // ---------------------------------------------------------------
+    // Gate 4: package integrity check (source trace + export)
     // ---------------------------------------------------------------
     GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId,
-      TGateEvaluator.EvaluateGate4(True)); // integrates manifest + asset checks
+      TGateEvaluator.EvaluateGate4(ExportResult.SourceTraceComplete));
     Repo.InsertQualityGateResult(GateResult);
 
     // Transition package -> done
