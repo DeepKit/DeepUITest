@@ -2,9 +2,11 @@ program ArtifactOS;
 
 { ArtifactOS — Source-to-Artifact Production and Amplification Kernel }
 { Phase 1A: shadow run only.  Target database: artifactos_test. }
+{ Modes: (default) CLI dashboard, --desk VCL GUI, --engine background, --smoke-runtime test }
 
 uses
   System.SysUtils,
+  Vcl.Forms,
   FireDAC.Stan.Intf,
   FireDAC.Stan.Option,
   FireDAC.Stan.Error,
@@ -13,7 +15,7 @@ uses
   FireDAC.Stan.Async,
   FireDAC.Stan.Param,
   FireDAC.UI.Intf,
-  FireDAC.ConsoleUI.Wait,
+  FireDAC.VCLUI.Wait,
   FireDAC.Phys.Intf,
   FireDAC.Phys,
   FireDAC.Phys.SQLite,
@@ -23,18 +25,32 @@ uses
   FireDAC.Comp.Client,
   DeepBase.Manager,
   DeepBase.Persistence.Manager.FireDAC,
+  DeepBase.AutoFix,
+  DeepBase.AutoFix.VclHook,
   ArtifactOS.Core.DB.Connection,
   ArtifactOS.Core.Dashboard,
   ArtifactOS.Core.Runtime.Smoke,
   ArtifactOS.Core.Runtime.Engine,
   ArtifactOS.Core.Runtime.EngineCallbacks,
-  ArtifactOS.Services.ChainRunner;
+  ArtifactOS.Core.AutoFix.Scenarios,
+  ArtifactOS.Services.ChainRunner,
+  ArtifactOS.Services.DeepLLMProxy,
+  ArtifactOS.Services.TopicFunnel,
+  ArtifactOS.Desk.MainForm in 'Desk\ArtifactOS.Desk.MainForm.pas' {DeskMainForm},
+  ArtifactOS.Desk.Services in 'Desk\ArtifactOS.Desk.Services.pas',
+  ArtifactOS.Desk.Commands in 'Desk\ArtifactOS.Desk.Commands.pas',
+  ArtifactOS.Desk.Providers in 'Desk\ArtifactOS.Desk.Providers.pas';
+
+{$R *.res}
 
 begin
   try
     FDManager().SilentMode := True;
+    AutoFix.Install;
+    TAutoFixVclHook.Install;
     DeepBase.Manager.DeepBase.InitializeOrRaise;
     try
+      // --smoke-runtime: CLI smoke test mode
       if FindCmdLineSwitch('smoke-runtime', True) then
       begin
         var SmokeMessage: string;
@@ -51,6 +67,7 @@ begin
         Exit;
       end;
 
+      // --engine: background engine mode
       if FindCmdLineSwitch('engine', True) then
       begin
         var Config := DefaultEngineConfig;
@@ -64,8 +81,26 @@ begin
         Exit;
       end;
 
+      // --desk: VCL GUI mode (DeepShell)
+      if FindCmdLineSwitch('desk', True) then
+      begin
+        Application.Initialize;
+        Application.MainFormOnTaskbar := True;
+        Application.Title := 'ArtifactOS Desk';
+
+        RegisterArtifactOSAutoFixScenarios;
+
+        Application.CreateForm(TDeskMainForm, DeskMainForm);
+        DeepBase.Manager.DeepBase.FireReadyCallbacks;
+        Application.Run;
+        Exit;
+      end;
+
+      // Default: CLI dashboard mode
       WriteLn('ArtifactOS Phase 1A');
       WriteLn('==================');
+      WriteLn;
+      WriteLn('Usage: ArtifactOS.exe [--desk] [--engine] [--smoke-runtime]');
       WriteLn;
 
       TArtifactOSDashboard.Run;
