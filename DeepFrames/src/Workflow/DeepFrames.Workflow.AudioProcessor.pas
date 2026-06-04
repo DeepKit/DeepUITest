@@ -127,6 +127,11 @@ type
     class function GetFileInfo(const AFile: string;
       out ASampleRate: Integer; out AChannels: Integer;
       out ADurationSec: Double): Boolean; static;
+
+    /// <summary>Execute an arbitrary ffmpeg command and get exit code + stdout.
+    /// Used by VideoChain for video+audio mux and other non-audio FFmpeg tasks.
+    /// </summary>
+    class function Execute(const AArgs: string; out AStdOut: string): Integer; static;
   end;
 
 implementation
@@ -554,6 +559,14 @@ begin
       TryStrToFloat(Val, ADurationSec);
   end;
   Result := True;
+end;
+
+class function TAudioProcessor.Execute(const AArgs: string;
+  out AStdOut: string): Integer;
+var
+  Dummy: string;
+begin
+  Result := RunFFmpeg(AArgs, AStdOut, Dummy);
 end;
 
 end.

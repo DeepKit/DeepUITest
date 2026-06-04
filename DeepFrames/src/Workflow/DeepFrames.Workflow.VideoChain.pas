@@ -23,6 +23,7 @@ uses
   DeepFrames.Persistence.Repository,
   DeepFrames.Workflow.VideoCompiler,
   DeepFrames.Workflow.SubtitleEngine,
+  DeepFrames.Workflow.AudioProcessor,
   DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Provider.Registry,
   DeepFrames.Provider.Intf,
@@ -302,7 +303,7 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Step 5: Mux (FFmpeg mux video + audio)
+    // Step 5: Mux (FFmpeg mux video + audio → final MP4)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -312,6 +313,35 @@ begin
     Repo.InsertJobStep(Step);
 
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
+
+    // Try FFmpeg mux via TAudioProcessor if audio manifest is available
+    if AudioManifestId <> '' then
+    begin
+      var MuxAManifests := Repo.ListAudioManifests(ContentUnitId);
+      for var MuxAM in MuxAManifests do
+        if SameText(MuxAM.ManifestId, AudioManifestId) then
+        begin
+          var MuxFile: string := Format('video/%s/output/bilibili_1080p.mp4', [Job.JobId]);
+          var MuxArgs: string := Format(
+            '-i "%s" -i "%s" -c:v copy -c:a aac -b:a 192k -shortest "%s" -y',
+            [FinalVideoAsset.Uri, MuxAM.MergedAudioAssetId, MuxFile]);
+          var MuxOut: string;
+          var MuxAudioUri: string := '';
+          var MuxAssets := Repo.ListAssets(ContentUnitId);
+          for var MuxAsset in MuxAssets do
+            if SameText(MuxAsset.AssetId, MuxAM.MergedAudioAssetId) then
+            begin
+              MuxAudioUri := MuxAsset.Uri;
+              Break;
+            end;
+          if MuxAudioUri <> '' then
+          begin
+            if TAudioProcessor.Execute(MuxArgs, MuxOut) <> 0 then
+              VideoStep.ErrorMessage := 'FFmpeg mux non-zero exit';
+          end;
+          Break;
+        end;
+    end;
 
     // Register cover image
     CoverAsset := TProjectService.CreateAsset(

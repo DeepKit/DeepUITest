@@ -152,6 +152,7 @@
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.SubtitleEngine.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.AssetRetention.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.PackageExporter.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.WorkerProtocol.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Types.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Intf.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Registry.pas"/>
