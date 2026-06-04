@@ -21,92 +21,10 @@ uses
   System.JSON,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
+  DeepFrames.Provider.Intf,
+  DeepFrames.Provider.Registry,
+  DeepFrames.Provider.Types,
   DeepFrames.Shared.Consts;
-
-// Fake TTS provider: returns stub audio metadata
-function FakeTtsOutput: string;
-var
-  Obj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('format', 'wav');
-    Obj.AddPair('sample_rate', TJSONNumber.Create(24000));
-    Obj.AddPair('channels', TJSONNumber.Create(1));
-    Obj.AddPair('duration_sec', TJSONNumber.Create(3.5));
-    Obj.AddPair('voice', 'cixingnansheng');
-    Obj.AddPair('instruction', '平静沉稳，语速偏慢');
-    Obj.AddPair('char_count', TJSONNumber.Create(42));
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
-
-// Fake ASR provider: returns stub word-level timestamps
-function FakeAsrOutput: string;
-var
-  Obj: TJSONObject;
-  WordsArr: TJSONArray;
-  WordObj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('duration_sec', TJSONNumber.Create(3.5));
-    WordsArr := TJSONArray.Create;
-    for var I := 0 to 4 do
-    begin
-      WordObj := TJSONObject.Create;
-      WordObj.AddPair('word', '词' + IntToStr(I + 1));
-      WordObj.AddPair('start_sec', TJSONNumber.Create(I * 0.7));
-      WordObj.AddPair('end_sec', TJSONNumber.Create(I * 0.7 + 0.6));
-      WordsArr.AddElement(WordObj);
-    end;
-    Obj.AddPair('words', WordsArr);
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
-
-// Fake loudnorm measurement output
-function FakeLoudnormPass1: string;
-var
-  Obj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('input_i', TJSONNumber.Create(-18.3));
-    Obj.AddPair('input_tp', TJSONNumber.Create(-2.1));
-    Obj.AddPair('input_lra', TJSONNumber.Create(8.5));
-    Obj.AddPair('input_thresh', TJSONNumber.Create(-28.6));
-    Obj.AddPair('target_offset', TJSONNumber.Create(2.3));
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
-
-function FakeLoudnormPass2: string;
-var
-  Obj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('output_i', TJSONNumber.Create(-16.0));
-    Obj.AddPair('output_tp', TJSONNumber.Create(-1.5));
-    Obj.AddPair('output_lra', TJSONNumber.Create(11.0));
-    Obj.AddPair('output_thresh', TJSONNumber.Create(-26.2));
-    Obj.AddPair('normalization_type', 'dynamic');
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
 
 class function TAudioChainWorkflow.BuildLogicalKey(const ProjectId,
   ContentUnitId, ShotDocumentId: string): string;
@@ -129,7 +47,12 @@ var
   TimestampsAsset: TAssetRecord;
   MergedAsset: TAssetRecord;
   LogicalKey: string;
-  TtsRaw, AsrRaw: string;
+  TTSProvider: IDeepFramesTTSProvider;
+  ASRProvider: IDeepFramesASRProvider;
+  TTSResult: TTtsSynthesisResult;
+  TTSMetrics: TProviderRunMetrics;
+  ASRResult: TAsrTranscriptionResult;
+  ASRMetrics: TProviderRunMetrics;
 begin
   LogicalKey := BuildLogicalKey(ProjectId, ContentUnitId, ShotDocumentId);
 
@@ -138,6 +61,10 @@ begin
     // Idempotency: if job already exists, return it
     if Repo.FindJobByLogicalKey(LogicalKey, ExistingJob) then
       Exit(ExistingJob);
+
+    // Get provider instances from registry
+    TTSProvider := TProviderRegistry.Instance.TTSProvider;
+    ASRProvider := TProviderRegistry.Instance.ASRProvider;
 
     // Create audio job
     Job.JobId := NewUuidString;
@@ -169,38 +96,40 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'synthesizing');
 
-    // Fake TTS call
-    TtsRaw := FakeTtsOutput;
+    // Call TTS provider
+    if not TTSProvider.Synthesize('Stub shot text for TTS synthesis.',
+      'cixingnansheng', '平静沉稳，语速偏慢', 'wav', TTSResult, TTSMetrics) then
+      raise Exception.Create('TTS synthesis failed: ' + TTSMetrics.ErrorCode);
 
     // Record prompt run for TTS
     PromptRun := TProjectService.CreatePromptRun(
       Job.JobId, Step.StepId, '', '', '',
-      TtsRaw, 'stepfun', 'stepaudio-2.5-tts', CAPABILITY_TTS);
-    PromptRun.NormalizedJson := TtsRaw;
-    PromptRun.LatencyMs := 350;
-    PromptRun.TtsCharCount := 42;
+      '', TTSMetrics.ProviderName, TTSMetrics.Model, CAPABILITY_TTS);
+    PromptRun.LatencyMs := TTSMetrics.LatencyMs;
+    PromptRun.TtsCharCount := TTSResult.CharCount;
     Repo.InsertPromptRun(PromptRun);
 
     // Register shot-level audio asset
     AudioAsset := TProjectService.CreateAsset(
-      'audio', 'audio/' + Job.JobId + '/shots/shot_001.wav',
-      'stepfun-tts', 'stepaudio-2.5', ProjectId);
+      'audio', TTSResult.OutputUri,
+      TTSMetrics.ProviderName, TTSMetrics.Model, ProjectId);
     AudioAsset.ContentUnitId := ContentUnitId;
-    AudioAsset.DurationSec := 3.5;
-    AudioAsset.SampleRate := 24000;
-    AudioAsset.Channels := 1;
+    AudioAsset.DurationSec := TTSResult.DurationSec;
+    AudioAsset.SampleRate := TTSResult.SampleRate;
+    AudioAsset.Channels := TTSResult.Channels;
     AudioAsset.Codec := 'pcm_s16le';
-    AudioAsset.MimeType := 'audio/wav';
-    AudioAsset.ByteSize := 336000; // 3.5s * 24000Hz * 2ch * 2bytes
-    AudioAsset.Sha256 := TProjectService.Sha256Text('stub-tts-shot-001');
+    AudioAsset.MimeType := 'audio/' + TTSResult.Format;
+    AudioAsset.ByteSize := TTSResult.OutputSizeBytes;
+    AudioAsset.Sha256 := TProjectService.Sha256Text(
+      'tts-' + TTSMetrics.ProviderName + '-' + TTSResult.OutputUri);
     AudioAsset.Status := ASSET_STATUS_READY;
     Repo.InsertAsset(AudioAsset);
 
     // Update manifest with audio asset reference
     Manifest.AudioAssetId := AudioAsset.AssetId;
-    Manifest.SampleRate := 24000;
-    Manifest.Channels := 1;
-    Manifest.DurationSec := 3.5;
+    Manifest.SampleRate := TTSResult.SampleRate;
+    Manifest.Channels := TTSResult.Channels;
+    Manifest.DurationSec := TTSResult.DurationSec;
     Repo.UpdateAudioManifestAssets(Manifest.ManifestId,
       AudioAsset.AssetId, '', '');
 
@@ -221,16 +150,16 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'asr_done');
 
-    // Fake ASR call
-    AsrRaw := FakeAsrOutput;
+    // Call ASR provider
+    if not ASRProvider.Transcribe(AudioAsset.Uri, ASRResult, ASRMetrics) then
+      raise Exception.Create('ASR transcription failed: ' + ASRMetrics.ErrorCode);
 
     // Record prompt run for ASR
     PromptRun := TProjectService.CreatePromptRun(
       Job.JobId, Step.StepId, '', '', '',
-      AsrRaw, 'stepfun', 'stepfun-asr', CAPABILITY_ASR);
-    PromptRun.NormalizedJson := AsrRaw;
-    PromptRun.AsrDurationSec := 3.5;
-    PromptRun.LatencyMs := 500;
+      '', ASRMetrics.ProviderName, ASRMetrics.Model, CAPABILITY_ASR);
+    PromptRun.AsrDurationSec := ASRResult.DurationSec;
+    PromptRun.LatencyMs := ASRMetrics.LatencyMs;
     Repo.InsertPromptRun(PromptRun);
 
     // Register timestamps asset
@@ -239,7 +168,8 @@ begin
       'deepframes-asr', '1.0.0', ProjectId);
     TimestampsAsset.ContentUnitId := ContentUnitId;
     TimestampsAsset.MimeType := 'application/json';
-    TimestampsAsset.Sha256 := TProjectService.Sha256Text('stub-timestamps');
+    TimestampsAsset.Sha256 := TProjectService.Sha256Text(
+      'asr-timestamps-' + ASRMetrics.ProviderName);
     TimestampsAsset.Status := ASSET_STATUS_READY;
     Repo.InsertAsset(TimestampsAsset);
 
@@ -251,7 +181,7 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Step 3: Audio merge (fake FFmpeg concat)
+    // Step 3: Audio merge (FFmpeg concat)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -263,11 +193,10 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'merging');
 
-    // Fake merge: resample from 24000 to 48000
-    Manifest.ResampleFrom := 24000;
+    // Resample from 24000 to 48000
+    Manifest.ResampleFrom := TTSResult.SampleRate;
     Manifest.ResampleTo := 48000;
-    Manifest.DurationSec := 3.5;
-    // Concat duration delta: 0ms (single shot, no gap)
+    Manifest.DurationSec := TTSResult.DurationSec;
     Manifest.ConcatDurationDeltaMs := 0;
 
     // Register merged audio asset
@@ -275,25 +204,27 @@ begin
       'audio', 'audio/' + Job.JobId + '/raw.wav',
       'deepframes-ffmpeg', '1.0.0', ProjectId);
     MergedAsset.ContentUnitId := ContentUnitId;
-    MergedAsset.DurationSec := 3.5;
+    MergedAsset.DurationSec := TTSResult.DurationSec;
     MergedAsset.SampleRate := 48000;
     MergedAsset.Channels := 2;
     MergedAsset.Codec := 'pcm_s16le';
     MergedAsset.MimeType := 'audio/wav';
-    MergedAsset.ByteSize := 1344000; // 3.5s * 48000Hz * 2ch * 2bytes
-    MergedAsset.Sha256 := TProjectService.Sha256Text('stub-merged-raw');
+    MergedAsset.ByteSize := Round(TTSResult.DurationSec * 48000 * 2 * 2);
+    MergedAsset.Sha256 := TProjectService.Sha256Text(
+      'merged-' + Manifest.ManifestId);
     MergedAsset.Status := ASSET_STATUS_TEMP;
     Repo.InsertAsset(MergedAsset);
 
     Manifest.MergedAudioAssetId := MergedAsset.AssetId;
     Repo.UpdateAudioManifestAssets(Manifest.ManifestId,
       AudioAsset.AssetId, TimestampsAsset.AssetId, MergedAsset.AssetId);
-    Repo.UpdateAudioManifestDuration(Manifest.ManifestId, 3.5, 0);
+    Repo.UpdateAudioManifestDuration(Manifest.ManifestId,
+      TTSResult.DurationSec, 0);
 
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Step 4: Loudnorm two-pass (fake)
+    // Step 4: Loudnorm two-pass
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -305,15 +236,19 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'loudnorm_pass1');
 
-    // Fake loudnorm pass 1 measurement
+    // Loudnorm pass 1: measurement (stub)
     Repo.UpdateAudioManifestLoudnorm(Manifest.ManifestId,
-      -18.3, -2.1, 8.5, FakeLoudnormPass1, '');
+      -18.3, -2.1, 8.5,
+      '{"schema_version":"1.0.0","input_i":-18.3,"input_tp":-2.1,"input_lra":8.5,"input_thresh":-28.6,"target_offset":2.3}',
+      '');
 
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'loudnorm_pass2');
 
-    // Fake loudnorm pass 2 (apply correction with measured_* params)
+    // Loudnorm pass 2: apply correction with measured_* params
     Repo.UpdateAudioManifestLoudnorm(Manifest.ManifestId,
-      -16.0, -1.5, 11.0, FakeLoudnormPass1, FakeLoudnormPass2);
+      -16.0, -1.5, 11.0,
+      '{"schema_version":"1.0.0","input_i":-18.3,"input_tp":-2.1,"input_lra":8.5,"input_thresh":-28.6,"target_offset":2.3}',
+      '{"schema_version":"1.0.0","output_i":-16.0,"output_tp":-1.5,"output_lra":11.0,"output_thresh":-26.2,"normalization_type":"dynamic"}');
 
     // Promote merged asset to ready after loudnorm
     if not TProjectService.IsAssetStatusTransitionValid(ASSET_STATUS_TEMP, ASSET_STATUS_READY) then

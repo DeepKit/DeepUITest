@@ -21,114 +21,10 @@ uses
   System.JSON,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
+  DeepFrames.Provider.Intf,
+  DeepFrames.Provider.Registry,
+  DeepFrames.Provider.Types,
   DeepFrames.Shared.Consts;
-
-// Fake provider: returns stub structured JSON per agent role
-function FakeProviderOutput(const AgentRole: string): string;
-var
-  Obj: TJSONObject;
-  ShotsArr: TJSONArray;
-  ShotObj: TJSONObject;
-  AudioObj: TJSONObject;
-  VisualObj: TJSONObject;
-begin
-  if AgentRole = AGENT_ROLE_SPLITTER then
-  begin
-    Obj := TJSONObject.Create;
-    try
-      Obj.AddPair('schema_version', '1.0.0');
-      Obj.AddPair('chapter_summary', 'Stub chapter summary');
-      Obj.AddPair('style_anchor', TJSONObject.Create
-        .AddPair('art_style', 'documentary')
-        .AddPair('color_palette', TJSONArray.Create.Add('warm').Add('neutral'))
-        .AddPair('mood', 'calm'));
-      ShotsArr := TJSONArray.Create;
-      ShotObj := TJSONObject.Create;
-      ShotObj.AddPair('shot_id', 'shot_001');
-      ShotObj.AddPair('group_id', 'group_01');
-      ShotObj.AddPair('text', 'Stub shot text from splitter.');
-      ShotObj.AddPair('duration_sec', TJSONNumber.Create(5.0));
-      ShotsArr.AddElement(ShotObj);
-      Obj.AddPair('shots', ShotsArr);
-      Result := Obj.ToJSON;
-    finally
-      Obj.Free;
-    end;
-  end
-  else if AgentRole = AGENT_ROLE_WORKER then
-  begin
-    Obj := TJSONObject.Create;
-    try
-      Obj.AddPair('schema_version', '1.0.0');
-      Obj.AddPair('shot_id', 'shot_001');
-      Obj.AddPair('group_id', 'group_01');
-      AudioObj := TJSONObject.Create;
-      AudioObj.AddPair('text', 'Stub worker audio text.');
-      AudioObj.AddPair('voice', 'default');
-      AudioObj.AddPair('emotion', 'neutral');
-      AudioObj.AddPair('pace', 1.0);
-      AudioObj.AddPair('pitch', 0.0);
-      AudioObj.AddPair('instruction', '');
-      Obj.AddPair('audio', AudioObj);
-      VisualObj := TJSONObject.Create;
-      VisualObj.AddPair('background_prompt', 'Documentary warm neutral bg');
-      VisualObj.AddPair('target_aspect_ratios', TJSONArray.Create.Add('16:9'));
-      VisualObj.AddPair('transition', 'cut');
-      Obj.AddPair('visual', VisualObj);
-      Result := Obj.ToJSON;
-    finally
-      Obj.Free;
-    end;
-  end
-  else if AgentRole = AGENT_ROLE_ASSEMBLER then
-  begin
-    Obj := TJSONObject.Create;
-    try
-      Obj.AddPair('schema_version', '1.0.0');
-      Obj.AddPair('assembled', True);
-      Obj.AddPair('total_duration_sec', TJSONNumber.Create(5.0));
-      Obj.AddPair('gaps_filled', TJSONNumber.Create(0));
-      Obj.AddPair('continuity_issues', TJSONArray.Create);
-      Result := Obj.ToJSON;
-    finally
-      Obj.Free;
-    end;
-  end
-  else if AgentRole = AGENT_ROLE_QA then
-  begin
-    Obj := TJSONObject.Create;
-    try
-      Obj.AddPair('schema_version', '1.0.0');
-      Obj.AddPair('gate', 'gate2');
-      Obj.AddPair('gate_result', GATE_RESULT_PASS);
-      Obj.AddPair('score', TJSONNumber.Create(0.95));
-      Obj.AddPair('coverage_ratio', TJSONNumber.Create(0.97));
-      Obj.AddPair('degraded_ratio', TJSONNumber.Create(0.0));
-      Obj.AddPair('issues', TJSONArray.Create);
-      Result := Obj.ToJSON;
-    finally
-      Obj.Free;
-    end;
-  end
-  else if AgentRole = AGENT_ROLE_STYLE_KEEPER then
-  begin
-    Obj := TJSONObject.Create;
-    try
-      Obj.AddPair('schema_version', '1.0.0');
-      Obj.AddPair('style_consistent', True);
-      Obj.AddPair('intra_group_similarity', TJSONNumber.Create(0.92));
-      Obj.AddPair('inter_group_similarity', TJSONNumber.Create(0.85));
-      Obj.AddPair('color_consistency', True);
-      Obj.AddPair('art_style_match', TJSONNumber.Create(0.88));
-      Obj.AddPair('warnings', TJSONArray.Create);
-      Result := Obj.ToJSON;
-    finally
-      Obj.Free;
-    end;
-  end
-  else
-    Result := '{}';
-end;
 
 class function TAgentChainWorkflow.BuildLogicalKey(const ProjectId,
   ContentUnitId, ShotDocumentId: string): string;
@@ -150,7 +46,10 @@ var
   EvalResult: TEvalResult;
   GateResult: TQualityGateResult;
   LogicalKey: string;
-  RawOutput: string;
+  Provider: IDeepFramesLLMProvider;
+  ChatResult: TChatCompletionResult;
+  ChatMetrics: TProviderRunMetrics;
+  ChatReq: TChatCompletionRequest;
   AgentSteps: array of record
     StepType: string;
     Role: string;
@@ -171,6 +70,9 @@ begin
   AgentSteps[3].Role := AGENT_ROLE_QA;
   AgentSteps[4].StepType := STEP_TYPE_STYLE_KEEPER;
   AgentSteps[4].Role := AGENT_ROLE_STYLE_KEEPER;
+
+  // Get LLM provider
+  Provider := TProviderRegistry.Instance.LLMProvider;
 
   Repo := TDeepFramesRepository.Create;
   try
@@ -194,10 +96,11 @@ begin
     Repo.InsertPromptTemplate(Template);
 
     Binding := TProjectService.CreateModelBinding(
-      AGENT_ROLE_SPLITTER, 'stepfun', 'stepfun-flash-3.5', CAPABILITY_LLM);
+      AGENT_ROLE_SPLITTER, Provider.GetProviderName,
+      'stepfun-flash-3.5', CAPABILITY_LLM);
     Repo.InsertModelBinding(Binding);
 
-    // Run each agent step
+    // Run each agent step through LLM provider
     for I := 0 to High(AgentSteps) do
     begin
       // Create step
@@ -213,17 +116,29 @@ begin
         raise Exception.Create('Invalid status transition: pending -> running for ' + AgentSteps[I].StepType);
       Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
 
-      // Fake provider call
-      RawOutput := FakeProviderOutput(AgentSteps[I].Role);
+      // Build chat request — system prompt carries agent role for fake provider routing
+      ChatReq.SystemPrompt := AgentSteps[I].Role;
+      ChatReq.UserMessage := 'Execute agent step: ' + AgentSteps[I].StepType;
+      ChatReq.OutputSchemaJson := '{}';
+      ChatReq.Model := 'stepfun-flash-3.5';
+      ChatReq.Temperature := 0.7;
+      ChatReq.MaxTokens := 4096;
+
+      // Call LLM provider
+      if not Provider.ChatComplete(ChatReq, ChatResult, ChatMetrics) then
+        raise Exception.Create('LLM call failed for ' + AgentSteps[I].Role + ': ' + ChatMetrics.ErrorCode);
 
       // Record prompt run
       PromptRun := TProjectService.CreatePromptRun(
         Job.JobId, Step.StepId, Template.TemplateId, Binding.BindingId,
-        AgentSteps[I].Role, RawOutput, 'stepfun', 'stepfun-flash-3.5', CAPABILITY_LLM);
-      PromptRun.NormalizedJson := RawOutput;
-      PromptRun.TokenInput := 100;
-      PromptRun.TokenOutput := 50;
-      PromptRun.LatencyMs := 200;
+        AgentSteps[I].Role, ChatResult.ResponseJson,
+        ChatMetrics.ProviderName, ChatMetrics.Model, CAPABILITY_LLM);
+      PromptRun.NormalizedJson := ChatResult.NormalizedJson;
+      PromptRun.ValidationError := ChatResult.ValidationError;
+      PromptRun.RepairCount := ChatResult.RepairCount;
+      PromptRun.TokenInput := ChatMetrics.TokenUsage.PromptTokens;
+      PromptRun.TokenOutput := ChatMetrics.TokenUsage.CompletionTokens;
+      PromptRun.LatencyMs := ChatMetrics.LatencyMs;
       Repo.InsertPromptRun(PromptRun);
 
       // Create eval result for QA and Style Keeper steps

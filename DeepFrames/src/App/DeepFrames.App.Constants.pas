@@ -13,6 +13,8 @@ const
   CMD_AUDIO_CHAIN_RUN = 'deepframes.audio_chain.run';
   CMD_VIDEO_CHAIN_RUN = 'deepframes.video_chain.run';
   CMD_PACKAGE_CHAIN_RUN = 'deepframes.package_chain.run';
+  CMD_EXTENSION_CHAIN_RUN = 'deepframes.extension_chain.run';
+  CMD_PROVIDER_SWITCH = 'deepframes.provider.switch';
 
   SETTINGS_PAGE_GENERAL = 'deepframes.settings.general';
   SETTINGS_PAGE_DB2 = 'deepframes.settings.db2';

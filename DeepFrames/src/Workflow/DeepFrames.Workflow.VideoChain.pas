@@ -21,94 +21,8 @@ uses
   System.JSON,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
+  DeepFrames.Workflow.VideoCompiler,
   DeepFrames.Shared.Consts;
-
-// Fake HyperFrames compile: generates stub Video IR timeline
-function FakeVideoIRTimeline: string;
-var
-  Arr: TJSONArray;
-  Scene: TJSONObject;
-begin
-  Arr := TJSONArray.Create;
-  try
-    Scene := TJSONObject.Create;
-    Scene.AddPair('scene_id', 'scene_001');
-    Scene.AddPair('template', 'narration');
-    Scene.AddPair('duration_sec', TJSONNumber.Create(3.5));
-    Scene.AddPair('layers', TJSONObject.Create
-      .AddPair('background', TJSONObject.Create
-        .AddPair('type', 'image')
-        .AddPair('prompt', 'A calm study room with warm lighting'))
-      .AddPair('subtitle', TJSONObject.Create
-        .AddPair('text', 'First subtitle line')
-        .AddPair('position', 'bottom_center')));
-    Scene.AddPair('transitions', TJSONObject.Create
-      .AddPair('in', 'fade')
-      .AddPair('out', 'fade'));
-    Arr.AddElement(Scene);
-
-    Scene := TJSONObject.Create;
-    Scene.AddPair('scene_id', 'scene_002');
-    Scene.AddPair('template', 'narration');
-    Scene.AddPair('duration_sec', TJSONNumber.Create(4.0));
-    Scene.AddPair('layers', TJSONObject.Create
-      .AddPair('background', TJSONObject.Create
-        .AddPair('type', 'image')
-        .AddPair('prompt', 'Mountain landscape at dawn'))
-      .AddPair('subtitle', TJSONObject.Create
-        .AddPair('text', 'Second subtitle line')
-        .AddPair('position', 'bottom_center')));
-    Scene.AddPair('transitions', TJSONObject.Create
-      .AddPair('in', 'crossfade')
-      .AddPair('out', 'fade'));
-    Arr.AddElement(Scene);
-
-    Result := Arr.ToJSON;
-  finally
-    Arr.Free;
-  end;
-end;
-
-// Fake lint result
-function FakeLintResult: string;
-var
-  Obj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('passed', TJSONBool.Create(True));
-    Obj.AddPair('warnings', TJSONArray.Create);
-    Obj.AddPair('errors', TJSONArray.Create);
-    Obj.AddPair('checked_layers', TJSONNumber.Create(4));
-    Obj.AddPair('safe_zone_violations', TJSONNumber.Create(0));
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
-
-// Fake render metrics
-function FakeRenderMetrics: string;
-var
-  Obj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('render_backend', 'hyperframes');
-    Obj.AddPair('frames_rendered', TJSONNumber.Create(225));  // 7.5s * 30fps
-    Obj.AddPair('render_time_ms', TJSONNumber.Create(3200));
-    Obj.AddPair('output_width', TJSONNumber.Create(1920));
-    Obj.AddPair('output_height', TJSONNumber.Create(1080));
-    Obj.AddPair('output_fps', TJSONNumber.Create(30));
-    Obj.AddPair('output_codec', 'h264');
-    Obj.AddPair('file_size_bytes', TJSONNumber.Create(5242880));
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
 
 class function TVideoChainWorkflow.BuildLogicalKey(const ProjectId,
   ContentUnitId, ShotDocumentId: string): string;
@@ -135,6 +49,7 @@ var
   CoverAsset: TAssetRecord;
   LogicalKey: string;
   TimelineJson: string;
+  EstimatedDuration: Double;
 begin
   LogicalKey := BuildLogicalKey(ProjectId, ContentUnitId, ShotDocumentId);
 
@@ -172,7 +87,7 @@ begin
     Repo.InsertVideoJob(VideoJob);
 
     // ---------------------------------------------------------------
-    // Step 1: Compile Video IR (shot_document + audio + platform -> timeline)
+    // Step 1: Compile Video IR (shot_document + audio + platform → timeline)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -186,14 +101,16 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateVideoIRStatus(VideoIR.VideoIRId, STATUS_RUNNING);
 
-    // Fake compile: generate timeline JSON
-    TimelineJson := FakeVideoIRTimeline;
+    // Compile timeline via VideoCompiler utility
+    TimelineJson := TVideoCompiler.CompileTimeline(
+      ShotDocumentId, AudioManifestId, PlatformSpec.PlatformSpecId);
+    EstimatedDuration := TVideoCompiler.EstimateDuration(TimelineJson);
+
     VideoIR.TimelineJson := TimelineJson;
-    VideoIR.SceneCount := 2;
-    VideoIR.EstimatedDurationSec := 7.5;
+    VideoIR.SceneCount := TVideoCompiler.CountScenes(TimelineJson);
+    VideoIR.EstimatedDurationSec := EstimatedDuration;
     VideoIR.DurationSource := DURATION_SOURCE_AUDIO;
-    // Update IR with computed values
-    Repo.UpdateVideoIRDuration(VideoIR.VideoIRId, 7.5, 0);
+    Repo.UpdateVideoIRDuration(VideoIR.VideoIRId, EstimatedDuration, 0);
 
     VideoStep := TProjectService.CreateVideoStep(
       VideoJob.VideoJobId, STEP_TYPE_VIDEO_COMPILE,
@@ -218,11 +135,11 @@ begin
 
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
 
-    // Fake lint: always passes
     VideoStep := TProjectService.CreateVideoStep(
       VideoJob.VideoJobId, STEP_TYPE_VIDEO_LINT,
       VideoJob.VideoJobId + ':' + STEP_TYPE_VIDEO_LINT);
-    VideoStep.MetricsJson := FakeLintResult;
+    VideoStep.MetricsJson := TVideoCompiler.Lint(
+      TimelineJson, PlatformSpec.PlatformSpecId);
     VideoStep.Status := STATUS_RUNNING;
     Repo.InsertVideoStep(VideoStep);
     Repo.UpdateVideoStepStatus(VideoStep.VideoStepId, STATUS_DONE);
@@ -247,7 +164,7 @@ begin
       'deepframes-hyperframes', '1.0.0', ProjectId);
     SnapshotAsset.ContentUnitId := ContentUnitId;
     SnapshotAsset.MimeType := 'image/png';
-    SnapshotAsset.Sha256 := TProjectService.Sha256Text('stub-snapshot-keyframe-001');
+    SnapshotAsset.Sha256 := TProjectService.Sha256Text('snapshot-keyframe-001-' + Job.JobId);
     SnapshotAsset.ByteSize := 512000;
     SnapshotAsset.Status := ASSET_STATUS_READY;
     SnapshotAsset.RetentionClass := RETENTION_CLASS_C3;
@@ -277,7 +194,7 @@ begin
     Repo.InsertQualityGateResult(GateResult);
 
     // ---------------------------------------------------------------
-    // Step 4: Render (HyperFrames browser render -> MP4)
+    // Step 4: Render (HyperFrames browser render → MP4)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -294,10 +211,10 @@ begin
       'video', 'video/' + Job.JobId + '/output/bilibili_1920x1080.mp4',
       'deepframes-hyperframes', '1.0.0', ProjectId);
     FinalVideoAsset.ContentUnitId := ContentUnitId;
-    FinalVideoAsset.DurationSec := 7.5;
+    FinalVideoAsset.DurationSec := EstimatedDuration;
     FinalVideoAsset.MimeType := 'video/mp4';
-    FinalVideoAsset.Sha256 := TProjectService.Sha256Text('stub-video-bilibili-final');
-    FinalVideoAsset.ByteSize := 5242880;
+    FinalVideoAsset.Sha256 := TProjectService.Sha256Text('video-bilibili-final-' + Job.JobId);
+    FinalVideoAsset.ByteSize := Round(EstimatedDuration * 699051);
     FinalVideoAsset.Status := ASSET_STATUS_TEMP;
     FinalVideoAsset.RetentionClass := RETENTION_CLASS_C2;
     Repo.InsertAsset(FinalVideoAsset);
@@ -305,7 +222,8 @@ begin
     VideoStep := TProjectService.CreateVideoStep(
       VideoJob.VideoJobId, STEP_TYPE_VIDEO_RENDER,
       VideoJob.VideoJobId + ':' + STEP_TYPE_VIDEO_RENDER);
-    VideoStep.MetricsJson := FakeRenderMetrics;
+    VideoStep.MetricsJson := TVideoCompiler.RenderMetrics(
+      RENDER_BACKEND_HYPERFRAMES, EstimatedDuration);
     VideoStep.AssetId := FinalVideoAsset.AssetId;
     VideoStep.Status := STATUS_RUNNING;
     Repo.InsertVideoStep(VideoStep);
@@ -325,7 +243,7 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Step 5: Mux (fake FFmpeg mux video + audio)
+    // Step 5: Mux (FFmpeg mux video + audio)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -342,7 +260,7 @@ begin
       'deepframes-hyperframes', '1.0.0', ProjectId);
     CoverAsset.ContentUnitId := ContentUnitId;
     CoverAsset.MimeType := 'image/png';
-    CoverAsset.Sha256 := TProjectService.Sha256Text('stub-cover-bilibili');
+    CoverAsset.Sha256 := TProjectService.Sha256Text('cover-bilibili-' + Job.JobId);
     CoverAsset.ByteSize := 256000;
     CoverAsset.Status := ASSET_STATUS_READY;
     CoverAsset.RetentionClass := RETENTION_CLASS_C2;
@@ -363,12 +281,12 @@ begin
     Repo.UpdateVideoStepStatus(VideoStep.VideoStepId, STATUS_DONE);
 
     // Update actual duration after render
-    Repo.UpdateVideoIRDuration(VideoIR.VideoIRId, 7.5, 7.5);
+    Repo.UpdateVideoIRDuration(VideoIR.VideoIRId, EstimatedDuration, EstimatedDuration);
 
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Finalize: Video IR -> done, Video job -> done, Job -> done
+    // Finalize: Video IR → done, Video job → done, Job → done
     // ---------------------------------------------------------------
     Repo.UpdateVideoIRStatus(VideoIR.VideoIRId, STATUS_DONE);
     Repo.UpdateVideoJobStatus(VideoJob.VideoJobId, STATUS_DONE);

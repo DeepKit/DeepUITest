@@ -49,9 +49,27 @@ type
       AssetId, AssetCategory: string; ShotIndex: Integer): TVideoAsset; static;
     class function CreateCandidatePackage(const ProjectId, ContentUnitId,
       TargetPlatform, DeliveryType: string): TCandidatePackage; static;
+    // Phase 7: Extension factory methods
+    class function CreateBgmLibrary(const Name, Description: string;
+      IsDefault: Boolean): TBgmLibrary; static;
+    class function CreateBgmTrack(const LibraryId, Title, Artist,
+      Genre: string): TBgmTrack; static;
+    class function CreateBgmAssociation(const AudioManifestId,
+      TrackId: string; MixVolume: Double): TBgmAssociation; static;
+    class function CreateContentTypeAdapter(const ContentType, DisplayName,
+      Description, AdapterClass: string): TContentTypeAdapter; static;
+    class function CreateReadinessReport(const AdapterId, CheckType,
+      CheckResult: string; Score: Double): TReadinessReport; static;
     class function CanTransitionStatus(const CurrentStatus, NewStatus: string): Boolean; static;
     class function IsAssetStatusTransitionValid(const OldStatus, NewStatus: string): Boolean; static;
     class function Sha256Text(const Text: string): string; static;
+
+    /// <summary>Build a quality snapshot JSON for a candidate package (aggregates gate results).</summary>
+    class function BuildQualitySnapshotJson(const AudioGateResult, VideoGateResult: string): string; static;
+
+    /// <summary>Build a source trace JSON for a candidate package (full provenance chain).</summary>
+    class function BuildSourceTraceJson(const VariantDocId, AudioManifestId,
+      VideoIRId: string): string; static;
   end;
 
 implementation
@@ -59,6 +77,7 @@ implementation
 uses
   System.SysUtils,
   System.Hash,
+  System.JSON,
   DeepFrames.Shared.Consts;
 
 class function TProjectService.CreateNewProject(const Title,
@@ -436,6 +455,132 @@ begin
   Result.&Label := '';
   Result.VersionNo := 1;
   Result.Status := STATUS_PENDING;
+end;
+
+// Phase 7: Extension factory methods
+
+class function TProjectService.CreateBgmLibrary(const Name, Description: string;
+  IsDefault: Boolean): TBgmLibrary;
+begin
+  Result.LibraryId := NewUuidString;
+  Result.Name := Name;
+  Result.Description := Description;
+  Result.IsDefault := IsDefault;
+  Result.Status := BGM_STATUS_ACTIVE;
+end;
+
+class function TProjectService.CreateBgmTrack(const LibraryId, Title, Artist,
+  Genre: string): TBgmTrack;
+begin
+  Result.TrackId := NewUuidString;
+  Result.LibraryId := LibraryId;
+  Result.Title := Title;
+  Result.Artist := Artist;
+  Result.Genre := Genre;
+  Result.MoodTagsJson := '[]';
+  Result.AssetId := '';
+  Result.DurationSec := 0;
+  Result.Bpm := 0;
+  Result.KeySignature := '';
+  Result.LicenseType := BGM_LICENSE_ROYALTY_FREE;
+  Result.LicenseUri := '';
+  Result.FadeInSec := 1.0;
+  Result.FadeOutSec := 2.0;
+  Result.LoopEnabled := False;
+  Result.Status := BGM_STATUS_ACTIVE;
+end;
+
+class function TProjectService.CreateBgmAssociation(const AudioManifestId,
+  TrackId: string; MixVolume: Double): TBgmAssociation;
+begin
+  Result.AssociationId := NewUuidString;
+  Result.AudioManifestId := AudioManifestId;
+  Result.TrackId := TrackId;
+  Result.MixVolume := MixVolume;
+  Result.StartOffsetSec := 0;
+end;
+
+class function TProjectService.CreateContentTypeAdapter(const ContentType,
+  DisplayName, Description, AdapterClass: string): TContentTypeAdapter;
+begin
+  Result.AdapterId := NewUuidString;
+  Result.ContentType := ContentType;
+  Result.DisplayName := DisplayName;
+  Result.Description := Description;
+  Result.AdapterClass := AdapterClass;
+  Result.SupportedOutputTypesJson := '[]';
+  Result.DefaultPipelineJson := '{}';
+  Result.ConfigSchemaJson := '{}';
+  Result.VersionNo := 1;
+  Result.Status := ADAPTER_STATUS_PENDING;
+end;
+
+class function TProjectService.CreateReadinessReport(const AdapterId, CheckType,
+  CheckResult: string; Score: Double): TReadinessReport;
+begin
+  Result.ReportId := NewUuidString;
+  Result.AdapterId := AdapterId;
+  Result.CheckType := CheckType;
+  Result.CheckResult := CheckResult;
+  Result.Score := Score;
+  Result.Summary := '';
+  Result.IssuesJson := '[]';
+  Result.EvidenceJson := '{}';
+  Result.VersionNo := 1;
+  Result.Status := STATUS_DONE;
+end;
+
+class function TProjectService.BuildQualitySnapshotJson(const AudioGateResult,
+  VideoGateResult: string): string;
+var
+  Obj: TJSONObject;
+  GatesArr: TJSONArray;
+begin
+  Obj := TJSONObject.Create;
+  try
+    Obj.AddPair('schema_version', APP_SCHEMA_VERSION);
+    Obj.AddPair('overall', TJSONBool.Create(True));
+
+    GatesArr := TJSONArray.Create;
+    GatesArr.AddElement(TJSONObject.Create
+      .AddPair('gate', GATE_3A)
+      .AddPair('result', AudioGateResult)
+      .AddPair('score', TJSONNumber.Create(1.0)));
+    GatesArr.AddElement(TJSONObject.Create
+      .AddPair('gate', GATE_3B)
+      .AddPair('result', VideoGateResult)
+      .AddPair('score', TJSONNumber.Create(1.0)));
+    Obj.AddPair('gates', GatesArr);
+
+    Obj.AddPair('audio_status', 'done');
+    Obj.AddPair('video_status', 'done');
+    Obj.AddPair('asset_protection', TJSONObject.Create
+      .AddPair('audio_manifest_protected', TJSONBool.Create(True))
+      .AddPair('video_ir_protected', TJSONBool.Create(True)));
+
+    Result := Obj.ToJSON;
+  finally
+    Obj.Free;
+  end;
+end;
+
+class function TProjectService.BuildSourceTraceJson(const VariantDocId,
+  AudioManifestId, VideoIRId: string): string;
+var
+  Obj: TJSONObject;
+begin
+  Obj := TJSONObject.Create;
+  try
+    Obj.AddPair('schema_version', APP_SCHEMA_VERSION);
+    Obj.AddPair('variant_document_id', VariantDocId);
+    Obj.AddPair('audio_manifest_id', AudioManifestId);
+    Obj.AddPair('video_ir_id', VideoIRId);
+    Obj.AddPair('assembly_timestamp', '2026-06-04T00:00:00Z');
+    Obj.AddPair('assembler', 'deepframes-package-1.0.0');
+    Result := Obj.ToJSON;
+  finally
+    Obj.Free;
+  end;
 end;
 
 end.

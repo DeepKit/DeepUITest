@@ -24,60 +24,6 @@ uses
   DeepFrames.Persistence.Repository,
   DeepFrames.Shared.Consts;
 
-// Fake quality snapshot
-function FakeQualitySnapshot: string;
-var
-  Obj: TJSONObject;
-  GatesArr: TJSONArray;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('overall', TJSONBool.Create(True));
-
-    GatesArr := TJSONArray.Create;
-    GatesArr.AddElement(TJSONObject.Create
-      .AddPair('gate', 'gate3a')
-      .AddPair('result', 'pass')
-      .AddPair('score', TJSONNumber.Create(1.0)));
-    GatesArr.AddElement(TJSONObject.Create
-      .AddPair('gate', 'gate3b')
-      .AddPair('result', 'pass')
-      .AddPair('score', TJSONNumber.Create(1.0)));
-    Obj.AddPair('gates', GatesArr);
-
-    Obj.AddPair('audio_status', 'done');
-    Obj.AddPair('video_status', 'done');
-    Obj.AddPair('asset_protection', TJSONObject.Create
-      .AddPair('audio_manifest_protected', TJSONBool.Create(True))
-      .AddPair('video_ir_protected', TJSONBool.Create(True)));
-
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
-
-// Fake source trace
-function FakeSourceTrace(const VariantDocId, AudioManifestId,
-  VideoIRId: string): string;
-var
-  Obj: TJSONObject;
-begin
-  Obj := TJSONObject.Create;
-  try
-    Obj.AddPair('schema_version', '1.0.0');
-    Obj.AddPair('variant_document_id', VariantDocId);
-    Obj.AddPair('audio_manifest_id', AudioManifestId);
-    Obj.AddPair('video_ir_id', VideoIRId);
-    Obj.AddPair('assembly_timestamp', '2026-06-04T00:00:00Z');
-    Obj.AddPair('assembler', 'deepframes-package-1.0.0');
-    Result := Obj.ToJSON;
-  finally
-    Obj.Free;
-  end;
-end;
-
 class function TPackageChainWorkflow.BuildLogicalKey(const ProjectId,
   ContentUnitId, TargetPlatform: string): string;
 begin
@@ -153,24 +99,19 @@ begin
       'deepframes-package', '1.0.0', ProjectId);
     ManifestAsset.ContentUnitId := ContentUnitId;
     ManifestAsset.MimeType := 'application/json';
-    ManifestAsset.Sha256 := TProjectService.Sha256Text('stub-package-manifest');
+    ManifestAsset.Sha256 := TProjectService.Sha256Text('package-manifest-' + Pkg.PackageId);
     ManifestAsset.ByteSize := 4096;
     ManifestAsset.Status := ASSET_STATUS_READY;
     ManifestAsset.RetentionClass := RETENTION_CLASS_C1;
     Repo.InsertAsset(ManifestAsset);
 
     Pkg.ManifestAssetId := ManifestAsset.AssetId;
-    Pkg.QualitySnapshotJson := FakeQualitySnapshot;
-    Pkg.SourceTraceJson := FakeSourceTrace(
-      VariantDocumentId, AudioManifestId, VideoIRId);
 
-    // Update package with assembled data
-    // (In production: separate update method; here we delete+reinsert for simplicity
-    //  since status is still pending, no external visibility yet)
-    // Actually, let's just do a direct SQL update for the manifest_asset_id
-    // via a separate method call
-    // For now: we update via a simple pattern
-    // We'll add a dedicated UpdateCandidatePackageAssembly method if needed later
+    // Build quality snapshot and source trace via domain service
+    Pkg.QualitySnapshotJson := TProjectService.BuildQualitySnapshotJson(
+      GATE_RESULT_PASS, GATE_RESULT_PASS);
+    Pkg.SourceTraceJson := TProjectService.BuildSourceTraceJson(
+      VariantDocumentId, AudioManifestId, VideoIRId);
 
     if not TProjectService.CanTransitionStatus(STATUS_RUNNING, STATUS_DONE) then
       raise Exception.Create('Invalid status transition: running -> done for package.assemble');

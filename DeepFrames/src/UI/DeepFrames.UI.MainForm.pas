@@ -88,6 +88,8 @@ type
     procedure CmdRunAudioChain;
     procedure CmdRunVideoChain;
     procedure CmdRunPackageChain;
+    procedure CmdRunExtensionChain;
+    procedure CmdSwitchProvider;
     procedure CmdTestDb2;
     procedure CmdRunMigrations;
     procedure RefreshProjectView;
@@ -111,7 +113,9 @@ uses
   DeepFrames.App.Services,
   DeepFrames.Shared.Consts,
   DeepFrames.Domain.Types,
-  DeepFrames.Persistence.Connection;
+  DeepFrames.Persistence.Connection,
+  DeepFrames.Provider.Intf,
+  DeepFrames.Provider.Registry;
 
 const
   SHELL_SETTING_PREFIX = 'Shell.';
@@ -275,14 +279,18 @@ function TDeepFramesStructureProvider.GetRootNodes(
   const ATreeName: string): TArray<TShellObjectRef>;
 var
   Projects: TArray<TProjectInfo>;
-  I: Integer;
+  I, Count: Integer;
 begin
   try
     Projects := TDeepFramesAppService.ListProjects;
-    SetLength(Result, Length(Projects));
+    Count := Length(Projects) + 1; // +1 for Extensions node
+    SetLength(Result, Count);
     for I := 0 to High(Projects) do
       Result[I] := TShellObjectRef.Make(Projects[I].ProjectId, 'project',
         PROVIDER_DEEPFRAMES, Projects[I].Title);
+    // Add Extensions root node
+    Result[High(Projects) + 1] := TShellObjectRef.Make('extensions', 'extensions',
+      PROVIDER_DEEPFRAMES, 'Extensions');
   except
     Result := [TShellObjectRef.Make('setup', 'setup', PROVIDER_DEEPFRAMES,
       'Configure DB2 and run migrations')];
@@ -296,7 +304,8 @@ begin
     SameText(ANode.Kind, 'source_document') or SameText(ANode.Kind, 'script_document') or
     SameText(ANode.Kind, 'variant_document') or SameText(ANode.Kind, 'job') or
     SameText(ANode.Kind, 'job_step') or SameText(ANode.Kind, 'audio_manifest') or
-    SameText(ANode.Kind, 'video_ir') or SameText(ANode.Kind, 'video_job');
+    SameText(ANode.Kind, 'video_ir') or SameText(ANode.Kind, 'video_job') or
+    SameText(ANode.Kind, 'extensions') or SameText(ANode.Kind, 'bgm_library');
 end;
 
 function TDeepFramesStructureProvider.GetChildren(
@@ -545,6 +554,39 @@ begin
       Result[I] := TShellObjectRef.Make(
         VSteps[I].VideoStepId, 'video_step', PROVIDER_DEEPFRAMES,
         VSteps[I].StepType + ' [' + VSteps[I].Status + ']');
+  end
+  else if SameText(ANode.Kind, 'extensions') then
+  begin
+    // Show BGM libraries and content type adapters
+    var ExtLibraries := TDeepFramesAppService.ListBgmLibraries;
+    var ExtAdapters := TDeepFramesAppService.ListContentTypeAdapters;
+    var ExtCount := 0;
+    SetLength(Result, Length(ExtLibraries) + Length(ExtAdapters));
+    for I := 0 to High(ExtLibraries) do
+    begin
+      Result[ExtCount] := TShellObjectRef.Make(
+        ExtLibraries[I].LibraryId, 'bgm_library', PROVIDER_DEEPFRAMES,
+        'BGM: ' + ExtLibraries[I].Name + ' [' + ExtLibraries[I].Status + ']');
+      Inc(ExtCount);
+    end;
+    for I := 0 to High(ExtAdapters) do
+    begin
+      Result[ExtCount] := TShellObjectRef.Make(
+        ExtAdapters[I].AdapterId, 'content_type_adapter', PROVIDER_DEEPFRAMES,
+        ExtAdapters[I].ContentType + ' [' + ExtAdapters[I].Status + ']');
+      Inc(ExtCount);
+    end;
+    SetLength(Result, ExtCount);
+  end
+  else if SameText(ANode.Kind, 'bgm_library') then
+  begin
+    // Show tracks in this library
+    var BgmTracks := TDeepFramesAppService.ListBgmTracks(ANode.Id);
+    SetLength(Result, Length(BgmTracks));
+    for I := 0 to High(BgmTracks) do
+      Result[I] := TShellObjectRef.Make(
+        BgmTracks[I].TrackId, 'bgm_track', PROVIDER_DEEPFRAMES,
+        BgmTracks[I].Title + ' - ' + BgmTracks[I].Artist);
   end;
 end;
 
@@ -859,6 +901,58 @@ begin
           Break;
         end;
     end;
+  end
+  else if SameText(ARef.Kind, 'bgm_library') then
+  begin
+    var BgmLibs := TDeepFramesAppService.ListBgmLibraries;
+    for I := 0 to High(BgmLibs) do
+      if SameText(BgmLibs[I].LibraryId, ARef.Id) then
+      begin
+        SetLength(Result, Length(Result) + 3);
+        Result[Length(Result)-3].Name := 'name'; Result[Length(Result)-3].Value := BgmLibs[I].Name; Result[Length(Result)-3].Group := 'Library'; Result[Length(Result)-3].ReadOnly := True;
+        Result[Length(Result)-2].Name := 'is_default'; Result[Length(Result)-2].Value := BoolToStr(BgmLibs[I].IsDefault, True); Result[Length(Result)-2].Group := 'Library'; Result[Length(Result)-2].ReadOnly := True;
+        Result[Length(Result)-1].Name := 'status'; Result[Length(Result)-1].Value := BgmLibs[I].Status; Result[Length(Result)-1].Group := 'Status'; Result[Length(Result)-1].ReadOnly := True;
+        Break;
+      end;
+  end
+  else if SameText(ARef.Kind, 'bgm_track') then
+  begin
+    // Find BGM track by searching libraries
+    var BTLibs := TDeepFramesAppService.ListBgmLibraries;
+    for I := 0 to High(BTLibs) do
+    begin
+      var BTTracks := TDeepFramesAppService.ListBgmTracks(BTLibs[I].LibraryId);
+      var J: Integer;
+      for J := 0 to High(BTTracks) do
+        if SameText(BTTracks[J].TrackId, ARef.Id) then
+        begin
+          SetLength(Result, Length(Result) + 8);
+          Result[Length(Result)-8].Name := 'title'; Result[Length(Result)-8].Value := BTTracks[J].Title; Result[Length(Result)-8].Group := 'Track'; Result[Length(Result)-8].ReadOnly := True;
+          Result[Length(Result)-7].Name := 'artist'; Result[Length(Result)-7].Value := BTTracks[J].Artist; Result[Length(Result)-7].Group := 'Track'; Result[Length(Result)-7].ReadOnly := True;
+          Result[Length(Result)-6].Name := 'genre'; Result[Length(Result)-6].Value := BTTracks[J].Genre; Result[Length(Result)-6].Group := 'Track'; Result[Length(Result)-6].ReadOnly := True;
+          Result[Length(Result)-5].Name := 'duration_sec'; Result[Length(Result)-5].Value := FloatToStrF(BTTracks[J].DurationSec, ffFixed, 4, 1); Result[Length(Result)-5].Group := 'Audio'; Result[Length(Result)-5].ReadOnly := True;
+          Result[Length(Result)-4].Name := 'bpm'; Result[Length(Result)-4].Value := IntToStr(BTTracks[J].Bpm); Result[Length(Result)-4].Group := 'Audio'; Result[Length(Result)-4].ReadOnly := True;
+          Result[Length(Result)-3].Name := 'key_signature'; Result[Length(Result)-3].Value := BTTracks[J].KeySignature; Result[Length(Result)-3].Group := 'Audio'; Result[Length(Result)-3].ReadOnly := True;
+          Result[Length(Result)-2].Name := 'license'; Result[Length(Result)-2].Value := BTTracks[J].LicenseType; Result[Length(Result)-2].Group := 'License'; Result[Length(Result)-2].ReadOnly := True;
+          Result[Length(Result)-1].Name := 'status'; Result[Length(Result)-1].Value := BTTracks[J].Status; Result[Length(Result)-1].Group := 'Status'; Result[Length(Result)-1].ReadOnly := True;
+          Break;
+        end;
+    end;
+  end
+  else if SameText(ARef.Kind, 'content_type_adapter') then
+  begin
+    var CTAdapters := TDeepFramesAppService.ListContentTypeAdapters;
+    for I := 0 to High(CTAdapters) do
+      if SameText(CTAdapters[I].AdapterId, ARef.Id) then
+      begin
+        SetLength(Result, Length(Result) + 5);
+        Result[Length(Result)-5].Name := 'content_type'; Result[Length(Result)-5].Value := CTAdapters[I].ContentType; Result[Length(Result)-5].Group := 'Adapter'; Result[Length(Result)-5].ReadOnly := True;
+        Result[Length(Result)-4].Name := 'display_name'; Result[Length(Result)-4].Value := CTAdapters[I].DisplayName; Result[Length(Result)-4].Group := 'Adapter'; Result[Length(Result)-4].ReadOnly := True;
+        Result[Length(Result)-3].Name := 'adapter_class'; Result[Length(Result)-3].Value := CTAdapters[I].AdapterClass; Result[Length(Result)-3].Group := 'Adapter'; Result[Length(Result)-3].ReadOnly := True;
+        Result[Length(Result)-2].Name := 'version_no'; Result[Length(Result)-2].Value := IntToStr(CTAdapters[I].VersionNo); Result[Length(Result)-2].Group := 'Version'; Result[Length(Result)-2].ReadOnly := True;
+        Result[Length(Result)-1].Name := 'status'; Result[Length(Result)-1].Value := CTAdapters[I].Status; Result[Length(Result)-1].Group := 'Status'; Result[Length(Result)-1].ReadOnly := True;
+        Break;
+      end;
   end;
 end;
 
@@ -904,6 +998,10 @@ begin
     .Category('DeepFrames').Hint('Run the Phase 5 video chain workflow (fake HyperFrames)').RiskLevel(rlLow).OnExecute(CmdRunVideoChain));
   Commands.RegisterCommand(ShellCommand(CMD_PACKAGE_CHAIN_RUN, 'Run Package Chain')
     .Category('DeepFrames').Hint('Run the Phase 6 candidate package workflow').RiskLevel(rlLow).OnExecute(CmdRunPackageChain));
+  Commands.RegisterCommand(ShellCommand(CMD_EXTENSION_CHAIN_RUN, 'Run Extension Chain')
+    .Category('DeepFrames').Hint('Run the Phase 7 extension chain (adapters, BGM, readiness)').RiskLevel(rlLow).OnExecute(CmdRunExtensionChain));
+  Commands.RegisterCommand(ShellCommand(CMD_PROVIDER_SWITCH, 'Switch AI Provider')
+    .Category('DeepFrames').Hint('Toggle between fake and stepfun providers').RiskLevel(rlMedium).OnExecute(CmdSwitchProvider));
   Commands.RegisterCommand(ShellCommand(CMD_DB2_TEST, 'Test DB2 Connection')
     .Category('DeepFrames').Hint('Open the configured PostgreSQL connection').RiskLevel(rlReadOnly).OnExecute(CmdTestDb2));
   Commands.RegisterCommand(ShellCommand(CMD_DB2_MIGRATE, 'Run DB2 Migration')
@@ -923,7 +1021,10 @@ procedure TMainForm.AfterShellShown;
 begin
   inherited;
   Caption := 'DeepFrames';
-  Status.Info('deepframes.boot', 'DeepFrames Phase 1-6 shell is ready. Configure DB2, run migrations, then create a project and run workflows.');
+  Status.Info('deepframes.boot',
+    'DeepFrames Phase 1-7 shell is ready. Provider: ' +
+    TProviderRegistry.Instance.ActiveProviderName +
+    '. Configure DB2, run migrations, then create a project and run workflows.');
   OpenView(TShellObjectRef.Make('welcome', 'setup', PROVIDER_DEEPFRAMES, 'DeepFrames'));
 end;
 
@@ -1057,6 +1158,44 @@ begin
     end;
   end;
   RefreshProjectView;
+end;
+
+procedure TMainForm.CmdRunExtensionChain;
+var
+  Job: TDeepFramesJob;
+begin
+  Status.TaskStart('extensionchain', 'deepframes.workflow', 'Running Phase 7 extension chain');
+  try
+    Job := TDeepFramesAppService.RunExtensionChain;
+    Status.TaskFinish('extensionchain', 'Extension chain completed: ' + Job.JobType + ' [' + Job.Status + ']');
+  except
+    on E: Exception do
+    begin
+      Status.LogError('deepframes.extensionchain', 'Extension chain failed', E.Message);
+      Exit;
+    end;
+  end;
+  RefreshProjectView;
+end;
+
+procedure TMainForm.CmdSwitchProvider;
+var
+  CurrentName, TargetName: string;
+begin
+  CurrentName := TProviderRegistry.Instance.ActiveProviderName;
+  if SameText(CurrentName, PROVIDER_FAKE) then
+    TargetName := PROVIDER_STEPFUN
+  else
+    TargetName := PROVIDER_FAKE;
+
+  try
+    TProviderRegistry.Instance.SwitchTo(TargetName);
+    Status.Info('deepframes.provider',
+      'Switched AI provider: ' + CurrentName + ' → ' + TargetName);
+  except
+    on E: Exception do
+      Status.LogError('deepframes.provider', 'Provider switch failed', E.Message);
+  end;
 end;
 
 procedure TMainForm.CmdTestDb2;
