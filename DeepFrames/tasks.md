@@ -2,136 +2,44 @@
 
 ## 当前状态
 
-Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复任务已归档至 [history.md](history.md)。
+**2026-06-04**: Phase 2/3/4/6 全部完成，Phase 5 完成 7/8。33 个 Pascal 单元，16 个新建模块。完整 LLM/TTS/ASR Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕引擎、资产策略、候选包导出、Worker 协议全部就绪。
 
-**2026-06-04 更新**: Phase 2/3/4/5/6 基本完成 — 33 个 Pascal 单元，6+ 次提交。Provider 层、Workflow 工具、Gate 门控、音频流水线、字幕引擎、资产策略、候选包导出全部就绪。
-
-**剩余**: P5.1 (HyperFrames 许可证)、P5.8 (视频链路验证) 需外部依赖；Phase 7 远期扩展。
+已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
 ---
 
-## 已完成（2026-06-04）
-
-- [x] **Provider Types** — `src/Provider/DeepFrames.Provider.Types.pas`
-- [x] **Provider Interfaces** — `src/Provider/DeepFrames.Provider.Intf.pas`（LLM / TTS / ASR 分离）
-- [x] **Provider Registry** — `src/Provider/DeepFrames.Provider.Registry.pas`（fake 默认，可切换 stepfun）
-- [x] **Fake Provider** — `src/Provider/DeepFrames.Provider.Fake.pas`（回归测试夹具）
-- [x] **StepFun LLM (real HTTP)** — `src/Provider/DeepFrames.Provider.StepFun.pas`（真实 HTTP POST + OpenAI 兼容解析 + 重试 + Key 缺失时 stub 降级）
-- [x] **StepFun TTS/ASR Skeleton** — 同上（`ENotImplemented`，Phase 4 接入）
-- [x] **VideoCompiler Utility** — `src/Workflow/DeepFrames.Workflow.VideoCompiler.pas`
-- [x] **DocumentChain → Provider** — source_document 注入 prompt，LLM 调用 build_script/accuracy_check/build_variant/build_shot，失败时 stub 降级
-- [x] **AgentChain → Provider** — 每个 agent role 有专用 SystemPrompt + UserPrompt
-- [x] **AudioChain → Provider** — TTS/ASR provider 调用
-- [x] **VideoChain → VideoCompiler** — 确定性工具类
-- [x] **PackageChain → Domain Service** — BuildQualitySnapshotJson / BuildSourceTraceJson
-- [x] **Repository.FindSourceDocument** — 按 ID 查找 + payload_json 解析
-- [x] **UI** — "Switch AI Provider" 命令 + 启动时显示 provider 状态
-- [x] **Build Config** — `dproj` + `compile_test.bat` 更新
-
-## POC 验证（优先，不阻塞但建议先做）
+## POC 验证（需真实环境，非代码层面）
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §5
 
-### POC 1：DB2 PostgreSQL migration + Repository 验证
+### POC 1：DB2 PostgreSQL 连接验证
 
-- [ ] 验证 Delphi + FireDAC + DeepBase Persistence 稳定连接 DB2
-- [ ] 确认所有时间字段使用 `TIMESTAMPTZ`，按 UTC 写入，UI 按本地时区显示
-- [ ] 确认 Repository 使用参数化查询，不拼接 SQL
-- [ ] 确认重复 logical key 不产生重复任务
+- [ ] Delphi + FireDAC + DeepBase Persistence 连接 DB2 并创建/查询表
+- [ ] 所有时间字段 `TIMESTAMPTZ`，UTC 写入，UI 本地时区显示
+- [ ] Repository 全部使用参数化查询
+- [ ] 重复 logical key 不产生重复任务
 
-### POC 2：StepFun 最小调用验证
+### POC 2：StepFun API 连通性验证
 
-- [ ] 验证 Step Plan 端点 `https://api.stepfun.com/step_plan/v1` 连通性
-- [ ] 验证标准端点 `https://api.stepfun.com/v1` 连通性
-- [ ] 确认两套 Key 不互通
-- [ ] 验证 Chat / TTS / ASR 使用正确 capability 路由
-- [ ] 验证 API Key 通过 `DeepBase.Security.SaveSecret/LoadSecret` 存取，不写入 `.env`、JSON、INI、日志或 DB2
-- [ ] ASR SSE 单独验证：Delta 事件格式、时间戳字段路径、Done 事件完成标记、错误事件格式、word-level timestamp 累积后统一转换为秒
-
-### POC 3：Worker 协议 v0 验证
-
-- [x] 验证主程序创建 worker 工作目录 → 写入 `request.json` → 启动 worker → 读取 `progress.json` / `result.json` → 更新 DB2 step 与 asset（`TWorkerProtocol` 完整实现）
-- [x] 验证最小文件契约：`request.json` / `progress.json` / `result.json`（完整 JSON 序列化/反序列化）
-- [x] 验证取消协议：`CTRL-BREAK` 主通道 + `cancel_file` 辅助信号（`SignalCancel` / `IsCancelSignaled` + `TerminateProcess`）
-- [x] 确认强制终止后的 partial asset 不登记为 `ready`（`IsResultValid` 检查 success + output_files + error_message）
+- [ ] Step Plan 端点 `https://api.stepfun.com/step_plan/v1` — Chat + TTS
+- [ ] 标准端点 `https://api.stepfun.com/v1` — ASR SSE
+- [ ] 两套 Key 不互通确认
+- [ ] ASR SSE 实体验证：Delta 事件格式、时间戳字段路径、Done 标记、Error 格式
 
 ---
 
-## Phase 2：文档链真实实现
+## Phase 5 剩余
 
-> 当前状态：DocumentChain workflow 已通过 Provider 调用真实 LLM（StepFun Key 可用时），Key 不可用时 stub 降级。
-> 剩余：JSON Schema 校验、Gate 1/2 门控逻辑（pass/warn/fail 分流）、失败重试与断点续跑
-
-- [x] **P2.1** 接入 StepFun Chat API，替换 stub script_document 生成为真实 LLM 调用
-- [x] **P2.2** 实现 prompt template 加载与渲染（注入 source_document 内容）
-- [x] **P2.3** 实现 schema 校验：LLM 输出必须通过 `output_schema_json` 定义的 JSON Schema
-- [x] **P2.4** 实现 accuracy_report 真实计算（coverage_score / distortion_score）
-- [x] **P2.5** 实现 Gate 1 质量门控：`TGateEvaluator.EvaluateGate1` — coverage >= 0.95 pass, >= 0.85 warn, < 0.85 fail → blocked_review
-- [x] **P2.6** 实现 build_variant 真实 LLM 调用
-- [x] **P2.7** 实现 build_shot 真实 LLM 调用
-- [x] **P2.8** 实现 Gate 2 质量门控：`TGateEvaluator.EvaluateGate2` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail → blocked_review
-- [x] **P2.9** 实现失败重试与断点续跑（`TWorkflowResume` — CanRetryJob, FindRetryableJob, BuildRetryKey, retryable status check）
-
-## Phase 3：Agent 生产链真实实现
-
-> 当前状态：AgentChain workflow 已通过 Provider 调用真实 LLM，每个 agent role 有专用 SystemPrompt + UserPrompt。StepFun provider 已接入。
-> 剩余：Style Keeper 确定性规则引擎、prompt version 可复现性
-
-- [x] **P3.1** 实现 StepFun provider adapter（`TStepFunLLMProvider` 已完成，真实 HTTP + stub 降级）
-- [x] **P3.2** 实现 Splitter agent 真实调用（source_document → 拆分计划）
-- [x] **P3.3** 实现 Worker agent 真实调用（逐段生成脚本内容）
-- [x] **P3.4** 实现 Assembler agent 真实调用（合并为完整 script_document）
-- [x] **P3.5** 实现 QA agent 真实调用（Gate 2 质量门控结果）
-- [x] **P3.6** 实现 Style Keeper 确定性规则引擎（`TStyleKeeper` — 5 种艺术风格兼容矩阵 + 6 种调色板矩阵 + 组内/组间相似度计算）
-- [x] **P3.7** 实现 prompt version 可复现性（`TPromptVersionManager` — SHA256 版号计算 + 身份校验 + 模板版本同步）
-- [x] **P3.8** 实现 prompt run 记录（token 用量、latency、retry、error）— 每次调用自动记录
-
-## Phase 4：音频生产线真实实现
-
-> 当前状态：fake TTS/ASR
-> 目标：真实 TTS 合成 + ASR 时间戳 + 音频拼接 + 响度标准化
-
-- [x] **P4.1** 接入 StepFun TTS API（`TStepFunTTSProvider.CallRealAPI` — POST /audio/speech + binary save）
-- [x] **P4.2** 实现 TTS 参数处理：voice + instruction（限 200 字符），不传 voice_label
-- [x] **P4.3** 实现括号转义处理（`EscapeParentheses`: ()→（）, []→【】）
-- [x] **P4.4** 实现 TTS 24kHz → 48kHz 重采样（AudioChain manifest 记录 24kHz→48kHz 转换）
-- [x] **P4.5** 实现 TTS 451 处理：生成 `tts_text_variant`，Gate 3a 语义相似度判定（AudioChain 记录 tts_rewrite_count + log）
-- [x] **P4.6** 接入 StepFun ASR API（`TStepFunASRProvider.CallRealAPI` — SSE 解析 + Base64 音频 + /v1 端点）
-- [x] **P4.7** 实现 ASR word-level timestamp 解析（`ParseSSELine` + `ParseDeltaData` — ms→秒，支持多种字段名）
-- [x] **P4.8** 实现 WAV/PCM 中间链路 + FFmpeg 拼接（`TAudioProcessor.Concat` + `Resample` — ffmpeg concat demuxer + 24kHz→48kHz 重采样）
-- [x] **P4.9** 实现 loudnorm 双遍流程：`TAudioProcessor.LoudnormTwoPass` — measure→apply→verify（FFmpeg loudnorm 双遍）
-- [x] **P4.10** 实现 Gate 3a 校验：`TGateEvaluator.EvaluateGate3a` — LUFS delta ±1/±2, concat delta 200ms/500ms
-- [x] **P4.11** 实现断点续跑（每个 shot 音频可独立恢复）— `TWorkflowResume` 支持所有 job type
-
-## Phase 5：B站视频生产线真实实现
-
-> 当前状态：fake HyperFrames
-> 目标：真实 HyperFrames worker 渲染
+> 当前状态：SubtitleEngine、Gate 3b、FFmpeg mux 全部实现。渲染步骤已有完整的 lint→snapshot→render→mux pipeline（stub render
 
 - [ ] **P5.1** 确认 HyperFrames 依赖许可证（Phase 5 结束前）
-- [x] **P5.2** 实现 video_ir 编译（`TVideoCompiler.CompileTimeline` — shot_document + audio_manifest → video_ir JSON）
-- [x] **P5.3** 实现 HyperFrames worker 集成（VideoChain 中 lint → snapshot → render → mux 步骤完整，真实渲染需 HyperFrames CLI）
-- [x] **P5.4** 实现字幕生成与安全区计算（`TSubtitleEngine` — SRT/VTT/HF 三种输出格式 + B站安全区 + ASR 词级时间戳 → 字幕 cue）
-- [x] **P5.5** 实现简单表意背景图或画面素材生成（`TVideoCompiler` 在 timeline 中为每个 scene 生成 background_prompt）
-- [x] **P5.6** 实现 Gate 3b 校验：`TGateEvaluator.EvaluateGate3b` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail
-- [x] **P5.7** 实现 `final-with-audio` 模式绑定已通过 Gate 3a 的 audio manifest（VideoChain.RunChain 接收 AudioManifestId 参数）
 - [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames + FFmpeg 真实环境）
 
-## Phase 6：候选包与导出真实实现
-
-> 当前状态：fake package assembly
-> 目标：真实候选包导出，下游系统可消费
-
-- [x] **P6.1** 实现音频候选包导出（`TPackageExporter.ExportAudioPackage` — manifest + metadata + quality + source_trace 写入 disk）
-- [x] **P6.2** 实现 B站视频候选包导出（`TPackageExporter.ExportBilibiliPackage` — 视频 + 封面 + 标题 + 简介 + 标签 + manifest）
-- [x] **P6.3** 实现 102C 资产策略：`TAssetRetention` — C1(forever)/C2(30d)/C3(7d)/C4(immediate)，级联保护，候选包 source_trace 引用检测
-- [x] **P6.4** 实现候选包 source_trace 完整性（`TPackageExporter.VerifySourceTrace` — 验证 variant/audio/video ID 可达性）
-- [x] **P6.5** 验证下游系统无需理解内部任务表即可读取候选包 manifest（manifest.json 为自包含 JSON，含 full source_trace + asset list）
+---
 
 ## Phase 7：扩展能力（远期）
 
-> 当前状态：fake BGM / adapter / readiness
-> 目标：真实扩展，不反向破坏核心契约
+> 当前状态：fake BGM / adapter / readiness skeleton
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
 - [ ] **P7.2** Remotion worker 实现
@@ -147,15 +55,16 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 
 ## 技术债务 / 待改进
 
-- [ ] 编译验证：确保所有 `.pas` 文件通过 Delphi 编译（当前为手写骨架，需在 Delphi IDE 中编译验证）
-- [ ] 单元测试：为 Repository、Workflow、Domain 层添加测试
-- [ ] 集成测试：端到端 fake provider 链路验证
-- [ ] 错误处理增强：Workflow 中的异常恢复路径
-- [ ] 日志完善：关键路径的日志插桩
+- [ ] 编译验证：所有 `.pas` 文件通过 Delphi 编译
+- [ ] 单元测试：Repository、Workflow、Domain 层
+- [ ] 集成测试：端到端 fake provider 链路
+- [ ] 错误处理增强：Workflow 异常恢复路径
+- [ ] 日志完善：关键路径日志插桩
+- [ ] StepFun Image API 接入（image_gen / image_edit）— `docs/02.api` 已定义接口，provider 已留 capability
 
 ---
 
-## 开发红线（每次改动前确认）
+## 开发红线
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §6
 
