@@ -29,6 +29,7 @@ uses
   System.JSON,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
+  DeepFrames.Workflow.ReadinessChecker,
   DeepFrames.Shared.Consts;
 
 { TExtensionChainWorkflow }
@@ -57,20 +58,32 @@ class function TExtensionChainWorkflow.RunReadinessCheck(
   const AdapterId: string): TReadinessReport;
 var
   Repo: TDeepFramesRepository;
+  Adapter: TContentTypeAdapter;
+  Aggregate: TAggregateReadiness;
 begin
   Repo := TDeepFramesRepository.Create;
   try
-    // Phase 7 stub: always pass readiness check
-    Result := TProjectService.CreateReadinessReport(
-      AdapterId, READINESS_CHECK_E2E_SAMPLE, READINESS_RESULT_PASS, 1.0);
-    Result.Summary := 'Stub readiness check: all validations passed';
-    Result.IssuesJson := '[]';
-    Result.EvidenceJson :=
-      '{"schema_valid": true, "pipeline_connected": true, "output_sample_ok": true}';
+    // Load adapter from DB and run real readiness checks
+    if Repo.FindContentTypeAdapter('', Adapter) then
+    begin
+      // FindContentTypeAdapter expects content_type string, not adapter_id.
+      // Fall back to loading all adapters and matching by ID.
+    end;
+    var AllAdapters := Repo.ListContentTypeAdapters;
+    for var A in AllAdapters do
+      if SameText(A.AdapterId, AdapterId) then
+      begin
+        Adapter := A;
+        Break;
+      end;
+
+    Aggregate := TReadinessChecker.Evaluate(Adapter);
+    Result := TReadinessChecker.ToReadinessReport(AdapterId, Aggregate);
     Repo.InsertReadinessReport(Result);
 
-    // Activate adapter after passing readiness
-    Repo.UpdateContentTypeAdapterStatus(AdapterId, ADAPTER_STATUS_ACTIVE);
+    // Activate adapter after passing all readiness checks
+    if Result.CheckResult = READINESS_RESULT_PASS then
+      Repo.UpdateContentTypeAdapterStatus(AdapterId, ADAPTER_STATUS_ACTIVE);
   finally
     Repo.Free;
   end;

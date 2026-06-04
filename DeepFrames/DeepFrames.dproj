@@ -144,6 +144,7 @@
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.VideoChain.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.PackageChain.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.ExtensionChain.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.ReadinessChecker.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.VideoCompiler.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.GateEvaluator.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.StyleKeeper.pas"/>
