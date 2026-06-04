@@ -4,24 +4,26 @@
 
 Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复任务已归档至 [history.md](history.md)。
 
-**2026-06-04 更新**: Provider 抽象层已完成，fake provider 已从 workflow 中抽离。下阶段可切换至 StepFun adapter 逐步接入真实 API。
+**2026-06-04 更新**: Provider 抽象层已完成，StepFun LLM provider 已实现真实 HTTP 调用（API Key 可用时走真实 API，不可用时降级为 stub）。
 
-下阶段目标：将 fake providers 逐步替换为真实实现，按 POC → Phase 2 → Phase 3 → ... 顺序推进。
+下阶段目标：POC 2 ASR SSE 验证 → Phase 2 文档链真实 LLM 调用，按 POC → Phase 2 → Phase 3 → ... 顺序推进。
 
 ---
 
-## 已完成（2026-06-04 Provider 抽象层）
+## 已完成（2026-06-04 Provider 抽象层 + StepFun LLM HTTP）
 
-- [x] **Provider Types** — `src/Provider/DeepFrames.Provider.Types.pas`（`TTokenUsage`, `TProviderRunMetrics`, `TTtsSynthesisResult`, `TAsrWordTimestamp`, `TChatCompletionRequest/Result`）
-- [x] **Provider Interfaces** — `src/Provider/DeepFrames.Provider.Intf.pas`（`IDeepFramesLLMProvider`, `IDeepFramesTTSProvider`, `IDeepFramesASRProvider`）
-- [x] **Provider Registry** — `src/Provider/DeepFrames.Provider.Registry.pas`（单例，默认 fake，可按需切换至 stepfun）
-- [x] **Fake Provider** — `src/Provider/DeepFrames.Provider.Fake.pas`（`TFakeLLMProvider`, `TFakeTTSProvider`, `TFakeASRProvider`）
-- [x] **StepFun Skeleton** — `src/Provider/DeepFrames.Provider.StepFun.pas`（LLM stub，TTS/ASR `ENotImplemented`，带完整 TODO 注释）
-- [x] **VideoCompiler Utility** — `src/Workflow/DeepFrames.Workflow.VideoCompiler.pas`（`CompileTimeline`, `Lint`, `RenderMetrics`）
-- [x] **Workflow Refactor** — `AgentChain`, `AudioChain`, `VideoChain`, `PackageChain` 全部改用 Provider / VideoCompiler
+- [x] **Provider Types** — `src/Provider/DeepFrames.Provider.Types.pas`
+- [x] **Provider Interfaces** — `src/Provider/DeepFrames.Provider.Intf.pas`
+- [x] **Provider Registry** — `src/Provider/DeepFrames.Provider.Registry.pas`
+- [x] **Fake Provider** — `src/Provider/DeepFrames.Provider.Fake.pas`
+- [x] **StepFun LLM Provider (real HTTP)** — `src/Provider/DeepFrames.Provider.StepFun.pas`（真实 HTTP POST + OpenAI 兼容解析 + 重试 + stub 降级）
+- [x] **StepFun TTS/ASR Skeleton** — 同上文件（`ENotImplemented`，Phase 4 接入）
+- [x] **VideoCompiler Utility** — `src/Workflow/DeepFrames.Workflow.VideoCompiler.pas`
+- [x] **Workflow Refactor** — AgentChain/AudioChain/VideoChain/PackageChain 全部改用 Provider
+- [x] **AgentChain 真实 Prompt** — 每个 agent role 有专用 SystemPrompt + UserPrompt
 - [x] **Domain Service** — `TProjectService.BuildQualitySnapshotJson` / `BuildSourceTraceJson`
-- [x] **UI** — 新增 "Switch AI Provider" 命令（fake ↔ stepfun 切换）
-- [x] **Build Config** — `DeepFrames.dproj` + `compile_test.bat` 已更新 `src\Provider` 路径
+- [x] **UI** — "Switch AI Provider" 命令 + 启动时显示 provider 状态
+- [x] **Build Config** — `dproj` + `compile_test.bat` 更新
 
 ## POC 验证（优先，不阻塞但建议先做）
 

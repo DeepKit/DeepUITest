@@ -1,5 +1,25 @@
 # DeepFrames Development History
 
+## 2026-06-04 — StepFun LLM Provider 真实 HTTP 调用
+
+提交: `feat(DeepFrames): implement StepFun LLM provider real HTTP call with stub fallback`
+
+### StepFun LLM Provider
+- 真实 HTTP POST 到 `https://api.stepfun.com/step_plan/v1/chat/completions`
+- API Key 从 `DeepBase.Security.LoadSecret('deepframes/stepfun/step_plan_key')` 加载
+- Key 不可用时降级为 stub JSON（`psDegraded` 状态），不会崩溃
+- 返回真实 token 用量、���迟、request ID
+- 包含重试逻辑（2 次重试，500ms 间隔）
+- 解析 OpenAI 兼容响应：`choices[0].message.content`
+- 新增 `TChatCompletionRequest.AgentRole` 字段供 fake provider 路由
+
+### AgentChain 改进
+- 每个 agent role 有专用 SystemPrompt + UserPrompt（而非仅 role 字符串）
+- Fake provider 通过 `AgentRole` 字段路由确定性输出
+- 真实 provider 将完整 prompt 发送到 StepFun API
+
+---
+
 ## 2026-06-04 — Provider 抽象层 + Workflow 重构
 
 提交: 3 个新目录 + 5 个新文件 + 5 个 workflow 重构

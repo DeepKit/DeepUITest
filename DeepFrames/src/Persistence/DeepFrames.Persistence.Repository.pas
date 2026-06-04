@@ -26,6 +26,7 @@ type
 
     procedure InsertSourceDocument(const Doc: TSourceDocumentVersion);
     function ListSourceDocuments(const ProjectId: string): TArray<TSourceDocumentVersion>;
+    function FindSourceDocument(const DocumentId: string; out Doc: TSourceDocumentVersion): Boolean;
 
     procedure InsertJob(const Job: TDeepFramesJob);
     procedure UpdateJobQueueTaskId(const JobId, TaskId: string);
@@ -370,6 +371,48 @@ begin
   finally
     Q.Free;
     List.Free;
+  end;
+end;
+
+function TDeepFramesRepository.FindSourceDocument(const DocumentId: string;
+  out Doc: TSourceDocumentVersion): Boolean;
+var
+  Q: TFDQuery;
+  PayloadStr: string;
+  Payload: TJSONObject;
+begin
+  Result := False;
+  Q := NewQuery;
+  try
+    Q.SQL.Text :=
+      'SELECT document_id, project_id, content_unit_id, version_no, content_hash, ' +
+      'source_uri, status, payload_json FROM deepframes_source_document ' +
+      'WHERE document_id = :document_id';
+    Q.ParamByName('document_id').AsString := DocumentId;
+    Q.Open;
+    if not Q.Eof then
+    begin
+      Doc.DocumentId := Q.FieldByName('document_id').AsString;
+      Doc.ProjectId := Q.FieldByName('project_id').AsString;
+      Doc.ContentUnitId := Q.FieldByName('content_unit_id').AsString;
+      Doc.VersionNo := Q.FieldByName('version_no').AsInteger;
+      Doc.ContentHash := Q.FieldByName('content_hash').AsString;
+      Doc.SourceUri := Q.FieldByName('source_uri').AsString;
+      Doc.Status := Q.FieldByName('status').AsString;
+      PayloadStr := Q.FieldByName('payload_json').AsString;
+      Payload := TJSONObject.ParseJSONValue(PayloadStr) as TJSONObject;
+      try
+        if Payload <> nil then
+          Doc.MarkdownText := Payload.GetValue<string>('markdown')
+        else
+          Doc.MarkdownText := '';
+      finally
+        Payload.Free;
+      end;
+      Result := True;
+    end;
+  finally
+    Q.Free;
   end;
 end;
 
