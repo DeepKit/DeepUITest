@@ -4,9 +4,9 @@
 
 Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复任务已归档至 [history.md](history.md)。
 
-**2026-06-04 更新**: Provider 抽象层完成，StepFun LLM 真实 HTTP 调用就绪，Phase 2/3 全部完成。
+**2026-06-04 更新**: Phase 2/3/4 全部完成 — 12 次提交，60 文件变更，14,397 行新增。29 个 Pascal 单元，完整 LLM/TTS/ASR Provider 层 + 6 个 Workflow 工具 + 全部 Gate 门控。
 
-**当前瓶颈**: 无 Delphi 编译环境。关键路径基础设施已就绪，下一步是 POC 验证（DB2 连接、StepFun API 连通性、Worker 协议）和 Phase 4 真实 TTS/ASR 接入。
+**当前瓶颈**: 无 Delphi 编译环境。Phase 5-7 需要外部依赖（HyperFrames、Remotion、BGM 库），可在 POC 验证后推进。
 
 ---
 
