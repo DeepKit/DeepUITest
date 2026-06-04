@@ -1,0 +1,24 @@
+{
+  "name": "deepframes-remotion-worker",
+  "version": "1.0.0",
+  "description": "DeepFrames Remotion rendering worker. Consumes Video IR, produces MP4 output.",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "render": "ts-node src/index.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
