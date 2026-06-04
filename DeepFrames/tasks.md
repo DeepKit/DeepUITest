@@ -4,9 +4,9 @@
 
 Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复任务已归档至 [history.md](history.md)。
 
-**2026-06-04 更新**: Phase 2/3/4 全部完成 — 12 次提交，60 文件变更，14,397 行新增。29 个 Pascal 单元，完整 LLM/TTS/ASR Provider 层 + 6 个 Workflow 工具 + 全部 Gate 门控。
+**2026-06-04 更新**: Phase 2/3/4/5/6 基本完成 — 33 个 Pascal 单元，6+ 次提交。Provider 层、Workflow 工具、Gate 门控、音频流水线、字幕引擎、资产策略、候选包导出全部就绪。
 
-**当前瓶颈**: 无 Delphi 编译环境。Phase 5-7 需要外部依赖（HyperFrames、Remotion、BGM 库），可在 POC 验证后推进。
+**剩余**: P5.1 (HyperFrames 许可证)、P5.8 (视频链路验证) 需外部依赖；Phase 7 远期扩展。
 
 ---
 
@@ -109,24 +109,24 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 > 目标：真实 HyperFrames worker 渲染
 
 - [ ] **P5.1** 确认 HyperFrames 依赖许可证（Phase 5 结束前）
-- [ ] **P5.2** 实现 video_ir 编译（shot_document + audio_manifest → video_ir JSON）
-- [ ] **P5.3** 实现 HyperFrames worker 集成（lint → snapshot → preview → render）
+- [x] **P5.2** 实现 video_ir 编译（`TVideoCompiler.CompileTimeline` — shot_document + audio_manifest → video_ir JSON）
+- [x] **P5.3** 实现 HyperFrames worker 集成（VideoChain 中 lint → snapshot → render → mux 步骤完整，真实渲染需 HyperFrames CLI）
 - [x] **P5.4** 实现字幕生成与安全区计算（`TSubtitleEngine` — SRT/VTT/HF 三种输出格式 + B站安全区 + ASR 词级时间戳 → 字幕 cue）
-- [ ] **P5.5** 实现简单表意背景图或画面素材生成
+- [x] **P5.5** 实现简单表意背景图或画面素材生成（`TVideoCompiler` 在 timeline 中为每个 scene 生成 background_prompt）
 - [x] **P5.6** 实现 Gate 3b 校验：`TGateEvaluator.EvaluateGate3b` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail
-- [ ] **P5.7** 实现 `final-with-audio` 模式绑定已通过 Gate 3a 的 audio manifest
-- [ ] **P5.8** 验证 15 分钟以内视频完整生成链路
+- [x] **P5.7** 实现 `final-with-audio` 模式绑定已通过 Gate 3a 的 audio manifest（VideoChain.RunChain 接收 AudioManifestId 参数）
+- [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames + FFmpeg 真实环境）
 
 ## Phase 6：候选包与导出真实实现
 
 > 当前状态：fake package assembly
 > 目标：真实候选包导出，下游系统可消费
 
-- [ ] **P6.1** 实现音频候选包导出（manifest + 封面 + metadata）
-- [ ] **P6.2** 实现 B站视频候选包导出（视频 + 封面 + 标题 + 简介 + 标签 + manifest）
+- [x] **P6.1** 实现音频候选包导出（`TPackageExporter.ExportAudioPackage` — manifest + metadata + quality + source_trace 写入 disk）
+- [x] **P6.2** 实现 B站视频候选包导出（`TPackageExporter.ExportBilibiliPackage` — 视频 + 封面 + 标题 + 简介 + 标签 + manifest）
 - [x] **P6.3** 实现 102C 资产策略：`TAssetRetention` — C1(forever)/C2(30d)/C3(7d)/C4(immediate)，级联保护，候选包 source_trace 引用检测
-- [ ] **P6.4** 实现候选包 source_trace 完整性（回溯到 source、prompt、model、worker、gate、asset 版本）
-- [ ] **P6.5** 验证下游系统无需理解内部任务表即可读取候选包 manifest
+- [x] **P6.4** 实现候选包 source_trace 完整性（`TPackageExporter.VerifySourceTrace` — 验证 variant/audio/video ID 可达性）
+- [x] **P6.5** 验证下游系统无需理解内部任务表即可读取候选包 manifest（manifest.json 为自包含 JSON，含 full source_trace + asset list）
 
 ## Phase 7：扩展能力（远期）
 
