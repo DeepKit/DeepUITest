@@ -43,7 +43,7 @@
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
 - [ ] **P7.2** Remotion worker 实现
-- [ ] **P7.3** 更多平台规格（抖音、快手、小红书、微信视频号、YouTube、喜马拉雅）
+- [x] **P7.3** 更多平台规格（抖音、快手、小红书、微信视频号、YouTube、喜马拉雅已加入 migration）
 - [ ] **P7.4** 多比例视频支持
 - [ ] **P7.5** content_type adapter 扩展与 readiness check / readiness report
 - [ ] **P7.6** BGM 与音乐库真实实现
