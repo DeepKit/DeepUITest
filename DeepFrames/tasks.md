@@ -50,10 +50,10 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 
 ### POC 3：Worker 协议 v0 验证
 
-- [ ] 验证主程序创建 worker 工作目录 → 写入 `request.json` → 启动 worker → 读取 `progress.json` / `result.json` → 更新 DB2 step 与 asset
-- [ ] 验证最小文件契约：`request.json` / `progress.json` / `result.json`
-- [ ] 验证取消协议：`CTRL-BREAK` 主通道 + `cancel_file` 辅助信号
-- [ ] 确认强制终止后的 partial asset 不登记为 `ready`
+- [x] 验证主程序创建 worker 工作目录 → 写入 `request.json` → 启动 worker → 读取 `progress.json` / `result.json` → 更新 DB2 step 与 asset（`TWorkerProtocol` 完整实现）
+- [x] 验证最小文件契约：`request.json` / `progress.json` / `result.json`（完整 JSON 序列化/反序列化）
+- [x] 验证取消协议：`CTRL-BREAK` 主通道 + `cancel_file` 辅助信号（`SignalCancel` / `IsCancelSignaled` + `TerminateProcess`）
+- [x] 确认强制终止后的 partial asset 不登记为 `ready`（`IsResultValid` 检查 success + output_files + error_message）
 
 ---
 

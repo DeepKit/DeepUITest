@@ -41,6 +41,26 @@
 
 ---
 
+## 2026-06-04 — POC 3 完成 + Bugfix: TProcess → CreateProcess + FFmpeg mux + SubtitleEngine
+
+### Worker Protocol v0
+- `TWorkerProtocol.LaunchWorker` / `WaitForWorker` / `TerminateWorker`
+- `request.json` / `progress.json` / `result.json` 完整序列化
+- `cancel_file` + `SignalCancel` / `IsCancelSignaled`
+- `IsResultValid`: 防止部分资产登记为 ready
+
+### Bugfix: TProcess → WinAPI CreateProcess
+- `AudioProcessor.RunFFmpeg` 中 `TProcess` 是 FreePascal 类，Delphi 不支持
+- 改用 `CreateProcess` + `CreatePipe` / `ReadFile` / `WaitForSingleObject`
+
+### FFmpeg Video+Audio Mux
+- VideoChain Step 5: 真实 FFmpeg 音视频合成（`c:v copy + c:a aac 192k`）
+
+### SubtitleEngine + AssetRetention + PackageExporter
+- 字幕引擎 (SRT/VTT/HF)、102C 资产策略、候选包导出
+
+---
+
 ## 2026-06-04 — Phase 2/3 完成：Style Keeper + 断点续跑 + Prompt Version
 
 提交: `feat(DeepFrames): implement Style Keeper, workflow retry/resume, prompt version tracking`
