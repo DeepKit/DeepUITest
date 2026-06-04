@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-**2026-06-04**: Phase 2/3/4/6 全部完成。37 个 Pascal 单元，22 个新建模块。完整 LLM/TTS/ASR/Image Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕、资产、导出、Worker、VoiceProfile、ReadinessChecker、DocumentExport、EventLog、多比例安全区全部就绪。
+**2026-06-04**: Phase 2/3/4/6 全部完成。37 个 Pascal 单元，25 个新建模块。完整 LLM/TTS/ASR/Image Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕、资产、导出、Worker、VoiceProfile、ReadinessChecker、DocumentExport、EventLog、多比例安全区、BGM 管理器、ArtifactOS 桥接全部就绪。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -39,9 +39,9 @@
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
 - [ ] **P7.2** Remotion worker 实现
-- [ ] **P7.4** 多比例视频支持
-- [ ] **P7.6** BGM 与音乐库真实实现
-- [ ] **P7.7** ArtifactOS 深度联动
+- [x] **P7.4** 多比例视频支持（`TVideoAspect` — Aspect16x9/9x16/3x4/1x1 + VideoCompiler aspect-aware）
+- [x] **P7.6** BGM 与音乐库真实实现（`TBgmManager` — 9 mood + license 验证 + FFmpeg filter + search/match）
+- [x] **P7.7** ArtifactOS 深度联动（`TArtifactOSBridge` — publish_intent ↔ publish_status 7平台桥接）
 - [ ] **P7.8** H.264 / AAC 编解码器专利和平台发布合规复核
 - [ ] **P7.9** 商业化、授权、销售包装
 
