@@ -52,6 +52,13 @@ type
     /// <summary>B站 1920×1080 default safe zone.</summary>
     class function BilibiliSafeZone: TSafeZone; static;
 
+    /// <summary>Douyin (抖音) 1080×1920 vertical safe zone — larger bottom margin for UI.</summary>
+    class function DouyinSafeZone: TSafeZone; static;
+
+    /// <summary>Generic safe zone from platform dimensions.</summary>
+    class function SafeZoneFor(const AWidth, AHeight: Integer;
+      ABottomPct, AHorizPct: Double; AFontSize: Integer): TSafeZone; static;
+
     /// <summary>Build subtitle cues from ASR word-level timestamps.</summary>
     class function BuildCues(const AWords: TArray<TAsrWordTimestamp>;
       AMaxCharsPerLine: Integer = 20; AMaxLines: Integer = 2;
@@ -116,11 +123,37 @@ class function TSubtitleEngine.BilibiliSafeZone: TSafeZone;
 begin
   Result.CanvasWidth := 1920;
   Result.CanvasHeight := 1080;
-  Result.MarginBottomPercent := 10.0;   // 10% from bottom = y > 972
-  Result.MarginHorizontalPercent := 10.0; // 10% padding each side = x in [192, 1728]
+  Result.MarginBottomPercent := 10.0;
+  Result.MarginHorizontalPercent := 10.0;
   Result.MaxCharsPerLine := 20;
   Result.MaxLines := 2;
   Result.FontSizePt := 36;
+end;
+
+class function TSubtitleEngine.DouyinSafeZone: TSafeZone;
+begin
+  Result.CanvasWidth := 1080;
+  Result.CanvasHeight := 1920;
+  Result.MarginBottomPercent := 15.0;   // larger — UI elements (likes, comments, profile) at bottom
+  Result.MarginHorizontalPercent := 5.0;
+  Result.MaxCharsPerLine := 16;         // narrower canvas → fewer chars per line
+  Result.MaxLines := 2;
+  Result.FontSizePt := 32;
+end;
+
+class function TSubtitleEngine.SafeZoneFor(const AWidth, AHeight: Integer;
+  ABottomPct, AHorizPct: Double; AFontSize: Integer): TSafeZone;
+begin
+  Result.CanvasWidth := AWidth;
+  Result.CanvasHeight := AHeight;
+  Result.MarginBottomPercent := ABottomPct;
+  Result.MarginHorizontalPercent := AHorizPct;
+  // Scale max chars per line by canvas width relative to 1920
+  Result.MaxCharsPerLine := Round((AWidth / 1920.0) * 20);
+  if Result.MaxCharsPerLine < 10 then
+    Result.MaxCharsPerLine := 10;
+  Result.MaxLines := 2;
+  Result.FontSizePt := AFontSize;
 end;
 
 class function TSubtitleEngine.SplitLines(const AText: string;

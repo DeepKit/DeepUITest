@@ -2,13 +2,13 @@
 
 ## 当前状态
 
-**2026-06-04**: Phase 2/3/4/6 全部完成，Phase 5 完成 7/8。33 个 Pascal 单元，16 个新建模块。完整 LLM/TTS/ASR Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕引擎、资产策略、候选包导出、Worker 协议全部就绪。
+**2026-06-04**: Phase 2/3/4/6 全部完成。36 个 Pascal 单元，21 个新建模块。完整 LLM/TTS/ASR/Image Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕、资产、导出、Worker、VoiceProfile、ReadinessChecker 全部就绪。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
 ---
 
-## POC 验证（需真实环境，非代码层面）
+## POC 验证（需真实环境）
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §5
 
@@ -21,8 +21,8 @@
 
 ### POC 2：StepFun API 连通性验证
 
-- [ ] Step Plan 端点 `https://api.stepfun.com/step_plan/v1` — Chat + TTS
-- [ ] 标准端点 `https://api.stepfun.com/v1` — ASR SSE
+- [ ] Step Plan 端点 Chat + TTS 连通
+- [ ] 标准端点 ASR SSE 连通（/v1，非 /step_plan/v1）
 - [ ] 两套 Key 不互通确认
 - [ ] ASR SSE 实体验证：Delta 事件格式、时间戳字段路径、Done 标记、Error 格式
 
@@ -30,22 +30,16 @@
 
 ## Phase 5 剩余
 
-> 当前状态：SubtitleEngine、Gate 3b、FFmpeg mux 全部实现。渲染步骤已有完整的 lint→snapshot→render→mux pipeline（stub render
-
-- [ ] **P5.1** 确认 HyperFrames 依赖许可证（Phase 5 结束前）
+- [ ] **P5.1** 确认 HyperFrames 依赖许可证
 - [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames + FFmpeg 真实环境）
 
 ---
 
-## Phase 7：扩展能力（远期）
-
-> 当前状态：fake BGM / adapter / readiness skeleton
+## Phase 7 剩余
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
 - [ ] **P7.2** Remotion worker 实现
-- [x] **P7.3** 更多平台规格（抖音、快手、小红书、微信视频号、YouTube、喜马拉雅已加入 migration）
 - [ ] **P7.4** 多比例视频支持
-- [ ] **P7.5** content_type adapter 扩展与 readiness check / readiness report
 - [ ] **P7.6** BGM 与音乐库真实实现
 - [ ] **P7.7** ArtifactOS 深度联动
 - [ ] **P7.8** H.264 / AAC 编解码器专利和平台发布合规复核
@@ -53,14 +47,13 @@
 
 ---
 
-## 技术债务 / 待改进
+## 技术债务
 
 - [ ] 编译验证：所有 `.pas` 文件通过 Delphi 编译
 - [ ] 单元测试：Repository、Workflow、Domain 层
 - [ ] 集成测试：端到端 fake provider 链路
 - [ ] 错误处理增强：Workflow 异常恢复路径
 - [ ] 日志完善：关键路径日志插桩
-- [x] StepFun Image API 接入（`IDeepFramesImageProvider` — fake + StepFun 真实 HTTP /images/generations）
 
 ---
 
