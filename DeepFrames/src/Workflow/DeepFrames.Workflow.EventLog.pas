@@ -89,7 +89,7 @@ end;
 
 class function TWorkflowLogger.NowISO: string;
 begin
-  Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', TTimeZone.Local.ToUniversalTime(Now));
+  Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss"Z"', Now);
 end;
 
 class function TWorkflowLogger.BuildPayload(
