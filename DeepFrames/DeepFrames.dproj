@@ -158,6 +158,7 @@
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.WorkerProtocol.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.DocumentExport.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.BgmManager.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.ArtifactOSBridge.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Types.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Intf.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Registry.pas"/>
