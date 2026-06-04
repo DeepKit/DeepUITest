@@ -25,6 +25,7 @@ type
     FLLMProvider: IDeepFramesLLMProvider;
     FTTSProvider: IDeepFramesTTSProvider;
     FASRProvider: IDeepFramesASRProvider;
+    FImageProvider: IDeepFramesImageProvider;
     FActiveProviderName: string;
     FInitialized: Boolean;
 
@@ -47,6 +48,9 @@ type
 
     /// <summary>Current active ASR provider. Never nil after first access.</summary>
     function ASRProvider: IDeepFramesASRProvider;
+
+    /// <summary>Current active Image provider. Never nil after first access.</summary>
+    function ImageProvider: IDeepFramesImageProvider;
 
     /// <summary>Name of the currently active provider set (e.g. 'fake', 'stepfun').
     function ActiveProviderName: string;
@@ -85,6 +89,7 @@ begin
   FLLMProvider := nil;
   FTTSProvider := nil;
   FASRProvider := nil;
+  FImageProvider := nil;
   inherited;
 end;
 
@@ -111,6 +116,7 @@ begin
   FLLMProvider := TFakeLLMProvider.Create;
   FTTSProvider := TFakeTTSProvider.Create;
   FASRProvider := TFakeASRProvider.Create;
+  FImageProvider := TFakeImageProvider.Create;
   FActiveProviderName := PROVIDER_FAKE;
 end;
 
@@ -119,6 +125,7 @@ begin
   FLLMProvider := TStepFunLLMProvider.Create;
   FTTSProvider := TStepFunTTSProvider.Create;
   FASRProvider := TStepFunASRProvider.Create;
+  FImageProvider := TStepFunImageProvider.Create;
   FActiveProviderName := PROVIDER_STEPFUN;
 end;
 
@@ -142,6 +149,7 @@ begin
   FLLMProvider := nil;
   FTTSProvider := nil;
   FASRProvider := nil;
+  FImageProvider := nil;
   CreateProviders(AProviderName);
 end;
 
@@ -161,6 +169,12 @@ function TProviderRegistry.ASRProvider: IDeepFramesASRProvider;
 begin
   InitializeDefaults;
   Result := FASRProvider;
+end;
+
+function TProviderRegistry.ImageProvider: IDeepFramesImageProvider;
+begin
+  InitializeDefaults;
+  Result := FImageProvider;
 end;
 
 function TProviderRegistry.ActiveProviderName: string;

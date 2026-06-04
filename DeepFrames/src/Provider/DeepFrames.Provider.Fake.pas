@@ -367,4 +367,77 @@ begin
   Result := FLastMetrics;
 end;
 
+{ TFakeImageProvider }
+
+type
+  TFakeImageProvider = class(TInterfacedObject, IDeepFramesImageProvider)
+  private
+    FLastMetrics: TProviderRunMetrics;
+  public
+    function GetProviderName: string;
+    function GetProviderStatus: TProviderStatus;
+    function GetCapabilities: TProviderCapabilities;
+    function Generate(const ARequest: TImageGenRequest;
+      out AResults: TArray<TImageGenResult>;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function GetAvailableStyles: TArray<string>;
+    function GetLastRunMetrics: TProviderRunMetrics;
+  end;
+
+function TFakeImageProvider.GetProviderName: string;
+begin
+  Result := PROVIDER_FAKE;
+end;
+
+function TFakeImageProvider.GetProviderStatus: TProviderStatus;
+begin
+  Result := psOk;
+end;
+
+function TFakeImageProvider.GetCapabilities: TProviderCapabilities;
+begin
+  Result := [pcImageGen, pcImageEdit];
+end;
+
+function TFakeImageProvider.GetAvailableStyles: TArray<string>;
+begin
+  Result := ['realistic', 'anime', 'illustration', 'documentary'];
+end;
+
+function TFakeImageProvider.Generate(const ARequest: TImageGenRequest;
+  out AResults: TArray<TImageGenResult>;
+  out AMetrics: TProviderRunMetrics): Boolean;
+var
+  Count: Integer;
+  I: Integer;
+begin
+  Count := ARequest.NumImages;
+  if Count <= 0 then
+    Count := 1;
+
+  SetLength(AResults, Count);
+  for I := 0 to Count - 1 do
+  begin
+    AResults[I].OutputUri := Format('output/images/fake/gen_%d.png', [I + 1]);
+    AResults[I].OutputSizeBytes := 512000;
+    AResults[I].Width := ARequest.Width;
+    AResults[I].Height := ARequest.Height;
+    AResults[I].Format := 'png';
+    AResults[I].Seed := 42;
+    AResults[I].RevisedPrompt := ARequest.Prompt + ' (stub)';
+  end;
+
+  AMetrics.ProviderName := GetProviderName;
+  AMetrics.Model := 'fake-image-gen';
+  AMetrics.Capability := CAPABILITY_IMAGE_GEN;
+  AMetrics.LatencyMs := 5;
+  FLastMetrics := AMetrics;
+  Result := True;
+end;
+
+function TFakeImageProvider.GetLastRunMetrics: TProviderRunMetrics;
+begin
+  Result := FLastMetrics;
+end;
+
 end.

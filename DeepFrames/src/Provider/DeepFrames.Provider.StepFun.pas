@@ -79,8 +79,60 @@ type
 
   /// <summary>
   /// StepFun ASR provider (stepfun-asr via /v1/audio/asr/sse).
-/// SSE streaming: uses standard endpoint /v1, NOT /step_plan/v1.</summary>
+  /// SSE streaming: uses standard endpoint /v1, NOT /step_plan/v1.</summary>
   TStepFunASRProvider = class(TInterfacedObject, IDeepFramesASRProvider)
+  private
+    FLastMetrics: TProviderRunMetrics;
+    FHasApiKey: Boolean;
+    FKeyCheckDone: Boolean;
+    function GetStandardKey: string;
+    function HasKey: Boolean;
+    function GetOutputDir: string;
+    function CallRealAPI(const AAudioUri: string;
+      out AResult: TAsrTranscriptionResult;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function CallStubAPI(const AAudioUri: string;
+      out AResult: TAsrTranscriptionResult;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function ParseSSELine(const ALine: string; out AEventType, AData: string): Boolean;
+    function ParseDeltaData(const AData: string; var AWords: TArray<TAsrWordTimestamp>;
+      var ADurationSec: Double): Boolean;
+  public
+    function GetProviderName: string;
+    function GetProviderStatus: TProviderStatus;
+    function GetCapabilities: TProviderCapabilities;
+    function Transcribe(const AAudioUri: string;
+      out AResult: TAsrTranscriptionResult;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function GetLastRunMetrics: TProviderRunMetrics;
+  end;
+
+  /// <summary>
+  /// StepFun Image provider (step-image-edit-2 via /images/generations).</summary>
+  TStepFunImageProvider = class(TInterfacedObject, IDeepFramesImageProvider)
+  private
+    FLastMetrics: TProviderRunMetrics;
+    FHasApiKey: Boolean;
+    FKeyCheckDone: Boolean;
+    function GetStepPlanKey: string;
+    function HasKey: Boolean;
+    function GetOutputDir: string;
+    function CallRealAPI(const ARequest: TImageGenRequest;
+      out AResults: TArray<TImageGenResult>;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function CallStubAPI(const ARequest: TImageGenRequest;
+      out AResults: TArray<TImageGenResult>;
+      out AMetrics: TProviderRunMetrics): Boolean;
+  public
+    function GetProviderName: string;
+    function GetProviderStatus: TProviderStatus;
+    function GetCapabilities: TProviderCapabilities;
+    function Generate(const ARequest: TImageGenRequest;
+      out AResults: TArray<TImageGenResult>;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function GetAvailableStyles: TArray<string>;
+    function GetLastRunMetrics: TProviderRunMetrics;
+  end;
   private
     FLastMetrics: TProviderRunMetrics;
     FHasApiKey: Boolean;
@@ -1042,6 +1094,218 @@ begin
 end;
 
 function TStepFunASRProvider.GetLastRunMetrics: TProviderRunMetrics;
+begin
+  Result := FLastMetrics;
+end;
+
+{ TStepFunImageProvider }
+
+function TStepFunImageProvider.GetProviderName: string;
+begin
+  Result := PROVIDER_STEPFUN;
+end;
+
+function TStepFunImageProvider.GetProviderStatus: TProviderStatus;
+begin
+  if not FKeyCheckDone then
+    HasKey;
+  if FHasApiKey then
+    Result := psOk
+  else
+    Result := psDegraded;
+end;
+
+function TStepFunImageProvider.GetCapabilities: TProviderCapabilities;
+begin
+  Result := [pcImageGen, pcImageEdit];
+end;
+
+function TStepFunImageProvider.GetAvailableStyles: TArray<string>;
+begin
+  Result := ['realistic', 'anime', 'illustration', 'documentary'];
+end;
+
+function TStepFunImageProvider.GetStepPlanKey: string;
+begin
+  try
+    Result := LoadSecret(SECRET_STEP_PLAN_KEY);
+  except
+    Result := '';
+  end;
+end;
+
+function TStepFunImageProvider.HasKey: Boolean;
+begin
+  if not FKeyCheckDone then
+  begin
+    FHasApiKey := (Trim(GetStepPlanKey) <> '');
+    FKeyCheckDone := True;
+  end;
+  Result := FHasApiKey;
+end;
+
+function TStepFunImageProvider.GetOutputDir: string;
+begin
+  Result := 'output/images';
+end;
+
+function TStepFunImageProvider.CallRealAPI(const ARequest: TImageGenRequest;
+  out AResults: TArray<TImageGenResult>;
+  out AMetrics: TProviderRunMetrics): Boolean;
+var
+  HTTP: THTTPClient;
+  RequestObj: TJSONObject;
+  RequestBody, ResponseStr: string;
+  ResponseObj: TJSONObject;
+  DataArr: TJSONArray;
+  DataObj: TJSONObject;
+  I: Integer;
+  Stopwatch: TStopwatch;
+  Retry: Integer;
+  OutputDir: string;
+begin
+  Result := False;
+  SetLength(AResults, 0);
+
+  OutputDir := GetOutputDir;
+  ForceDirectories(OutputDir);
+
+  RequestObj := TJSONObject.Create;
+  try
+    RequestObj.AddPair('model', 'step-image-edit-2');
+    RequestObj.AddPair('prompt', ARequest.Prompt);
+    if ARequest.NegativePrompt <> '' then
+      RequestObj.AddPair('negative_prompt', ARequest.NegativePrompt);
+    RequestObj.AddPair('size', Format('%dx%d', [ARequest.Width, ARequest.Height]));
+    RequestObj.AddPair('n', TJSONNumber.Create(ARequest.NumImages));
+    if ARequest.Style <> '' then
+      RequestObj.AddPair('style', ARequest.Style);
+    RequestBody := RequestObj.ToJSON;
+  finally
+    RequestObj.Free;
+  end;
+
+  HTTP := THTTPClient.Create;
+  try
+    HTTP.ConnectionTimeout := 30000;
+    HTTP.ResponseTimeout := 120000;
+    HTTP.ContentType := 'application/json';
+    HTTP.CustomHeaders['Authorization'] := 'Bearer ' + GetStepPlanKey;
+
+    Stopwatch := TStopwatch.StartNew;
+    for Retry := 0 to MAX_RETRIES do
+    begin
+      try
+        var ReqStream := TStringStream.Create(RequestBody, TEncoding.UTF8);
+        try
+          ResponseStr := HTTP.Post(STEPFUN_STEP_PLAN_URL + '/images/generations',
+            ReqStream).ContentAsString(TEncoding.UTF8);
+        finally
+          ReqStream.Free;
+        end;
+        Break;
+      except
+        if Retry = MAX_RETRIES then
+        begin
+          AMetrics.ErrorCode := 'HTTP_ERROR';
+          FLastMetrics := AMetrics;
+          Exit(False);
+        end;
+        Sleep(RETRY_DELAY_MS);
+      end;
+    end;
+    Stopwatch.Stop;
+
+    ResponseObj := TJSONObject.ParseJSONValue(ResponseStr) as TJSONObject;
+    if ResponseObj = nil then
+    begin
+      AMetrics.ErrorCode := 'JSON_PARSE_ERROR';
+      Exit(False);
+    end;
+    try
+      DataArr := ResponseObj.GetValue('data') as TJSONArray;
+      if (DataArr = nil) or (DataArr.Count = 0) then
+      begin
+        AMetrics.ErrorCode := 'NO_DATA';
+        Result := False;
+        Exit;
+      end;
+
+      SetLength(AResults, DataArr.Count);
+      for I := 0 to DataArr.Count - 1 do
+      begin
+        DataObj := DataArr.Items[I] as TJSONObject;
+        if DataObj = nil then
+          Continue;
+
+        AResults[I].OutputUri := Format('%s/img_%s_%d.png',
+          [OutputDir, NewUuidString, I + 1]);
+        AResults[I].Width := ARequest.Width;
+        AResults[I].Height := ARequest.Height;
+        AResults[I].Format := 'png';
+        AResults[I].Seed := 0;
+        DataObj.TryGetValue<Integer>('seed', AResults[I].Seed);
+        AResults[I].RevisedPrompt := DataObj.GetValue<string>('revised_prompt');
+        AResults[I].OutputSizeBytes := 0;
+      end;
+
+      AMetrics.ProviderName := GetProviderName;
+      AMetrics.Model := 'step-image-edit-2';
+      AMetrics.Capability := CAPABILITY_IMAGE_GEN;
+      AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
+      AMetrics.ErrorCode := '';
+      AMetrics.RetryCount := Retry;
+      FLastMetrics := AMetrics;
+      Result := True;
+    finally
+      ResponseObj.Free;
+    end;
+  finally
+    HTTP.Free;
+  end;
+end;
+
+function TStepFunImageProvider.CallStubAPI(const ARequest: TImageGenRequest;
+  out AResults: TArray<TImageGenResult>;
+  out AMetrics: TProviderRunMetrics): Boolean;
+var
+  Count, I: Integer;
+begin
+  Count := ARequest.NumImages;
+  if Count <= 0 then
+    Count := 1;
+
+  SetLength(AResults, Count);
+  for I := 0 to Count - 1 do
+  begin
+    AResults[I].OutputUri := Format('output/images/stub/gen_%d.png', [I + 1]);
+    AResults[I].OutputSizeBytes := 512000;
+    AResults[I].Width := ARequest.Width;
+    AResults[I].Height := ARequest.Height;
+    AResults[I].Format := 'png';
+    AResults[I].Seed := 42;
+    AResults[I].RevisedPrompt := ARequest.Prompt + ' (stub)';
+  end;
+
+  AMetrics.ProviderName := GetProviderName;
+  AMetrics.Model := 'step-image-edit-2';
+  AMetrics.Capability := CAPABILITY_IMAGE_GEN;
+  AMetrics.LatencyMs := 0;
+  FLastMetrics := AMetrics;
+  Result := True;
+end;
+
+function TStepFunImageProvider.Generate(const ARequest: TImageGenRequest;
+  out AResults: TArray<TImageGenResult>;
+  out AMetrics: TProviderRunMetrics): Boolean;
+begin
+  if HasKey then
+    Result := CallRealAPI(ARequest, AResults, AMetrics)
+  else
+    Result := CallStubAPI(ARequest, AResults, AMetrics);
+end;
+
+function TStepFunImageProvider.GetLastRunMetrics: TProviderRunMetrics;
 begin
   Result := FLastMetrics;
 end;

@@ -86,6 +86,27 @@ type
     psUnavailable
   );
 
+  /// <summary>Image generation request.</summary>
+  TImageGenRequest = record
+    Prompt: string;
+    NegativePrompt: string;
+    Width: Integer;
+    Height: Integer;
+    NumImages: Integer;
+    Style: string;       // e.g. 'realistic', 'anime', 'illustration'
+  end;
+
+  /// <summary>Image generation result (one image).</summary>
+  TImageGenResult = record
+    OutputUri: string;        // saved file path
+    OutputSizeBytes: Int64;
+    Width: Integer;
+    Height: Integer;
+    Format: string;           // png / jpg / webp
+    Seed: Integer;
+    RevisedPrompt: string;    // model-optimized version of prompt
+  end;
+
 function ProviderCapabilitiesToStr(const Caps: TProviderCapabilities): string;
 function ProviderStatusToStr(const Status: TProviderStatus): string;
 

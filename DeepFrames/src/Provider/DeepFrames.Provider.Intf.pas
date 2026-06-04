@@ -94,6 +94,28 @@ type
     function CreateASRProvider(const AProviderName: string): IDeepFramesASRProvider;
   end;
 
+  /// <summary>Image generation provider (backgrounds, covers, scene art).</summary>
+  IDeepFramesImageProvider = interface
+    ['{D4E5F6A7-B8C9-0123-DEF4-567890ABCDEF}']
+    function GetProviderName: string;
+    function GetProviderStatus: TProviderStatus;
+    function GetCapabilities: TProviderCapabilities;
+
+    /// <summary>
+    /// Generate images from a prompt.
+    /// Returns one or more images saved to the output directory.
+    /// </summary>
+    function Generate(const ARequest: TImageGenRequest;
+      out AResults: TArray<TImageGenResult>;
+      out AMetrics: TProviderRunMetrics): Boolean;
+
+    /// <summary>Return available image styles.</summary>
+    function GetAvailableStyles: TArray<string>;
+
+    /// <summary>Return the most recent call metrics.</summary>
+    function GetLastRunMetrics: TProviderRunMetrics;
+  end;
+
 const
   PROVIDER_FAKE = 'fake';
   PROVIDER_STEPFUN = 'stepfun';
