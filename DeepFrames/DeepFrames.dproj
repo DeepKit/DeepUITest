@@ -150,6 +150,7 @@
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.StyleKeeper.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.Resume.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.PromptVersion.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.EventLog.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.AudioProcessor.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.SubtitleEngine.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.AssetRetention.pas"/>

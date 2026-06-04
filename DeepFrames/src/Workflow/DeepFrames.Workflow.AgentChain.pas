@@ -27,6 +27,7 @@ uses
   DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Workflow.StyleKeeper,
   DeepFrames.Workflow.PromptVersion,
+  DeepFrames.Workflow.EventLog,
   DeepFrames.Shared.Consts;
 
 class function TAgentChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -112,6 +113,8 @@ begin
     Job.JobQueueTaskId := '';
     Job.Status := STATUS_PENDING;
     Repo.InsertJob(Job);
+    TWorkflowLogger.LogJobEvent(Job.JobId, 'job_started', esInfo,
+      'Agent chain started for ' + ContentUnitId, '');
 
     // Ensure default prompt template and model binding exist
     Template := TProjectService.CreatePromptTemplate(
@@ -174,6 +177,12 @@ begin
           raise Exception.Create('LLM call failed for ' + AgentSteps[I].Role + ': ' + ChatMetrics.ErrorCode);
       end;
 
+      // Log provider call metrics
+      TWorkflowLogger.LogProviderCall(Job.JobId, Step.StepId,
+        ChatMetrics.ProviderName, ChatMetrics.Model, CAPABILITY_LLM,
+        ChatMetrics.LatencyMs, ChatMetrics.TokenUsage.PromptTokens,
+        ChatMetrics.TokenUsage.CompletionTokens, ChatMetrics.ErrorCode);
+
       // Compute prompt identity for reproducibility tracking
       PromptId := TPromptVersionManager.ComputeIdentity(
         AgentSteps[I].SystemPrompt, AgentSteps[I].UserPrompt,
@@ -233,6 +242,9 @@ begin
     TGateEvaluator.EvaluateGate2(Gate2Score));
   Repo.InsertQualityGateResult(GateResult);
 
+  TWorkflowLogger.LogGateResult(Job.JobId, GATE_2, GATE_RESULT_PASS, Gate2Score,
+    'Agent chain QA evaluation completed');
+
   if TGateEvaluator.EvaluateGate2(Gate2Score).IsFail then
     begin
       if not TProjectService.CanTransitionStatus(STATUS_PENDING, STATUS_BLOCKED_REVIEW) then
@@ -253,6 +265,8 @@ begin
     Repo.UpdateJobStatus(Job.JobId, STATUS_DONE);
 
     Job.Status := STATUS_DONE;
+    TWorkflowLogger.LogJobEvent(Job.JobId, 'job_completed', esInfo,
+      'Agent chain completed', '');
     Result := Job;
   finally
     Repo.Free;
