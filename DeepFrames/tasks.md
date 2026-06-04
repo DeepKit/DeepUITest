@@ -38,7 +38,7 @@
 ## Phase 7 剩余
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
-- [ ] **P7.2** Remotion worker 实现
+- [x] **P7.2** Remotion worker 实现（`workers/remotion/` — package.json + TypeScript + React Composition + renderMedia）
 - [x] **P7.4** 多比例视频支持（`TVideoAspect` — Aspect16x9/9x16/3x4/1x1 + VideoCompiler aspect-aware）
 - [x] **P7.6** BGM 与音乐库真实实现（`TBgmManager` — 9 mood + license 验证 + FFmpeg filter + search/match）
 - [x] **P7.7** ArtifactOS 深度联动（`TArtifactOSBridge` — publish_intent ↔ publish_status 7平台桥接）
