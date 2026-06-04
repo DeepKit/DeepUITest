@@ -50,7 +50,7 @@
 ## 技术债务
 
 - [ ] 编译验证：所有 `.pas` 文件通过 Delphi 编译
-- [ ] 单元测试：Repository、Workflow、Domain 层
+- [x] 单元测试：Repository、Workflow、Domain 层（`tests/DeepFrames.Tests.Core.pas` — 30 tests，7 模块覆盖）
 - [ ] 集成测试：端到端 fake provider 链路
 - [ ] 错误处理增强：Workflow 异常恢复路径
 - [ ] 日志完善：关键路径日志插桩
