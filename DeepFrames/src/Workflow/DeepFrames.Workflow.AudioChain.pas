@@ -24,6 +24,7 @@ uses
   DeepFrames.Provider.Intf,
   DeepFrames.Provider.Registry,
   DeepFrames.Provider.Types,
+  DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Shared.Consts;
 
 class function TAudioChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -260,8 +261,9 @@ begin
     // ---------------------------------------------------------------
     // Gate 3a: audio quality check
     // ---------------------------------------------------------------
-    GateResult := TProjectService.CreateQualityGateResult(
-      Job.JobId, GATE_3A, GATE_RESULT_PASS, 1.0);
+    GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId,
+      TGateEvaluator.EvaluateGate3a(
+        Manifest.MeasuredLufs, Manifest.TargetLufs, Manifest.ConcatDurationDeltaMs));
     Repo.InsertQualityGateResult(GateResult);
 
     // Transition manifest -> done

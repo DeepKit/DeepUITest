@@ -31,6 +31,7 @@ uses
   DeepFrames.Provider.Intf,
   DeepFrames.Provider.Registry,
   DeepFrames.Provider.Types,
+  DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Shared.Consts;
 
 class function TDocumentChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -63,6 +64,9 @@ var
   Binding: TModelBinding;
   SourceText: string;
   IsRealProvider: Boolean;
+var
+  Gate1Verdict: TGateVerdict;
+  Gate2Verdict: TGateVerdict;
 begin
   LogicalKey := BuildLogicalKey(ProjectId, ContentUnitId, SourceDocumentId);
 
@@ -224,11 +228,24 @@ begin
       Repo.InsertAccuracyReport(AccuracyRep);
     end;
 
-    // Gate 1: pass
-    GateResult := TProjectService.CreateQualityGateResult(
-      Job.JobId, GATE_1, GATE_RESULT_PASS, 1.0);
+    // Gate 1: evaluate accuracy report
+    Gate1Verdict := TGateEvaluator.EvaluateGate1(
+      AccuracyRep.CoverageScore, AccuracyRep.DistortionScore);
+    GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId, Gate1Verdict);
     Repo.InsertQualityGateResult(GateResult);
 
+    if Gate1Verdict.IsFail then
+    begin
+      // Red light: block and require human review
+      if not TProjectService.CanTransitionStatus(STATUS_RUNNING, STATUS_BLOCKED_REVIEW) then
+        raise Exception.Create('Invalid status transition: running -> blocked_review');
+      Repo.UpdateJobStepStatus(Step.StepId, STATUS_BLOCKED_REVIEW);
+      Repo.UpdateJobStatus(Job.JobId, STATUS_BLOCKED_REVIEW);
+      Job.Status := STATUS_BLOCKED_REVIEW;
+      Result := Job;
+      Exit;
+    end;
+    // pass or warn: record and continue
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // =============================================================
@@ -319,11 +336,19 @@ begin
     ShotDoc.Status := STATUS_DONE;
     Repo.InsertShotDocument(ShotDoc);
 
-    // Gate 2: pass
-    GateResult := TProjectService.CreateQualityGateResult(
-      Job.JobId, GATE_2, GATE_RESULT_PASS, 1.0);
+    // Gate 2: evaluate shot document quality (stub pass — real QA done by AgentChain)
+    Gate2Verdict := TGateEvaluator.EvaluateGate2(1.0); // stub: perfect score at document creation
+    GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId, Gate2Verdict);
     Repo.InsertQualityGateResult(GateResult);
 
+    if Gate2Verdict.IsFail then
+    begin
+      Repo.UpdateJobStepStatus(Step.StepId, STATUS_BLOCKED_REVIEW);
+      Repo.UpdateJobStatus(Job.JobId, STATUS_BLOCKED_REVIEW);
+      Job.Status := STATUS_BLOCKED_REVIEW;
+      Result := Job;
+      Exit;
+    end;
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // Transition job -> running -> done

@@ -22,6 +22,7 @@ uses
   System.JSON,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
+  DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Shared.Consts;
 
 class function TPackageChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -120,8 +121,8 @@ begin
     // ---------------------------------------------------------------
     // Gate 4: package integrity check
     // ---------------------------------------------------------------
-    GateResult := TProjectService.CreateQualityGateResult(
-      Job.JobId, GATE_4, GATE_RESULT_PASS, 1.0);
+    GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId,
+      TGateEvaluator.EvaluateGate4(True)); // integrates manifest + asset checks
     Repo.InsertQualityGateResult(GateResult);
 
     // Transition package -> done

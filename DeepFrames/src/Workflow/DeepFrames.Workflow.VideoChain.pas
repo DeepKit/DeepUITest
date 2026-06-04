@@ -22,6 +22,7 @@ uses
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
   DeepFrames.Workflow.VideoCompiler,
+  DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Shared.Consts;
 
 class function TVideoChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -189,8 +190,8 @@ begin
     // ---------------------------------------------------------------
     // Gate 3b: visual quality check (snapshot review)
     // ---------------------------------------------------------------
-    GateResult := TProjectService.CreateQualityGateResult(
-      Job.JobId, GATE_3B, GATE_RESULT_PASS, 1.0);
+    GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId,
+      TGateEvaluator.EvaluateGate3b(1.0)); // stub: perfect visual QA
     Repo.InsertQualityGateResult(GateResult);
 
     // ---------------------------------------------------------------

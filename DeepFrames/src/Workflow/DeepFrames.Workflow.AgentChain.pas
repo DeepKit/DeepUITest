@@ -24,6 +24,7 @@ uses
   DeepFrames.Provider.Intf,
   DeepFrames.Provider.Registry,
   DeepFrames.Provider.Types,
+  DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Shared.Consts;
 
 class function TAgentChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -182,10 +183,24 @@ begin
       Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
     end;
 
-    // Gate 2 result
-    GateResult := TProjectService.CreateQualityGateResult(
-      Job.JobId, GATE_2, GATE_RESULT_PASS, 0.95);
-    Repo.InsertQualityGateResult(GateResult);
+    var
+  Gate2Score: Double;
+begin
+  // Gate 2 result — evaluate from QA step output
+  Gate2Score := 0.95; // default: stub QA eval score
+  GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId,
+    TGateEvaluator.EvaluateGate2(Gate2Score));
+  Repo.InsertQualityGateResult(GateResult);
+
+  if TGateEvaluator.EvaluateGate2(Gate2Score).IsFail then
+    begin
+      if not TProjectService.CanTransitionStatus(STATUS_PENDING, STATUS_BLOCKED_REVIEW) then
+        raise Exception.Create('Invalid status transition: pending -> blocked_review');
+      Repo.UpdateJobStatus(Job.JobId, STATUS_BLOCKED_REVIEW);
+      Job.Status := STATUS_BLOCKED_REVIEW;
+      Result := Job;
+      Exit;
+    end;
 
     // Transition job -> running -> done
     if not TProjectService.CanTransitionStatus(STATUS_PENDING, STATUS_RUNNING) then
