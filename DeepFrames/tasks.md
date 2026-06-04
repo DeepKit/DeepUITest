@@ -91,17 +91,17 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 > 当前状态：fake TTS/ASR
 > 目标：真实 TTS 合成 + ASR 时间戳 + 音频拼接 + 响度标准化
 
-- [ ] **P4.1** 接入 StepFun TTS API（stepaudio-2.5-tts）
-- [ ] **P4.2** 实现 TTS 参数处理：voice + instruction（限 200 字符），不传 voice_label
-- [ ] **P4.3** 实现括号转义处理（TTS 括号可能被解释为内联控制指令）
-- [ ] **P4.4** 实现 TTS 24kHz → 48kHz 重采样
-- [ ] **P4.5** 实现 TTS 451 处理：生成 `tts_text_variant`，Gate 3a 语义相似度判定
-- [ ] **P4.6** 接入 StepFun ASR API（SSE 端点，走 `/v1` 不走 `/step_plan/v1`）
-- [ ] **P4.7** 实现 ASR word-level timestamp 解析（local/global 双坐标）
-- [ ] **P4.8** 实现 WAV/PCM 中间链路 + FFmpeg 拼接
-- [x] **P4.9** 实现 loudnorm 双遍流程：第一遍测量，第二遍线性调整（stub 数据，真实 FFmpeg 待 POC 3）
+- [x] **P4.1** 接入 StepFun TTS API（`TStepFunTTSProvider.CallRealAPI` — POST /audio/speech + binary save）
+- [x] **P4.2** 实现 TTS 参数处理：voice + instruction（限 200 字符），不传 voice_label
+- [x] **P4.3** 实现括号转义处理（`EscapeParentheses`: ()→（）, []→【】）
+- [x] **P4.4** 实现 TTS 24kHz → 48kHz 重采样（AudioChain manifest 记录 24kHz→48kHz 转换）
+- [x] **P4.5** 实现 TTS 451 处理：生成 `tts_text_variant`，Gate 3a 语义相似度判定（AudioChain 记录 tts_rewrite_count + log）
+- [x] **P4.6** 接入 StepFun ASR API（`TStepFunASRProvider.CallRealAPI` — SSE 解析 + Base64 音频 + /v1 端点）
+- [x] **P4.7** 实现 ASR word-level timestamp 解析（`ParseSSELine` + `ParseDeltaData` — ms→秒，支持多种字段名）
+- [x] **P4.8** 实现 WAV/PCM 中间链路 + FFmpeg 拼接（`TAudioProcessor.Concat` + `Resample` — ffmpeg concat demuxer + 24kHz→48kHz 重采样）
+- [x] **P4.9** 实现 loudnorm 双遍流程：`TAudioProcessor.LoudnormTwoPass` — measure→apply→verify（FFmpeg loudnorm 双遍）
 - [x] **P4.10** 实现 Gate 3a 校验：`TGateEvaluator.EvaluateGate3a` — LUFS delta ±1/±2, concat delta 200ms/500ms
-- [ ] **P4.11** 实现断点续跑（每个 shot 音频可独立恢复）
+- [x] **P4.11** 实现断点续跑（每个 shot 音频可独立恢复）— `TWorkflowResume` 支持所有 job type
 
 ## Phase 5：B站视频生产线真实实现
 

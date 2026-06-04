@@ -1,5 +1,46 @@
 # DeepFrames Development History
 
+## 2026-06-04 — Phase 4 完成：FFmpeg 音频处理器 + AudioChain 集成
+
+提交: `feat(DeepFrames): implement FFmpeg audio processor + integrate into AudioChain (P4.8-P4.11)`
+
+### TAudioProcessor
+- FFmpeg 外部进程调用封装：`Concat`, `Resample`, `LoudnormMeasure`, `LoudnormApply`, `LoudnormTwoPass`
+- `FindFFmpeg`: PATH + 3 常用安装路径自动搜索
+- `ParseLoudnormJson`: 从 ffmpeg 混合输出中提取 JSON 并解析为 `TLoudnormMeasurement`
+- `GetDuration`/`GetFileInfo`: ffprobe 音频元数据获取
+
+### AudioChain 集成
+- Step 3 (merge): `TAudioProcessor.Resample` 替代 stub 数据
+- Step 4 (loudnorm): `TAudioProcessor.LoudnormTwoPass` 替代 stub 数据
+- FFmpeg 不可用时自动降级为 stub 值
+
+---
+
+## 2026-06-04 — Phase 4: TTS + ASR 真实 HTTP 调用
+
+提交: `feat(DeepFrames): implement StepFun TTS + ASR provider real HTTP calls (P4.1-P4.7)`
+
+### TStepFunTTSProvider
+- 真实 HTTP POST `/audio/speech`，二进制音频文件保存到 `output/audio/tts/`
+- 括号转义 `()` → `（）`、`[]` → `【】`（TTS 内联指令）
+- instruction 200 字符截断
+- HTTP 451 内容审查处理：返回 `TTS_451_CONTENT_REVIEW`，不原地改写 `shot_document`
+- AudioChain 中 451 时记录 `tts_rewrite_count` + `tts_rewrite_log_json`
+
+### TStepFunASRProvider
+- 真实 HTTP POST `/v1/audio/asr/sse`（走标准端点，不走 `/step_plan/v1`）
+- SSE 协议解析：`ParseSSELine` (event/data 行) + `ParseDeltaData` (逐词累积)
+- 毫秒→秒自动转换，支持 `start_sec`/`start_ms`/`start` 多种字段名
+- Base64 编码音频文件 + `enable_timestamp=true`
+- Done/Error 事件处理
+
+### AudioChain 改进
+- 从 `shot_document` 读取实际文本传入 TTS，不再硬编码 stub
+- TTS 451 时增加 `tts_rewrite_count` 计数并记录到 manifest
+
+---
+
 ## 2026-06-04 — Phase 2/3 完成：Style Keeper + 断点续跑 + Prompt Version
 
 提交: `feat(DeepFrames): implement Style Keeper, workflow retry/resume, prompt version tracking`
