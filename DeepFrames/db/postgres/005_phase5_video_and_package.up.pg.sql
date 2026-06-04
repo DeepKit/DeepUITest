@@ -39,6 +39,72 @@ VALUES (
   '{"font_size": 36, "font_color": "#FFFFFF", "stroke_color": "#000000", "stroke_width": 2, "position": "bottom_center", "margin_bottom_pct": 8}'::jsonb
 );
 
+-- Insert douyin (抖音) platform spec — vertical 9:16
+INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
+  bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
+VALUES (
+  gen_random_uuid(), 'douyin', 'video', '9:16', 1080, 1920, 30.00, 'h264', 'aac', '1.0.0', 'active',
+  '{"video_bitrate_kbps": 6000, "audio_bitrate_kbps": 128, "max_bitrate_kbps": 8000}'::jsonb,
+  '{"require_ai_label": true, "label_position": "top_right"}'::jsonb,
+  '{"top_pct": 5, "bottom_pct": 15, "left_pct": 5, "right_pct": 5}'::jsonb,
+  '{"font_size": 32, "font_color": "#FFFFFF", "stroke_color": "#000000", "stroke_width": 2, "position": "bottom_center", "margin_bottom_pct": 12}'::jsonb
+);
+
+-- Insert kuaishou (快手) platform spec — vertical 9:16
+INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
+  bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
+VALUES (
+  gen_random_uuid(), 'kuaishou', 'video', '9:16', 1080, 1920, 30.00, 'h264', 'aac', '1.0.0', 'active',
+  '{"video_bitrate_kbps": 5000, "audio_bitrate_kbps": 128, "max_bitrate_kbps": 6000}'::jsonb,
+  '{"require_ai_label": true, "label_position": "top_right"}'::jsonb,
+  '{"top_pct": 5, "bottom_pct": 15, "left_pct": 5, "right_pct": 5}'::jsonb,
+  '{"font_size": 32, "font_color": "#FFFFFF", "stroke_color": "#000000", "stroke_width": 2, "position": "bottom_center", "margin_bottom_pct": 12}'::jsonb
+);
+
+-- Insert xiaohongshu (小红书) platform spec — vertical 3:4
+INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
+  bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
+VALUES (
+  gen_random_uuid(), 'xiaohongshu', 'video', '3:4', 1080, 1440, 30.00, 'h264', 'aac', '1.0.0', 'active',
+  '{"video_bitrate_kbps": 4000, "audio_bitrate_kbps": 128, "max_bitrate_kbps": 5000}'::jsonb,
+  '{"require_ai_label": false, "label_position": "none"}'::jsonb,
+  '{"top_pct": 5, "bottom_pct": 12, "left_pct": 5, "right_pct": 5}'::jsonb,
+  '{"font_size": 28, "font_color": "#FFFFFF", "stroke_color": "#000000", "stroke_width": 2, "position": "bottom_center", "margin_bottom_pct": 10}'::jsonb
+);
+
+-- Insert wechat_video (微信视频号) platform spec — horizontal 16:9
+INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
+  bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
+VALUES (
+  gen_random_uuid(), 'wechat_video', 'video', '16:9', 1920, 1080, 30.00, 'h264', 'aac', '1.0.0', 'active',
+  '{"video_bitrate_kbps": 6000, "audio_bitrate_kbps": 192, "max_bitrate_kbps": 8000}'::jsonb,
+  '{"require_ai_label": false, "label_position": "none"}'::jsonb,
+  '{"top_pct": 5, "bottom_pct": 10, "left_pct": 5, "right_pct": 5}'::jsonb,
+  '{"font_size": 36, "font_color": "#FFFFFF", "stroke_color": "#000000", "stroke_width": 2, "position": "bottom_center", "margin_bottom_pct": 8}'::jsonb
+);
+
+-- Insert youtube platform spec — horizontal 16:9, higher bitrate
+INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
+  bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
+VALUES (
+  gen_random_uuid(), 'youtube', 'video', '16:9', 1920, 1080, 30.00, 'h264', 'aac', '1.0.0', 'active',
+  '{"video_bitrate_kbps": 12000, "audio_bitrate_kbps": 256, "max_bitrate_kbps": 16000}'::jsonb,
+  '{"require_ai_label": false, "label_position": "none"}'::jsonb,
+  '{"top_pct": 5, "bottom_pct": 10, "left_pct": 5, "right_pct": 5}'::jsonb,
+  '{"font_size": 40, "font_color": "#FFFFFF", "stroke_color": "#000000", "stroke_width": 2, "position": "bottom_center", "margin_bottom_pct": 8}'::jsonb
+);
+
+-- Insert ximalaya (喜马拉雅) platform spec — audio only
+INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
+  bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
+VALUES (
+  gen_random_uuid(), 'ximalaya', 'audio', '0:0', 0, 0, 0, '', 'aac', '1.0.0', 'active',
+  '{"audio_bitrate_kbps": 192, "sample_rate": 48000, "channels": 2}'::jsonb,
+  '{"require_ai_label": false, "label_position": "none"}'::jsonb,
+  '{}'::jsonb,
+  '{}'::jsonb
+);
+
 -- Video IR (render-backend-independent scene description)
 CREATE TABLE IF NOT EXISTS deepframes_video_ir (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
