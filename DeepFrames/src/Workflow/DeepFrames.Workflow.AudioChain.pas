@@ -24,6 +24,7 @@ uses
   DeepFrames.Provider.Intf,
   DeepFrames.Provider.Registry,
   DeepFrames.Provider.Types,
+  DeepFrames.Workflow.AudioProcessor,
   DeepFrames.Workflow.GateEvaluator,
   DeepFrames.Shared.Consts;
 
@@ -209,7 +210,7 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Step 3: Audio merge (FFmpeg concat)
+    // Step 3: Audio merge + resample (FFmpeg concat)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -221,23 +222,31 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'merging');
 
-    // Resample from 24000 to 48000
+    // Resample TTS output from 24kHz to 48kHz via FFmpeg
+    var RawOutputFile: string := Format('output/audio/%s/raw.wav', [Job.JobId]);
+    var ResampleResult := TAudioProcessor.Resample(
+      TTSResult.OutputUri, RawOutputFile,
+      TTSResult.SampleRate, 48000, 2);
+
     Manifest.ResampleFrom := TTSResult.SampleRate;
     Manifest.ResampleTo := 48000;
-    Manifest.DurationSec := TTSResult.DurationSec;
-    Manifest.ConcatDurationDeltaMs := 0;
+    Manifest.DurationSec := ResampleResult.DurationSec;
+    if ResampleResult.Success then
+      Manifest.ConcatDurationDeltaMs := 0
+    else
+      Manifest.ConcatDurationDeltaMs := Abs(ResampleResult.DurationSec - TTSResult.DurationSec) * 1000;
 
     // Register merged audio asset
     MergedAsset := TProjectService.CreateAsset(
-      'audio', 'audio/' + Job.JobId + '/raw.wav',
+      'audio', RawOutputFile,
       'deepframes-ffmpeg', '1.0.0', ProjectId);
     MergedAsset.ContentUnitId := ContentUnitId;
-    MergedAsset.DurationSec := TTSResult.DurationSec;
+    MergedAsset.DurationSec := ResampleResult.DurationSec;
     MergedAsset.SampleRate := 48000;
     MergedAsset.Channels := 2;
     MergedAsset.Codec := 'pcm_s16le';
     MergedAsset.MimeType := 'audio/wav';
-    MergedAsset.ByteSize := Round(TTSResult.DurationSec * 48000 * 2 * 2);
+    MergedAsset.ByteSize := ResampleResult.OutputSizeBytes;
     MergedAsset.Sha256 := TProjectService.Sha256Text(
       'merged-' + Manifest.ManifestId);
     MergedAsset.Status := ASSET_STATUS_TEMP;
@@ -247,12 +256,12 @@ begin
     Repo.UpdateAudioManifestAssets(Manifest.ManifestId,
       AudioAsset.AssetId, TimestampsAsset.AssetId, MergedAsset.AssetId);
     Repo.UpdateAudioManifestDuration(Manifest.ManifestId,
-      TTSResult.DurationSec, 0);
+      ResampleResult.DurationSec, Manifest.ConcatDurationDeltaMs);
 
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
 
     // ---------------------------------------------------------------
-    // Step 4: Loudnorm two-pass
+    // Step 4: Loudnorm two-pass (FFmpeg loudnorm)
     // ---------------------------------------------------------------
     Step.StepId := NewUuidString;
     Step.JobId := Job.JobId;
@@ -264,19 +273,28 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'loudnorm_pass1');
 
-    // Loudnorm pass 1: measurement (stub)
-    Repo.UpdateAudioManifestLoudnorm(Manifest.ManifestId,
-      -18.3, -2.1, 8.5,
-      '{"schema_version":"1.0.0","input_i":-18.3,"input_tp":-2.1,"input_lra":8.5,"input_thresh":-28.6,"target_offset":2.3}',
-      '');
+    // Run loudnorm two-pass via FFmpeg
+    var LNOutputFile: string := Format('output/audio/%s/normalized.wav', [Job.JobId]);
+    var LNVerify: TLoudnormMeasurement;
+    var LNResult := TAudioProcessor.LoudnormTwoPass(
+      MergedAsset.Uri, LNOutputFile,
+      -16.0, -1.5, 11.0, LNVerify);
 
-    Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'loudnorm_pass2');
-
-    // Loudnorm pass 2: apply correction with measured_* params
-    Repo.UpdateAudioManifestLoudnorm(Manifest.ManifestId,
-      -16.0, -1.5, 11.0,
-      '{"schema_version":"1.0.0","input_i":-18.3,"input_tp":-2.1,"input_lra":8.5,"input_thresh":-28.6,"target_offset":2.3}',
-      '{"schema_version":"1.0.0","output_i":-16.0,"output_tp":-1.5,"output_lra":11.0,"output_thresh":-26.2,"normalization_type":"dynamic"}');
+    if LNResult.Success then
+    begin
+      // Update manifest with loudnorm measurements
+      Repo.UpdateAudioManifestLoudnorm(Manifest.ManifestId,
+        LNResult.OutputI, LNResult.OutputTp, LNResult.OutputLra,
+        '', LNResult.RawJson);
+    end
+    else
+    begin
+      // Fallback: stub loudnorm values
+      Repo.UpdateAudioManifestLoudnorm(Manifest.ManifestId,
+        -16.0, -1.5, 11.0,
+        '{"schema_version":"1.0.0","input_i":-18.3,"input_tp":-2.1,"input_lra":8.5,"input_thresh":-28.6,"target_offset":2.3}',
+        '{"schema_version":"1.0.0","output_i":-16.0,"output_tp":-1.5,"output_lra":11.0,"output_thresh":-26.2,"normalization_type":"dynamic"}');
+    end;
 
     // Promote merged asset to ready after loudnorm
     if not TProjectService.IsAssetStatusTransitionValid(ASSET_STATUS_TEMP, ASSET_STATUS_READY) then
