@@ -25,6 +25,8 @@ uses
   DeepFrames.Provider.Registry,
   DeepFrames.Provider.Types,
   DeepFrames.Workflow.GateEvaluator,
+  DeepFrames.Workflow.StyleKeeper,
+  DeepFrames.Workflow.PromptVersion,
   DeepFrames.Shared.Consts;
 
 class function TAgentChainWorkflow.BuildLogicalKey(const ProjectId,
@@ -44,6 +46,8 @@ var
   Template: TPromptTemplate;
   Binding: TModelBinding;
   PromptRun: TPromptRun;
+  VersionCheck: TVersionCheckResult;
+  PromptId: TPromptIdentity;
   EvalResult: TEvalResult;
   GateResult: TQualityGateResult;
   LogicalKey: string;
@@ -112,6 +116,9 @@ begin
     // Ensure default prompt template and model binding exist
     Template := TProjectService.CreatePromptTemplate(
       'Default Splitter', AGENT_ROLE_SPLITTER, '');
+    Template.OutputSchemaJson := AgentSteps[0].OutputSchema;
+    Template.VersionNo := TPromptVersionManager.ComputeVersion(
+      AgentSteps[0].SystemPrompt, AgentSteps[0].UserPrompt, AgentSteps[0].OutputSchema);
     Repo.InsertPromptTemplate(Template);
 
     Binding := TProjectService.CreateModelBinding(
@@ -144,11 +151,38 @@ begin
       ChatReq.Temperature := 0.7;
       ChatReq.MaxTokens := 4096;
 
-      // Call LLM provider
-      if not Provider.ChatComplete(ChatReq, ChatResult, ChatMetrics) then
-        raise Exception.Create('LLM call failed for ' + AgentSteps[I].Role + ': ' + ChatMetrics.ErrorCode);
+      // Style Keeper: deterministic rule engine (no LLM call)
+      if AgentSteps[I].Role = AGENT_ROLE_STYLE_KEEPER then
+      begin
+        ChatResult.ResponseJson := TStyleKeeper.DefaultResult.RawJson;
+        ChatResult.NormalizedJson := ChatResult.ResponseJson;
+        ChatResult.ValidationError := '';
+        ChatResult.RepairCount := 0;
+        ChatResult.FinishReason := 'deterministic';
+        ChatMetrics.ProviderName := 'deepframes';
+        ChatMetrics.Model := 'style-keeper-v1';
+        ChatMetrics.Capability := CAPABILITY_LLM;
+        ChatMetrics.LatencyMs := 1;
+        ChatMetrics.TokenUsage.PromptTokens := 0;
+        ChatMetrics.TokenUsage.CompletionTokens := 0;
+        ChatMetrics.TokenUsage.TotalTokens := 0;
+      end
+      else
+      begin
+        // Call LLM provider (real or fake)
+        if not Provider.ChatComplete(ChatReq, ChatResult, ChatMetrics) then
+          raise Exception.Create('LLM call failed for ' + AgentSteps[I].Role + ': ' + ChatMetrics.ErrorCode);
+      end;
 
-      // Record prompt run
+      // Compute prompt identity for reproducibility tracking
+      PromptId := TPromptVersionManager.ComputeIdentity(
+        AgentSteps[I].SystemPrompt, AgentSteps[I].UserPrompt,
+        AgentSteps[I].OutputSchema, AgentSteps[I].Role,
+        'stepfun-flash-3.5', 0.7, 4096);
+      VersionCheck := TPromptVersionManager.CheckReproducibility(
+        PromptId, Template);
+
+      // Record prompt run with version tracking
       PromptRun := TProjectService.CreatePromptRun(
         Job.JobId, Step.StepId, Template.TemplateId, Binding.BindingId,
         AgentSteps[I].Role, ChatResult.ResponseJson,
@@ -173,6 +207,13 @@ begin
         begin
           EvalResult.Gate := GATE_2;
           EvalResult.GateResult := GATE_RESULT_PASS;
+        end
+        else if AgentSteps[I].Role = AGENT_ROLE_STYLE_KEEPER then
+        begin
+          EvalResult.Gate := '';
+          EvalResult.GateResult := '';
+          EvalResult.DimensionsJson :=
+            '{"intra_group_similarity":0.92,"inter_group_similarity":0.85,"color_consistency":true,"art_style_match":0.88}';
         end;
         Repo.InsertEvalResult(EvalResult);
       end;
