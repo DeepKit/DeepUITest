@@ -4,15 +4,9 @@
 
 Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复任务已归档至 [history.md](history.md)。
 
-**2026-06-04 更新**: Provider 抽象层完成，StepFun LLM 真实 HTTP 调用就绪。三个 workflow（DocumentChain、AgentChain、AudioChain）全部通过 Provider 调用 LLM/TTS/ASR。
+**2026-06-04 更新**: Provider 抽象层完成，StepFun LLM 真实 HTTP 调用就绪，Phase 2/3 全部完成。
 
-**当前瓶颈**: 无 Delphi 编译环境验证语法正确性。Phase 2/3 剩余任务集中在 JSON Schema 校验、Gate 门控逻辑、Style Keeper 规则引擎。
-
-下阶段核心任务（按优先级）：
-1. **P2.3** JSON Schema 校验 — LLM 输出质量保障的基础设施
-2. **P2.5+P2.8** Gate 1/2 门控 — pass/warn/fail 分流 + blocked_review
-3. **P3.6** Style Keeper 确定性规则引擎
-4. **P2.9** 失败重试与断点续跑
+**当前瓶颈**: 无 Delphi 编译环境。关键路径基础设施已就绪，下一步是 POC 验证（DB2 连接、StepFun API 连通性、Worker 协议）和 Phase 4 真实 TTS/ASR 接入。
 
 ---
 
@@ -76,7 +70,7 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 - [x] **P2.6** 实现 build_variant 真实 LLM 调用
 - [x] **P2.7** 实现 build_shot 真实 LLM 调用
 - [x] **P2.8** 实现 Gate 2 质量门控：`TGateEvaluator.EvaluateGate2` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail → blocked_review
-- [ ] **P2.9** 实现失败重试与断点续跑（Provider 层已有 HTTP 重试，workflow 层无断点续跑）
+- [x] **P2.9** 实现失败重试与断点续跑（`TWorkflowResume` — CanRetryJob, FindRetryableJob, BuildRetryKey, retryable status check）
 
 ## Phase 3：Agent 生产链真实实现
 
@@ -88,8 +82,8 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 - [x] **P3.3** 实现 Worker agent 真实调用（逐段生成脚本内容）
 - [x] **P3.4** 实现 Assembler agent 真实调用（合并为完整 script_document）
 - [x] **P3.5** 实现 QA agent 真实调用（Gate 2 质量门控结果）
-- [ ] **P3.6** 实现 Style Keeper 确定性规则引擎（不调用 LLM）— 当前 fake provider 输出 stub 数据，无真实规则引擎
-- [ ] **P3.7** 实现 prompt version 可复现性（同一输入 + 同一 prompt version + 同一 model binding = 可复现调用记录）— 当前记录 prompt_run 但无 version 校验
+- [x] **P3.6** 实现 Style Keeper 确定性规则引擎（`TStyleKeeper` — 5 种艺术风格兼容矩阵 + 6 种调色板矩阵 + 组内/组间相似度计算）
+- [x] **P3.7** 实现 prompt version 可复现性（`TPromptVersionManager` — SHA256 版号计算 + 身份校验 + 模板版本同步）
 - [x] **P3.8** 实现 prompt run 记录（token 用量、latency、retry、error）— 每次调用自动记录
 
 ## Phase 4：音频生产线真实实现

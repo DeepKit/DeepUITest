@@ -1,6 +1,30 @@
 # DeepFrames Development History
 
-## 2026-06-04 — StepFun LLM Provider 真实 HTTP 调用
+## 2026-06-04 — Phase 2/3 完成：Style Keeper + 断点续跑 + Prompt Version
+
+提交: `feat(DeepFrames): implement Style Keeper, workflow retry/resume, prompt version tracking`
+
+### P3.6 Style Keeper 确定性规则引擎
+- `TStyleKeeper.Evaluate` — 计算 4 个指标：intra_group_similarity、inter_group_similarity、color_consistency、art_style_match
+- 5 种艺术风格兼容矩阵：documentary/minimal/illustrative/anime/cartoon
+- 6 种调色板兼容矩阵：warm/cool/neutral/monochrome/earthy/pastel
+- AgentChain 中 Style Keeper 步骤不再调用 LLM
+
+### P2.9 断点续跑
+- `TWorkflowResume.CanRetryJob` — 检查 job 是否可重试（failed/blocked_review/cancelled）
+- `FindRetryableJob` — 按 logical_key 查找可重试 job
+- `BuildRetryKey` — 追加 retry count 防冲突
+- `GetStepStatuses` — 列出所有 step 状态用于恢复
+
+### P3.7 Prompt Version 可复现性
+- `TPromptVersionManager.ComputeVersion` — SHA256 哈希 → 32-bit 版号
+- `CheckReproducibility` — 校验模板版本与计算版本一致
+- `SyncTemplateVersion` — 内容变化时自动更新版本号
+- AgentChain 每个 step 都计算 prompt identity 和 reproducibility check
+
+---
+
+## 2026-06-04 — Gate 1/2/3a/3b/4 门控逻辑 + JSON Schema 校验
 
 提交: `feat(DeepFrames): implement StepFun LLM provider real HTTP call with stub fallback`
 
