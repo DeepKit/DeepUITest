@@ -111,7 +111,7 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 - [ ] **P5.1** 确认 HyperFrames 依赖许可证（Phase 5 结束前）
 - [ ] **P5.2** 实现 video_ir 编译（shot_document + audio_manifest → video_ir JSON）
 - [ ] **P5.3** 实现 HyperFrames worker 集成（lint → snapshot → preview → render）
-- [ ] **P5.4** 实现字幕生成与安全区计算
+- [x] **P5.4** 实现字幕生成与安全区计算（`TSubtitleEngine` — SRT/VTT/HF 三种输出格式 + B站安全区 + ASR 词级时间戳 → 字幕 cue）
 - [ ] **P5.5** 实现简单表意背景图或画面素材生成
 - [x] **P5.6** 实现 Gate 3b 校验：`TGateEvaluator.EvaluateGate3b` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail
 - [ ] **P5.7** 实现 `final-with-audio` 模式绑定已通过 Gate 3a 的 audio manifest
@@ -124,7 +124,7 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 
 - [ ] **P6.1** 实现音频候选包导出（manifest + 封面 + metadata）
 - [ ] **P6.2** 实现 B站视频候选包导出（视频 + 封面 + 标题 + 简介 + 标签 + manifest）
-- [ ] **P6.3** 实现 102C 资产策略：保留最终包和关键快照，中间大文件按策略清理
+- [x] **P6.3** 实现 102C 资产策略：`TAssetRetention` — C1(forever)/C2(30d)/C3(7d)/C4(immediate)，级联保护，候选包 source_trace 引用检测
 - [ ] **P6.4** 实现候选包 source_trace 完整性（回溯到 source、prompt、model、worker、gate、asset 版本）
 - [ ] **P6.5** 验证下游系统无需理解内部任务表即可读取候选包 manifest
 
