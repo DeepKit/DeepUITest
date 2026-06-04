@@ -20,6 +20,7 @@ uses
   System.SysUtils,
   System.JSON,
   DeepFrames.Domain.Project,
+  DeepFrames.Domain.VoiceProfile,
   DeepFrames.Persistence.Repository,
   DeepFrames.Provider.Intf,
   DeepFrames.Provider.Registry,
@@ -113,9 +114,15 @@ begin
     Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
     Repo.UpdateAudioManifestStatus(Manifest.ManifestId, 'synthesizing');
 
-    // Call TTS provider with source text
+    // Load voice profiles and resolve instruction for this shot
+    var Profiles: TArray<TVoiceConfig> := TVoiceProfile.DefaultProfiles;
+    var VoiceCfg: TVoiceConfig;
+    TVoiceProfile.FindByCharacter('Narrator', Profiles, VoiceCfg);
+    var InstructionStr: string := TVoiceProfile.BuildInstruction(VoiceCfg);
+
+    // Call TTS provider with source text + voice profile instruction
     if not TTSProvider.Synthesize(ShotText,
-      'cixingnansheng', '平静沉稳，语速偏慢', 'wav', TTSResult, TTSMetrics) then
+      VoiceCfg.VoiceId, InstructionStr, 'wav', TTSResult, TTSMetrics) then
     begin
       if TTSMetrics.ErrorCode = 'TTS_451_CONTENT_REVIEW' then
       begin

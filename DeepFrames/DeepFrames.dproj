@@ -133,6 +133,7 @@
         <DCCReference Include="src\Shared\DeepFrames.Shared.JsonSchema.pas"/>
         <DCCReference Include="src\Domain\DeepFrames.Domain.Types.pas"/>
         <DCCReference Include="src\Domain\DeepFrames.Domain.Project.pas"/>
+        <DCCReference Include="src\Domain\DeepFrames.Domain.VoiceProfile.pas"/>
         <DCCReference Include="src\Persistence\DeepFrames.Persistence.Connection.pas"/>
         <DCCReference Include="src\Persistence\DeepFrames.Persistence.Migrations.pas"/>
         <DCCReference Include="src\Persistence\DeepFrames.Persistence.Repository.pas"/>
