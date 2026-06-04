@@ -9,7 +9,7 @@ set FrameworkDir=C:\Windows\Microsoft.NET\Framework\v4.0.30319
 set DEEPBASE_ROOT=D:\_Progs\02Business\DeepBase
 set DEEPBASE_DCU64=%DEEPBASE_ROOT%\TestResults\dcu64
 
-echo [ENV] Manual Delphi env loaded.
+echo [ENV] Delphi 13.1 (BDS 37.0) environment loaded.
 
 set SRC=%~dp0src
 set DEEPBASE=%DEEPBASE_ROOT%
@@ -32,19 +32,30 @@ set UNITPATH=%UNITPATH%;%DEEPBASE_DCU64%
 if not exist "%~dp0bin" mkdir "%~dp0bin"
 if not exist "%~dp0bin\dcu" mkdir "%~dp0bin\dcu"
 
-echo [COMPILE] Starting DeepFrames Phase 1 build...
+echo [COMPILE] Starting DeepFrames build (Delphi 13.1, 39 units)...
 echo [COMPILE] BDS=%BDS%
 echo [COMPILE] UNITPATH=%UNITPATH%
 
-if not exist "%BDS%\bin\dcc64.exe" (
-    echo [ERROR] dcc64.exe not found
+set DCC64=%BDS%\bin\dcc64.exe
+if not exist "%DCC64%" (
+    echo [ERROR] dcc64.exe not found at %DCC64%
+    echo [INFO]  Delphi compiler is dcc64.exe, not bcc64.exe (that is C++ Builder)
     exit /b 2
 )
 
-echo [COMPILE] Running dcc64...
+echo [COMPILE] Running %DCC64%...
+echo [COMPILE] Compiling src\DeepFrames.dpr
 
-"%BDS%\bin\dcc64.exe" -B -Q -E"%~dp0bin" -N0"%~dp0bin\dcu" -U"%UNITPATH%" -NSSystem;System.Win;Winapi;Vcl;Vcl.Imaging;Data;Datasnap;Xml;FireDAC;FireDAC.Comp;FireDAC.Stan;FireDAC.Phys;FireDAC.Phys.PG;FireDAC.Phys.SQLite;FireDAC.DApt "%SRC%\DeepFrames.dpr"
+"%DCC64%" -B -Q -E"%~dp0bin" -N0"%~dp0bin\dcu" -U"%UNITPATH%" -NSSystem;System.Win;Winapi;Vcl;Vcl.Imaging;Data;Datasnap;Xml;FireDAC;FireDAC.Comp;FireDAC.Stan;FireDAC.Phys;FireDAC.Phys.PG;FireDAC.Phys.SQLite;FireDAC.DApt;System.Net.HttpClient;System.Net.URLClient;System.NetEncoding "%SRC%\DeepFrames.dpr"
 
 set BUILD_EC=%ERRORLEVEL%
-echo [COMPILE] dcc64 exit code: %BUILD_EC%
+if %BUILD_EC% equ 0 (
+    echo [COMPILE] SUCCESS - DeepFrames.exe built in bin\
+) else (
+    echo [COMPILE] FAILED - exit code %BUILD_EC%
+    echo [HINT]  Common issues:
+    echo         1. DeepBase DCU path incorrect - check DEEPBASE_DCU64
+    echo         2. Missing FireDAC PostgreSQL driver - install from GetIt
+    echo         3. DeepBase unit not found - verify Library Path in IDE
+)
 exit /b %BUILD_EC%

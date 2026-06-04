@@ -904,7 +904,6 @@ var
   HTTP: THTTPClient;
   RequestObj: TJSONObject;
   RequestBody: string;
-  FileStream: TBytesStream;
   AudioBytes: TBytes;
   ResponseStr: string;
   Stream: TStringStream;
@@ -929,13 +928,8 @@ begin
     Exit(False);
   end;
 
-  FileStream := TBytesStream.Create;
-  try
-    FileStream.LoadFromFile(AAudioUri);
-    AudioBytes := FileStream.Bytes;
-  finally
-    FileStream.Free;
-  end;
+  // Delphi 12.1+: TFile.ReadAllBytes is preferred over TBytesStream
+  AudioBytes := TFile.ReadAllBytes(AAudioUri);
 
   // Build request with Base64 audio
   RequestObj := TJSONObject.Create;
