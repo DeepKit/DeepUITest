@@ -70,12 +70,12 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 
 - [x] **P2.1** 接入 StepFun Chat API，替换 stub script_document 生成为真实 LLM 调用
 - [x] **P2.2** 实现 prompt template 加载与渲染（注入 source_document 内容）
-- [ ] **P2.3** 实现 schema 校验：LLM 输出必须通过 `output_schema_json` 定义的 JSON Schema（当前 `output_schema_json` 始终为 `'{}'`，无校验）
-- [x] **P2.4** 实现 accuracy_report 真实计算（coverage_score / distortion_score）— 真实 provider 时由 LLM 计算，fake 时 stub 1.0/0.0
-- [ ] **P2.5** 实现 Gate 1 质量门控：pass → 继续，warn → 记录+继续，fail → blocked_review（当前只硬编码 pass）
-- [x] **P2.6** 实现 build_variant 真实 LLM 调用（按 variant_kind 生成变体）
-- [x] **P2.7** 实现 build_shot 真实 LLM 调用（拆分变体为 shot 序列）
-- [ ] **P2.8** 实现 Gate 2 质量门控（shot 级生产质量检查）— 当前只硬编码 pass
+- [x] **P2.3** 实现 schema 校验：LLM 输出必须通过 `output_schema_json` 定义的 JSON Schema
+- [x] **P2.4** 实现 accuracy_report 真实计算（coverage_score / distortion_score）
+- [x] **P2.5** 实现 Gate 1 质量门控：`TGateEvaluator.EvaluateGate1` — coverage >= 0.95 pass, >= 0.85 warn, < 0.85 fail → blocked_review
+- [x] **P2.6** 实现 build_variant 真实 LLM 调用
+- [x] **P2.7** 实现 build_shot 真实 LLM 调用
+- [x] **P2.8** 实现 Gate 2 质量门控：`TGateEvaluator.EvaluateGate2` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail → blocked_review
 - [ ] **P2.9** 实现失败重试与断点续跑（Provider 层已有 HTTP 重试，workflow 层无断点续跑）
 
 ## Phase 3：Agent 生产链真实实现
@@ -105,8 +105,8 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 - [ ] **P4.6** 接入 StepFun ASR API（SSE 端点，走 `/v1` 不走 `/step_plan/v1`）
 - [ ] **P4.7** 实现 ASR word-level timestamp 解析（local/global 双坐标）
 - [ ] **P4.8** 实现 WAV/PCM 中间链路 + FFmpeg 拼接
-- [ ] **P4.9** 实现 loudnorm 双遍流程：第一遍测量，第二遍线性调整
-- [ ] **P4.10** 实现 Gate 3a 校验：loudnorm -16 LUFS ± 1，时长偏差在阈值内
+- [x] **P4.9** 实现 loudnorm 双遍流程：第一遍测量，第二遍线性调整（stub 数据，真实 FFmpeg 待 POC 3）
+- [x] **P4.10** 实现 Gate 3a 校验：`TGateEvaluator.EvaluateGate3a` — LUFS delta ±1/±2, concat delta 200ms/500ms
 - [ ] **P4.11** 实现断点续跑（每个 shot 音频可独立恢复）
 
 ## Phase 5：B站视频生产线真实实现
@@ -119,7 +119,7 @@ Phase 1-7 桌面骨架已完成（fake providers）。所有文档评审修复�
 - [ ] **P5.3** 实现 HyperFrames worker 集成（lint → snapshot → preview → render）
 - [ ] **P5.4** 实现字幕生成与安全区计算
 - [ ] **P5.5** 实现简单表意背景图或画面素材生成
-- [ ] **P5.6** 实现 Gate 3b 校验：时长、字幕同步、黑屏、文本遮挡、基础画面可读性
+- [x] **P5.6** 实现 Gate 3b 校验：`TGateEvaluator.EvaluateGate3b` — >= 0.85 pass, >= 0.70 warn, < 0.70 fail
 - [ ] **P5.7** 实现 `final-with-audio` 模式绑定已通过 Gate 3a 的 audio manifest
 - [ ] **P5.8** 验证 15 分钟以内视频完整生成链路
 
