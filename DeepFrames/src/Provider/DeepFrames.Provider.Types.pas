@@ -66,6 +66,7 @@ type
     Model: string;
     Temperature: Double;
     MaxTokens: Integer;
+    AgentRole: string;          // e.g. 'splitter', 'worker' — used by fake provider routing
   end;
 
   /// <summary>LLM chat completion output.</summary>

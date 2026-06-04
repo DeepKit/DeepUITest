@@ -202,8 +202,8 @@ function TFakeLLMProvider.ChatComplete(const ARequest: TChatCompletionRequest;
 var
   ResponseJson: string;
 begin
-  // System prompt encodes agent role for fake routing
-  ResponseJson := BuildRoleOutput(ARequest.SystemPrompt);
+  // Agent role controls fake output routing (deterministic per role)
+  ResponseJson := BuildRoleOutput(ARequest.AgentRole);
 
   AResult.ResponseJson := ResponseJson;
   AResult.NormalizedJson := ResponseJson;

@@ -19,6 +19,7 @@ uses
   DeepFrames.Workflow.AudioChain in 'Workflow\DeepFrames.Workflow.AudioChain.pas',
   DeepFrames.Workflow.VideoChain in 'Workflow\DeepFrames.Workflow.VideoChain.pas',
   DeepFrames.Workflow.PackageChain in 'Workflow\DeepFrames.Workflow.PackageChain.pas',
+  DeepFrames.Workflow.ExtensionChain in 'Workflow\DeepFrames.Workflow.ExtensionChain.pas',
   DeepFrames.UI.MainForm in 'UI\DeepFrames.UI.MainForm.pas' {MainForm};
 
 {$R *.res}

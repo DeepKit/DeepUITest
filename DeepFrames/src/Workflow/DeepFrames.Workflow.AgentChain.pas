@@ -53,23 +53,35 @@ var
   AgentSteps: array of record
     StepType: string;
     Role: string;
+    SystemPrompt: string;
+    UserPrompt: string;
   end;
   I: Integer;
 begin
   LogicalKey := BuildLogicalKey(ProjectId, ContentUnitId, ShotDocumentId);
 
-  // Define agent pipeline steps
+  // Define agent pipeline steps with meaningful prompts
   SetLength(AgentSteps, 5);
   AgentSteps[0].StepType := STEP_TYPE_AGENT_SPLITTER;
   AgentSteps[0].Role := AGENT_ROLE_SPLITTER;
+  AgentSteps[0].SystemPrompt := 'You are a content splitter. Analyze the input article and divide it into logical segments (shots). Output structured JSON with shots array.';
+  AgentSteps[0].UserPrompt := 'Split the following Chinese article into shots for a documentary video. Each shot should have text, duration_sec estimate, and tone. Article: "这是一篇测试文章，用于DeepFrames视频生成流水线的Agent链验证。"';
   AgentSteps[1].StepType := STEP_TYPE_AGENT_WORKER;
   AgentSteps[1].Role := AGENT_ROLE_WORKER;
+  AgentSteps[1].SystemPrompt := 'You are a video worker agent. Given a shot specification, produce detailed audio (voice, emotion, pace) and visual (background, transition) instructions. Output structured JSON.';
+  AgentSteps[1].UserPrompt := 'For shot_001 with text "测试段落内容", produce detailed audio and visual production instructions in JSON format.';
   AgentSteps[2].StepType := STEP_TYPE_AGENT_ASSEMBLER;
   AgentSteps[2].Role := AGENT_ROLE_ASSEMBLER;
+  AgentSteps[2].SystemPrompt := 'You are an assembler agent. Given multiple worker outputs, merge them into a coherent sequence. Detect and fill gaps, identify continuity issues. Output structured JSON.';
+  AgentSteps[2].UserPrompt := 'Assemble the worker outputs for the current project into a coherent video sequence. Report total duration, gaps filled, and continuity issues.';
   AgentSteps[3].StepType := STEP_TYPE_AGENT_QA;
   AgentSteps[3].Role := AGENT_ROLE_QA;
+  AgentSteps[3].SystemPrompt := 'You are a QA agent (Gate 2). Review the assembled shot document for production quality. Check coverage ratio, degradation, and issues. Output structured JSON with gate result.';
+  AgentSteps[3].UserPrompt := 'Run Gate 2 QA review on the assembled shot document. Output: {schema_version, gate, gate_result, score, coverage_ratio, degraded_ratio, issues}. Pass if score >= 0.85.';
   AgentSteps[4].StepType := STEP_TYPE_STYLE_KEEPER;
   AgentSteps[4].Role := AGENT_ROLE_STYLE_KEEPER;
+  AgentSteps[4].SystemPrompt := 'You are a style keeper. Verify visual consistency across shots: art style match, color consistency, intra/inter-group similarity. Output structured JSON. Use deterministic metrics, do not gate on subjective preference.';
+  AgentSteps[4].UserPrompt := 'Check style consistency across all shots in the current project. Output: {schema_version, style_consistent, intra_group_similarity, inter_group_similarity, color_consistency, art_style_match, warnings}.';
 
   // Get LLM provider
   Provider := TProviderRegistry.Instance.LLMProvider;
@@ -116,9 +128,10 @@ begin
         raise Exception.Create('Invalid status transition: pending -> running for ' + AgentSteps[I].StepType);
       Repo.UpdateJobStepStatus(Step.StepId, STATUS_RUNNING);
 
-      // Build chat request — system prompt carries agent role for fake provider routing
-      ChatReq.SystemPrompt := AgentSteps[I].Role;
-      ChatReq.UserMessage := 'Execute agent step: ' + AgentSteps[I].StepType;
+      // Build chat request with role-specific prompts
+      ChatReq.SystemPrompt := AgentSteps[I].SystemPrompt;
+      ChatReq.UserMessage := AgentSteps[I].UserPrompt;
+      ChatReq.AgentRole := AgentSteps[I].Role; // fake provider routing key
       ChatReq.OutputSchemaJson := '{}';
       ChatReq.Model := 'stepfun-flash-3.5';
       ChatReq.Temperature := 0.7;

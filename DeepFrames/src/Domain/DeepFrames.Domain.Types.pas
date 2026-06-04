@@ -316,6 +316,69 @@ type
     Status: string;
   end;
 
+  // Phase 7: Extension types
+
+  TBgmLibrary = record
+    LibraryId: string;
+    Name: string;
+    Description: string;
+    IsDefault: Boolean;
+    Status: string;
+  end;
+
+  TBgmTrack = record
+    TrackId: string;
+    LibraryId: string;
+    Title: string;
+    Artist: string;
+    Genre: string;
+    MoodTagsJson: string;
+    AssetId: string;
+    DurationSec: Double;
+    Bpm: Integer;
+    KeySignature: string;
+    LicenseType: string;
+    LicenseUri: string;
+    FadeInSec: Double;
+    FadeOutSec: Double;
+    LoopEnabled: Boolean;
+    Status: string;
+  end;
+
+  TBgmAssociation = record
+    AssociationId: string;
+    AudioManifestId: string;
+    TrackId: string;
+    MixVolume: Double;
+    StartOffsetSec: Double;
+  end;
+
+  TContentTypeAdapter = record
+    AdapterId: string;
+    ContentType: string;
+    DisplayName: string;
+    Description: string;
+    AdapterClass: string;
+    SupportedOutputTypesJson: string;
+    DefaultPipelineJson: string;
+    ConfigSchemaJson: string;
+    VersionNo: Integer;
+    Status: string;
+  end;
+
+  TReadinessReport = record
+    ReportId: string;
+    AdapterId: string;
+    CheckType: string;
+    CheckResult: string;
+    Score: Double;
+    Summary: string;
+    IssuesJson: string;
+    EvidenceJson: string;
+    VersionNo: Integer;
+    Status: string;
+  end;
+
 implementation
 
 end.

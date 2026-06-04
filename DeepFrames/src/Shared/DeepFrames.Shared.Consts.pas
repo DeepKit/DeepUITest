@@ -132,6 +132,53 @@ const
   VARIANT_KIND_PLATFORM = 'platform';
   VARIANT_KIND_ACCOUNT = 'account';
 
+  // Phase 7: Extension constants
+
+  // Additional platforms
+  PLATFORM_DOUYIN = 'douyin';
+  PLATFORM_KUAISHOU = 'kuaishou';
+  PLATFORM_XIAOHONGSHU = 'xiaohongshu';
+  PLATFORM_WECHAT_VIDEO = 'wechat_video';
+  PLATFORM_YOUTUBE = 'youtube';
+  PLATFORM_XIMALAYA = 'ximalaya';
+
+  // BGM status
+  BGM_STATUS_ACTIVE = 'active';
+  BGM_STATUS_DISABLED = 'disabled';
+  BGM_STATUS_DELETED = 'deleted';
+
+  // BGM license types
+  BGM_LICENSE_ROYALTY_FREE = 'royalty_free';
+  BGM_LICENSE_CREATIVE_COMMONS = 'creative_commons';
+  BGM_LICENSE_CUSTOM = 'custom';
+
+  // Content type adapter status
+  ADAPTER_STATUS_PENDING = 'pending';
+  ADAPTER_STATUS_ACTIVE = 'active';
+  ADAPTER_STATUS_DISABLED = 'disabled';
+  ADAPTER_STATUS_DEPRECATED = 'deprecated';
+
+  // Readiness check types
+  READINESS_CHECK_E2E_SAMPLE = 'e2e_sample';
+  READINESS_CHECK_SCHEMA = 'schema';
+  READINESS_CHECK_PIPELINE = 'pipeline';
+  READINESS_CHECK_OUTPUT = 'output';
+
+  // Readiness check results
+  READINESS_RESULT_PASS = 'pass';
+  READINESS_RESULT_WARN = 'warn';
+  READINESS_RESULT_FAIL = 'fail';
+  READINESS_RESULT_NOT_CHECKED = 'not_checked';
+
+  // Extension step types
+  STEP_TYPE_BGM_SELECT = 'extension.bgm_select';
+  STEP_TYPE_BGM_MIX = 'extension.bgm_mix';
+  STEP_TYPE_READINESS_CHECK = 'extension.readiness_check';
+  STEP_TYPE_ADAPTER_REGISTER = 'extension.adapter_register';
+
+  // Job type for extension
+  JOB_TYPE_EXTENSION = 'extension';
+
   DB2_TYPE = 'DB2.Type';
   DB2_HOST = 'DB2.Host';
   DB2_PORT = 'DB2.Port';

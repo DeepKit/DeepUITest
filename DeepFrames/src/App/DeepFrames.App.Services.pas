@@ -116,6 +116,22 @@ type
 
     /// <summary>Return candidate packages for a given project.</summary>
     class function ListCandidatePackages(const AProjectId: string): TArray<TCandidatePackage>; static;
+
+    // Phase 7: Extension capabilities
+    /// <summary>Run the Phase 7 extension chain workflow.</summary>
+    class function RunExtensionChain: TDeepFramesJob; static;
+
+    /// <summary>Return all BGM libraries.</summary>
+    class function ListBgmLibraries: TArray<TBgmLibrary>; static;
+
+    /// <summary>Return BGM tracks for a given library.</summary>
+    class function ListBgmTracks(const ALibraryId: string): TArray<TBgmTrack>; static;
+
+    /// <summary>Return all content type adapters.</summary>
+    class function ListContentTypeAdapters: TArray<TContentTypeAdapter>; static;
+
+    /// <summary>Return readiness reports for a given adapter.</summary>
+    class function ListReadinessReports(const AAdapterId: string): TArray<TReadinessReport>; static;
   end;
 
 implementation
@@ -134,6 +150,7 @@ uses
   DeepFrames.Workflow.AudioChain,
   DeepFrames.Workflow.VideoChain,
   DeepFrames.Workflow.PackageChain,
+  DeepFrames.Workflow.ExtensionChain,
   DeepFrames.Shared.Consts;
 
 { TDeepFramesAppService }
@@ -697,6 +714,63 @@ begin
   Repo := TDeepFramesRepository.Create;
   try
     Result := Repo.ListCandidatePackages(AProjectId);
+  finally
+    Repo.Free;
+  end;
+end;
+
+// Phase 7: Extension capabilities
+
+class function TDeepFramesAppService.RunExtensionChain: TDeepFramesJob;
+begin
+  Result := TExtensionChainWorkflow.RunExtensionChain;
+end;
+
+class function TDeepFramesAppService.ListBgmLibraries: TArray<TBgmLibrary>;
+var
+  Repo: TDeepFramesRepository;
+begin
+  Repo := TDeepFramesRepository.Create;
+  try
+    Result := Repo.ListBgmLibraries;
+  finally
+    Repo.Free;
+  end;
+end;
+
+class function TDeepFramesAppService.ListBgmTracks(
+  const ALibraryId: string): TArray<TBgmTrack>;
+var
+  Repo: TDeepFramesRepository;
+begin
+  Repo := TDeepFramesRepository.Create;
+  try
+    Result := Repo.ListBgmTracks(ALibraryId);
+  finally
+    Repo.Free;
+  end;
+end;
+
+class function TDeepFramesAppService.ListContentTypeAdapters: TArray<TContentTypeAdapter>;
+var
+  Repo: TDeepFramesRepository;
+begin
+  Repo := TDeepFramesRepository.Create;
+  try
+    Result := Repo.ListContentTypeAdapters;
+  finally
+    Repo.Free;
+  end;
+end;
+
+class function TDeepFramesAppService.ListReadinessReports(
+  const AAdapterId: string): TArray<TReadinessReport>;
+var
+  Repo: TDeepFramesRepository;
+begin
+  Repo := TDeepFramesRepository.Create;
+  try
+    Result := Repo.ListReadinessReports(AAdapterId);
   finally
     Repo.Free;
   end;

@@ -3,16 +3,9 @@ unit DeepFrames.Provider.StepFun;
 /// <summary>
 /// StepFun (阶跃星辰) provider implementations.
 ///
-/// CURRENT STATE: Skeleton only — LLM chat completion is stubbed; TTS and ASR
-/// raise ENotImplemented.
-///
-/// REAL INTEGRATION PHASE (Phase 2-3):
-/// - LLM: POST https://api.stepfun.com/step_plan/v1/chat/completions
-///   (OpenAI-compatible, Bearer token from DeepBase.Security)
-/// - TTS: POST https://api.stepfun.com/step_plan/v1/audio/speech
-///   (voice + instruction, 200-char instruction limit, box-parentheses escape)
-/// - ASR: POST https://api.stepfun.com/v1/audio/asr/sse
-///   (SSE streaming, word-level timestamps, different base URL from step_plan)
+/// LLM provider: Real HTTP POST to OpenAI-compatible /chat/completions endpoint
+///   when API key is available; falls back to stub output when key is missing.
+/// TTS/ASR providers: raise ENotImplemented until Phase 4.
 ///
 /// KEY RULES (from docs/02.api-阶跃星辰集成-step-plan-api.md):
 /// - ASR SSE uses /v1 base URL, NOT /step_plan/v1
@@ -30,17 +23,22 @@ uses
 
 type
   /// <summary>
-  /// StepFun LLM provider (Chat Completion via OpenAI-compatible /v1/chat/completions).
-  ///
-  /// Currently skeleton: returns stub JSON matching fake provider structure.
-  /// Real HTTP integration lands in Phase 2 (tasks P2.1-P2.9).
-  /// </summary>
+  /// StepFun LLM provider — real HTTP POST to OpenAI-compatible endpoint.
+  /// Falls back to stub JSON when API key is not configured.</summary>
   TStepFunLLMProvider = class(TInterfacedObject, IDeepFramesLLMProvider)
   private
     FLastMetrics: TProviderRunMetrics;
+    FAvailable: Boolean;
+    FKeyCheckDone: Boolean;
+    FHasApiKey: Boolean;
     function GetApiBaseUrl: string;
     function GetApiKey: string;
+    function HasApiKey: Boolean;
     function BuildStubOutput(const ASystemPrompt: string): string;
+    function CallRealAPI(const ARequest: TChatCompletionRequest;
+      out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
+    function CallStubAPI(const ARequest: TChatCompletionRequest;
+      out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
   public
     function GetProviderName: string;
     function GetProviderStatus: TProviderStatus;
@@ -49,13 +47,11 @@ type
       out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
     function GetLastRunMetrics: TProviderRunMetrics;
     function GetSupportedModels: TArray<string>;
+    function IsRealAPI: Boolean;
   end;
 
   /// <summary>
-  /// StepFun TTS provider (stepaudio-2.5-tts via /audio/speech).
-  ///
-  /// Raises ENotImplemented until Phase 4 (P4.1-P4.5) real TTS integration.
-  /// </summary>
+  /// StepFun TTS provider — ENotImplemented until Phase 4.</summary>
   TStepFunTTSProvider = class(TInterfacedObject, IDeepFramesTTSProvider)
   private
     FLastMetrics: TProviderRunMetrics;
@@ -71,11 +67,7 @@ type
   end;
 
   /// <summary>
-  /// StepFun ASR provider (stepfun-asr via /v1/audio/asr/sse).
-  ///
-  /// Raises ENotImplemented until Phase 4 (P4.6-P4.7) real ASR integration.
-  /// Note: ASR uses /v1 base URL, NOT /step_plan/v1.
-  /// </summary>
+  /// StepFun ASR provider — ENotImplemented until Phase 4.</summary>
   TStepFunASRProvider = class(TInterfacedObject, IDeepFramesASRProvider)
   private
     FLastMetrics: TProviderRunMetrics;
@@ -93,8 +85,22 @@ implementation
 
 uses
   System.SysUtils,
+  System.Classes,
   System.JSON,
+  System.Diagnostics,
+  System.Net.HttpClient,
+  System.Net.URLClient,
+  System.NetConsts,
+  DeepBase.Security,
   DeepFrames.Shared.Consts;
+
+const
+  STEPFUN_STEP_PLAN_URL = 'https://api.stepfun.com/step_plan/v1';
+  STEPFUN_STANDARD_URL  = 'https://api.stepfun.com/v1';
+  SECRET_STEP_PLAN_KEY  = 'deepframes/stepfun/step_plan_key';
+  SECRET_STANDARD_KEY   = 'deepframes/stepfun/standard_key';
+  MAX_RETRIES           = 2;
+  RETRY_DELAY_MS        = 500;
 
 { TStepFunLLMProvider }
 
@@ -105,7 +111,12 @@ end;
 
 function TStepFunLLMProvider.GetProviderStatus: TProviderStatus;
 begin
-  Result := psOk; // skeleton — no real connectivity check yet
+  if not FKeyCheckDone then
+    HasApiKey; // trigger lazy key check
+  if FHasApiKey then
+    Result := psOk
+  else
+    Result := psDegraded; // key missing → degraded (stub mode)
 end;
 
 function TStepFunLLMProvider.GetCapabilities: TProviderCapabilities;
@@ -118,15 +129,33 @@ begin
   Result := ['stepfun-flash-3.5', 'deepseek-v4-pro'];
 end;
 
+function TStepFunLLMProvider.IsRealAPI: Boolean;
+begin
+  Result := HasApiKey;
+end;
+
 function TStepFunLLMProvider.GetApiBaseUrl: string;
 begin
-  Result := 'https://api.stepfun.com/step_plan/v1';
+  Result := STEPFUN_STEP_PLAN_URL;
 end;
 
 function TStepFunLLMProvider.GetApiKey: string;
 begin
-  // TODO Phase 2: DeepBase.Security.LoadSecret('stepfun/step_plan_key')
-  Result := '';
+  try
+    Result := LoadSecret(SECRET_STEP_PLAN_KEY);
+  except
+    Result := '';
+  end;
+end;
+
+function TStepFunLLMProvider.HasApiKey: Boolean;
+begin
+  if not FKeyCheckDone then
+  begin
+    FHasApiKey := (Trim(GetApiKey) <> '');
+    FKeyCheckDone := True;
+  end;
+  Result := FHasApiKey;
 end;
 
 function TStepFunLLMProvider.BuildStubOutput(const ASystemPrompt: string): string;
@@ -135,20 +164,18 @@ var
   ShotsArr: TJSONArray;
   ShotObj: TJSONObject;
 begin
-  // Skeleton LLM output: matches Fake provider JSON structure
-  // Phase 2 replaces this with real HTTP POST → JSON parse
   Obj := TJSONObject.Create;
   try
     Obj.AddPair('schema_version', APP_SCHEMA_VERSION);
     Obj.AddPair('provider', PROVIDER_STEPFUN);
     Obj.AddPair('model', 'stepfun-flash-3.5');
-    Obj.AddPair('status', 'skeleton');
-    Obj.AddPair('note', 'Real HTTP integration pending Phase 2');
+    Obj.AddPair('status', 'stub');
+    Obj.AddPair('note', 'API key not configured — using stub output');
     ShotsArr := TJSONArray.Create;
     ShotObj := TJSONObject.Create;
     ShotObj.AddPair('shot_id', 'shot_001');
     ShotObj.AddPair('group_id', 'group_01');
-    ShotObj.AddPair('text', 'Skeleton StepFun output — replace with real API call');
+    ShotObj.AddPair('text', 'StepFun stub output — configure API key for real calls');
     ShotObj.AddPair('duration_sec', TJSONNumber.Create(5.0));
     ShotsArr.AddElement(ShotObj);
     Obj.AddPair('shots', ShotsArr);
@@ -158,19 +185,161 @@ begin
   end;
 end;
 
-function TStepFunLLMProvider.ChatComplete(const ARequest: TChatCompletionRequest;
+function TStepFunLLMProvider.CallRealAPI(const ARequest: TChatCompletionRequest;
+  out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
+var
+  HTTP: THTTPClient;
+  RequestBody, ResponseStr: string;
+  RequestObj, ResponseObj: TJSONObject;
+  MessagesArr: TJSONArray;
+  MsgObj: TJSONObject;
+  ChoicesArr: TJSONArray;
+  ChoiceObj: TJSONObject;
+  MsgContent: TJSONObject;
+  UsageObj: TJSONObject;
+  Stream: TStringStream;
+  Stopwatch: TStopwatch;
+  Retry: Integer;
+  ModelName: string;
+begin
+  Result := False;
+  ResponseStr := '';
+  ModelName := ARequest.Model;
+  if Trim(ModelName) = '' then
+    ModelName := 'stepfun-flash-3.5';
+
+  // Build OpenAI-compatible request body
+  RequestObj := TJSONObject.Create;
+  try
+    RequestObj.AddPair('model', ModelName);
+    MessagesArr := TJSONArray.Create;
+    // System message
+    if Trim(ARequest.SystemPrompt) <> '' then
+    begin
+      MsgObj := TJSONObject.Create;
+      MsgObj.AddPair('role', 'system');
+      MsgObj.AddPair('content', ARequest.SystemPrompt);
+      MessagesArr.AddElement(MsgObj);
+    end;
+    // User message
+    MsgObj := TJSONObject.Create;
+    MsgObj.AddPair('role', 'user');
+    MsgObj.AddPair('content', ARequest.UserMessage);
+    MessagesArr.AddElement(MsgObj);
+    RequestObj.AddPair('messages', MessagesArr);
+    RequestObj.AddPair('temperature', TJSONNumber.Create(ARequest.Temperature));
+    if ARequest.MaxTokens > 0 then
+      RequestObj.AddPair('max_tokens', TJSONNumber.Create(ARequest.MaxTokens));
+    RequestObj.AddPair('stream', TJSONBool.Create(False));
+    RequestBody := RequestObj.ToJSON;
+  finally
+    RequestObj.Free;
+  end;
+
+  // HTTP call with retry
+  HTTP := THTTPClient.Create;
+  try
+    HTTP.ConnectionTimeout := 30000;
+    HTTP.ResponseTimeout := 60000;
+    HTTP.ContentType := 'application/json';
+    HTTP.CustomHeaders['Authorization'] := 'Bearer ' + GetApiKey;
+
+    Stopwatch := TStopwatch.StartNew;
+    for Retry := 0 to MAX_RETRIES do
+    begin
+      try
+        Stream := TStringStream.Create(RequestBody, TEncoding.UTF8);
+        try
+          ResponseStr := HTTP.Post(GetApiBaseUrl + '/chat/completions', Stream).ContentAsString(TEncoding.UTF8);
+        finally
+          Stream.Free;
+        end;
+        Break; // success — exit retry loop
+      except
+        on E: Exception do
+        begin
+          if Retry = MAX_RETRIES then
+          begin
+            // All retries exhausted
+            AMetrics.ProviderName := GetProviderName;
+            AMetrics.Model := ModelName;
+            AMetrics.Capability := CAPABILITY_LLM;
+            AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
+            AMetrics.ErrorCode := 'HTTP_ERROR';
+            AMetrics.RetryCount := Retry;
+            FLastMetrics := AMetrics;
+            Exit(False);
+          end;
+          Sleep(RETRY_DELAY_MS);
+        end;
+      end;
+    end;
+    Stopwatch.Stop;
+  finally
+    HTTP.Free;
+  end;
+
+  // Parse the OpenAI-compatible response
+  ResponseObj := TJSONObject.ParseJSONValue(ResponseStr) as TJSONObject;
+  if ResponseObj = nil then
+  begin
+    AMetrics.ErrorCode := 'JSON_PARSE_ERROR';
+    Exit(False);
+  end;
+  try
+    // Extract content from choices[0].message.content
+    ChoicesArr := ResponseObj.GetValue<TJSONArray>('choices');
+    if (ChoicesArr = nil) or (ChoicesArr.Count = 0) then
+    begin
+      AMetrics.ErrorCode := 'NO_CHOICES';
+      Exit(False);
+    end;
+
+    ChoiceObj := ChoicesArr.Items[0] as TJSONObject;
+    MsgContent := ChoiceObj.GetValue<TJSONObject>('message');
+    if MsgContent = nil then
+    begin
+      AMetrics.ErrorCode := 'NO_MESSAGE';
+      Exit(False);
+    end;
+
+    AResult.ResponseJson := MsgContent.GetValue<string>('content');
+    AResult.FinishReason := ChoiceObj.GetValue<string>('finish_reason');
+    AResult.NormalizedJson := AResult.ResponseJson;
+    AResult.ValidationError := '';
+    AResult.RepairCount := 0;
+
+    // Extract usage
+    UsageObj := ResponseObj.GetValue<TJSONObject>('usage');
+    if UsageObj <> nil then
+    begin
+      AMetrics.TokenUsage.PromptTokens := UsageObj.GetValue<Integer>('prompt_tokens');
+      AMetrics.TokenUsage.CompletionTokens := UsageObj.GetValue<Integer>('completion_tokens');
+      AMetrics.TokenUsage.TotalTokens := UsageObj.GetValue<Integer>('total_tokens');
+    end;
+
+    AMetrics.ProviderName := GetProviderName;
+    AMetrics.Model := ResponseObj.GetValue<string>('model');
+    if AMetrics.Model = '' then
+      AMetrics.Model := ModelName;
+    AMetrics.Capability := CAPABILITY_LLM;
+    AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
+    AMetrics.RequestId := ResponseObj.GetValue<string>('id');
+    AMetrics.ErrorCode := '';
+    AMetrics.RetryCount := Retry;
+
+    FLastMetrics := AMetrics;
+    Result := True;
+  finally
+    ResponseObj.Free;
+  end;
+end;
+
+function TStepFunLLMProvider.CallStubAPI(const ARequest: TChatCompletionRequest;
   out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
 var
   ResponseJson: string;
 begin
-  // TODO Phase 2 (P2.1): Real HTTP POST to GetApiBaseUrl + '/chat/completions'
-  //   - Build OpenAI-compatible request body with ARequest
-  //   - POST with Bearer token from GetApiKey
-  //   - Parse response JSON, extract content
-  //   - Validate against ARequest.OutputSchemaJson
-  //   - Implement repair/retry on schema mismatch
-  // For now: return skeleton stub output
-
   ResponseJson := BuildStubOutput(ARequest.SystemPrompt);
 
   AResult.ResponseJson := ResponseJson;
@@ -192,6 +361,15 @@ begin
 
   FLastMetrics := AMetrics;
   Result := True;
+end;
+
+function TStepFunLLMProvider.ChatComplete(const ARequest: TChatCompletionRequest;
+  out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
+begin
+  if HasApiKey then
+    Result := CallRealAPI(ARequest, AResult, AMetrics)
+  else
+    Result := CallStubAPI(ARequest, AResult, AMetrics);
 end;
 
 function TStepFunLLMProvider.GetLastRunMetrics: TProviderRunMetrics;
@@ -218,7 +396,6 @@ end;
 
 function TStepFunTTSProvider.GetAvailableVoices: TArray<string>;
 begin
-  // TODO Phase 4: query from StepFun /audio/voices endpoint or use known list
   Result := ['cixingnansheng', 'wenrounvsheng', 'jizhiqingnian'];
 end;
 
@@ -226,13 +403,6 @@ function TStepFunTTSProvider.Synthesize(const AText: string; const AVoice,
   AInstruction, AOutputFormat: string; out AResult: TTtsSynthesisResult;
   out AMetrics: TProviderRunMetrics): Boolean;
 begin
-  // TODO Phase 4 (P4.1-P4.5):
-  //   - POST to https://api.stepfun.com/step_plan/v1/audio/speech
-  //   - Body: {model, input, voice, instruction, response_format}
-  //   - Escape/remove parentheses in input text (TTS interprets () as inline commands)
-  //   - Save binary audio stream to file
-  //   - Record sample rate (24kHz default), resample to 48kHz downstream
-  //   - Handle HTTP 451 (content review): generate tts_text_variant, not mutate shot_document
   raise ENotImplemented.Create('TStepFunTTSProvider.Synthesize: real TTS integration pending Phase 4');
 end;
 
@@ -262,14 +432,6 @@ function TStepFunASRProvider.Transcribe(const AAudioUri: string;
   out AResult: TAsrTranscriptionResult;
   out AMetrics: TProviderRunMetrics): Boolean;
 begin
-  // TODO Phase 4 (P4.6-P4.7):
-  //   - POST to https://api.stepfun.com/v1/audio/asr/sse  (NOT /step_plan/v1!)
-  //   - Body: Base64-encoded audio with enable_timestamp=true
-  //   - Handle SSE streaming protocol:
-  //     * Accumulate all Delta events (word-level timestamps arrive incrementally)
-  //     * Wait for Done event before returning
-  //     * Convert millisecond timestamps to seconds
-  //   - Handle error event format
   raise ENotImplemented.Create('TStepFunASRProvider.Transcribe: real ASR integration pending Phase 4');
 end;
 

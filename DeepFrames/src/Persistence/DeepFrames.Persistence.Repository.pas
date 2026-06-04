@@ -123,6 +123,28 @@ type
     procedure InsertCandidatePackage(const Pkg: TCandidatePackage);
     procedure UpdateCandidatePackageStatus(const PackageId, NewStatus: string);
     function ListCandidatePackages(const ProjectId: string): TArray<TCandidatePackage>;
+
+    // Phase 7: BGM library
+    procedure InsertBgmLibrary(const Library: TBgmLibrary);
+    function ListBgmLibraries: TArray<TBgmLibrary>;
+
+    // Phase 7: BGM track
+    procedure InsertBgmTrack(const Track: TBgmTrack);
+    function ListBgmTracks(const LibraryId: string): TArray<TBgmTrack>;
+
+    // Phase 7: BGM association
+    procedure InsertBgmAssociation(const Assoc: TBgmAssociation);
+    function ListBgmAssociations(const AudioManifestId: string): TArray<TBgmAssociation>;
+
+    // Phase 7: Content type adapter
+    procedure InsertContentTypeAdapter(const Adapter: TContentTypeAdapter);
+    function ListContentTypeAdapters: TArray<TContentTypeAdapter>;
+    function FindContentTypeAdapter(const ContentType: string; out Adapter: TContentTypeAdapter): Boolean;
+    procedure UpdateContentTypeAdapterStatus(const AdapterId, NewStatus: string);
+
+    // Phase 7: Readiness report
+    procedure InsertReadinessReport(const Report: TReadinessReport);
+    function ListReadinessReports(const AdapterId: string): TArray<TReadinessReport>;
   end;
 
 implementation
@@ -2179,6 +2201,391 @@ begin
       Pkg.VersionNo := Q.FieldByName('version_no').AsInteger;
       Pkg.Status := Q.FieldByName('status').AsString;
       List.Add(Pkg);
+      Q.Next;
+    end;
+    Result := List.ToArray;
+  finally
+    Q.Free;
+    List.Free;
+  end;
+end;
+
+// Phase 7: BGM Library
+
+procedure TDeepFramesRepository.InsertBgmLibrary(const Library: TBgmLibrary);
+var
+  Q: TFDQuery;
+begin
+  Q := NewQuery;
+  try
+    Q.SQL.Text :=
+      'INSERT INTO deepframes_bgm_library ' +
+      '(library_id, name, description, is_default, schema_version, status, payload_json, extra_json) ' +
+      'VALUES (:lid, :name, :desc, :is_default, :sv, :status, CAST(:pj AS jsonb), CAST(:ej AS jsonb)) ' +
+      'ON CONFLICT (library_id) DO NOTHING';
+    Q.ParamByName('lid').AsString := Library.LibraryId;
+    Q.ParamByName('name').AsString := Library.Name;
+    Q.ParamByName('desc').AsString := Library.Description;
+    Q.ParamByName('is_default').AsBoolean := Library.IsDefault;
+    Q.ParamByName('sv').AsString := APP_SCHEMA_VERSION;
+    Q.ParamByName('status').AsString := Library.Status;
+    Q.ParamByName('pj').AsString := '{}';
+    Q.ParamByName('ej').AsString := '{}';
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TDeepFramesRepository.ListBgmLibraries: TArray<TBgmLibrary>;
+var
+  Q: TFDQuery;
+  List: TList<TBgmLibrary>;
+  Lib: TBgmLibrary;
+begin
+  List := TList<TBgmLibrary>.Create;
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'SELECT * FROM deepframes_bgm_library ORDER BY created_at';
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Lib.LibraryId := Q.FieldByName('library_id').AsString;
+      Lib.Name := Q.FieldByName('name').AsString;
+      Lib.Description := Q.FieldByName('description').AsString;
+      Lib.IsDefault := Q.FieldByName('is_default').AsBoolean;
+      Lib.Status := Q.FieldByName('status').AsString;
+      List.Add(Lib);
+      Q.Next;
+    end;
+    Result := List.ToArray;
+  finally
+    Q.Free;
+    List.Free;
+  end;
+end;
+
+// Phase 7: BGM Track
+
+procedure TDeepFramesRepository.InsertBgmTrack(const Track: TBgmTrack);
+var
+  Q: TFDQuery;
+begin
+  Q := NewQuery;
+  try
+    Q.SQL.Text :=
+      'INSERT INTO deepframes_bgm_track ' +
+      '(track_id, library_id, title, artist, genre, mood_tags_json, asset_id, ' +
+      'duration_sec, bpm, key_signature, license_type, license_uri, ' +
+      'fade_in_sec, fade_out_sec, loop_enabled, schema_version, status, payload_json, extra_json) ' +
+      'VALUES (:tid, :lid, :title, :artist, :genre, CAST(:mtj AS jsonb), :aid, ' +
+      ':dur, :bpm, :ks, :lt, :luri, ' +
+      ':fi, :fo, :loop, :sv, :status, CAST(:pj AS jsonb), CAST(:ej AS jsonb)) ' +
+      'ON CONFLICT (track_id) DO NOTHING';
+    Q.ParamByName('tid').AsString := Track.TrackId;
+    Q.ParamByName('lid').AsString := Track.LibraryId;
+    Q.ParamByName('title').AsString := Track.Title;
+    Q.ParamByName('artist').AsString := Track.Artist;
+    Q.ParamByName('genre').AsString := Track.Genre;
+    Q.ParamByName('mtj').AsString := Track.MoodTagsJson;
+    Q.ParamByName('aid').AsString := Track.AssetId;
+    if Track.DurationSec > 0 then
+      Q.ParamByName('dur').AsFloat := Track.DurationSec
+    else
+      Q.ParamByName('dur').Clear;
+    if Track.Bpm > 0 then
+      Q.ParamByName('bpm').AsInteger := Track.Bpm
+    else
+      Q.ParamByName('bpm').Clear;
+    Q.ParamByName('ks').AsString := Track.KeySignature;
+    Q.ParamByName('lt').AsString := Track.LicenseType;
+    Q.ParamByName('luri').AsString := Track.LicenseUri;
+    Q.ParamByName('fi').AsFloat := Track.FadeInSec;
+    Q.ParamByName('fo').AsFloat := Track.FadeOutSec;
+    Q.ParamByName('loop').AsBoolean := Track.LoopEnabled;
+    Q.ParamByName('sv').AsString := APP_SCHEMA_VERSION;
+    Q.ParamByName('status').AsString := Track.Status;
+    Q.ParamByName('pj').AsString := '{}';
+    Q.ParamByName('ej').AsString := '{}';
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TDeepFramesRepository.ListBgmTracks(const LibraryId: string): TArray<TBgmTrack>;
+var
+  Q: TFDQuery;
+  List: TList<TBgmTrack>;
+  Track: TBgmTrack;
+begin
+  List := TList<TBgmTrack>.Create;
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'SELECT * FROM deepframes_bgm_track WHERE library_id = :lid ORDER BY title';
+    Q.ParamByName('lid').AsString := LibraryId;
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Track.TrackId := Q.FieldByName('track_id').AsString;
+      Track.LibraryId := Q.FieldByName('library_id').AsString;
+      Track.Title := Q.FieldByName('title').AsString;
+      Track.Artist := Q.FieldByName('artist').AsString;
+      Track.Genre := Q.FieldByName('genre').AsString;
+      Track.MoodTagsJson := Q.FieldByName('mood_tags_json').AsString;
+      Track.AssetId := Q.FieldByName('asset_id').AsString;
+      Track.DurationSec := Q.FieldByName('duration_sec').AsFloat;
+      Track.Bpm := Q.FieldByName('bpm').AsInteger;
+      Track.KeySignature := Q.FieldByName('key_signature').AsString;
+      Track.LicenseType := Q.FieldByName('license_type').AsString;
+      Track.LicenseUri := Q.FieldByName('license_uri').AsString;
+      Track.FadeInSec := Q.FieldByName('fade_in_sec').AsFloat;
+      Track.FadeOutSec := Q.FieldByName('fade_out_sec').AsFloat;
+      Track.LoopEnabled := Q.FieldByName('loop_enabled').AsBoolean;
+      Track.Status := Q.FieldByName('status').AsString;
+      List.Add(Track);
+      Q.Next;
+    end;
+    Result := List.ToArray;
+  finally
+    Q.Free;
+    List.Free;
+  end;
+end;
+
+// Phase 7: BGM Association
+
+procedure TDeepFramesRepository.InsertBgmAssociation(const Assoc: TBgmAssociation);
+var
+  Q: TFDQuery;
+begin
+  Q := NewQuery;
+  try
+    Q.SQL.Text :=
+      'INSERT INTO deepframes_bgm_association ' +
+      '(association_id, audio_manifest_id, track_id, mix_volume, start_offset_sec, schema_version, payload_json) ' +
+      'VALUES (:aid, :amid, :tid, :vol, :offset, :sv, CAST(:pj AS jsonb)) ' +
+      'ON CONFLICT (association_id) DO NOTHING';
+    Q.ParamByName('aid').AsString := Assoc.AssociationId;
+    Q.ParamByName('amid').AsString := Assoc.AudioManifestId;
+    Q.ParamByName('tid').AsString := Assoc.TrackId;
+    Q.ParamByName('vol').AsFloat := Assoc.MixVolume;
+    Q.ParamByName('offset').AsFloat := Assoc.StartOffsetSec;
+    Q.ParamByName('sv').AsString := APP_SCHEMA_VERSION;
+    Q.ParamByName('pj').AsString := '{}';
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TDeepFramesRepository.ListBgmAssociations(
+  const AudioManifestId: string): TArray<TBgmAssociation>;
+var
+  Q: TFDQuery;
+  List: TList<TBgmAssociation>;
+  Assoc: TBgmAssociation;
+begin
+  List := TList<TBgmAssociation>.Create;
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'SELECT * FROM deepframes_bgm_association WHERE audio_manifest_id = :amid';
+    Q.ParamByName('amid').AsString := AudioManifestId;
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Assoc.AssociationId := Q.FieldByName('association_id').AsString;
+      Assoc.AudioManifestId := Q.FieldByName('audio_manifest_id').AsString;
+      Assoc.TrackId := Q.FieldByName('track_id').AsString;
+      Assoc.MixVolume := Q.FieldByName('mix_volume').AsFloat;
+      Assoc.StartOffsetSec := Q.FieldByName('start_offset_sec').AsFloat;
+      List.Add(Assoc);
+      Q.Next;
+    end;
+    Result := List.ToArray;
+  finally
+    Q.Free;
+    List.Free;
+  end;
+end;
+
+// Phase 7: Content Type Adapter
+
+procedure TDeepFramesRepository.InsertContentTypeAdapter(
+  const Adapter: TContentTypeAdapter);
+var
+  Q: TFDQuery;
+begin
+  Q := NewQuery;
+  try
+    Q.SQL.Text :=
+      'INSERT INTO deepframes_content_type_adapter ' +
+      '(adapter_id, content_type, display_name, description, adapter_class, ' +
+      'supported_output_types_json, default_pipeline_json, config_schema_json, ' +
+      'schema_version, version_no, status, payload_json, extra_json) ' +
+      'VALUES (:aid, :ct, :dn, :desc, :cls, ' +
+      'CAST(:sot AS jsonb), CAST(:dp AS jsonb), CAST(:cs AS jsonb), ' +
+      ':sv, :vn, :status, CAST(:pj AS jsonb), CAST(:ej AS jsonb)) ' +
+      'ON CONFLICT (adapter_id) DO NOTHING';
+    Q.ParamByName('aid').AsString := Adapter.AdapterId;
+    Q.ParamByName('ct').AsString := Adapter.ContentType;
+    Q.ParamByName('dn').AsString := Adapter.DisplayName;
+    Q.ParamByName('desc').AsString := Adapter.Description;
+    Q.ParamByName('cls').AsString := Adapter.AdapterClass;
+    Q.ParamByName('sot').AsString := Adapter.SupportedOutputTypesJson;
+    Q.ParamByName('dp').AsString := Adapter.DefaultPipelineJson;
+    Q.ParamByName('cs').AsString := Adapter.ConfigSchemaJson;
+    Q.ParamByName('sv').AsString := APP_SCHEMA_VERSION;
+    Q.ParamByName('vn').AsInteger := Adapter.VersionNo;
+    Q.ParamByName('status').AsString := Adapter.Status;
+    Q.ParamByName('pj').AsString := '{}';
+    Q.ParamByName('ej').AsString := '{}';
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TDeepFramesRepository.ListContentTypeAdapters: TArray<TContentTypeAdapter>;
+var
+  Q: TFDQuery;
+  List: TList<TContentTypeAdapter>;
+  Adapter: TContentTypeAdapter;
+begin
+  List := TList<TContentTypeAdapter>.Create;
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'SELECT * FROM deepframes_content_type_adapter ORDER BY content_type';
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Adapter.AdapterId := Q.FieldByName('adapter_id').AsString;
+      Adapter.ContentType := Q.FieldByName('content_type').AsString;
+      Adapter.DisplayName := Q.FieldByName('display_name').AsString;
+      Adapter.Description := Q.FieldByName('description').AsString;
+      Adapter.AdapterClass := Q.FieldByName('adapter_class').AsString;
+      Adapter.SupportedOutputTypesJson := Q.FieldByName('supported_output_types_json').AsString;
+      Adapter.DefaultPipelineJson := Q.FieldByName('default_pipeline_json').AsString;
+      Adapter.ConfigSchemaJson := Q.FieldByName('config_schema_json').AsString;
+      Adapter.VersionNo := Q.FieldByName('version_no').AsInteger;
+      Adapter.Status := Q.FieldByName('status').AsString;
+      List.Add(Adapter);
+      Q.Next;
+    end;
+    Result := List.ToArray;
+  finally
+    Q.Free;
+    List.Free;
+  end;
+end;
+
+function TDeepFramesRepository.FindContentTypeAdapter(const ContentType: string;
+  out Adapter: TContentTypeAdapter): Boolean;
+var
+  Q: TFDQuery;
+begin
+  Result := False;
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'SELECT * FROM deepframes_content_type_adapter WHERE content_type = :ct LIMIT 1';
+    Q.ParamByName('ct').AsString := ContentType;
+    Q.Open;
+    if not Q.Eof then
+    begin
+      Adapter.AdapterId := Q.FieldByName('adapter_id').AsString;
+      Adapter.ContentType := Q.FieldByName('content_type').AsString;
+      Adapter.DisplayName := Q.FieldByName('display_name').AsString;
+      Adapter.Description := Q.FieldByName('description').AsString;
+      Adapter.AdapterClass := Q.FieldByName('adapter_class').AsString;
+      Adapter.SupportedOutputTypesJson := Q.FieldByName('supported_output_types_json').AsString;
+      Adapter.DefaultPipelineJson := Q.FieldByName('default_pipeline_json').AsString;
+      Adapter.ConfigSchemaJson := Q.FieldByName('config_schema_json').AsString;
+      Adapter.VersionNo := Q.FieldByName('version_no').AsInteger;
+      Adapter.Status := Q.FieldByName('status').AsString;
+      Result := True;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TDeepFramesRepository.UpdateContentTypeAdapterStatus(
+  const AdapterId, NewStatus: string);
+var
+  Q: TFDQuery;
+begin
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'UPDATE deepframes_content_type_adapter SET status = :ns, updated_at = NOW() WHERE adapter_id = :aid';
+    Q.ParamByName('ns').AsString := NewStatus;
+    Q.ParamByName('aid').AsString := AdapterId;
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+// Phase 7: Readiness Report
+
+procedure TDeepFramesRepository.InsertReadinessReport(
+  const Report: TReadinessReport);
+var
+  Q: TFDQuery;
+begin
+  Q := NewQuery;
+  try
+    Q.SQL.Text :=
+      'INSERT INTO deepframes_readiness_report ' +
+      '(report_id, adapter_id, check_type, check_result, score, summary, ' +
+      'issues_json, evidence_json, schema_version, version_no, status, payload_json, extra_json) ' +
+      'VALUES (:rid, :aid, :ct, :cr, :score, :summary, ' +
+      'CAST(:ij AS jsonb), CAST(:ej AS jsonb), :sv, :vn, :status, CAST(:pj AS jsonb), CAST(:xj AS jsonb)) ' +
+      'ON CONFLICT (report_id) DO NOTHING';
+    Q.ParamByName('rid').AsString := Report.ReportId;
+    Q.ParamByName('aid').AsString := Report.AdapterId;
+    Q.ParamByName('ct').AsString := Report.CheckType;
+    Q.ParamByName('cr').AsString := Report.CheckResult;
+    Q.ParamByName('score').AsFloat := Report.Score;
+    Q.ParamByName('summary').AsString := Report.Summary;
+    Q.ParamByName('ij').AsString := Report.IssuesJson;
+    Q.ParamByName('ej').AsString := Report.EvidenceJson;
+    Q.ParamByName('sv').AsString := APP_SCHEMA_VERSION;
+    Q.ParamByName('vn').AsInteger := Report.VersionNo;
+    Q.ParamByName('status').AsString := Report.Status;
+    Q.ParamByName('pj').AsString := '{}';
+    Q.ParamByName('xj').AsString := '{}';
+    Q.ExecSQL;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TDeepFramesRepository.ListReadinessReports(
+  const AdapterId: string): TArray<TReadinessReport>;
+var
+  Q: TFDQuery;
+  List: TList<TReadinessReport>;
+  Report: TReadinessReport;
+begin
+  List := TList<TReadinessReport>.Create;
+  Q := NewQuery;
+  try
+    Q.SQL.Text := 'SELECT * FROM deepframes_readiness_report WHERE adapter_id = :aid ORDER BY checked_at DESC';
+    Q.ParamByName('aid').AsString := AdapterId;
+    Q.Open;
+    while not Q.Eof do
+    begin
+      Report.ReportId := Q.FieldByName('report_id').AsString;
+      Report.AdapterId := Q.FieldByName('adapter_id').AsString;
+      Report.CheckType := Q.FieldByName('check_type').AsString;
+      Report.CheckResult := Q.FieldByName('check_result').AsString;
+      Report.Score := Q.FieldByName('score').AsFloat;
+      Report.Summary := Q.FieldByName('summary').AsString;
+      Report.IssuesJson := Q.FieldByName('issues_json').AsString;
+      Report.EvidenceJson := Q.FieldByName('evidence_json').AsString;
+      Report.VersionNo := Q.FieldByName('version_no').AsInteger;
+      Report.Status := Q.FieldByName('status').AsString;
+      List.Add(Report);
       Q.Next;
     end;
     Result := List.ToArray;
