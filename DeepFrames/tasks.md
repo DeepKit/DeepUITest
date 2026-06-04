@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-**2026-06-04**: Phase 2/3/4/6 全部完成。36 个 Pascal 单元，21 个新建模块。完整 LLM/TTS/ASR/Image Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕、资产、导出、Worker、VoiceProfile、ReadinessChecker 全部就绪。
+**2026-06-04**: Phase 2/3/4/6 全部完成。37 个 Pascal 单元，22 个新建模块。完整 LLM/TTS/ASR/Image Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕、资产、导出、Worker、VoiceProfile、ReadinessChecker、DocumentExport、EventLog、多比例安全区全部就绪。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
