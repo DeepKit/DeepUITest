@@ -41,11 +41,14 @@ uses
   ArtifactOS.Services.CognitiveGovernance,
   ArtifactOS.Services.PerformanceCollector,
   ArtifactOS.Services.FeedbackEvolution,
+  ArtifactOS.Services.ShadowRunScheduler,
+  ArtifactOS.Services.RealPublishGate,
   ArtifactOS.Desk.MainForm in 'Desk\ArtifactOS.Desk.MainForm.pas' {DeskMainForm},
   ArtifactOS.Desk.Services in 'Desk\ArtifactOS.Desk.Services.pas',
   ArtifactOS.Desk.Commands in 'Desk\ArtifactOS.Desk.Commands.pas',
   ArtifactOS.Desk.Providers in 'Desk\ArtifactOS.Desk.Providers.pas',
-  ArtifactOS.Desk.EvolutionConsole in 'Desk\ArtifactOS.Desk.EvolutionConsole.pas';
+  ArtifactOS.Desk.EvolutionConsole in 'Desk\ArtifactOS.Desk.EvolutionConsole.pas',
+  ArtifactOS.Desk.AutoTuneAudit in 'Desk\ArtifactOS.Desk.AutoTuneAudit.pas';
 
 {$R *.res}
 

@@ -17,7 +17,9 @@ uses
   System.SysUtils, System.JSON,
   ArtifactOS.Services.ContractPipeline,
   ArtifactOS.Services.PromptAssembly,
-  ArtifactOS.Services.GenerationService;
+  ArtifactOS.Services.GenerationService,
+  ArtifactOS.Services.ShadowRunScheduler,
+  ArtifactOS.Services.RealPublishGate;
 
 class function TEngineCallbacks.DispatchCommand(const ACommandId, ACommandType, APayloadJson: string): Boolean;
 begin
@@ -141,6 +143,67 @@ begin
     end
     else
       WriteLn(ErrOutput, '  generation.ab_run FAILED');
+  end
+  else if SameText(ACommandType, 'shadow_run.start_7day') then
+  begin
+    WriteLn('dispatch: shadow_run.start_7day (', ACommandId, ')');
+    var StrategyUnitId, Platform: string;
+    var JObj := TJSONObject.ParseJSONValue(APayloadJson) as TJSONObject;
+    if JObj <> nil then
+    try
+      StrategyUnitId := JObj.GetValue<string>('strategy_unit_id', '');
+      Platform := JObj.GetValue<string>('platform', 'zhihu');
+    finally
+      JObj.Free;
+    end;
+    var RunId: string;
+    RunId := TShadowRunScheduler.StartSevenDayRun(StrategyUnitId, 'SR-' + FormatDateTime('YYYYMMDD', Date), Platform, RunId);
+    WriteLn('  run_id=', RunId);
+    WriteLn('  status=', TShadowRunScheduler.GetRunStatus(RunId));
+    Result := True;
+  end
+  else if SameText(ACommandType, 'shadow_run.advance_day') then
+  begin
+    WriteLn('dispatch: shadow_run.advance_day (', ACommandId, ')');
+    var RunId := APayloadJson;
+    var Outcome: TDayAdvanceOutcome;
+    TShadowRunScheduler.AdvanceDay(RunId, Outcome);
+    WriteLn('  outcome=', Ord(Outcome));
+    WriteLn('  day_index=', TShadowRunScheduler.GetCurrentDayIndex(RunId));
+    Result := True;
+  end
+  else if SameText(ACommandType, 'shadow_run.close_out') then
+  begin
+    WriteLn('dispatch: shadow_run.close_out (', ACommandId, ')');
+    var RunId := APayloadJson;
+    var CloseOut := TShadowRunScheduler.CloseOutRun(RunId);
+    WriteLn('  final_status=', CloseOut.FinalStatus);
+    WriteLn('  days_completed=', CloseOut.DaysCompleted);
+    WriteLn('  total_observations=', CloseOut.TotalObservations);
+    WriteLn('  total_review_minutes=', CloseOut.TotalHumanReviewMinutes);
+    WriteLn('  budget_overflows=', CloseOut.AttentionBudgetOverflows);
+    Result := True;
+  end
+  else if SameText(ACommandType, 'publish_gate.evaluate') then
+  begin
+    WriteLn('dispatch: publish_gate.evaluate (', ACommandId, ')');
+    var PkgId, QsId: string;
+    var JObj := TJSONObject.ParseJSONValue(APayloadJson) as TJSONObject;
+    if JObj <> nil then
+    try
+      PkgId := JObj.GetValue<string>('publication_package_id', '');
+      QsId := JObj.GetValue<string>('quality_snapshot_id', '');
+    finally
+      JObj.Free;
+    end;
+    var GateResult := TRealPublishGateRunner.Evaluate(PkgId, QsId);
+    WriteLn('  status=', GateResult.StatusText);
+    WriteLn('  reason=', GateResult.Reason);
+    WriteLn('  pass_count=', GateResult.PassCount, '/12');
+    for var Cond in GateResult.Conditions do
+      if not Cond.Passed then
+        WriteLn('  FAIL: ', Cond.Key);
+    Result := True;
   end
   else
   begin

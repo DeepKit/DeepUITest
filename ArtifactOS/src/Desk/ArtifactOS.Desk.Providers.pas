@@ -70,7 +70,9 @@ type
 implementation
 
 uses
-  ArtifactOS.Core.DB.Connection;
+  ArtifactOS.Core.DB.Connection,
+  ArtifactOS.Desk.EvolutionConsole,
+  ArtifactOS.Desk.AutoTuneAudit;
 
 { TDeskStructureProvider }
 
@@ -87,17 +89,20 @@ end;
 
 function TDeskStructureProvider.GetRootNodes(const ATreeName: string): TArray<TShellObjectRef>;
 begin
-  // Three root folders: Cases, Packages, Contracts
-  SetLength(Result, 3);
+  // Five root nodes: Cases, Packages, Contracts, Evolution Console, AutoTune Audit
+  SetLength(Result, 5);
   Result[0] := TShellObjectRef.Make('', 'case_folder', ProviderId, 'Cases');
   Result[1] := TShellObjectRef.Make('', 'package_folder', ProviderId, 'Publication Packages');
   Result[2] := TShellObjectRef.Make('', 'contract_folder', ProviderId, 'Contracts');
+  Result[3] := TShellObjectRef.Make('evolution', 'view', ProviderId, 'Evolution Console');
+  Result[4] := TShellObjectRef.Make('autotune_audit', 'view', ProviderId, 'AutoTune Audit');
 end;
 
 function TDeskStructureProvider.HasChildren(const ANode: TShellObjectRef): Boolean;
 begin
   Result := (ANode.Kind = 'case_folder') or (ANode.Kind = 'package_folder') or
     (ANode.Kind = 'contract_folder');
+  // 'view' nodes (Evolution Console, AutoTune Audit) have no children
 end;
 
 function TDeskStructureProvider.GetChildren(const ANode: TShellObjectRef): TArray<TShellObjectRef>;
@@ -195,7 +200,7 @@ begin
   Result := (ARef.Kind = 'desk') or (ARef.Kind = 'case') or
     (ARef.Kind = 'package') or (ARef.Kind = 'contract') or
     (ARef.Kind = 'case_folder') or (ARef.Kind = 'package_folder') or
-    (ARef.Kind = 'contract_folder');
+    (ARef.Kind = 'contract_folder') or (ARef.Kind = 'view');
 end;
 
 function TDeskMainViewProvider.GetViewForObject(const ARef: TShellObjectRef): TShellViewInfo;
@@ -211,6 +216,23 @@ var
   Panel: TPanel;
   Title, Sub: TLabel;
 begin
+  // Route 'view' nodes to specialized providers
+  if ARef.Kind = 'view' then
+  begin
+    if ARef.Id = 'evolution' then
+    begin
+      Result := TEvolutionConsoleFrame.Create(AOwner);
+      (Result as TEvolutionConsoleFrame).Parent := TWinControl(AOwner);
+      Exit;
+    end;
+    if ARef.Id = 'autotune_audit' then
+    begin
+      Result := TAutoTuneAuditFrame.Create(AOwner);
+      (Result as TAutoTuneAuditFrame).Parent := TWinControl(AOwner);
+      Exit;
+    end;
+  end;
+
   Panel := TPanel.Create(AOwner);
   Panel.Align := alClient;
   Panel.BevelOuter := bvNone;

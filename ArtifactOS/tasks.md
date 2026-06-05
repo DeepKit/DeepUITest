@@ -88,3 +88,16 @@ DB2 本地业务库 (SQLite) ← Phase 1B 按需创建
 DB3 远程业务库 (PG)     ← artifactos（正式）/ artifactos_test（测试）  44/44 migrations, 121 tables
 DB4 生产后端            ← 不直连
 ```
+
+---
+
+## Phase 2 — 影子闭合 + 接管闭合 + 进化控制台扩展
+
+> 依赖 Phase 1 (L1-L4) 全部完成。
+> P2 目标: ShadowRun 7天自动调度 → RealPublishGate 12条件运行时 → 进化控制台增强。
+
+| # | 任务 | 状态 | 说明 |
+|---|------|------|------|
+| 80 | ShadowRun 7天自动调度器 | ✅ done | TShadowRunScheduler: StartSevenDayRun + AdvanceDay + CloseOutRun |
+| 81 | RealPublishGate 12条件运行时 runner | ✅ done | TRealPublishGateRunner: ConfigureSession + Evaluate + EmitDisturbanceOnFailure |
+| 82 | EvolutionConsole AutoTune 审计 + 黄灯协商 | ✅ done | TAutoTuneAuditFrame: event grid + approve/reject/negotiate + TEvolutionViewProvider 增强 |
