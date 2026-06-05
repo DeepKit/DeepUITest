@@ -20,7 +20,8 @@ interface
 
 uses
   System.JSON,
-  System.Generics.Collections;
+  System.Generics.Collections,
+  DeepBase.Types;
 
 type
   TEventSeverity = (esInfo, esWarn, esError, esFatal);
@@ -66,6 +67,9 @@ type
     /// <summary>Severity to string.</summary>
     class function SeverityToStr(ASeverity: TEventSeverity): string; static;
 
+    /// <summary>Map severity to DeepBase TLogLevel.</summary>
+    class function SeverityToLogLevel(ASeverity: TEventSeverity): TLogLevel; static;
+
     /// <summary>Get current timestamp in ISO 8601.</summary>
     class function NowISO: string; static;
   end;
@@ -75,6 +79,7 @@ implementation
 uses
   System.SysUtils,
   System.DateUtils,
+  DeepBase.Logging,
   DeepFrames.Shared.Consts;
 
 class function TWorkflowLogger.SeverityToStr(ASeverity: TEventSeverity): string;
@@ -85,6 +90,18 @@ begin
     esError: Result := 'error';
     esFatal: Result := 'fatal';
   else Result := 'info';
+  end;
+end;
+
+class function TWorkflowLogger.SeverityToLogLevel(
+  ASeverity: TEventSeverity): TLogLevel;
+begin
+  case ASeverity of
+    esInfo:  Result := llInfo;
+    esWarn:  Result := llWarn;
+    esError: Result := llError;
+    esFatal: Result := llFatal;
+  else Result := llInfo;
   end;
 end;
 
@@ -113,21 +130,25 @@ end;
 
 class procedure TWorkflowLogger.LogJobEvent(const AJobId, AEventType: string;
   ASeverity: TEventSeverity; const AMessage, APayload: string);
+var
+  FormattedMsg: string;
 begin
-  // In production: DeepBase.Log.Write('DeepFrames.Workflow',
-  //   Format('[%s] job=%s %s %s', [AEventType, Copy(AJobId, 1, 8), SeverityToStr(ASeverity), AMessage]),
-  //   APayload);
-  // For now: structured event tracking in memory
+  FormattedMsg := Format('[%s] job=%s %s',
+    [AEventType, Copy(AJobId, 1, 8), AMessage]);
+  // Use Log() overload with Extra field for structured payload;
+  // DeepBase logger sanitizes message and routes to file/db/aggregator.
+  Logger.Log(FormattedMsg, SeverityToLogLevel(ASeverity), 'DeepFrames.Workflow');
 end;
 
 class procedure TWorkflowLogger.LogStepEvent(const AJobId, AStepId,
   AEventType: string; ASeverity: TEventSeverity;
   const AMessage, APayload: string);
+var
+  FormattedMsg: string;
 begin
-  // In production: DeepBase.Log.Write('DeepFrames.Workflow',
-  //   Format('[%s] job=%s step=%s %s %s',
-  //     [AEventType, Copy(AJobId, 1, 8), Copy(AStepId, 1, 8), SeverityToStr(ASeverity), AMessage]),
-  //   APayload);
+  FormattedMsg := Format('[%s] job=%s step=%s %s',
+    [AEventType, Copy(AJobId, 1, 8), Copy(AStepId, 1, 8), AMessage]);
+  Logger.Log(FormattedMsg, SeverityToLogLevel(ASeverity), 'DeepFrames.Workflow');
 end;
 
 class procedure TWorkflowLogger.LogGateResult(const AJobId, AGate,
