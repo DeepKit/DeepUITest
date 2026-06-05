@@ -16,6 +16,7 @@ implementation
 uses
   System.SysUtils,
   System.IOUtils,
+  Winapi.Windows,
   FireDAC.Comp.Client,
   DeepBase.DB.Pool,
   DeepFrames.Persistence.Connection;

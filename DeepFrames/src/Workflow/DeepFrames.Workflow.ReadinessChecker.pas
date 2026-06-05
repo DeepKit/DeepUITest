@@ -86,6 +86,7 @@ implementation
 
 uses
   System.SysUtils,
+  System.Generics.Collections,
   DeepFrames.Shared.Consts;
 
 class function TReadinessChecker.BuiltInContentTypes: TArray<string>;
@@ -150,7 +151,6 @@ var
   Issues: TArray<string>;
   PipelineObj: TJSONObject;
   Phase: string;
-  Found: Boolean;
 begin
   Result.CheckType := READINESS_CHECK_PIPELINE;
   Result.Evidence := TJSONObject.Create;

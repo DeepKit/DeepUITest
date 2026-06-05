@@ -1,4 +1,4 @@
-unit DeepFrames.Provider.Fake;
+﻿unit DeepFrames.Provider.Fake;
 
 /// <summary>
 /// Fake (stub) provider implementations for all three capabilities.

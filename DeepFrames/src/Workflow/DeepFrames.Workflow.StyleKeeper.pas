@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.StyleKeeper;
+﻿unit DeepFrames.Workflow.StyleKeeper;
 
 /// <summary>
 /// Style Keeper — deterministic visual consistency engine.
@@ -78,6 +78,7 @@ implementation
 uses
   System.SysUtils,
   System.Math,
+  System.Generics.Collections,
   DeepFrames.Shared.Consts;
 
 const
@@ -391,11 +392,11 @@ begin
       if Item = nil then
         Continue;
 
-      Descriptors[I].ShotId := Item.GetValue<string>('shot_id');
-      Descriptors[I].GroupId := Item.GetValue<string>('group_id');
-      Descriptors[I].ArtStyle := Item.GetValue<string>('art_style');
-      Descriptors[I].Mood := Item.GetValue<string>('mood');
-      Descriptors[I].Transition := Item.GetValue<string>('transition');
+      Descriptors[I].ShotId := Item.GetValue('shot_id').Value;
+      Descriptors[I].GroupId := Item.GetValue('group_id').Value;
+      Descriptors[I].ArtStyle := Item.GetValue('art_style').Value;
+      Descriptors[I].Mood := Item.GetValue('mood').Value;
+      Descriptors[I].Transition := Item.GetValue('transition').Value;
 
       PaletteArr := Item.GetValue('color_palette') as TJSONArray;
       if PaletteArr <> nil then

@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.PackageExporter;
+﻿unit DeepFrames.Workflow.PackageExporter;
 
 /// <summary>
 /// Candidate package exporter for DeepFrames Phase 6.
@@ -163,17 +163,17 @@ begin
     end
     else
     begin
-      if TraceObj.GetValue<string>('variant_document_id') = '' then
+      if TraceObj.GetValue('variant_document_id').Value = '' then
       begin
         SetLength(Issues, Length(Issues) + 1);
         Issues[High(Issues)] := 'source_trace: missing variant_document_id';
       end;
-      if TraceObj.GetValue<string>('audio_manifest_id') = '' then
+      if TraceObj.GetValue('audio_manifest_id').Value = '' then
       begin
         SetLength(Issues, Length(Issues) + 1);
         Issues[High(Issues)] := 'source_trace: missing audio_manifest_id';
       end;
-      if TraceObj.GetValue<string>('video_ir_id') = '' then
+      if TraceObj.GetValue('video_ir_id').Value = '' then
       begin
         if SameText(APackage.DeliveryType, DELIVERY_TYPE_VIDEO) then
         begin

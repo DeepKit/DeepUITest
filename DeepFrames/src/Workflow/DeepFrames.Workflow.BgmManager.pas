@@ -130,6 +130,7 @@ implementation
 uses
   System.SysUtils,
   System.Math,
+  System.Generics.Collections,
   DeepFrames.Shared.Consts;
 
 { TBgmTrackInfo }

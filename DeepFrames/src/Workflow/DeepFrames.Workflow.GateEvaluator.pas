@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.GateEvaluator;
+﻿unit DeepFrames.Workflow.GateEvaluator;
 
 /// <summary>
 /// Quality gate evaluator for DeepFrames production pipeline.

@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.AssetRetention;
+﻿unit DeepFrames.Workflow.AssetRetention;
 
 /// <summary>
 /// 102C asset retention strategy enforcement for DeepFrames.
@@ -95,6 +95,7 @@ implementation
 uses
   System.SysUtils,
   System.DateUtils,
+  System.Generics.Collections,
   DeepFrames.Shared.Consts;
 
 { TAssetRetention }
@@ -148,10 +149,10 @@ begin
       Continue;
     try
       // Check if any trace field matches this asset
-      if (TraceObj.GetValue<string>('audio_manifest_id') = AAssetId) or
-         (TraceObj.GetValue<string>('video_ir_id') = AAssetId) or
-         (TraceObj.GetValue<string>('variant_document_id') = AAssetId) or
-         (TraceObj.GetValue<string>('manifest_asset_id') = AAssetId) then
+      if (TraceObj.GetValue('audio_manifest_id').Value = AAssetId) or
+         (TraceObj.GetValue('video_ir_id').Value = AAssetId) or
+         (TraceObj.GetValue('variant_document_id').Value = AAssetId) or
+         (TraceObj.GetValue('manifest_asset_id').Value = AAssetId) then
       begin
         SetLength(Refs, Length(Refs) + 1);
         Refs[High(Refs)] := APackages[I].PackageId;
@@ -197,7 +198,6 @@ var
   Verdicts: TArray<TCleanupVerdict>;
   ProtectedIds: TArray<string>;
   Asset: TAssetRecord;
-  I: Integer;
   V: TCleanupVerdict;
   PackageRefs: TArray<string>;
   IsFailed: Boolean;
@@ -325,7 +325,7 @@ begin
     try
       for Key in Keys do
       begin
-        var Val := TraceObj.GetValue<string>(Key);
+        var Val := TraceObj.GetValue(Key).Value;
         if Val <> '' then
         begin
           var Arr := Map.GetValue(Val) as TJSONArray;

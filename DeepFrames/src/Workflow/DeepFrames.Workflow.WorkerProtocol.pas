@@ -137,6 +137,7 @@ uses
   System.SysUtils,
   System.IOUtils,
   System.DateUtils,
+  System.Generics.Collections,
   Winapi.Windows,
   DeepFrames.Shared.Consts;
 

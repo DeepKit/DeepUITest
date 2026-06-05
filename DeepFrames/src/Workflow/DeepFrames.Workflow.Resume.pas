@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.Resume;
+﻿unit DeepFrames.Workflow.Resume;
 
 /// <summary>
 /// Workflow retry and resume utility.

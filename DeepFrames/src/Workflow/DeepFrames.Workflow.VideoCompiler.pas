@@ -67,6 +67,7 @@ implementation
 uses
   System.SysUtils,
   System.JSON,
+  System.Generics.Collections,
   DeepFrames.Shared.Consts;
 
 { TVideoAspect }
@@ -141,7 +142,6 @@ class function TVideoCompiler.CompileTimeline(const ShotDocumentId,
   AudioManifestId: string; const AAspect: TVideoAspect): string;
 var
   Arr: TJSONArray;
-  Scene: TJSONObject;
 
   function MakeScene(const AId: string; ADur: Double;
     const ATemplate, ABgPrompt, ASubtitle, ATransition: string): TJSONObject;

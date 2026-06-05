@@ -1,4 +1,4 @@
-unit DeepFrames.Provider.StepFun;
+﻿unit DeepFrames.Provider.StepFun;
 
 /// <summary>
 /// StepFun (阶跃星辰) provider implementations.
@@ -28,7 +28,6 @@ type
   TStepFunLLMProvider = class(TInterfacedObject, IDeepFramesLLMProvider)
   private
     FLastMetrics: TProviderRunMetrics;
-    FAvailable: Boolean;
     FKeyCheckDone: Boolean;
     FHasApiKey: Boolean;
     function GetApiBaseUrl: string;
@@ -87,7 +86,6 @@ type
     FKeyCheckDone: Boolean;
     function GetStandardKey: string;
     function HasKey: Boolean;
-    function GetOutputDir: string;
     function CallRealAPI(const AAudioUri: string;
       out AResult: TAsrTranscriptionResult;
       out AMetrics: TProviderRunMetrics): Boolean;
@@ -146,6 +144,7 @@ uses
   System.Net.URLClient,
   System.NetConsts,
   System.NetEncoding,
+  System.Generics.Collections,
   DeepBase.Security,
   DeepFrames.Shared.Consts,
   DeepFrames.Shared.JsonSchema;
@@ -258,7 +257,6 @@ var
   Retry: Integer;
   ModelName: string;
 begin
-  Result := False;
   ResponseStr := '';
   ModelName := ARequest.Model;
   if Trim(ModelName) = '' then
@@ -359,8 +357,8 @@ begin
       Exit(False);
     end;
 
-    AResult.ResponseJson := MsgContent.GetValue<string>('content');
-    AResult.FinishReason := ChoiceObj.GetValue<string>('finish_reason');
+    AResult.ResponseJson := MsgContent.GetValue('content').Value;
+    AResult.FinishReason := ChoiceObj.GetValue('finish_reason').Value;
     AResult.ValidationError := '';
     AResult.RepairCount := 0;
 
@@ -396,12 +394,12 @@ begin
     end;
 
     AMetrics.ProviderName := GetProviderName;
-    AMetrics.Model := ResponseObj.GetValue<string>('model');
+    AMetrics.Model := ResponseObj.GetValue('model').Value;
     if AMetrics.Model = '' then
       AMetrics.Model := ModelName;
     AMetrics.Capability := CAPABILITY_LLM;
     AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
-    AMetrics.RequestId := ResponseObj.GetValue<string>('id');
+    AMetrics.RequestId := ResponseObj.GetValue('id').Value;
     AMetrics.ErrorCode := '';
     AMetrics.RetryCount := Retry;
 
@@ -779,11 +777,6 @@ begin
   Result := FHasApiKey;
 end;
 
-function TStepFunASRProvider.GetOutputDir: string;
-begin
-  Result := 'output/audio/asr';
-end;
-
 function TStepFunASRProvider.ParseSSELine(const ALine: string;
   out AEventType, AData: string): Boolean;
 begin
@@ -842,9 +835,9 @@ begin
         if WordObj = nil then
           Continue;
 
-        AWords[OldLen + I].Word := WordObj.GetValue<string>('word');
+        AWords[OldLen + I].Word := WordObj.GetValue('word').Value;
         if AWords[OldLen + I].Word = '' then
-          AWords[OldLen + I].Word := WordObj.GetValue<string>('text');
+          AWords[OldLen + I].Word := WordObj.GetValue('text').Value;
 
         // Timestamps may arrive in ms or seconds — normalize to seconds
         StartMs := 0;
@@ -893,7 +886,6 @@ var
   AllWords: TArray<TAsrWordTimestamp>;
   DurationSec: Double;
 begin
-  Result := False;
   SetLength(AllWords, 0);
   DurationSec := 0;
 
@@ -1134,7 +1126,6 @@ var
   Retry: Integer;
   OutputDir: string;
 begin
-  Result := False;
   SetLength(AResults, 0);
 
   OutputDir := GetOutputDir;
@@ -1215,7 +1206,7 @@ begin
         AResults[I].Format := 'png';
         AResults[I].Seed := 0;
         DataObj.TryGetValue<Integer>('seed', AResults[I].Seed);
-        AResults[I].RevisedPrompt := DataObj.GetValue<string>('revised_prompt');
+        AResults[I].RevisedPrompt := DataObj.GetValue('revised_prompt').Value;
         AResults[I].OutputSizeBytes := 0;
       end;
 

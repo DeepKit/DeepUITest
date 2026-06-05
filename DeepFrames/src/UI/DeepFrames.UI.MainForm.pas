@@ -641,7 +641,6 @@ function TDeepFramesInspectorProvider.GetProperties(
 var
   Projects: TArray<TProjectInfo>;
   ScriptDocs: TArray<TScriptDocumentVersion>;
-  AccReports: TArray<TAccuracyReport>;
   GateResults: TArray<TQualityGateResult>;
   I: Integer;
 begin

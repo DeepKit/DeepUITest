@@ -1,5 +1,23 @@
 # DeepFrames Development History
 
+## 2026-06-06 — 编译警告清零（0 Warning / 0 Hint）
+
+DeepFrames 37 个 Pascal 单元 + 测试文件全部 0 Warning 0 Hint 编译通过。仅剩 DeepBase 库的 2 个 W1057 不在本次范围。
+
+### 修复内容
+
+| 类别 | 数量 | 修复方式 |
+|------|:---:|------|
+| W1057 AnsiString→string 隐式转换 | 7 处 | `GetValue<string>('key')` → `GetValue('key').Value`（3 文件：StepFun / PackageExporter / AssetRetention / StyleKeeper） |
+| W1057 中文字面量隐式转换 | ~30 处 | 添加 UTF-8 BOM（`EF BB BF`）到 11 个源文件，Delphi 12.x 按 UTF-8 解析源码，消除隐式 AnsiString 转换 |
+| H2077 Result 赋值后未读取 | 3 处 | 删除 `CallRealAPI` 开头的 `Result := False` 死代码（StepFun LLM/ASR/Image） |
+| H2443 Generics.Collections 未引入 | 11 处 | 7 个 Workflow 文件 + StepFun.pas 的 implementation uses 添加 `System.Generics.Collections` |
+| H2443 TDirectory.GetCurrentDirectory | 1 处 | Migrations.pas 添加 `Winapi.Windows` |
+
+152 tests 全绿（55 core + 97 integration），无回归。
+
+---
+
 ## 2026-06-05 — P7.10: EventLog → DeepBase.Logging 接入
 
 提交：`feat(DeepFrames): wire EventLog to DeepBase.Logging (P7.10)`

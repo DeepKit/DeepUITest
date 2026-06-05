@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.PromptVersion;
+﻿unit DeepFrames.Workflow.PromptVersion;
 
 /// <summary>
 /// Prompt version management for reproducible LLM call records.
@@ -132,7 +132,6 @@ class function TPromptVersionManager.ComputeVersion(const ASystemPrompt,
 var
   Combined: string;
   Hash: string;
-  HashBytes: TBytes;
 begin
   Combined := ASystemPrompt + '||' + AUserMessage + '||' + AOutputSchemaJson;
   // Use SHA256 for deterministic version

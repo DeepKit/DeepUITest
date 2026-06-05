@@ -1,4 +1,4 @@
-unit DeepFrames.Tests.Core;
+﻿unit DeepFrames.Tests.Core;
 
 /// <summary>
 /// Core unit tests for DeepFrames modules.

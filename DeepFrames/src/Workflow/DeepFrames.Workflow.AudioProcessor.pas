@@ -463,7 +463,7 @@ end;
 class function TAudioProcessor.ParseLoudnormJson(const AJson: string): TLoudnormMeasurement;
 var
   Obj: TJSONObject;
-  StartPos, EndPos: Integer;
+  StartPos: Integer;
   JsonStr: string;
 begin
   FillChar(Result, SizeOf(Result), 0);

@@ -1,5 +1,38 @@
 # DeepFrames Bugfix Log
 
+## 2026-06-06 — 编译警告/提示清零
+
+**严重性**: P2 (编译质量，不影响功能)
+**发现方式**: `dcc64 -B` 全量编译审计
+
+### 1. W1057 AnsiString→string 隐式转换（GetValue<string> 泛型）
+
+**文件**: StepFun.pas / PackageExporter.pas / AssetRetention.pas / StyleKeeper.pas
+**现象**: `TJSONObject.GetValue<string>('key')` 在 Delphi 12.x 返回 AnsiString，隐式转换到 UnicodeString 触发 W1057
+**修复**: 改用非泛型 `GetValue('key').Value`，直接返回 `string`（`TJSONString.Value`）
+**影响**: 约 30 处调用点
+
+### 2. W1057 中文字面量隐式转换（缺 UTF-8 BOM）
+
+**文件**: 11 个 `.pas` 文件（StepFun / Fake / GateEvaluator / DocumentChain / StyleKeeper / PromptVersion / AgentChain / SubtitleEngine / PackageExporter / Resume / AssetRetention）
+**现象**: 含中文/全角标点的字符串字面量（如 `'词1'`、`'（'`、`'——'`）在无 BOM 的 UTF-8 文件中被 Delphi 12.x 按 ANSI codepage 解析，触发 W1057
+**修复**: 文件头添加 UTF-8 BOM（`EF BB BF`），Delphi 按需 UTF-8 解析源码
+**影响**: 约 40 处字面量
+
+### 3. H2077 Result 赋值后未读取
+
+**文件**: `StepFun.pas` — `CallRealAPI`（LLM/ASR/Image 3 个 provider）
+**现象**: 函数开头 `Result := False` 后，所有错误路径使用 `Exit(False)`，成功路径 `Result := True`，初始赋值是死代码
+**修复**: 删除开头的 `Result := False`
+
+### 4. H2443 Generics.Collections 未引入
+
+**文件**: 7 个 Workflow 文件 + StepFun.pas
+**现象**: `TJSONArray.GetValue<T>` 内联展开需要 `System.Generics.Collections`，未在 uses 中声明
+**修复**: 各文件 implementation uses 添加 `System.Generics.Collections`
+
+---
+
 ## 2026-06-05 — 集成测试对齐修复（3 处预期偏差）
 
 **严重性**: P3 (测试断言与实际行为对齐)

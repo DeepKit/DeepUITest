@@ -1,4 +1,4 @@
-unit DeepFrames.Workflow.SubtitleEngine;
+﻿unit DeepFrames.Workflow.SubtitleEngine;
 
 /// <summary>
 /// Subtitle layout engine for DeepFrames video production.
@@ -154,7 +154,6 @@ end;
 class function TSubtitleEngine.SplitLines(const AText: string;
   AMaxCharsPerLine: Integer): TArray<string>;
 var
-  Chars: TArray<Char>;
   LineStart, Idx, CharCount: Integer;
   LastBreakPos: Integer;
 begin
