@@ -108,8 +108,9 @@ type
     /// Returns the apply result + verification measurement.
     /// </summary>
     class function LoudnormTwoPass(const AInputFile, AOutputFile: string;
+      out AVerifyMeasurement: TLoudnormMeasurement;
       ATargetLufs: Double = -16.0; ATruePeakLimit: Double = -1.5;
-      ALra: Double = 11.0; out AVerifyMeasurement: TLoudnormMeasurement): TLoudnormApplyResult; static;
+      ALra: Double = 11.0): TLoudnormApplyResult; static;
 
     /// <summary>
     /// Convert FFmpeg loudnorm JSON output to a TLoudnormMeasurement.
@@ -151,6 +152,7 @@ var
   ProcInfo: TProcessInformation;
   Buffer: array[0..4095] of Byte;
   BytesRead: DWORD;
+  TmpBytes: TBytes;
   CmdLine: string;
   OutStr: TStringBuilder;
   WaitRes: DWORD;
@@ -202,7 +204,9 @@ begin
             begin
               ReadFile(ReadPipe, Buffer, SizeOf(Buffer) - 1, BytesRead, nil);
               Buffer[BytesRead] := 0;
-              OutStr.Append(TEncoding.UTF8.GetString(Buffer, BytesRead));
+              SetLength(TmpBytes, BytesRead);
+              Move(Buffer[0], TmpBytes[0], BytesRead);
+              OutStr.Append(TEncoding.UTF8.GetString(TmpBytes));
             end;
           until WaitRes = WAIT_OBJECT_0;
 
@@ -211,7 +215,9 @@ begin
           begin
             ReadFile(ReadPipe, Buffer, SizeOf(Buffer) - 1, BytesRead, nil);
             Buffer[BytesRead] := 0;
-            OutStr.Append(TEncoding.UTF8.GetString(Buffer, BytesRead));
+            SetLength(TmpBytes, BytesRead);
+            Move(Buffer[0], TmpBytes[0], BytesRead);
+            OutStr.Append(TEncoding.UTF8.GetString(TmpBytes));
           end;
 
           GetExitCodeProcess(ProcInfo.hProcess, Cardinal(Result));
@@ -429,8 +435,8 @@ begin
 end;
 
 class function TAudioProcessor.LoudnormTwoPass(const AInputFile, AOutputFile: string;
-  ATargetLufs, ATruePeakLimit, ALra: Double;
-  out AVerifyMeasurement: TLoudnormMeasurement): TLoudnormApplyResult;
+  out AVerifyMeasurement: TLoudnormMeasurement;
+  ATargetLufs, ATruePeakLimit, ALra: Double): TLoudnormApplyResult;
 var
   Measurement: TLoudnormMeasurement;
 begin

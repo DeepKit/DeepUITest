@@ -62,6 +62,21 @@ type
     function GetLastRunMetrics: TProviderRunMetrics;
   end;
 
+  /// <summary>Fake Image provider — returns stub image metadata.</summary>
+  TFakeImageProvider = class(TInterfacedObject, IDeepFramesImageProvider)
+  private
+    FLastMetrics: TProviderRunMetrics;
+  public
+    function GetProviderName: string;
+    function GetProviderStatus: TProviderStatus;
+    function GetCapabilities: TProviderCapabilities;
+    function Generate(const ARequest: TImageGenRequest;
+      out AResults: TArray<TImageGenResult>;
+      out AMetrics: TProviderRunMetrics): Boolean;
+    function GetAvailableStyles: TArray<string>;
+    function GetLastRunMetrics: TProviderRunMetrics;
+  end;
+
 implementation
 
 uses
@@ -368,21 +383,6 @@ begin
 end;
 
 { TFakeImageProvider }
-
-type
-  TFakeImageProvider = class(TInterfacedObject, IDeepFramesImageProvider)
-  private
-    FLastMetrics: TProviderRunMetrics;
-  public
-    function GetProviderName: string;
-    function GetProviderStatus: TProviderStatus;
-    function GetCapabilities: TProviderCapabilities;
-    function Generate(const ARequest: TImageGenRequest;
-      out AResults: TArray<TImageGenResult>;
-      out AMetrics: TProviderRunMetrics): Boolean;
-    function GetAvailableStyles: TArray<string>;
-    function GetLastRunMetrics: TProviderRunMetrics;
-  end;
 
 function TFakeImageProvider.GetProviderName: string;
 begin

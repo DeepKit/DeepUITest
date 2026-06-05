@@ -1,5 +1,27 @@
 # DeepFrames Development History
 
+## 2026-06-05 — 全量编译通过（0 Error / 0 Fatal）
+
+37 个 Pascal 单元首次全量 `dcc64` 编译成功。修复 8 个文件的 9 类编译错误。
+
+### 修复摘要
+
+| 文件 | 问题 | 修复 |
+|------|------|------|
+| StepFun.pas | ASR 类体重复粘贴 | 删除孤立类体 |
+| StepFun.pas | `HTTP.ResponseCode` 不存在 | 改为 `Resp.StatusCode` |
+| StepFun.pas | 局部变量 `Format` 遮蔽函数 | 重命名为 `Fmt` |
+| Fake.pas | `TFakeImageProvider` 在 impl 段 | 移至 interface 段 |
+| EventLog.pas | 缺 `Generics.Collections` + `>>` 歧义 | 添加 uses + 空格分隔 `> >` |
+| AgentChain.pas | 多余 `var/begin` 嵌套 | 删除 + 提升 `Gate2Score` 声明 |
+| AudioProcessor.pas | `out` 参数在默认参数后 + `GetString` 类型不匹配 | 参数重排 + `TBytes` 中转 |
+| SubtitleEngine.pas | 中文标点不能放 `set of Char` | 改为常量字符串 + `System.Pos()` |
+| AssetRetention.pas | `Protected` 保留字 + 缺变量 | `&Protected` + 显式声明 `V` |
+
+详细 Bug 分析：[bugfix.md](bugfix.md)
+
+---
+
 ## 2026-06-04 — 工程底座构建（完整 36 个 Pascal 单元）
 
 从 fake skeleton 到完整工程底座。所有 Phase 2/3/4/6 任务完成，Phase 5 完成 7/9，POC 3 完成，Phase 7 完成 P7.3+P7.5+Image provider。

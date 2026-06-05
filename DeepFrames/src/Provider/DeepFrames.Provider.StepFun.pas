@@ -133,31 +133,6 @@ type
     function GetAvailableStyles: TArray<string>;
     function GetLastRunMetrics: TProviderRunMetrics;
   end;
-  private
-    FLastMetrics: TProviderRunMetrics;
-    FHasApiKey: Boolean;
-    FKeyCheckDone: Boolean;
-    function GetStandardKey: string;
-    function HasKey: Boolean;
-    function GetOutputDir: string;
-    function CallRealAPI(const AAudioUri: string;
-      out AResult: TAsrTranscriptionResult;
-      out AMetrics: TProviderRunMetrics): Boolean;
-    function CallStubAPI(const AAudioUri: string;
-      out AResult: TAsrTranscriptionResult;
-      out AMetrics: TProviderRunMetrics): Boolean;
-    function ParseSSELine(const ALine: string; out AEventType, AData: string): Boolean;
-    function ParseDeltaData(const AData: string; var AWords: TArray<TAsrWordTimestamp>;
-      var ADurationSec: Double): Boolean;
-  public
-    function GetProviderName: string;
-    function GetProviderStatus: TProviderStatus;
-    function GetCapabilities: TProviderCapabilities;
-    function Transcribe(const AAudioUri: string;
-      out AResult: TAsrTranscriptionResult;
-      out AMetrics: TProviderRunMetrics): Boolean;
-    function GetLastRunMetrics: TProviderRunMetrics;
-  end;
 
 implementation
 
@@ -563,19 +538,20 @@ var
   OutputDir: string;
   SafeText: string;
   SafeInstruction: string;
-  Format: string;
+  Fmt: string;
   Stopwatch: TStopwatch;
   Retry: Integer;
   HttpStatus: Integer;
+  Resp: IHTTPResponse;
 begin
   Result := False;
 
   // Prepare inputs
   SafeText := EscapeParentheses(AText);
   SafeInstruction := TruncateInstruction(AInstruction);
-  Format := AOutputFormat;
-  if Trim(Format) = '' then
-    Format := 'wav';
+  Fmt := AOutputFormat;
+  if Trim(Fmt) = '' then
+    Fmt := 'wav';
 
   // Build request body
   RequestObj := TJSONObject.Create;
@@ -584,7 +560,7 @@ begin
     RequestObj.AddPair('input', SafeText);
     RequestObj.AddPair('voice', AVoice);
     RequestObj.AddPair('instruction', SafeInstruction);
-    RequestObj.AddPair('response_format', Format);
+    RequestObj.AddPair('response_format', Fmt);
     RequestBody := RequestObj.ToJSON;
   finally
     RequestObj.Free;
@@ -594,7 +570,7 @@ begin
   OutputDir := GetOutputDir;
   if not DirectoryExists(OutputDir) then
     ForceDirectories(OutputDir);
-  OutputFile := OutputDir + '/tts_' + NewUuidString + '.' + Format;
+  OutputFile := OutputDir + '/tts_' + NewUuidString + '.' + Fmt;
 
   // HTTP call with retry
   HTTP := THTTPClient.Create;
@@ -612,13 +588,13 @@ begin
         try
           var ReqStream := TStringStream.Create(RequestBody, TEncoding.UTF8);
           try
-            HTTP.Post(STEPFUN_STEP_PLAN_URL + '/audio/speech', ReqStream, ResponseStream);
+            Resp := HTTP.Post(STEPFUN_STEP_PLAN_URL + '/audio/speech', ReqStream, ResponseStream);
           finally
             ReqStream.Free;
           end;
 
           // Check HTTP status
-          HttpStatus := HTTP.ResponseCode;
+          HttpStatus := Resp.StatusCode;
           if HttpStatus = 451 then
           begin
             // 451 Unavailable For Legal Reasons — content review
@@ -659,7 +635,7 @@ begin
           end;
 
           // Fill result
-          AResult.Format := Format;
+          AResult.Format := Fmt;
           AResult.SampleRate := 24000; // StepFun TTS default
           AResult.Channels := 1;
           AResult.DurationSec := Length(AText) * 0.0833; // rough estimate
@@ -712,17 +688,17 @@ function TStepFunTTSProvider.CallStubAPI(const AText, AVoice, AInstruction,
   out AMetrics: TProviderRunMetrics): Boolean;
 var
   CharCount: Integer;
-  Format: string;
+  Fmt: string;
 begin
-  Format := AOutputFormat;
-  if Trim(Format) = '' then
-    Format := 'wav';
+  Fmt := AOutputFormat;
+  if Trim(Fmt) = '' then
+    Fmt := 'wav';
 
   CharCount := Length(AText);
   if CharCount > 200 then
     CharCount := 200;
 
-  AResult.Format := Format;
+  AResult.Format := Fmt;
   AResult.SampleRate := 24000;
   AResult.Channels := 1;
   AResult.DurationSec := CharCount * 0.0833;
@@ -731,7 +707,7 @@ begin
     AResult.Voice := 'cixingnansheng';
   AResult.Instruction := TruncateInstruction(AInstruction);
   AResult.CharCount := CharCount;
-  AResult.OutputUri := Format('output/audio/tts/stub_%s.%s', [AVoice, Format]);
+  AResult.OutputUri := Format('output/audio/tts/stub_%s.%s', [AVoice, Fmt]);
   AResult.OutputSizeBytes := Round(AResult.DurationSec * 24000 * 1 * 2);
 
   AMetrics.ProviderName := GetProviderName;

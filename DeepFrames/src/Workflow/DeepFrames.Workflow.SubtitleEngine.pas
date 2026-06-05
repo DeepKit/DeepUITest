@@ -110,12 +110,7 @@ uses
   DeepFrames.Shared.Consts;
 
 const
-  PUNCTUATION_BREAK_CHARS: set of Char = [
-    '，', '。', '！', '？', '；', '：', '、',
-    ',', '.', '!', '?', ';', ':', ' ',
-    '～', '…', '—', '）', '】', '」', '』',
-    ')', ']'
-  ];
+  PUNCTUATION_BREAK_CHARS = '，。！？；：、,.!?;:  ～…—）】」』)]';
 
 { TSubtitleEngine }
 
@@ -160,23 +155,23 @@ class function TSubtitleEngine.SplitLines(const AText: string;
   AMaxCharsPerLine: Integer): TArray<string>;
 var
   Chars: TArray<Char>;
-  LineStart, Pos, CharCount: Integer;
+  LineStart, Idx, CharCount: Integer;
   LastBreakPos: Integer;
 begin
   Result := nil;
   if Length(AText) = 0 then
     Exit;
 
-  Pos := 1;
+  Idx := 1;
   LineStart := 1;
   CharCount := 0;
   LastBreakPos := 0;
 
-  while Pos <= Length(AText) do
+  while Idx <= Length(AText) do
   begin
     // Track punctuation positions as natural break points
-    if CharInSet(AText[Pos], PUNCTUATION_BREAK_CHARS) then
-      LastBreakPos := Pos;
+    if System.Pos(AText[Idx], PUNCTUATION_BREAK_CHARS) > 0 then
+      LastBreakPos := Idx;
 
     Inc(CharCount);
 
@@ -187,17 +182,17 @@ begin
       if LastBreakPos > LineStart then
         BreakAt := LastBreakPos // break at punctuation
       else
-        BreakAt := Pos;         // hard break at limit
+        BreakAt := Idx;         // hard break at limit
 
       SetLength(Result, Length(Result) + 1);
       Result[High(Result)] := Copy(AText, LineStart, BreakAt - LineStart + 1).Trim;
 
       LineStart := BreakAt + 1;
-      CharCount := Pos - LineStart + 1;
+      CharCount := Idx - LineStart + 1;
       LastBreakPos := 0;
     end;
 
-    Inc(Pos);
+    Inc(Idx);
   end;
 
   // Remaining text

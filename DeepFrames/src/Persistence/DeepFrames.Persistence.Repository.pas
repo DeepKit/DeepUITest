@@ -126,7 +126,7 @@ type
     function ListCandidatePackages(const ProjectId: string): TArray<TCandidatePackage>;
 
     // Phase 7: BGM library
-    procedure InsertBgmLibrary(const Library: TBgmLibrary);
+    procedure InsertBgmLibrary(const ALibrary: TBgmLibrary);
     function ListBgmLibraries: TArray<TBgmLibrary>;
 
     // Phase 7: BGM track
@@ -2255,7 +2255,7 @@ end;
 
 // Phase 7: BGM Library
 
-procedure TDeepFramesRepository.InsertBgmLibrary(const Library: TBgmLibrary);
+procedure TDeepFramesRepository.InsertBgmLibrary(const ALibrary: TBgmLibrary);
 var
   Q: TFDQuery;
 begin
@@ -2266,12 +2266,12 @@ begin
       '(library_id, name, description, is_default, schema_version, status, payload_json, extra_json) ' +
       'VALUES (:lid, :name, :desc, :is_default, :sv, :status, CAST(:pj AS jsonb), CAST(:ej AS jsonb)) ' +
       'ON CONFLICT (library_id) DO NOTHING';
-    Q.ParamByName('lid').AsString := Library.LibraryId;
-    Q.ParamByName('name').AsString := Library.Name;
-    Q.ParamByName('desc').AsString := Library.Description;
-    Q.ParamByName('is_default').AsBoolean := Library.IsDefault;
+    Q.ParamByName('lid').AsString := ALibrary.LibraryId;
+    Q.ParamByName('name').AsString := ALibrary.Name;
+    Q.ParamByName('desc').AsString := ALibrary.Description;
+    Q.ParamByName('is_default').AsBoolean := ALibrary.IsDefault;
     Q.ParamByName('sv').AsString := APP_SCHEMA_VERSION;
-    Q.ParamByName('status').AsString := Library.Status;
+    Q.ParamByName('status').AsString := ALibrary.Status;
     Q.ParamByName('pj').AsString := '{}';
     Q.ParamByName('ej').AsString := '{}';
     Q.ExecSQL;

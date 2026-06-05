@@ -56,6 +56,7 @@ var
   ChatResult: TChatCompletionResult;
   ChatMetrics: TProviderRunMetrics;
   ChatReq: TChatCompletionRequest;
+  Gate2Score: Double;
   AgentSteps: array of record
     StepType: string;
     Role: string;
@@ -233,9 +234,6 @@ begin
       Repo.UpdateJobStepStatus(Step.StepId, STATUS_DONE);
     end;
 
-    var
-  Gate2Score: Double;
-begin
   // Gate 2 result — evaluate from QA step output
   Gate2Score := 0.95; // default: stub QA eval score
   GateResult := TGateEvaluator.ToQualityGateResult(Job.JobId,

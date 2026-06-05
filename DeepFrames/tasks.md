@@ -2,24 +2,34 @@
 
 ## 当前状态
 
-**2026-06-04**: Phase 2/3/4/6 全部完成。37 个 Pascal 单元，25 个新建模块。完整 LLM/TTS/ASR/Image Provider 层、全链路 Workflow 工具、Gate 门控、音视频处理、字幕、资产、导出、Worker、VoiceProfile、ReadinessChecker、DocumentExport、EventLog、多比例安全区、BGM 管理器、ArtifactOS 桥接全部就绪。
+**2026-06-05**: 全量 `dcc64` 编译通过（0 Error）。37 个 Pascal 单元。Phase 2/3/4/6 全部完成，Phase 5 剩余 2 项，Phase 7 剩余 4 项。下一步：集成测试 + POC 验证。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
 ---
 
-## POC 验证（需真实环境）
+## 下一步：集成测试 + POC 验证
+
+### 集成测试
+
+- [ ] **I1** 端到端 fake provider 链路测试（DocumentChain → AgentChain → AudioChain → VideoChain）
+- [ ] **I2** Gate 门控全路径测试（pass / warn / fail / blocked_review）
+- [ ] **I3** Worker 协议 v0 launch→monitor→cancel 测试
+- [ ] **I4** 错误处理增强：Workflow 异常恢复路径
+- [ ] **I5** 日志完善：关键路径日志插桩
+
+### POC 验证（需真实环境）
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §5
 
-### POC 1：DB2 PostgreSQL 连接验证
+#### POC 1：DB2 PostgreSQL 连接验证
 
 - [ ] Delphi + FireDAC + DeepBase Persistence 连接 DB2 并创建/查询表
 - [ ] 所有时间字段 `TIMESTAMPTZ`，UTC 写入，UI 本地时区显示
 - [ ] Repository 全部使用参数化查询
 - [ ] 重复 logical key 不产生重复任务
 
-### POC 2：StepFun API 连通性验证
+#### POC 2：StepFun API 连通性验证
 
 - [ ] Step Plan 端点 Chat + TTS 连通
 - [ ] 标准端点 ASR SSE 连通（/v1，非 /step_plan/v1）
@@ -28,29 +38,35 @@
 
 ---
 
-## Phase 5 剩余
+## Phase 5 剩余（2 项）
 
 - [ ] **P5.1** 确认 HyperFrames 依赖许可证
 - [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames + FFmpeg 真实环境）
 
 ---
 
-## Phase 7 剩余
+## Phase 7 剩余（4 项）
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
-- [x] **P7.2** Remotion worker 实现（`workers/remotion/` — package.json + TypeScript + React Composition + renderMedia）
-- [x] **P7.4** 多比例视频支持（`TVideoAspect` — Aspect16x9/9x16/3x4/1x1 + VideoCompiler aspect-aware）
-- [x] **P7.6** BGM 与音乐库真实实现（`TBgmManager` — 9 mood + license 验证 + FFmpeg filter + search/match）
-- [x] **P7.7** ArtifactOS 深度联动（`TArtifactOSBridge` — publish_intent ↔ publish_status 7平台桥接）
 - [ ] **P7.8** H.264 / AAC 编解码器专利和平台发布合规复核
 - [ ] **P7.9** 商业化、授权、销售包装
+- [ ] **P7.10** EventLog → DeepBase.Log 接入（当前为内存 stub）
+
+### Phase 7 已完成
+
+- [x] **P7.2** Remotion worker 实现（`workers/remotion/`）
+- [x] **P7.3** 多平台适配
+- [x] **P7.4** 多比例视频支持（`TVideoAspect`）
+- [x] **P7.5** ReadinessChecker
+- [x] **P7.6** BGM 与音乐库（`TBgmManager`）
+- [x] **P7.7** ArtifactOS 深度联动（`TArtifactOSBridge`）
 
 ---
 
 ## 技术债务
 
-- [ ] 编译验证：所有 `.pas` 文件通过 Delphi 编译
-- [x] 单元测试：Repository、Workflow、Domain 层（`tests/DeepFrames.Tests.Core.pas` — 30 tests，7 模块覆盖）
+- [x] 编译验证：所有 `.pas` 文件通过 Delphi 编译（2026-06-05 通过）
+- [x] 单元测试：Repository、Workflow、Domain 层（30 tests，7 模块覆盖）
 - [ ] 集成测试：端到端 fake provider 链路
 - [ ] 错误处理增强：Workflow 异常恢复路径
 - [ ] 日志完善：关键路径日志插桩

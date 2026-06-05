@@ -36,7 +36,7 @@ type
   TCleanupPlan = record
     TotalAssets: Integer;
     CleanupEligible: Integer;
-    Protected: Integer;
+    &Protected: Integer;
     Verdicts: TArray<TCleanupVerdict>;
     TotalBytesEligible: Int64;
     TotalBytesProtected: Int64;
@@ -198,6 +198,7 @@ var
   ProtectedIds: TArray<string>;
   Asset: TAssetRecord;
   I: Integer;
+  V: TCleanupVerdict;
   PackageRefs: TArray<string>;
   IsFailed: Boolean;
 begin
@@ -220,7 +221,7 @@ begin
   // Second pass: evaluate each asset
   for Asset in AAssets do
   begin
-    var V: TCleanupVerdict;
+    V := Default(TCleanupVerdict);
     V.AssetId := Asset.AssetId;
     V.RetentionClass := Asset.RetentionClass;
 
@@ -290,12 +291,12 @@ begin
 
   Plan.TotalAssets := Length(AAssets);
   Plan.CleanupEligible := Plan.TotalAssets;
-  Plan.Protected := 0;
+  Plan.&Protected := 0;
   for V in Verdicts do
     if not V.CanCleanup then
     begin
       Dec(Plan.CleanupEligible);
-      Inc(Plan.Protected);
+      Inc(Plan.&Protected);
     end;
   Plan.Verdicts := Verdicts;
   Result := Plan;

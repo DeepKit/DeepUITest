@@ -19,7 +19,8 @@ unit DeepFrames.Workflow.EventLog;
 interface
 
 uses
-  System.JSON;
+  System.JSON,
+  System.Generics.Collections;
 
 type
   TEventSeverity = (esInfo, esWarn, esError, esFatal);
@@ -60,7 +61,7 @@ type
       const AUri: string; AByteSize: Int64); static;
 
     /// <summary>Build a JSON payload for a typical workflow event.</summary>
-    class function BuildPayload(const AFields: TArray<TPair<string, string>>): string; static;
+    class function BuildPayload(const AFields: TArray<TPair<string, string> >): string; static;
 
     /// <summary>Severity to string.</summary>
     class function SeverityToStr(ASeverity: TEventSeverity): string; static;
@@ -93,7 +94,7 @@ begin
 end;
 
 class function TWorkflowLogger.BuildPayload(
-  const AFields: TArray<TPair<string, string>>): string;
+  const AFields: TArray<TPair<string, string> >): string;
 var
   Obj: TJSONObject;
   F: TPair<string, string>;

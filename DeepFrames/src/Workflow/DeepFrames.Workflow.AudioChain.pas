@@ -284,8 +284,8 @@ begin
     var LNOutputFile: string := Format('output/audio/%s/normalized.wav', [Job.JobId]);
     var LNVerify: TLoudnormMeasurement;
     var LNResult := TAudioProcessor.LoudnormTwoPass(
-      MergedAsset.Uri, LNOutputFile,
-      -16.0, -1.5, 11.0, LNVerify);
+      MergedAsset.Uri, LNOutputFile, LNVerify,
+      -16.0, -1.5, 11.0);
 
     if LNResult.Success then
     begin

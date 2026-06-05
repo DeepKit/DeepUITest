@@ -389,11 +389,10 @@ begin
   if InnerSchema = nil then
     Exit;
 
-  var PropPairs := AInstance.Pairs;
   for I := 0 to AInstance.Count - 1 do
   begin
-    FieldName := PropPairs[I].JsonString.Value;
-    PropValue := PropPairs[I].JsonValue;
+    FieldName := AInstance.Pairs[I].JsonString.Value;
+    PropValue := AInstance.Pairs[I].JsonValue;
     PropSchema := InnerSchema.GetValue(FieldName) as TJSONObject;
     if PropSchema = nil then
       Continue; // no schema for this field — skip
