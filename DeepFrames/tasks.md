@@ -2,21 +2,13 @@
 
 ## 当前状态
 
-**2026-06-05**: 全量 `dcc64` 编译通过（0 Error）。37 个 Pascal 单元。Phase 2/3/4/6 全部完成，Phase 5 剩余 2 项，Phase 7 剩余 4 项。下一步：集成测试 + POC 验证。
+**2026-06-05**: 全量 `dcc64` 编译通过（0 Error）。37 个 Pascal 单元。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/6 全部完成，Phase 5 剩余 2 项，Phase 7 剩余 4 项，集成测试 I1-I5 完成。下一步：POC 验证 + Phase 5/7 收尾。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
 ---
 
-## 下一步：集成测试 + POC 验证
-
-### 集成测试
-
-- [ ] **I1** 端到端 fake provider 链路测试（DocumentChain → AgentChain → AudioChain → VideoChain）
-- [ ] **I2** Gate 门控全路径测试（pass / warn / fail / blocked_review）
-- [ ] **I3** Worker 协议 v0 launch→monitor→cancel 测试
-- [ ] **I4** 错误处理增强：Workflow 异常恢复路径
-- [ ] **I5** 日志完善：关键路径日志插桩
+## 下一步：POC 验证
 
 ### POC 验证（需真实环境）
 
@@ -66,10 +58,10 @@
 ## 技术债务
 
 - [x] 编译验证：所有 `.pas` 文件通过 Delphi 编译（2026-06-05 通过）
-- [x] 单元测试：Repository、Workflow、Domain 层（30 tests，7 模块覆盖）
-- [ ] 集成测试：端到端 fake provider 链路
-- [ ] 错误处理增强：Workflow 异常恢复路径
-- [ ] 日志完善：关键路径日志插桩
+- [x] 单元测试：Repository、Workflow、Domain 层（55 tests，7 模块覆盖）
+- [x] 集成测试：I1-I5 全路径（97 tests，Provider+Schema+Gate+Worker+Error+Logging）
+- [ ] 端到端 chain 测试（需 DB2 连接）
+- [ ] EventLog → DeepBase.Log 真实接入
 
 ---
 

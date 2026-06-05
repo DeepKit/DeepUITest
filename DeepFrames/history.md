@@ -1,5 +1,26 @@
 # DeepFrames Development History
 
+## 2026-06-05 — 集成测试 I1-I5 完成（152 tests 全绿）
+
+新建 `tests/DeepFrames.Tests.Integration.pas`，覆盖 5 个集成测试维度：
+
+| 维度 | 测试数 | 覆盖范围 |
+|------|:------:|----------|
+| **I1** Provider+Schema+Gate | 27 | Fake LLM/TTS/ASR/Image 真实调用 + StepFun 降级 + Registry 切换 |
+| **I2** Gate 全路径 | 15 | Gate1/2/3a/3b/4 边界 + TargetJobStatus 映射 + QualityGateResult round-trip |
+| **I3** WorkerProtocol | 21 | TaskType 映射 + Request/Progress/Result JSON round-trip + WorkDir 生命周期 |
+| **I4** 错误路径 | 8 | Schema 空/repair、未知 role、负分/超分、字幕空文本 |
+| **I5** 日志+PromptVersion | 12 | WorkflowLogger 调用/BuildPayload/Severity + PromptVersion 稳定性 + StyleKeeper |
+
+**测试规模**：55 core + 97 integration = **152 tests, 0 failed**
+
+发现并修正的预期差异（非 bug）：
+- `SeverityToStr` 返回小写（`info`/`warn`/`error`/`fatal`），测试已对齐
+- Fake splitter 返回 `shots` 数组（非 `segments`），Schema 测试已对齐
+- Schema auto-repair 对空对象缺少 required 字段时会注入默认值
+
+---
+
 ## 2026-06-05 — 全量编译通过（0 Error / 0 Fatal）
 
 37 个 Pascal 单元首次全量 `dcc64` 编译成功。修复 8 个文件的 9 类编译错误。

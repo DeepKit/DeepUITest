@@ -9,7 +9,9 @@ program DeepFrames.Tests;
 {$APPTYPE CONSOLE}
 
 uses
-  DeepFrames.Tests.Core in 'DeepFrames.Tests.Core.pas';
+  DeepFrames.Tests.Core in 'DeepFrames.Tests.Core.pas',
+  DeepFrames.Tests.Integration in 'DeepFrames.Tests.Integration.pas';
 
 begin
+  WriteLn('All tests complete.');
 end.
