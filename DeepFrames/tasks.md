@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-**2026-06-06**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/6 全部完成，Phase 5 剩余 2 项（外部依赖），Phase 7 剩余 3 项（外部合规）。代码侧工作完成；下一步：真实环境 POC 验证。
+**2026-06-06**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。代码侧工作完成；下一步：真实环境 POC 验证。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -13,7 +13,20 @@
 ### POC 1：DB2 PostgreSQL 连接验证
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §5
+> 代码入口：`src/Persistence/DeepFrames.Persistence.Connection.pas` → `LoadProfile`
+> 密钥通过 `DeepBase.Security.LoadSecret` 加载，不写入配置文件
 
+需要填写：
+
+| 字段 | 默认值 | 你的值 |
+|------|--------|--------|
+| **Host** | `127.0.0.1` | ________ |
+| **Port** | `5432` | ________ |
+| **Database** | `DeepFramesData` | ________ |
+| **User** | `deepframes` | ________ |
+| **Password** | 通过 secret store `deepframes/db2` | ________ |
+
+验证项：
 - [ ] Delphi + FireDAC + DeepBase Persistence 连接 DB2 并创建/查询表
 - [ ] 所有时间字段 `TIMESTAMPTZ`，UTC 写入，UI 本地时区显示
 - [ ] Repository 全部使用参数化查询
@@ -21,6 +34,17 @@
 
 ### POC 2：StepFun API 连通性验证
 
+> 代码入口：`src/Provider/DeepFrames.Provider.StepFun.pas`
+> Key 通过 `DeepBase.Security.LoadSecret` 加载，存入 secret store
+
+需要填写：
+
+| 字段 | secret store 路径 | 用途 | 你的值 |
+|------|-------------------|------|--------|
+| **Step Plan Key** | `deepframes/stepfun/step_plan_key` | LLM Chat + TTS + Image（`/step_plan/v1`） | ________ |
+| **Standard Key** | `deepframes/stepfun/standard_key` | ASR SSE（`/v1`，两套 Key 不互通） | ________ |
+
+验证项：
 - [ ] Step Plan 端点 Chat + TTS 连通
 - [ ] 标准端点 ASR SSE 连通（/v1，非 /step_plan/v1）
 - [ ] 两套 Key 不互通确认
@@ -33,20 +57,13 @@
 
 ---
 
-## Phase 5 剩余（外部依赖）
+## P5.8 验证（需真实渲染环境）
 
-- [ ] **P5.1** 确认 HyperFrames 依赖许可证（外部）
-- [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames + FFmpeg 真实环境）
+- [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames/FFmpeg 真实环境）
 
 ---
 
-## Phase 7 剩余（外部合规）
-
-- [ ] **P7.1** Remotion 商业许可复核（引入前必须）
-- [ ] **P7.8** H.264 / AAC 编解码器专利和平台发布合规复核
-- [ ] **P7.9** 商业化、授权、销售包装
-
-### Phase 7 已完成
+## Phase 7 已完成
 
 - [x] **P7.2** Remotion worker 实现（`workers/remotion/`）
 - [x] **P7.3** 多平台适配
