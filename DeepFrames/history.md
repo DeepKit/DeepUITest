@@ -1,5 +1,28 @@
 # DeepFrames Development History
 
+## 2026-06-05 — P7.10: EventLog → DeepBase.Logging 接入
+
+提交：`feat(DeepFrames): wire EventLog to DeepBase.Logging (P7.10)`
+
+将 `TWorkflowLogger` 的 stub 日志方法接入 DeepBase 全局 Logger 单例：
+
+| 改动 | 说明 |
+|------|------|
+| `LogJobEvent` / `LogStepEvent` | 实际调用 `Logger.Log(Msg, Level, 'DeepFrames.Workflow')` |
+| `SeverityToLogLevel` 新增 | `TEventSeverity → TLogLevel` 映射（info/warn/error/fatal → llInfo/llWarn/llError/llFatal） |
+| `LogGateResult/LogProviderCall/LogAssetEvent` | 间接通过 LogJobEvent/LogStepEvent 路由到 DeepBase |
+| `BuildPayload` | 仍生成结构化 JSON（为未来 Extra 字段做准备） |
+
+DeepBase Logger 自动处理：
+- 消息防注入（CR/LF 中和、控制字符替换）
+- 异步写入（队列 + 写线程）
+- 多目标路由（文件 / DB / Aggregator）
+- 滚动文件（按日期 + 大小）
+
+152 tests 全绿，无回归。
+
+---
+
 ## 2026-06-05 — 集成测试 I1-I5 完成（152 tests 全绿）
 
 新建 `tests/DeepFrames.Tests.Integration.pas`，覆盖 5 个集成测试维度：

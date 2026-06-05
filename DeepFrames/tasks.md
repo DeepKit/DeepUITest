@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-**2026-06-05**: 全量 `dcc64` 编译通过（0 Error）。37 个 Pascal 单元。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/6 全部完成，Phase 5 剩余 2 项，Phase 7 剩余 4 项，集成测试 I1-I5 完成。下一步：POC 验证 + Phase 5/7 收尾。
+**2026-06-05**: 全量 `dcc64` 编译通过（0 Error）。37 个 Pascal 单元。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/6 全部完成，Phase 5 剩余 2 项，Phase 7 剩余 3 项，集成测试 I1-I5 完成，P7.10 EventLog 接入完成。下一步：POC 验证 + Phase 5/7 收尾。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -37,12 +37,11 @@
 
 ---
 
-## Phase 7 剩余（4 项）
+## Phase 7 剩余（3 项）
 
 - [ ] **P7.1** Remotion 商业许可复核（引入前必须）
 - [ ] **P7.8** H.264 / AAC 编解码器专利和平台发布合规复核
 - [ ] **P7.9** 商业化、授权、销售包装
-- [ ] **P7.10** EventLog → DeepBase.Log 接入（当前为内存 stub）
 
 ### Phase 7 已完成
 
@@ -52,6 +51,7 @@
 - [x] **P7.5** ReadinessChecker
 - [x] **P7.6** BGM 与音乐库（`TBgmManager`）
 - [x] **P7.7** ArtifactOS 深度联动（`TArtifactOSBridge`）
+- [x] **P7.10** EventLog → DeepBase.Log 接入（`TWorkflowLogger` → `Logger.Log()`）
 
 ---
 
