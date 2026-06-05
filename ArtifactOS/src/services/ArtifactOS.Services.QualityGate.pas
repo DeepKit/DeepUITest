@@ -23,7 +23,8 @@ interface
 
 uses
   System.SysUtils, System.Generics.Collections, System.JSON, FireDAC.Comp.Client,
-  ArtifactOS.Core.DB.Connection;
+  ArtifactOS.Core.DB.Connection,
+  ArtifactOS.Services.TheoryWeave;
 
 type
   TGateStatus = (gsPass, gsFail, gsWarn, gsFreeze, gsConflict);
@@ -490,8 +491,27 @@ begin
     else
       Evidence.AddPair('ES-06', TJSONTrue.Create);
 
-    // ES-07: theory core (deferred — requires S08 structural mapping, see task #65)
-    Evidence.AddPair('ES-07', TJSONNull.Create);
+    // ES-07: theory core — structural fidelity via TheoryWeave
+    if TTheoryWeaveService.HasTheoryMapping(AArtifactId) then
+    begin
+      var FidMapping := TTheoryWeaveService.LoadMappingForContract(AArtifactId);
+      if FidMapping.Id <> '' then
+      begin
+        var FidResult := TTheoryWeaveService.CheckStructuralFidelity(FidMapping.Id, Body);
+        var FidObj := TJSONObject.Create;
+        FidObj.AddPair('consistency', FidResult.Consistency);
+        FidObj.AddPair('missing_count', TJSONNumber.Create(Length(FidResult.MissingRequired)));
+        FidObj.AddPair('violated_count', TJSONNumber.Create(Length(FidResult.ViolatedForbidden)));
+        if FidResult.Consistency = 'fail' then
+          Evidence.AddPair('ES-07', FidObj)
+        else
+          Evidence.AddPair('ES-07', FidObj);
+      end
+      else
+        Evidence.AddPair('ES-07', TJSONNull.Create);
+    end
+    else
+      Evidence.AddPair('ES-07', TJSONNull.Create);
 
     if not Result.Passed then
       Result.Score := 0.0;

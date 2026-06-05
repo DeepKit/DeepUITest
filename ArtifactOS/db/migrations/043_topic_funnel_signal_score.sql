@@ -36,9 +36,9 @@ create table if not exists artifactos.event_signal (
   updated_at timestamptz not null default now()
 );
 
-create index idx_event_signal_type on artifactos.event_signal (signal_type);
-create index idx_event_signal_status on artifactos.event_signal (signal_status);
-create index idx_event_signal_captured on artifactos.event_signal (captured_at desc);
+create index if not exists idx_event_signal_type on artifactos.event_signal (signal_type);
+create index if not exists idx_event_signal_status on artifactos.event_signal (signal_status);
+create index if not exists idx_event_signal_captured on artifactos.event_signal (captured_at desc);
 
 comment on table artifactos.event_signal is
   'Layer 1 signal capture for the topic funnel (docs/08 §3). Seven signal types feed into the scoring engine.';
@@ -91,9 +91,9 @@ create table if not exists artifactos.topic_score (
   unique (tenant_id, signal_id, strategy_unit_id)
 );
 
-create index idx_topic_score_decision on artifactos.topic_score (boundary_decision);
-create index idx_topic_score_basic on artifactos.topic_score (basic_composite desc);
-create index idx_topic_score_strategy on artifactos.topic_score (strategy_composite desc);
+create index if not exists idx_topic_score_decision on artifactos.topic_score (boundary_decision);
+create index if not exists idx_topic_score_basic on artifactos.topic_score (basic_composite desc);
+create index if not exists idx_topic_score_strategy on artifactos.topic_score (strategy_composite desc);
 
 comment on table artifactos.topic_score is
   'Layer 2 scoring result for the topic funnel (docs/08 §4). Stores 4-dimension basic scores + 10-dimension strategy matrix + boundary decision.';

@@ -35,11 +35,17 @@ uses
   ArtifactOS.Core.AutoFix.Scenarios,
   ArtifactOS.Services.ChainRunner,
   ArtifactOS.Services.DeepLLMProxy,
+  ArtifactOS.Services.GenerationService,
   ArtifactOS.Services.TopicFunnel,
+  ArtifactOS.Services.PublicationBridge,
+  ArtifactOS.Services.CognitiveGovernance,
+  ArtifactOS.Services.PerformanceCollector,
+  ArtifactOS.Services.FeedbackEvolution,
   ArtifactOS.Desk.MainForm in 'Desk\ArtifactOS.Desk.MainForm.pas' {DeskMainForm},
   ArtifactOS.Desk.Services in 'Desk\ArtifactOS.Desk.Services.pas',
   ArtifactOS.Desk.Commands in 'Desk\ArtifactOS.Desk.Commands.pas',
-  ArtifactOS.Desk.Providers in 'Desk\ArtifactOS.Desk.Providers.pas';
+  ArtifactOS.Desk.Providers in 'Desk\ArtifactOS.Desk.Providers.pas',
+  ArtifactOS.Desk.EvolutionConsole in 'Desk\ArtifactOS.Desk.EvolutionConsole.pas';
 
 {$R *.res}
 

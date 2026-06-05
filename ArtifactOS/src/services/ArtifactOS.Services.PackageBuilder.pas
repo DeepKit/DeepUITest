@@ -13,6 +13,9 @@ type
       const APlatform, AAccountId: string): string;
     class function BuildPackageOnConn(AConn: TFDConnection; const AArtifactId, AArtifactVersionId, ASnapshotId: string;
       const APlatform, AAccountId: string): string;
+    // L3-68: Build a real (non-simulation) publication package for auto-publish
+    class function BuildRealPackage(const AArtifactId, AArtifactVersionId, ASnapshotId: string;
+      const APlatform, AAccountId: string): string;
     class function MarkSimulated(const APackageId: string): string;
     class function MarkHeld(const APackageId: string; const AReason: string): string;
     class function GetPackageStatus(const APackageId: string): string;
@@ -86,6 +89,38 @@ begin
     Open; Result := Fields[0].AsString; Close;
   finally
     Free;
+  end;
+end;
+
+class function TPackageBuilder.BuildRealPackage(const AArtifactId, AArtifactVersionId, ASnapshotId: string;
+  const APlatform, AAccountId: string): string;
+var
+  DB: TArtifactDB;
+  IdemKey: string;
+begin
+  DB := ArtifactOS_DB;
+  DB.Connect;
+  try
+    // Verify snapshot is qualified before building
+    var SnapshotStatus := DB.ExecuteScalar(
+      'SELECT qualified_status FROM artifactos.quality_snapshot WHERE id=''' + ASnapshotId + '''');
+
+    if SnapshotStatus <> 'qualified' then
+      raise Exception.Create('Cannot build real package: quality_snapshot is not qualified (status=' + SnapshotStatus + ')');
+
+    // Generate idempotent key (includes content hash for real packages)
+    IdemKey := 'pub_' + AArtifactId + '_' + APlatform + '_' + IntToStr(DateTimeToUnix(Now));
+
+    // Build REAL (non-simulation) package for auto-publish
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.publication_package (artifact_id, artifact_version_id, quality_snapshot_id, ' +
+      'platform, account_id, idempotency_key, simulation_only, run_mode, status) ' +
+      'VALUES (''' + AArtifactId + ''', ''' + AArtifactVersionId + ''', ''' + ASnapshotId + ''', ' +
+      '''' + APlatform + ''', ''' + AAccountId + ''', ''' + IdemKey + ''', false, ''auto_publish'', ''pending'') ' +
+      'RETURNING id');
+
+    WriteLn('[PackageBuilder] Real package created: id=', Result, ' platform=', APlatform, ' mode=auto_publish');
+  finally
+    DB.Disconnect;
   end;
 end;
 

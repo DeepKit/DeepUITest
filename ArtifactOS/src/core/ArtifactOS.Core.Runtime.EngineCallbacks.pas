@@ -14,8 +14,10 @@ type
 implementation
 
 uses
-  System.SysUtils,
-  ArtifactOS.Services.ContractPipeline;
+  System.SysUtils, System.JSON,
+  ArtifactOS.Services.ContractPipeline,
+  ArtifactOS.Services.PromptAssembly,
+  ArtifactOS.Services.GenerationService;
 
 class function TEngineCallbacks.DispatchCommand(const ACommandId, ACommandType, APayloadJson: string): Boolean;
 begin
@@ -79,6 +81,66 @@ begin
     end
     else
       WriteLn(ErrOutput, '  chain broken: ', ContractId);
+  end
+  else if SameText(ACommandType, 'prompt.assemble') then
+  begin
+    WriteLn('dispatch: prompt.assemble (', ACommandId, ')');
+    // Parse contract_id from payload: {"contract_id":"<uuid>"}
+    var ContractId: string;
+    var JObj := TJSONObject.ParseJSONValue(APayloadJson) as TJSONObject;
+    if JObj <> nil then
+    try
+      ContractId := JObj.GetValue<string>('contract_id', '');
+    finally
+      JObj.Free;
+    end;
+    if ContractId = '' then
+    begin
+      WriteLn(ErrOutput, '  prompt.assemble: missing contract_id in payload');
+      Exit;
+    end;
+    var Result_: TAssemblyResult;
+    if TPromptAssemblyService.AssembleContext(ContractId, pmStandard, False, '', Result_) then
+    begin
+      WriteLn('  context_pack_id=', Result_.Meta.ContextPackId);
+      WriteLn('  pipeline_mode=', Result_.Meta.PipelineMode);
+      WriteLn('  generation_mode=', Result_.Meta.GenerationMode);
+      WriteLn('  token_estimate=', Result_.Meta.TokenEstimate);
+      WriteLn('  injected=', Result_.Meta.InjectedSlots, ' skipped=', Result_.Meta.SkippedSlots);
+      WriteLn('  prompt_chars=', Length(Result_.PromptText));
+      Result := True;
+    end
+    else
+      WriteLn(ErrOutput, '  prompt.assemble FAILED: ', Result_.ErrorMessage);
+  end
+  else if SameText(ACommandType, 'generation.ab_run') then
+  begin
+    WriteLn('dispatch: generation.ab_run (', ACommandId, ')');
+    var ArtifactId: string;
+    var ContractId: string;
+    var JObj := TJSONObject.ParseJSONValue(APayloadJson) as TJSONObject;
+    if JObj <> nil then
+    try
+      ArtifactId := JObj.GetValue<string>('artifact_id', '');
+      ContractId := JObj.GetValue<string>('contract_id', '');
+    finally
+      JObj.Free;
+    end;
+    if (ArtifactId = '') or (ContractId = '') then
+    begin
+      WriteLn(ErrOutput, '  generation.ab_run: missing artifact_id or contract_id in payload');
+      Exit;
+    end;
+    var SessionId: string;
+    var WinnerVersionId: string;
+    if TGenerationService.RunABGeneration(ArtifactId, ContractId, SessionId, WinnerVersionId) then
+    begin
+      WriteLn('  session_id=', SessionId);
+      WriteLn('  winner_version_id=', WinnerVersionId);
+      Result := True;
+    end
+    else
+      WriteLn(ErrOutput, '  generation.ab_run FAILED');
   end
   else
   begin
