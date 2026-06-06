@@ -1,5 +1,46 @@
 # DeepFrames Bugfix Log
 
+## 2026-06-07 — StepFun 模型 ID 错误
+
+**严重性**: P1 (API 调用 404，功能完全不可用)
+**发现方式**: POC 2 StepFun Chat API 连通性测试
+
+**现象**: 代码中使用 `stepfun-flash-3.5` 作为模型 ID，调用 StepFun API 返回 404：
+```
+The model "stepfun-flash-3.5" does not exist or you do not have access to it.
+```
+
+**根因**: StepFun 的实际模型 ID 是 `step-3.5-flash`（前缀 `step-`，非 `stepfun-`）。
+
+**修复**: 批量更新所有引用：
+- `DeepFrames.Provider.StepFun.pas`: `GetSupportedModels` 返回 `['step-3.5-flash', 'step-3.7-flash']`
+- `DeepFrames.Workflow.AgentChain.pas`: 3 处 `stepfun-flash-3.5` → `step-3.5-flash`
+- `DeepFrames.Workflow.DocumentChain.pas`: 2 处 `stepfun-flash-3.5` → `step-3.5-flash`
+- `DeepFrames.Provider.StepFun.pas`: stub 输出中的模型名
+- Config.db: 6 个模型注册记录
+
+**备注**: Step Plan API 的 9 个可用模型（`/models` endpoint）：
+- LLM: `step-3.5-flash`, `step-3.7-flash`, `step-3.5-flash-2603`, `step-router-v1`
+- Image: `step-image-edit-2`
+- Audio: `stepaudio-2.5-tts`, `stepaudio-2.5-asr`, `stepaudio-2.5-chat`, `stepaudio-2.5-realtime`
+
+---
+
+## 2026-06-07 — StepFun Chat reasoning 模式返回空 content
+
+**严重性**: P2 (功能降级，小 max_tokens 时回复为空)
+**发现方式**: POC 2 Chat API 调试
+
+**现象**: 当 `max_tokens` 较小（如 200）时，StepFun `step-3.5-flash` 返回 `content: ""`，所有 token 用于 `reasoning` 字段。
+
+**根因**: Step Plan API 的推理模型将 `reasoning` 和 `content` 分离。reasoning 先消耗 token，若 `max_tokens` 不够，content 为空且 `finish_reason: "length"`。
+
+**影响**: `DocumentChain` 和 `AgentChain` 中若设置 `max_tokens` 过小，LLM 返回空 JSON，导致 schema 验证失败。
+
+**建议修复**: 将 `max_tokens` 提高到 4096+（当前设置已为 4096，暂无实际影响）。需在 ChatComplete 返回结果中检查 `reasoning` 字段，若 `content` 为空但 `reasoning` 非空，尝试从 reasoning 中提取有效内容或标记为降级。
+
+---
+
 ## 2026-06-06 — 编译警告/提示清零
 
 **严重性**: P2 (编译质量，不影响功能)

@@ -192,7 +192,7 @@ const
   DEFAULT_DB2_HOST = '127.0.0.1';
   DEFAULT_DB2_PORT = 5432;
   DEFAULT_DB2_DATABASE = 'DeepFramesData';
-  DEFAULT_DB2_USER = 'deepframes';
+  DEFAULT_DB2_USER = 'fuyi01';
   DEFAULT_DB2_PASSWORD_SECRET_REF = 'secret://deepframes/db2';
 
   CONFIG_ROOT_PATH = 'RootPath';

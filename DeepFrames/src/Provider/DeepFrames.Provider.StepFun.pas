@@ -180,7 +180,7 @@ begin
   try
     Result := LLMAdmin.GetTierModels(TierSmart);
   except
-    Result := ['stepfun-flash-3.5', 'deepseek-v4-pro'];
+    Result := ['step-3.5-flash', 'step-3.7-flash'];
   end;
 end;
 
@@ -208,7 +208,7 @@ begin
   try
     Obj.AddPair('schema_version', APP_SCHEMA_VERSION);
     Obj.AddPair('provider', PROVIDER_STEPFUN);
-    Obj.AddPair('model', 'stepfun-flash-3.5');
+    Obj.AddPair('model', 'step-3.5-flash');
     Obj.AddPair('status', 'stub');
     Obj.AddPair('note', 'LLM provider not configured — using stub output');
     ShotsArr := TJSONArray.Create;

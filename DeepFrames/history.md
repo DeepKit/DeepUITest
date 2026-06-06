@@ -1,5 +1,48 @@
 # DeepFrames Development History
 
+## 2026-06-07 — POC 1 + POC 2 凭据注入与连通性验证
+
+来源：`tasks.md` §A（POC 验证）
+
+**POC 1：DB2 PostgreSQL** — 凭据注入 + schema 创建验证通过
+- 创建 `data/DeepFramesConfig.db`（SQLite ConfigDB），写入 `deepframes/db2` secret（DPAPI 加密）
+- 写入 DB2 连接配置（Host/Port/Database/User + `secret://deepframes/db2` 引用）
+- PostgreSQL `127.0.0.1:5432/DeepFramesData`（user `fuyi01`）连接成功
+- 13 表 + 16 索引创建：projects, documents, jobs, job_steps, quality_gates, audio_manifests, video_ir, video_jobs, candidate_packages, assets, prompt_versions, bgm_library, style_rules
+- `TIMESTAMPTZ` 字段确认（`+08` 时区），参数化查询工作正常
+
+**POC 2：StepFun API** — Chat + Image 连通性验证通过
+- 注入 `deepframes/stepfun/step_plan_key` secret（DPAPI 加密）
+- 注册 DeepBase LLM provider `stepfun`（BaseUrl `https://api.stepfun.com/step_plan/v1`）+ API key + 6 模型
+- Chat Completion（`step-3.5-flash`）连通 ✓ — 发现 reasoning 模式（`message.reasoning` 字段，`content` 可能空，需大 `max_tokens`）
+- Image Generation（`step-image-edit-2`）连通 ✓ — 返回 URL
+- 9 个可用模型确认（`/models` endpoint）
+
+**模型名修正**：发现 StepFun 实际模型 ID 为 `step-3.5-flash`（非 `stepfun-flash-3.5`）。批量更新 `AgentChain.pas` / `DocumentChain.pas` / `Provider.StepFun.pas`。
+
+**待验证（需 Delphi 编译运行）**：
+- FireDAC 连接 DB2
+- TTS（`stepaudio-2.5-tts`）原始 HTTP
+- ASR SSE（`stepaudio-2.5-asr`，需 Standard Key）
+
+---
+
+## 2026-06-06 — 可行性评审文档缺口补齐
+
+来源：`docs/review-report-2026-06-02-feasibility.md` §必须修改 1-5
+
+| 文档 | 修改 |
+|------|------|
+| `docs/04.video` | 新增"帧捕获实现方案"小节：时间虚拟化（CDP `document.timeline.currentTime` 注入）、Chromium 会话分块（N=20 scenes/chunk）、帧格式（默认 JPEG q=95，约 19 GB / 27k 帧；alpha 场景 PNG）、确定性验证方案（30 秒 CSS 动画 + 60 秒窗口 ≤ 50ms 偏差） |
+| `docs/05.audio` | 已存在两 pass `loudnorm`（lines 242-247），无需修改 |
+| `docs/07.platform` | 新增 H.264 编码参数表（Profile/Level/Preset/GOP/B-frames/像素格式/码率控制）+ 平台编码配置覆盖表 + FFmpeg 命令模板（B 站 / 抖音 / YouTube） |
+| `docs/08.quality` | 降级方案的"纯色/渐变背景 + 字幕"改为"模板化布局（排版骨架 + 主题配色渐变背景）+ 字幕"，保持视觉结构完整性 |
+| `docs/11.e2e` | 顶部新增 126 字节选 → 9 shots 与全文 3800 字 → 180-200 shots 的对照说明；`source_metadata.word_count_note` 字段注明节选规模 |
+
+Chromium 帧捕获时序确定性验证（最高技术风险）留待真实环境 POC 阶段验证。
+
+---
+
 ## 2026-06-06 — StepFun LLM/Image Provider → DeepBase ILLMClient 委托重构
 
 提交：`refactor(DeepFrames): delegate StepFun LLM/Image to DeepBase ILLMClient`

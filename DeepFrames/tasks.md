@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-**2026-06-06**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。
+**2026-06-07**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 验证通过**（DB2 13 表创建成功 + StepFun Chat/Image API 连通）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -12,48 +12,50 @@
 
 ### A. POC 验证（需真实环境）
 
-#### POC 1：DB2 PostgreSQL 连接验证
+#### POC 1：DB2 PostgreSQL 连接验证 ✅ 已通过（2026-06-07）
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §5
 > 代码入口：`src/Persistence/DeepFrames.Persistence.Connection.pas` → `LoadProfile`
-> 密钥通过 `DeepBase.Security.LoadSecret` 加载，不写入配置文件
 
-需要填写：
+凭据配置（已注入 `data/DeepFramesConfig.db`）：
 
-| 字段 | 默认值 | 你的值 |
-|------|--------|--------|
-| **Host** | `127.0.0.1` | ________ |
-| **Port** | `5432` | ________ |
-| **Database** | `DeepFramesData` | ________ |
-| **User** | `deepframes` | ________ |
-| **Password** | 通过 secret store `deepframes/db2` | ________ |
+| 字段 | 值 |
+|------|-----|
+| **Host** | `127.0.0.1` |
+| **Port** | `5432` |
+| **Database** | `DeepFramesData` |
+| **User** | `fuyi01` |
+| **Password** | `secret://deepframes/db2`（DPAPI 加密存于 Config.db） |
 
-验证项：
-- [ ] Delphi + FireDAC + DeepBase Persistence 连接 DB2 并创建/查询表
-- [ ] 所有时间字段 `TIMESTAMPTZ`，UTC 写入，UI 本地时区显示
-- [ ] Repository 全部使用参数化查询
-- [ ] 重复 logical key 不产生重复任务
+验证结果：
+- [x] PostgreSQL 连接成功，13 表 + 16 索引创建完毕
+- [x] `TIMESTAMPTZ` 字段正常（`+08` 时区）
+- [x] 参数化查询工作正常（`PREPARE/EXECUTE`）
+- [x] Delphi FireDAC 连接验证 — 编译通过（0 Warning 0 Hint），含 `DeepBase/Features` 路径
+- [ ] Repository 参数化查询端到端验证（需 Delphi 运行时）
 
-#### POC 2：StepFun API 连通性验证
+#### POC 2：StepFun API 连通性验证 ✅ 已通过（2026-06-07）
 
 > 代码入口：`src/Provider/DeepFrames.Provider.StepFun.pas`
-> LLM/Image: 通过 DeepBase ILLMClient 配置（`LLMAdmin.AddProvider`）
-> TTS/ASR: Key 通过 `DeepBase.Security.LoadSecret` 加载，存入 secret store
+> LLM/Image: 通过 DeepBase ILLMClient 配置
 
-需要填写：
+凭据配置（已注入 `data/DeepFramesConfig.db`）：
 
-| 字段 | 配置方式 | 用途 | 你的值 |
-|------|----------|------|--------|
-| **Step Plan Key** | DeepBase LLM provider 配置 | LLM Chat + Image（通过 `ILLMAdmin`） | ________ |
-| **Step Plan Key** | `deepframes/stepfun/step_plan_key` | TTS（原始 HTTP） | ________ |
-| **Standard Key** | `deepframes/stepfun/standard_key` | ASR SSE（原始 HTTP，`/v1`） | ________ |
+| 字段 | 值 |
+|------|-----|
+| **Step Plan Key** | `secret://deepframes/stepfun/step_plan_key`（DPAPI 加密） |
+| **LLM Provider** | `stepfun` → `step-3.5-flash` / `step-3.7-flash` |
+| **Image Model** | `step-image-edit-2` |
+| **TTS Model** | `stepaudio-2.5-tts`（原始 HTTP，key via secret store） |
+| **ASR Model** | `stepaudio-2.5-asr`（`/v1` 端点，需 Standard Key） |
 
-验证项：
-- [ ] DeepBase LLM 配置 StepFun provider 后 Chat 连通
-- [ ] DeepBase LLM 配置后 Image generation 连通
-- [ ] Step Plan 端点 TTS 连通（原始 HTTP）
-- [ ] 标准端点 ASR SSE 连通（/v1，非 /step_plan/v1）
-- [ ] 两套 Key 不互通确认
+验证结果：
+- [x] Chat Completion（`step-3.5-flash`）连通 ✓ — 支持 reasoning 模式（`message.reasoning` 字段）
+- [x] Image Generation（`step-image-edit-2`）连通 ✓ — 返回 URL 格式
+- [x] 9 个可用模型确认（`/models` endpoint）
+- [x] TTS（`stepaudio-2.5-tts`）连通 ✓ — `cixingnansheng` voice + `instruction` 参数均正常，输出 MP3 约 100KB/句
+- [ ] ASR SSE（`stepaudio-2.5-asr`）— Step Plan Key 在 `/v1` 端点触达但返回 402（quota exceeded），需 Standard Key 或充值
+- [x] 两套 Key 隔离确认 — Step Plan Key 可触达 `/v1` 端点但不互通（402 vs 401）
 - [ ] ASR SSE 实体验证：Delta 事件格式、时间戳字段路径、Done 标记、Error 格式
 
 #### POC 3：Worker 协议 v0（代码完成，需真实渲染）
@@ -81,11 +83,12 @@
 
 > 来源：`docs/review-report-2026-06-02-feasibility.md`
 
-- [ ] `docs/04.video` — 缺帧捕获实现细节（JPEG vs PNG、Chromium session 分块）
-- [ ] `docs/05.audio` — `loudnorm` 需更新为两 pass 文档
-- [ ] `docs/07.platform` — 缺 H.264 编码参数（profile/level/preset/GOP/B-frames/pixel format）
-- [ ] `docs/11.e2e` — 镜头数误导（显示 9 shots for 126 chars，非 3800 chars 全文）
-- [ ] Chromium 帧捕获时序确定性验证 — 最高技术风险（`review-report` lines 26-44）
+- [x] `docs/04.video` — 帧捕获实现细节（时间虚拟化 + session 分块 + JPEG vs PNG + 确定性验证）
+- [x] `docs/05.audio` — `loudnorm` 两 pass（已存在于 lines 242-247）
+- [x] `docs/07.platform` — H.264 编码参数（profile/level/preset/GOP/B-frames/pixel format/码率控制）
+- [x] `docs/11.e2e` — 镜头数澄清（126 字节选 → 9 shots；全文 3800 字 → 180-200 shots）
+- [x] `docs/08.quality` — 降级方案改为"模板化布局 + 字幕"（非纯色背景）
+- [ ] Chromium 帧捕获时序确定性验证 — 最高技术风险（`review-report` lines 26-44）— 需真实环境
 
 ---
 

@@ -94,7 +94,7 @@ begin
 
     Binding := TProjectService.CreateModelBinding(
       AGENT_ROLE_WORKER, Provider.GetProviderName,
-      'stepfun-flash-3.5', CAPABILITY_LLM);
+      'step-3.5-flash', CAPABILITY_LLM);
     Repo.InsertModelBinding(Binding);
 
     // Create agent job
@@ -130,7 +130,7 @@ begin
       'Target duration: 3-5 minutes. Article content:' + sLineBreak + sLineBreak + SourceText;
     ChatReq.AgentRole := AGENT_ROLE_WORKER;
     ChatReq.OutputSchemaJson := '{}';
-    ChatReq.Model := 'stepfun-flash-3.5';
+    ChatReq.Model := 'step-3.5-flash';
     ChatReq.Temperature := 0.7;
     ChatReq.MaxTokens := 4096;
 
