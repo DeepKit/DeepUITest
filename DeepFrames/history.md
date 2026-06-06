@@ -1,5 +1,24 @@
 # DeepFrames Development History
 
+## 2026-06-06 — StepFun LLM/Image Provider → DeepBase ILLMClient 委托重构
+
+提交：`refactor(DeepFrames): delegate StepFun LLM/Image to DeepBase ILLMClient`
+
+将 StepFun LLM 和 Image provider 的原始 HTTP 调用替换为 DeepBase 统一 LLM 客户端：
+
+| 改动 | 说明 |
+|------|------|
+| `TStepFunLLMProvider.CallRealAPI` | 删除原始 `THTTPClient` + JSON 解析，改为 `LLM.ChatWithHistory(TierSmart, Messages)` |
+| `TStepFunImageProvider.CallRealAPI` | 删除原始 HTTP，改为 `LLM.GenerateImage(Prompt, Size)` + Base64/URL 下载 |
+| 密钥管理 | LLM/Image 不再直接 `LoadSecret()`，改由 DeepBase LLM 配置层管理 |
+| Stub fallback | `IsDeepBaseConfigured` 替代 `HasApiKey`，无 LLM provider 时仍返回 stub |
+| TTS/ASR | 不变 — 仍用原始 HTTP（DeepBase 无对应抽象） |
+| Schema 验证 | 保留 — LLM 返回内容仍经过 `TJsonSchemaValidator.Validate` |
+
+引入单元：`DeepBase.LLM.Client`, `DeepBase.LLM.Types`, `DeepBase.LLM.Service`
+
+---
+
 ## 2026-06-06 — 编译警告清零（0 Warning / 0 Hint）
 
 DeepFrames 37 个 Pascal 单元 + 测试文件全部 0 Warning 0 Hint 编译通过。仅剩 DeepBase 库的 2 个 W1057 不在本次范围。

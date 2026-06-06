@@ -3,9 +3,10 @@
 /// <summary>
 /// StepFun (阶跃星辰) provider implementations.
 ///
-/// LLM provider: Real HTTP POST to OpenAI-compatible /chat/completions endpoint
-///   when API key is available; falls back to stub output when key is missing.
-/// TTS/ASR providers: raise ENotImplemented until Phase 4.
+/// LLM provider: Delegates to DeepBase ILLMClient (ChatWithHistory) when
+///   configured; falls back to stub JSON when no provider/key is available.
+/// Image provider: Delegates to DeepBase ILLMClient (GenerateImage).
+/// TTS/ASR providers: Raw HTTP (no DeepBase abstraction yet).
 ///
 /// KEY RULES (from docs/02.api-阶跃星辰集成-step-plan-api.md):
 /// - ASR SSE uses /v1 base URL, NOT /step_plan/v1
@@ -23,16 +24,12 @@ uses
 
 type
   /// <summary>
-  /// StepFun LLM provider — real HTTP POST to OpenAI-compatible endpoint.
-  /// Falls back to stub JSON when API key is not configured.</summary>
+  /// StepFun LLM provider — delegates to DeepBase ILLMClient (ChatWithHistory).
+  /// Falls back to stub JSON when no LLM provider is configured.</summary>
   TStepFunLLMProvider = class(TInterfacedObject, IDeepFramesLLMProvider)
   private
     FLastMetrics: TProviderRunMetrics;
-    FKeyCheckDone: Boolean;
-    FHasApiKey: Boolean;
-    function GetApiBaseUrl: string;
-    function GetApiKey: string;
-    function HasApiKey: Boolean;
+    function IsDeepBaseConfigured: Boolean;
     function BuildStubOutput(const ASystemPrompt: string): string;
     function CallRealAPI(const ARequest: TChatCompletionRequest;
       out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
@@ -106,14 +103,11 @@ type
   end;
 
   /// <summary>
-  /// StepFun Image provider (step-image-edit-2 via /images/generations).</summary>
+  /// StepFun Image provider — delegates to DeepBase ILLMClient (GenerateImage).</summary>
   TStepFunImageProvider = class(TInterfacedObject, IDeepFramesImageProvider)
   private
     FLastMetrics: TProviderRunMetrics;
-    FHasApiKey: Boolean;
-    FKeyCheckDone: Boolean;
-    function GetStepPlanKey: string;
-    function HasKey: Boolean;
+    function IsDeepBaseConfigured: Boolean;
     function GetOutputDir: string;
     function CallRealAPI(const ARequest: TImageGenRequest;
       out AResults: TArray<TImageGenResult>;
@@ -146,6 +140,9 @@ uses
   System.NetEncoding,
   System.Generics.Collections,
   DeepBase.Security,
+  DeepBase.LLM.Client,
+  DeepBase.LLM.Types,
+  DeepBase.LLM.Service,
   DeepFrames.Shared.Consts,
   DeepFrames.Shared.JsonSchema;
 
@@ -166,12 +163,10 @@ end;
 
 function TStepFunLLMProvider.GetProviderStatus: TProviderStatus;
 begin
-  if not FKeyCheckDone then
-    HasApiKey; // trigger lazy key check
-  if FHasApiKey then
+  if IsDeepBaseConfigured then
     Result := psOk
   else
-    Result := psDegraded; // key missing → degraded (stub mode)
+    Result := psDegraded; // no LLM provider → degraded (stub mode)
 end;
 
 function TStepFunLLMProvider.GetCapabilities: TProviderCapabilities;
@@ -181,36 +176,26 @@ end;
 
 function TStepFunLLMProvider.GetSupportedModels: TArray<string>;
 begin
-  Result := ['stepfun-flash-3.5', 'deepseek-v4-pro'];
+  // Return whatever DeepBase has configured for the smart tier
+  try
+    Result := LLMAdmin.GetTierModels(TierSmart);
+  except
+    Result := ['stepfun-flash-3.5', 'deepseek-v4-pro'];
+  end;
 end;
 
 function TStepFunLLMProvider.IsRealAPI: Boolean;
 begin
-  Result := HasApiKey;
+  Result := IsDeepBaseConfigured;
 end;
 
-function TStepFunLLMProvider.GetApiBaseUrl: string;
-begin
-  Result := STEPFUN_STEP_PLAN_URL;
-end;
-
-function TStepFunLLMProvider.GetApiKey: string;
+function TStepFunLLMProvider.IsDeepBaseConfigured: Boolean;
 begin
   try
-    Result := LoadSecret(SECRET_STEP_PLAN_KEY);
+    Result := LLMAdmin.IsConfigured;
   except
-    Result := '';
+    Result := False;
   end;
-end;
-
-function TStepFunLLMProvider.HasApiKey: Boolean;
-begin
-  if not FKeyCheckDone then
-  begin
-    FHasApiKey := (Trim(GetApiKey) <> '');
-    FKeyCheckDone := True;
-  end;
-  Result := FHasApiKey;
 end;
 
 function TStepFunLLMProvider.BuildStubOutput(const ASystemPrompt: string): string;
@@ -225,12 +210,12 @@ begin
     Obj.AddPair('provider', PROVIDER_STEPFUN);
     Obj.AddPair('model', 'stepfun-flash-3.5');
     Obj.AddPair('status', 'stub');
-    Obj.AddPair('note', 'API key not configured — using stub output');
+    Obj.AddPair('note', 'LLM provider not configured — using stub output');
     ShotsArr := TJSONArray.Create;
     ShotObj := TJSONObject.Create;
     ShotObj.AddPair('shot_id', 'shot_001');
     ShotObj.AddPair('group_id', 'group_01');
-    ShotObj.AddPair('text', 'StepFun stub output — configure API key for real calls');
+    ShotObj.AddPair('text', 'DeepBase LLM stub — configure provider for real calls');
     ShotObj.AddPair('duration_sec', TJSONNumber.Create(5.0));
     ShotsArr.AddElement(ShotObj);
     Obj.AddPair('shots', ShotsArr);
@@ -243,171 +228,101 @@ end;
 function TStepFunLLMProvider.CallRealAPI(const ARequest: TChatCompletionRequest;
   out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
 var
-  HTTP: THTTPClient;
-  RequestBody, ResponseStr: string;
-  RequestObj, ResponseObj: TJSONObject;
-  MessagesArr: TJSONArray;
-  MsgObj: TJSONObject;
-  ChoicesArr: TJSONArray;
-  ChoiceObj: TJSONObject;
-  MsgContent: TJSONObject;
-  UsageObj: TJSONObject;
-  Stream: TStringStream;
+  Messages: TArray<TChatMessage>;
+  ChatRes: TChatResult;
   Stopwatch: TStopwatch;
-  Retry: Integer;
-  ModelName: string;
+  MaxTokens: Integer;
+  Temperature: Double;
 begin
-  ResponseStr := '';
-  ModelName := ARequest.Model;
-  if Trim(ModelName) = '' then
-    ModelName := 'stepfun-flash-3.5';
-
-  // Build OpenAI-compatible request body
-  RequestObj := TJSONObject.Create;
-  try
-    RequestObj.AddPair('model', ModelName);
-    MessagesArr := TJSONArray.Create;
-    // System message
-    if Trim(ARequest.SystemPrompt) <> '' then
-    begin
-      MsgObj := TJSONObject.Create;
-      MsgObj.AddPair('role', 'system');
-      MsgObj.AddPair('content', ARequest.SystemPrompt);
-      MessagesArr.AddElement(MsgObj);
-    end;
-    // User message
-    MsgObj := TJSONObject.Create;
-    MsgObj.AddPair('role', 'user');
-    MsgObj.AddPair('content', ARequest.UserMessage);
-    MessagesArr.AddElement(MsgObj);
-    RequestObj.AddPair('messages', MessagesArr);
-    RequestObj.AddPair('temperature', TJSONNumber.Create(ARequest.Temperature));
-    if ARequest.MaxTokens > 0 then
-      RequestObj.AddPair('max_tokens', TJSONNumber.Create(ARequest.MaxTokens));
-    RequestObj.AddPair('stream', TJSONBool.Create(False));
-    RequestBody := RequestObj.ToJSON;
-  finally
-    RequestObj.Free;
-  end;
-
-  // HTTP call with retry
-  HTTP := THTTPClient.Create;
-  try
-    HTTP.ConnectionTimeout := 30000;
-    HTTP.ResponseTimeout := 60000;
-    HTTP.ContentType := 'application/json';
-    HTTP.CustomHeaders['Authorization'] := 'Bearer ' + GetApiKey;
-
-    Stopwatch := TStopwatch.StartNew;
-    for Retry := 0 to MAX_RETRIES do
-    begin
-      try
-        Stream := TStringStream.Create(RequestBody, TEncoding.UTF8);
-        try
-          ResponseStr := HTTP.Post(GetApiBaseUrl + '/chat/completions', Stream).ContentAsString(TEncoding.UTF8);
-        finally
-          Stream.Free;
-        end;
-        Break; // success — exit retry loop
-      except
-        on E: Exception do
-        begin
-          if Retry = MAX_RETRIES then
-          begin
-            // All retries exhausted
-            AMetrics.ProviderName := GetProviderName;
-            AMetrics.Model := ModelName;
-            AMetrics.Capability := CAPABILITY_LLM;
-            AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
-            AMetrics.ErrorCode := 'HTTP_ERROR';
-            AMetrics.RetryCount := Retry;
-            FLastMetrics := AMetrics;
-            Exit(False);
-          end;
-          Sleep(RETRY_DELAY_MS);
-        end;
-      end;
-    end;
-    Stopwatch.Stop;
-  finally
-    HTTP.Free;
-  end;
-
-  // Parse the OpenAI-compatible response
-  ResponseObj := TJSONObject.ParseJSONValue(ResponseStr) as TJSONObject;
-  if ResponseObj = nil then
+  // Build message array from request
+  SetLength(Messages, 0);
+  if Trim(ARequest.SystemPrompt) <> '' then
   begin
-    AMetrics.ErrorCode := 'JSON_PARSE_ERROR';
+    SetLength(Messages, Length(Messages) + 1);
+    Messages[High(Messages)] := TChatMessage.System(ARequest.SystemPrompt);
+  end;
+  SetLength(Messages, Length(Messages) + 1);
+  Messages[High(Messages)] := TChatMessage.User(ARequest.UserMessage);
+
+  MaxTokens := ARequest.MaxTokens;
+  Temperature := ARequest.Temperature;
+  if Temperature < 0 then
+    Temperature := 0.7;
+
+  Stopwatch := TStopwatch.StartNew;
+  try
+    ChatRes := LLM.ChatWithHistory(TierSmart, Messages, MaxTokens, Temperature);
+  except
+    on E: Exception do
+    begin
+      AMetrics.ProviderName := GetProviderName;
+      AMetrics.Model := ARequest.Model;
+      AMetrics.Capability := CAPABILITY_LLM;
+      AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
+      AMetrics.ErrorCode := 'LLM_CALL_ERROR';
+      AMetrics.RetryCount := 0;
+      FLastMetrics := AMetrics;
+      Exit(False);
+    end;
+  end;
+  Stopwatch.Stop;
+
+  if not ChatRes.Success then
+  begin
+    AMetrics.ProviderName := GetProviderName;
+    AMetrics.Model := ChatRes.ModelUsed;
+    AMetrics.Capability := CAPABILITY_LLM;
+    AMetrics.LatencyMs := ChatRes.DurationMs;
+    AMetrics.ErrorCode := ChatRes.ErrorCode;
+    if AMetrics.ErrorCode = '' then
+      AMetrics.ErrorCode := 'LLM_FAILED';
+    AMetrics.RetryCount := 0;
+    FLastMetrics := AMetrics;
     Exit(False);
   end;
-  try
-    // Extract content from choices[0].message.content
-    ChoicesArr := ResponseObj.GetValue<TJSONArray>('choices');
-    if (ChoicesArr = nil) or (ChoicesArr.Count = 0) then
+
+  // Map TChatResult → TChatCompletionResult
+  AResult.ResponseJson := ChatRes.Content;
+  AResult.FinishReason := ChatRes.FinishReason;
+  AResult.ValidationError := '';
+  AResult.RepairCount := 0;
+
+  // Schema validation + auto-repair when output schema is provided
+  if (Trim(ARequest.OutputSchemaJson) <> '') and
+     (ARequest.OutputSchemaJson <> '{}') then
+  begin
+    var SchemaResult := TJsonSchemaValidator.Validate(
+      ARequest.OutputSchemaJson, AResult.ResponseJson, True);
+    if SchemaResult.HasErrors then
     begin
-      AMetrics.ErrorCode := 'NO_CHOICES';
-      Exit(False);
+      AResult.ValidationError := string.Join('; ', SchemaResult.Errors);
+      AResult.RepairCount := SchemaResult.RepairCount;
     end;
-
-    ChoiceObj := ChoicesArr.Items[0] as TJSONObject;
-    MsgContent := ChoiceObj.GetValue<TJSONObject>('message');
-    if MsgContent = nil then
+    if SchemaResult.HasRepairs then
     begin
-      AMetrics.ErrorCode := 'NO_MESSAGE';
-      Exit(False);
-    end;
-
-    AResult.ResponseJson := MsgContent.GetValue('content').Value;
-    AResult.FinishReason := ChoiceObj.GetValue('finish_reason').Value;
-    AResult.ValidationError := '';
-    AResult.RepairCount := 0;
-
-    // Schema validation + auto-repair when output schema is provided
-    if (Trim(ARequest.OutputSchemaJson) <> '') and
-       (ARequest.OutputSchemaJson <> '{}') then
-    begin
-      var SchemaResult := TJsonSchemaValidator.Validate(
-        ARequest.OutputSchemaJson, AResult.ResponseJson, True);
-      if SchemaResult.HasErrors then
-      begin
-        AResult.ValidationError := string.Join('; ', SchemaResult.Errors);
-        AResult.RepairCount := SchemaResult.RepairCount;
-      end;
-      if SchemaResult.HasRepairs then
-      begin
-        AResult.NormalizedJson := SchemaResult.RepairedJson;
-        AResult.RepairCount := SchemaResult.RepairCount;
-      end
-      else
-        AResult.NormalizedJson := AResult.ResponseJson;
+      AResult.NormalizedJson := SchemaResult.RepairedJson;
+      AResult.RepairCount := SchemaResult.RepairCount;
     end
     else
       AResult.NormalizedJson := AResult.ResponseJson;
+  end
+  else
+    AResult.NormalizedJson := AResult.ResponseJson;
 
-    // Extract usage
-    UsageObj := ResponseObj.GetValue<TJSONObject>('usage');
-    if UsageObj <> nil then
-    begin
-      AMetrics.TokenUsage.PromptTokens := UsageObj.GetValue<Integer>('prompt_tokens');
-      AMetrics.TokenUsage.CompletionTokens := UsageObj.GetValue<Integer>('completion_tokens');
-      AMetrics.TokenUsage.TotalTokens := UsageObj.GetValue<Integer>('total_tokens');
-    end;
+  // Map metrics
+  AMetrics.ProviderName := GetProviderName;
+  AMetrics.Model := ChatRes.ModelUsed;
+  AMetrics.Capability := CAPABILITY_LLM;
+  AMetrics.LatencyMs := ChatRes.DurationMs;
+  AMetrics.TokenUsage.PromptTokens := ChatRes.PromptTokens;
+  AMetrics.TokenUsage.CompletionTokens := ChatRes.CompletionTokens;
+  AMetrics.TokenUsage.TotalTokens := ChatRes.TotalTokens;
+  AMetrics.RequestId := '';
+  AMetrics.ErrorCode := '';
+  AMetrics.RetryCount := 0;
 
-    AMetrics.ProviderName := GetProviderName;
-    AMetrics.Model := ResponseObj.GetValue('model').Value;
-    if AMetrics.Model = '' then
-      AMetrics.Model := ModelName;
-    AMetrics.Capability := CAPABILITY_LLM;
-    AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
-    AMetrics.RequestId := ResponseObj.GetValue('id').Value;
-    AMetrics.ErrorCode := '';
-    AMetrics.RetryCount := Retry;
-
-    FLastMetrics := AMetrics;
-    Result := True;
-  finally
-    ResponseObj.Free;
-  end;
+  FLastMetrics := AMetrics;
+  Result := True;
 end;
 
 function TStepFunLLMProvider.CallStubAPI(const ARequest: TChatCompletionRequest;
@@ -441,7 +356,7 @@ end;
 function TStepFunLLMProvider.ChatComplete(const ARequest: TChatCompletionRequest;
   out AResult: TChatCompletionResult; out AMetrics: TProviderRunMetrics): Boolean;
 begin
-  if HasApiKey then
+  if IsDeepBaseConfigured then
     Result := CallRealAPI(ARequest, AResult, AMetrics)
   else
     Result := CallStubAPI(ARequest, AResult, AMetrics);
@@ -1069,9 +984,7 @@ end;
 
 function TStepFunImageProvider.GetProviderStatus: TProviderStatus;
 begin
-  if not FKeyCheckDone then
-    HasKey;
-  if FHasApiKey then
+  if IsDeepBaseConfigured then
     Result := psOk
   else
     Result := psDegraded;
@@ -1087,23 +1000,13 @@ begin
   Result := ['realistic', 'anime', 'illustration', 'documentary'];
 end;
 
-function TStepFunImageProvider.GetStepPlanKey: string;
+function TStepFunImageProvider.IsDeepBaseConfigured: Boolean;
 begin
   try
-    Result := LoadSecret(SECRET_STEP_PLAN_KEY);
+    Result := LLMAdmin.IsConfigured;
   except
-    Result := '';
+    Result := False;
   end;
-end;
-
-function TStepFunImageProvider.HasKey: Boolean;
-begin
-  if not FKeyCheckDone then
-  begin
-    FHasApiKey := (Trim(GetStepPlanKey) <> '');
-    FKeyCheckDone := True;
-  end;
-  Result := FHasApiKey;
 end;
 
 function TStepFunImageProvider.GetOutputDir: string;
@@ -1115,115 +1018,108 @@ function TStepFunImageProvider.CallRealAPI(const ARequest: TImageGenRequest;
   out AResults: TArray<TImageGenResult>;
   out AMetrics: TProviderRunMetrics): Boolean;
 var
-  HTTP: THTTPClient;
-  RequestObj: TJSONObject;
-  RequestBody, ResponseStr: string;
-  ResponseObj: TJSONObject;
-  DataArr: TJSONArray;
-  DataObj: TJSONObject;
-  I: Integer;
+  Size: string;
+  ImgRes: TImageGenerationResult;
   Stopwatch: TStopwatch;
-  Retry: Integer;
   OutputDir: string;
+  OutputFile: string;
+  HTTP: THTTPClient;
+  Resp: IHTTPResponse;
+  FileStream: TFileStream;
 begin
   SetLength(AResults, 0);
 
   OutputDir := GetOutputDir;
   ForceDirectories(OutputDir);
 
-  RequestObj := TJSONObject.Create;
+  Size := Format('%dx%d', [ARequest.Width, ARequest.Height]);
+
+  Stopwatch := TStopwatch.StartNew;
   try
-    RequestObj.AddPair('model', 'step-image-edit-2');
-    RequestObj.AddPair('prompt', ARequest.Prompt);
-    if ARequest.NegativePrompt <> '' then
-      RequestObj.AddPair('negative_prompt', ARequest.NegativePrompt);
-    RequestObj.AddPair('size', Format('%dx%d', [ARequest.Width, ARequest.Height]));
-    RequestObj.AddPair('n', TJSONNumber.Create(ARequest.NumImages));
-    if ARequest.Style <> '' then
-      RequestObj.AddPair('style', ARequest.Style);
-    RequestBody := RequestObj.ToJSON;
-  finally
-    RequestObj.Free;
-  end;
-
-  HTTP := THTTPClient.Create;
-  try
-    HTTP.ConnectionTimeout := 30000;
-    HTTP.ResponseTimeout := 120000;
-    HTTP.ContentType := 'application/json';
-    HTTP.CustomHeaders['Authorization'] := 'Bearer ' + GetStepPlanKey;
-
-    Stopwatch := TStopwatch.StartNew;
-    for Retry := 0 to MAX_RETRIES do
+    ImgRes := LLM.GenerateImage(ARequest.Prompt, Size);
+  except
+    on E: Exception do
     begin
-      try
-        var ReqStream := TStringStream.Create(RequestBody, TEncoding.UTF8);
-        try
-          ResponseStr := HTTP.Post(STEPFUN_STEP_PLAN_URL + '/images/generations',
-            ReqStream).ContentAsString(TEncoding.UTF8);
-        finally
-          ReqStream.Free;
-        end;
-        Break;
-      except
-        if Retry = MAX_RETRIES then
-        begin
-          AMetrics.ErrorCode := 'HTTP_ERROR';
-          FLastMetrics := AMetrics;
-          Exit(False);
-        end;
-        Sleep(RETRY_DELAY_MS);
-      end;
-    end;
-    Stopwatch.Stop;
-
-    ResponseObj := TJSONObject.ParseJSONValue(ResponseStr) as TJSONObject;
-    if ResponseObj = nil then
-    begin
-      AMetrics.ErrorCode := 'JSON_PARSE_ERROR';
-      Exit(False);
-    end;
-    try
-      DataArr := ResponseObj.GetValue('data') as TJSONArray;
-      if (DataArr = nil) or (DataArr.Count = 0) then
-      begin
-        AMetrics.ErrorCode := 'NO_DATA';
-        Result := False;
-        Exit;
-      end;
-
-      SetLength(AResults, DataArr.Count);
-      for I := 0 to DataArr.Count - 1 do
-      begin
-        DataObj := DataArr.Items[I] as TJSONObject;
-        if DataObj = nil then
-          Continue;
-
-        AResults[I].OutputUri := Format('%s/img_%s_%d.png',
-          [OutputDir, NewUuidString, I + 1]);
-        AResults[I].Width := ARequest.Width;
-        AResults[I].Height := ARequest.Height;
-        AResults[I].Format := 'png';
-        AResults[I].Seed := 0;
-        DataObj.TryGetValue<Integer>('seed', AResults[I].Seed);
-        AResults[I].RevisedPrompt := DataObj.GetValue('revised_prompt').Value;
-        AResults[I].OutputSizeBytes := 0;
-      end;
-
       AMetrics.ProviderName := GetProviderName;
       AMetrics.Model := 'step-image-edit-2';
       AMetrics.Capability := CAPABILITY_IMAGE_GEN;
       AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
-      AMetrics.ErrorCode := '';
-      AMetrics.RetryCount := Retry;
+      AMetrics.ErrorCode := 'IMAGE_CALL_ERROR';
+      AMetrics.RetryCount := 0;
       FLastMetrics := AMetrics;
-      Result := True;
-    finally
-      ResponseObj.Free;
+      Exit(False);
     end;
-  finally
-    HTTP.Free;
   end;
+  Stopwatch.Stop;
+
+  if not ImgRes.Success then
+  begin
+    AMetrics.ProviderName := GetProviderName;
+    AMetrics.Model := ImgRes.ModelUsed;
+    AMetrics.Capability := CAPABILITY_IMAGE_GEN;
+    AMetrics.LatencyMs := ImgRes.DurationMs;
+    AMetrics.ErrorCode := ImgRes.ErrorCode;
+    if AMetrics.ErrorCode = '' then
+      AMetrics.ErrorCode := 'IMAGE_FAILED';
+    AMetrics.RetryCount := 0;
+    FLastMetrics := AMetrics;
+    Exit(False);
+  end;
+
+  // Download/save the image
+  SetLength(AResults, 1);
+  AResults[0].Width := ARequest.Width;
+  AResults[0].Height := ARequest.Height;
+  AResults[0].Format := 'png';
+  AResults[0].Seed := 0;
+  AResults[0].RevisedPrompt := ARequest.Prompt;
+  AResults[0].OutputSizeBytes := 0;
+
+  if ImgRes.ImageBase64 <> '' then
+  begin
+    // Base64 data — decode and save
+    OutputFile := Format('%s/img_%s.png', [OutputDir, NewUuidString]);
+    var Bytes := TNetEncoding.Base64.DecodeStringToBytes(ImgRes.ImageBase64);
+    TFile.WriteAllBytes(OutputFile, Bytes);
+    AResults[0].OutputUri := OutputFile;
+    AResults[0].OutputSizeBytes := Length(Bytes);
+  end
+  else if ImgRes.ImageUrl <> '' then
+  begin
+    // URL — download to local file
+    OutputFile := Format('%s/img_%s.png', [OutputDir, NewUuidString]);
+    try
+      HTTP := THTTPClient.Create;
+      try
+        FileStream := TFileStream.Create(OutputFile, fmCreate);
+        try
+          Resp := HTTP.Get(ImgRes.ImageUrl, FileStream);
+        finally
+          FileStream.Free;
+        end;
+        AResults[0].OutputUri := OutputFile;
+        AResults[0].OutputSizeBytes := TFile.GetSize(OutputFile);
+      finally
+        HTTP.Free;
+      end;
+    except
+      // Download failed — keep URL as-is
+      AResults[0].OutputUri := ImgRes.ImageUrl;
+    end;
+  end
+  else
+  begin
+    AResults[0].OutputUri := '';
+  end;
+
+  AMetrics.ProviderName := GetProviderName;
+  AMetrics.Model := ImgRes.ModelUsed;
+  AMetrics.Capability := CAPABILITY_IMAGE_GEN;
+  AMetrics.LatencyMs := ImgRes.DurationMs;
+  AMetrics.ErrorCode := '';
+  AMetrics.RetryCount := 0;
+  FLastMetrics := AMetrics;
+  Result := True;
 end;
 
 function TStepFunImageProvider.CallStubAPI(const ARequest: TImageGenRequest;
@@ -1260,7 +1156,7 @@ function TStepFunImageProvider.Generate(const ARequest: TImageGenRequest;
   out AResults: TArray<TImageGenResult>;
   out AMetrics: TProviderRunMetrics): Boolean;
 begin
-  if HasKey then
+  if IsDeepBaseConfigured then
     Result := CallRealAPI(ARequest, AResults, AMetrics)
   else
     Result := CallStubAPI(ARequest, AResults, AMetrics);
