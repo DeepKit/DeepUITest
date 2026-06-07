@@ -2,7 +2,9 @@
 
 ## 当前状态
 
-**2026-06-07**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
+**2026-06-07**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（Delphi 13.1 BDS 37.0，DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 + POC 3a/3b/3c 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通 + Remotion 渲染 + CDP 帧捕获 + FFmpeg 音频管线）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
+
+**当前焦点**: POC 3d — Delphi 13.1 运行时 + FireDAC PostgreSQL 连接验证 → POC 3e Worker 协议端到端
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -29,7 +31,7 @@ Chat（step-3.7-flash）/ Image（step-image-edit-2）/ TTS / ASR SSE 全连通�
 | 3a | Node.js + Remotion 环境 | ✅ | Remotion 4.0.473 渲染 1920x1080@30fps → H.264 MP4 成功（详情：history.md） |
 | 3b | Chrome CDP 帧捕获确定性 | ✅ | puppeteer-core 30 帧 1920x1080 全精确匹配（HSL 色相 0→360° 验证） |
 | 3c | FFmpeg 音频管线验证 | ✅ | 24k→48k + loudnorm 两 pass + AAC 192k 全通（发现 linear=true 会翻倍采样率，需 -ar 显式约束） |
-| 3d | Delphi 13.1 运行时 + DB2 连接 | 🔲 | `compile_test.bat` → `DeepFrames.exe` → FireDAC 连接 → CRUD 验证 |
+| 3d | Delphi 13.1 运行时 + DB2 连接 | 🔄 | `compile_test.bat` → `DeepFrames.exe` → FireDAC 连接 → CRUD 验证 |
 | 3e | Worker 协议 v0 端到端 | 🔲 | Delphi 主程序 → request.json → Node worker → progress → result → DB2 更新 |
 
 > 来源：`docs/ENGINEERING_HANDOFF.md` §5 POC 3 + `docs/review-report-2026-06-02-feasibility.md` §风险表
