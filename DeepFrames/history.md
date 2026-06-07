@@ -1,5 +1,95 @@
 # DeepFrames Development History
 
+## 2026-06-07 — POC 3b: Chrome CDP 帧捕获确定性验证通过
+
+来源：`tasks.md` §A（POC 3b）
+
+**验证方法**：puppeteer-core + 系统 Chrome headless，对 1920x1080 页面注入 JS style 变更模拟时间虚拟化，逐帧截图 + getComputedStyle 验证 RGB 值。
+
+**结果**：30/30 帧精确匹配（±0 tolerance，实测 RGB 完全等于预期值）。HSL 色相从 0°→360° 线性遍历，每帧 hue = frameNo × (360/30)。
+
+**关键技术发现**：
+1. `page.setContent()` + CSS `@keyframes` 动画 → `document.getAnimations()` 返回空数组（headless Chrome 不自动触发 CSS 动画）
+2. 直接 JS 操作 `element.style.background = hsl(...)` + 短暂等待 → 确定性渲染 ✅
+3. Remotion 底层使用 `document.timeline.currentTime` 注入（等同 `animation.currentTime = T`），本 POC 用更直接的 style 注入方式验证了相同的确定性保证
+
+**性能**：30 帧 × (evaluate + screenshot) ≈ 20s（含 20ms paint wait）。推算 5 分钟视频（9000 帧）≈ 100 分钟单线程，需 session chunking + 并发多 tab。
+
+**沙盒位置**：`poc/remotion-test/src/cdp-capture.ts` + `output/cdp-frames/`
+
+---
+
+## 2026-06-07 — POC 3c: FFmpeg 音频管线验证通过
+
+来源：`tasks.md` §A（POC 3c）
+
+**验证的管线**：TTS 24kHz WAV → resample 48kHz → loudnorm 两 pass → AAC 192kbps
+
+**步骤**：
+1. `ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -ar 24000 -ac 1 input_24k.wav` — 模拟 TTS 输出（24kHz mono WAV）
+2. `ffmpeg -i input_24k.wav -ar 48000 -ac 2 resampled_48k.wav` — 重采样至 48kHz stereo
+3. `ffmpeg -i resampled_48k.wav -af "loudnorm=I=-14:TP=-1:LRA=11:print_format=json" -f null /dev/null` — 第一遍分析
+4. `ffmpeg -i resampled_48k.wav -af "loudnorm=I=-14:TP=-1:LRA=11:measured_I=...:linear=true" -ar 48000 -c:a aac -b:a 192k output_final.m4a` — 第二 pass + AAC 编码
+
+**关键发现**：`loudnorm` + `linear=true` 会将内部采样率翻倍（48k → 96k）。必须显式指定 `-ar 48000` 以强制输出目标采样率。
+
+**输出验证**：AAC LC, 48kHz, stereo, 192kbps, 3.00s ✓
+
+**沙盒位置**：`poc/ffmpeg-test/`（input_24k.wav + resampled_48k.wav + output_final.m4a）
+
+---
+
+## 2026-06-07 — POC 3a: Node.js + Remotion 环境验证通过
+
+来源：`tasks.md` §A（POC 3a）
+
+**环境**：
+- Node.js v22.14.0 · npm 10.9.2 · TypeScript 5.x
+- Remotion 4.0.473（`remotion` + `@remotion/cli` + `@remotion/renderer`）
+- Chrome: 系统已安装 `C:/Program Files/Google/Chrome/Application/chrome.exe`（Remotion 自带 Chrome Headless Shell 下载超时，改用 `--browser-executable` 指向系统 Chrome）
+
+**验证结果**：
+- [x] `npm init` + Remotion 依赖安装（181 packages）✓
+- [x] TSX 入口 + Composition（`TestScene`, 1920x1080, 30fps, 60 frames）✓
+- [x] `remotion compositions` 列出组件 ✓
+- [x] `remotion render` 渲染出 `output/test-scene.mp4`（222KB）✓
+- [x] ffprobe 验证：H.264 High Profile, 1920x1080, 30fps, AAC 48kHz, "Made with Remotion 4.0.473" ✓
+
+**渲染性能**：60 frames / 8x concurrency ≈ 40s（含 bundle 1.5s + 渲染 + H.264 编码）。推算 5 分钟视频（9000 frames）≈ 5-8 分钟，符合 `04.video` 文档预期（10-18 分钟为含复杂动画的安全余量）。
+
+**关键技术决策**：
+- 使用 `--browser-executable` 指向系统 Chrome，绕过 Remotion 自带 Chrome Headless Shell 下载（在中国大陆网络环境下 storage.googleapis.com 可能缓慢/超时）
+- `--image-format jpeg --quality 85`：JPEG-95 在 `04.video` 文档中已论证为默认（PNG 81GB vs JPEG 19GB for 27000 frames）
+
+**许可状态**：Remotion 4.x 对个人 / ≤3 人营利组织免费（含商业用途）；超过 3 人需 Company License（$0.01/render, $100/月起）。POC 阶段属免费档；商业化需在 Phase 5 end 前完成许可审查（见 `tasks.md` §D）。
+
+**沙盒位置**：`poc/remotion-test/`（`src/index.ts` + `entry.tsx` + `Scene.tsx` + `output/test-scene.mp4`）
+
+---
+
+## 2026-06-07 — POC 2d: ASR SSE 端点验证通过
+
+来源：`tasks.md` §A（POC 2）
+
+**重大发现**：ASR SSE 使用 **Step Plan 端点** `/step_plan/v1/audio/asr/sse`（非 Standard 端点 `/v1`），使用 Step Plan Key。
+
+**验证结果**：
+- [x] ASR SSE（`stepaudio-2.5-asr`）连通 ✓ — Step Plan 端点
+- [x] 请求格式为嵌套 JSON：`{ "audio": { "data": "<base64>", "input": { ... } } }`
+- [x] SSE delta 事件格式：`{ "type": "transcript.text.delta", "delta": "词", "start_time": 320, "end_time": 400 }`
+- [x] 时间单位 ms，每个词一个 delta 事件
+
+**代码更新**：
+- `StepFun.pas`: ASR 请求端点从 `/v1/audio/asr/sse` 改为 `/step_plan/v1/audio/asr/sse`
+- `StepFun.pas`: ASR 请求格式改为嵌套 JSON（`audio.data` + `audio.input` + `audio.format`）
+- `StepFun.pas`: ASR SSE 解析改为匹配 `transcript.text.delta` / `transcript.text.done` 事件
+- `StepFun.pas`: 模型名更新 `step-3.7-flash`（默认）+ ASR `stepaudio-2.5-asr`
+- `02.api` 文档：双端点架构表、KEY RULES、ASR 章节全部更新
+
+**结论**：一个 Step Plan Key 即覆盖全部能力（Chat/TTS/ASR/Image），无需 Standard Key。
+
+---
+
 ## 2026-06-07 — POC 1 + POC 2 凭据注入与连通性验证
 
 来源：`tasks.md` §A（POC 验证）

@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-**2026-06-07**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 验证通过**（DB2 13 表创建成功 + StepFun Chat/Image API 连通）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
+**2026-06-07**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -12,56 +12,27 @@
 
 ### A. POC 验证（需真实环境）
 
-#### POC 1：DB2 PostgreSQL 连接验证 ✅ 已通过（2026-06-07）
+#### ✅ POC 1：DB2 PostgreSQL 连接验证（2026-06-07 通过）
 
-> 来源：`docs/ENGINEERING_HANDOFF.md` §5
-> 代码入口：`src/Persistence/DeepFrames.Persistence.Connection.pas` → `LoadProfile`
+PostgreSQL 13 表 + 16 索引创建完毕；FireDAC 编译通过。剩余：Repository 参数化查询端到端验证（需 Delphi 运行时）。详情：[history.md](history.md)
 
-凭据配置（已注入 `data/DeepFramesConfig.db`）：
+#### ✅ POC 2：StepFun API 连通性验证（2026-06-07 全项通过）
 
-| 字段 | 值 |
-|------|-----|
-| **Host** | `127.0.0.1` |
-| **Port** | `5432` |
-| **Database** | `DeepFramesData` |
-| **User** | `fuyi01` |
-| **Password** | `secret://deepframes/db2`（DPAPI 加密存于 Config.db） |
+Chat（step-3.7-flash）/ Image（step-image-edit-2）/ TTS / ASR SSE 全连通。一个 Step Plan Key 覆盖全部能力。详情：[history.md](history.md)
 
-验证结果：
-- [x] PostgreSQL 连接成功，13 表 + 16 索引创建完毕
-- [x] `TIMESTAMPTZ` 字段正常（`+08` 时区）
-- [x] 参数化查询工作正常（`PREPARE/EXECUTE`）
-- [x] Delphi FireDAC 连接验证 — 编译通过（0 Warning 0 Hint），含 `DeepBase/Features` 路径
-- [ ] Repository 参数化查询端到端验证（需 Delphi 运行时）
+#### POC 3：运行时环境验证（当前阶段）
 
-#### POC 2：StepFun API 连通性验证 ✅ 已通过（2026-06-07）
+环境状态：Node.js v22.14.0 ✓ · FFmpeg 7.1（libx264/libx265）✓ · Chrome ✓ · Delphi 13.1 ✓
 
-> 代码入口：`src/Provider/DeepFrames.Provider.StepFun.pas`
-> LLM/Image: 通过 DeepBase ILLMClient 配置
+| # | 验证项 | 状态 | 说明 |
+|---|--------|:----:|------|
+| 3a | Node.js + Remotion 环境 | ✅ | Remotion 4.0.473 渲染 1920x1080@30fps → H.264 MP4 成功（详情：history.md） |
+| 3b | Chrome CDP 帧捕获确定性 | ✅ | puppeteer-core 30 帧 1920x1080 全精确匹配（HSL 色相 0→360° 验证） |
+| 3c | FFmpeg 音频管线验证 | ✅ | 24k→48k + loudnorm 两 pass + AAC 192k 全通（发现 linear=true 会翻倍采样率，需 -ar 显式约束） |
+| 3d | Delphi 13.1 运行时 + DB2 连接 | 🔲 | `compile_test.bat` → `DeepFrames.exe` → FireDAC 连接 → CRUD 验证 |
+| 3e | Worker 协议 v0 端到端 | 🔲 | Delphi 主程序 → request.json → Node worker → progress → result → DB2 更新 |
 
-凭据配置（已注入 `data/DeepFramesConfig.db`）：
-
-| 字段 | 值 |
-|------|-----|
-| **Step Plan Key** | `secret://deepframes/stepfun/step_plan_key`（DPAPI 加密） |
-| **LLM Provider** | `stepfun` → `step-3.5-flash` / `step-3.7-flash` |
-| **Image Model** | `step-image-edit-2` |
-| **TTS Model** | `stepaudio-2.5-tts`（原始 HTTP，key via secret store） |
-| **ASR Model** | `stepaudio-2.5-asr`（`/v1` 端点，需 Standard Key） |
-
-验证结果：
-- [x] Chat Completion（`step-3.5-flash`）连通 ✓ — 支持 reasoning 模式（`message.reasoning` 字段）
-- [x] Image Generation（`step-image-edit-2`）连通 ✓ — 返回 URL 格式
-- [x] 9 个可用模型确认（`/models` endpoint）
-- [x] TTS（`stepaudio-2.5-tts`）连通 ✓ — `cixingnansheng` voice + `instruction` 参数均正常，输出 MP3 约 100KB/句
-- [ ] ASR SSE（`stepaudio-2.5-asr`）— Step Plan Key 在 `/v1` 端点触达但返回 402（quota exceeded），需 Standard Key 或充值
-- [x] 两套 Key 隔离确认 — Step Plan Key 可触达 `/v1` 端点但不互通（402 vs 401）
-- [ ] ASR SSE 实体验证：Delta 事件格式、时间戳字段路径、Done 标记、Error 格式
-
-#### POC 3：Worker 协议 v0（代码完成，需真实渲染）
-
-- [x] 协议代码完成（`TWorkerProtocol`，I3 测试 21 项全绿）
-- [ ] 真实 HyperFrames/Remotion worker 接入验证
+> 来源：`docs/ENGINEERING_HANDOFF.md` §5 POC 3 + `docs/review-report-2026-06-02-feasibility.md` §风险表
 
 #### P5.8：端到端视频链路验证
 
@@ -88,7 +59,7 @@
 - [x] `docs/07.platform` — H.264 编码参数（profile/level/preset/GOP/B-frames/pixel format/码率控制）
 - [x] `docs/11.e2e` — 镜头数澄清（126 字节选 → 9 shots；全文 3800 字 → 180-200 shots）
 - [x] `docs/08.quality` — 降级方案改为"模板化布局 + 字幕"（非纯色背景）
-- [ ] Chromium 帧捕获时序确定性验证 — 最高技术风险（`review-report` lines 26-44）— 需真实环境
+- [ ] Chromium 帧捕获时序确定性验证 — 最高技术风险（`review-report` lines 26-44）— 需真实环境 → 合并到 POC 3b
 
 ---
 
@@ -105,10 +76,11 @@
 - [x] 编译验证：0 Error / 0 Warning / 0 Hint（2026-06-06）
 - [x] 单元测试：55 tests，7 模块覆盖
 - [x] 集成测试：97 tests（I1-I5 全路径）
-- [ ] 端到端 chain 测试（需 DB2 连接）
+- [ ] 端到端 chain 测试（需 DB2 连接）→ 合并到 POC 3d
 - [x] EventLog → DeepBase.Log 真实接入（2026-06-05）
 - [x] 编译警告清零（2026-06-06）
 - [x] StepFun LLM/Image → DeepBase ILLMClient 委托重构（2026-06-06）
+- [x] ASR 端点修正：Standard → Step Plan（POC 2d 验证，2026-06-07）
 
 ---
 

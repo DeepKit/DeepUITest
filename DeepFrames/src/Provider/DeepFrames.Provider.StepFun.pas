@@ -74,14 +74,16 @@ type
   end;
 
   /// <summary>
-  /// StepFun ASR provider (stepfun-asr via /v1/audio/asr/sse).
-  /// SSE streaming: uses standard endpoint /v1, NOT /step_plan/v1.</summary>
+  /// StepFun ASR provider (stepaudio-2.5-asr via /step_plan/v1/audio/asr/sse).
+  /// SSE streaming: uses Step Plan endpoint (verified POC 2d, 2026-06-07).
+  /// Word-level timestamps come inside `delta` events as `start_time`/`end_time` (ms).
+  /// </summary>
   TStepFunASRProvider = class(TInterfacedObject, IDeepFramesASRProvider)
   private
     FLastMetrics: TProviderRunMetrics;
     FHasApiKey: Boolean;
     FKeyCheckDone: Boolean;
-    function GetStandardKey: string;
+    function GetStepPlanKey: string;
     function HasKey: Boolean;
     function CallRealAPI(const AAudioUri: string;
       out AResult: TAsrTranscriptionResult;
@@ -180,7 +182,7 @@ begin
   try
     Result := LLMAdmin.GetTierModels(TierSmart);
   except
-    Result := ['step-3.5-flash', 'step-3.7-flash'];
+    Result := ['step-3.7-flash', 'step-3.5-flash'];
   end;
 end;
 
@@ -208,7 +210,7 @@ begin
   try
     Obj.AddPair('schema_version', APP_SCHEMA_VERSION);
     Obj.AddPair('provider', PROVIDER_STEPFUN);
-    Obj.AddPair('model', 'step-3.5-flash');
+    Obj.AddPair('model', 'step-3.7-flash');
     Obj.AddPair('status', 'stub');
     Obj.AddPair('note', 'LLM provider not configured — using stub output');
     ShotsArr := TJSONArray.Create;
@@ -673,10 +675,10 @@ begin
   Result := [pcASR];
 end;
 
-function TStepFunASRProvider.GetStandardKey: string;
+function TStepFunASRProvider.GetStepPlanKey: string;
 begin
   try
-    Result := LoadSecret(SECRET_STANDARD_KEY);
+    Result := LoadSecret(SECRET_STEP_PLAN_KEY);
   except
     Result := '';
   end;
@@ -686,7 +688,7 @@ function TStepFunASRProvider.HasKey: Boolean;
 begin
   if not FKeyCheckDone then
   begin
-    FHasApiKey := (Trim(GetStandardKey) <> '');
+    FHasApiKey := (Trim(GetStepPlanKey) <> '');
     FKeyCheckDone := True;
   end;
   Result := FHasApiKey;
@@ -715,10 +717,9 @@ function TStepFunASRProvider.ParseDeltaData(const AData: string;
   var AWords: TArray<TAsrWordTimestamp>; var ADurationSec: Double): Boolean;
 var
   Obj: TJSONObject;
-  WordsArr: TJSONArray;
-  WordObj: TJSONObject;
-  I, OldLen: Integer;
-  StartMs, EndMs: Double;
+  DeltaText: string;
+  StartTimeMs, EndTimeMs: Int64;
+  OldLen: Integer;
 begin
   Result := False;
   if Trim(AData) = '' then
@@ -728,53 +729,28 @@ begin
   if Obj = nil then
     Exit;
   try
-    // Extract duration if present
-    if Obj.TryGetValue<Double>('duration_sec', ADurationSec) then
-      ; // already set
+    // SSE delta events use type='transcript.text.delta'
+    // Each delta carries: delta (text), start_time/end_time (ms)
+    DeltaText := Obj.GetValue('delta').Value;
+    if DeltaText = '' then
+      Exit;
 
-    // Extract word timestamps
-    WordsArr := Obj.GetValue('words') as TJSONArray;
-    if WordsArr = nil then
-    begin
-      // Try 'timestamps' key
-      WordsArr := Obj.GetValue('timestamps') as TJSONArray;
-    end;
+    StartTimeMs := 0;
+    EndTimeMs := 0;
+    Obj.TryGetValue<Int64>('start_time', StartTimeMs);
+    Obj.TryGetValue<Int64>('end_time', EndTimeMs);
 
-    if (WordsArr <> nil) and (WordsArr.Count > 0) then
-    begin
-      OldLen := Length(AWords);
-      SetLength(AWords, OldLen + WordsArr.Count);
-      for I := 0 to WordsArr.Count - 1 do
-      begin
-        WordObj := WordsArr.Items[I] as TJSONObject;
-        if WordObj = nil then
-          Continue;
+    OldLen := Length(AWords);
+    SetLength(AWords, OldLen + 1);
+    AWords[OldLen].Word := DeltaText;
+    AWords[OldLen].StartSec := StartTimeMs / 1000.0;
+    AWords[OldLen].EndSec := EndTimeMs / 1000.0;
+    AWords[OldLen].Confidence := 0.95;
 
-        AWords[OldLen + I].Word := WordObj.GetValue('word').Value;
-        if AWords[OldLen + I].Word = '' then
-          AWords[OldLen + I].Word := WordObj.GetValue('text').Value;
+    // Track max end_time as duration
+    if EndTimeMs / 1000.0 > ADurationSec then
+      ADurationSec := EndTimeMs / 1000.0;
 
-        // Timestamps may arrive in ms or seconds — normalize to seconds
-        StartMs := 0;
-        if WordObj.TryGetValue<Double>('start_sec', StartMs) then
-          AWords[OldLen + I].StartSec := StartMs
-        else if WordObj.TryGetValue<Double>('start_ms', StartMs) then
-          AWords[OldLen + I].StartSec := StartMs / 1000.0
-        else if WordObj.TryGetValue<Double>('start', StartMs) then
-          AWords[OldLen + I].StartSec := StartMs;
-
-        EndMs := 0;
-        if WordObj.TryGetValue<Double>('end_sec', EndMs) then
-          AWords[OldLen + I].EndSec := EndMs
-        else if WordObj.TryGetValue<Double>('end_ms', EndMs) then
-          AWords[OldLen + I].EndSec := EndMs / 1000.0
-        else if WordObj.TryGetValue<Double>('end', EndMs) then
-          AWords[OldLen + I].EndSec := EndMs;
-
-        AWords[OldLen + I].Confidence := 0.95;
-        WordObj.TryGetValue<Double>('confidence', AWords[OldLen + I].Confidence);
-      end;
-    end;
     Result := True;
   finally
     Obj.Free;
@@ -786,9 +762,10 @@ function TStepFunASRProvider.CallRealAPI(const AAudioUri: string;
   out AMetrics: TProviderRunMetrics): Boolean;
 var
   HTTP: THTTPClient;
-  RequestObj: TJSONObject;
+  AudioOuter, InputObj, TranscriptionObj, FormatObj: TJSONObject;
   RequestBody: string;
   AudioBytes: TBytes;
+  AudioExt: string;
   ResponseStr: string;
   Stream: TStringStream;
   Lines: TArray<string>;
@@ -811,18 +788,37 @@ begin
     Exit(False);
   end;
 
-  // Delphi 12.1+: TFile.ReadAllBytes is preferred over TBytesStream
   AudioBytes := TFile.ReadAllBytes(AAudioUri);
 
-  // Build request with Base64 audio
-  RequestObj := TJSONObject.Create;
+  // Detect format from extension
+  AudioExt := LowerCase(TPath.GetExtension(AAudioUri).Replace('.', ''));
+  if (AudioExt <> 'mp3') and (AudioExt <> 'wav') and (AudioExt <> 'ogg') then
+    AudioExt := 'mp3'; // default fallback
+
+  // Build nested JSON: { audio: { data, input: { transcription, format } } }
+  TranscriptionObj := TJSONObject.Create;
+  TranscriptionObj.AddPair('language', 'zh');
+  TranscriptionObj.AddPair('model', 'stepaudio-2.5-asr');
+  TranscriptionObj.AddPair('enable_itn', TJSONBool.Create(True));
+  TranscriptionObj.AddPair('enable_timestamp', TJSONBool.Create(True));
+
+  FormatObj := TJSONObject.Create;
+  FormatObj.AddPair('type', AudioExt);
+
+  InputObj := TJSONObject.Create;
+  InputObj.AddPair('transcription', TranscriptionObj);
+  InputObj.AddPair('format', FormatObj);
+
+  AudioOuter := TJSONObject.Create;
+  AudioOuter.AddPair('data', TNetEncoding.Base64.EncodeBytesToString(AudioBytes));
+  AudioOuter.AddPair('input', InputObj);
+
+  var RootObj := TJSONObject.Create;
   try
-    RequestObj.AddPair('audio', TNetEncoding.Base64.EncodeBytesToString(AudioBytes));
-    RequestObj.AddPair('enable_timestamp', TJSONBool.Create(True));
-    RequestObj.AddPair('model', 'stepfun-asr');
-    RequestBody := RequestObj.ToJSON;
+    RootObj.AddPair('audio', AudioOuter);
+    RequestBody := RootObj.ToJSON;
   finally
-    RequestObj.Free;
+    RootObj.Free;
   end;
 
   // HTTP call with SSE stream parsing
@@ -831,8 +827,8 @@ begin
     HTTP.ConnectionTimeout := 30000;
     HTTP.ResponseTimeout := 120000;
     HTTP.ContentType := 'application/json';
-    HTTP.CustomHeaders['Authorization'] := 'Bearer ' + GetStandardKey;
-    // ASR SSE uses /v1 endpoint, NOT /step_plan/v1
+    HTTP.CustomHeaders['Authorization'] := 'Bearer ' + GetStepPlanKey;
+    // ASR SSE uses Step Plan endpoint (verified POC 2d)
     HTTP.CustomHeaders['Accept'] := 'text/event-stream';
 
     Stopwatch := TStopwatch.StartNew;
@@ -841,13 +837,13 @@ begin
       try
         Stream := TStringStream.Create(RequestBody, TEncoding.UTF8);
         try
-          ResponseStr := HTTP.Post(STEPFUN_STANDARD_URL + '/audio/asr/sse',
+          ResponseStr := HTTP.Post(STEPFUN_STEP_PLAN_URL + '/audio/asr/sse',
             Stream).ContentAsString(TEncoding.UTF8);
         finally
           Stream.Free;
         end;
 
-        // Parse SSE response
+        // Parse SSE response — events use type field in JSON data
         Lines := ResponseStr.Split([#10]);
         LastEventType := '';
         for Line in Lines do
@@ -862,22 +858,30 @@ begin
 
             if SSEData <> '' then
             begin
-              if SameText(LastEventType, 'delta') or (LastEventType = '') then
+              // SSE events carry type in JSON payload:
+              //   transcript.text.delta → word-level text + timestamps
+              //   transcript.text.done  → full text
+              //   error                 → error message
+              if SSEData.Contains('transcript.text.delta') or
+                 SSEData.Contains('"delta"') then
                 ParseDeltaData(SSEData, AllWords, DurationSec)
-              else if SameText(LastEventType, 'done') then
+              else if SSEData.Contains('transcript.text.done') then
               begin
-                // Final result — duration may be in done event
+                // Final result — extract text for verification
                 if DurationSec = 0 then
                 begin
                   var DoneObj := TJSONObject.ParseJSONValue(SSEData) as TJSONObject;
                   if DoneObj <> nil then
                   begin
-                    DoneObj.TryGetValue<Double>('duration_sec', DurationSec);
+                    var EndTime: Int64 := 0;
+                    DoneObj.TryGetValue<Int64>('end_time', EndTime);
+                    if EndTime > 0 then
+                      DurationSec := EndTime / 1000.0;
                     DoneObj.Free;
                   end;
                 end;
               end
-              else if SameText(LastEventType, 'error') then
+              else if SSEData.Contains('"error"') then
               begin
                 AMetrics.ErrorCode := 'ASR_ERROR_EVENT';
                 AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
@@ -895,7 +899,7 @@ begin
           if Retry = MAX_RETRIES then
           begin
             AMetrics.ProviderName := GetProviderName;
-            AMetrics.Model := 'stepfun-asr';
+            AMetrics.Model := 'stepaudio-2.5-asr';
             AMetrics.Capability := CAPABILITY_ASR;
             AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
             AMetrics.ErrorCode := 'HTTP_ERROR';
@@ -917,7 +921,7 @@ begin
   AResult.Words := AllWords;
 
   AMetrics.ProviderName := GetProviderName;
-  AMetrics.Model := 'stepfun-asr';
+  AMetrics.Model := 'stepaudio-2.5-asr';
   AMetrics.Capability := CAPABILITY_ASR;
   AMetrics.LatencyMs := Integer(Stopwatch.ElapsedMilliseconds);
   AMetrics.TokenUsage := Default(TTokenUsage);
@@ -948,7 +952,7 @@ begin
   end;
 
   AMetrics.ProviderName := GetProviderName;
-  AMetrics.Model := 'stepfun-asr';
+  AMetrics.Model := 'stepaudio-2.5-asr';
   AMetrics.Capability := CAPABILITY_ASR;
   AMetrics.LatencyMs := 0;
   AMetrics.TokenUsage := Default(TTokenUsage);

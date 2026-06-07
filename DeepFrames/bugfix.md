@@ -1,5 +1,35 @@
 # DeepFrames Bugfix Log
 
+## 2026-06-07 — ASR 端点配置错误（Standard → Step Plan）
+
+**严重性**: P1 (ASR 功能不可用)
+**发现方式**: POC 2d ASR SSE 验证
+
+**现象**: ASR 使用 Standard 端点 `/v1/audio/asr/sse` + Standard Key，返回 402（quota exceeded）。
+
+**根因**: 文档错误 — ASR 实际支持 Step Plan 端点 `/step_plan/v1/audio/asr/sse`，且使用 Step Plan Key。请求格式不是扁平 JSON，而是嵌套格式：
+```json
+{
+  "audio": {
+    "data": "<base64>",
+    "input": {
+      "transcription": { "language": "zh", "model": "stepaudio-2.5-asr", "enable_timestamp": true },
+      "format": { "type": "mp3" }
+    }
+  }
+}
+```
+
+**修复**:
+- `StepFun.pas`: ASR 端点从 `/v1/audio/asr/sse` 改为 `/step_plan/v1/audio/asr/sse`
+- `StepFun.pas`: 请求格式改为嵌套 JSON
+- `StepFun.pas`: SSE 事件解析改为 `transcript.text.delta` / `transcript.text.done`
+- `02.api` 文档：双端点架构表 + ASR 章节全面修正
+
+**影响**: 一个 Step Plan Key 现覆盖全部能力（Chat/TTS/ASR/Image），无需 Standard Key。
+
+---
+
 ## 2026-06-07 — StepFun 模型 ID 错误
 
 **严重性**: P1 (API 调用 404，功能完全不可用)
