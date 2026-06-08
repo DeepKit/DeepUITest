@@ -1,5 +1,39 @@
 # DeepFrames Development History
 
+## 2026-06-08 — POC 3d: Delphi 13.1 运行时 + DB2 连接验证通过
+
+来源：`tasks.md` POC 3d
+
+**SmokeTest 结果**: 28/28 PASS — Delphi 13.1 (BDS 37.0) dcc64 + FireDAC + PostgreSQL DeepFramesData
+
+### 验证项目
+
+| 测试 | 结果 | 说明 |
+|------|:---:|------|
+| Test 0: DeepBase.InitializeOrRaise | ✅ | RootPath + ConfigDB 自发现 |
+| Test 0: TDeepFramesBootstrap.RegisterServices | ✅ | 服务注册 + 连接池配置 |
+| Test 1: DB2 PG Connection (SELECT 1) | ✅ | FireDAC + libpq.dll 连接成功 |
+| Test 2: Migration Execution | ✅ | 6 migrations 已应用，6 skipped |
+| Test 3: Table Existence (13 tables) | ✅ | deepframes_project ~ deepframes_model_binding 全部存在 |
+| Test 4: TIMESTAMPTZ Round-Trip | ✅ | diff < 5s |
+| Test 5: CRUD Round-Trip (8 sub-tests) | ✅ | Project / ContentUnit / SourceDocument / Job / JobStep INSERT+SELECT+UPDATE |
+| Test 6: Connection Pool Reuse | ✅ | 多连接并发正常 |
+
+### 发现并修复的问题
+
+1. **Connection.pas**: implementation uses 重复 `FireDAC.Comp.Client`（interface 已声明），只影响 -CC 控制台编译，GUI 编译不受影响
+2. **SmokeTest.dpr CRUD**: Repository 的 `::uuid` 类型转换在 FireDAC 参数化查询中不兼容，改为 raw TFDQuery 直接测试
+3. **DB2.VendorLib**: 需在 ConfigDB 中显式设置 `libpq.dll` 路径（`D:\Program Files\PostgreSQL\15\bin\libpq.dll`）
+
+### 环境
+
+- Delphi 13.1 (BDS 37.0) dcc64, 0 Error / 0 Warning
+- PostgreSQL 15.13 @ 127.0.0.1:5432, user fuyi01, DB DeepFramesData
+- 6 migration scripts → 33 张表
+- 密钥: DPAPI 加密存储于 ConfigDB，运行时自动解密
+
+---
+
 ## 2026-06-07 — POC 3b: Chrome CDP 帧捕获确定性验证通过
 
 来源：`tasks.md` §A（POC 3b）

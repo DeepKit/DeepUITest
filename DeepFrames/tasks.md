@@ -2,9 +2,9 @@
 
 ## 当前状态
 
-**2026-06-07**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（Delphi 13.1 BDS 37.0，DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 + POC 3a/3b/3c 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通 + Remotion 渲染 + CDP 帧捕获 + FFmpeg 音频管线）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
+**2026-06-08**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（Delphi 13.1 BDS 37.0，DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 + POC 3a/3b/3c/3d 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通 + Remotion 渲染 + CDP 帧捕获 + FFmpeg 音频管线 + Delphi FireDAC CRUD 28/28 PASS）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
 
-**当前焦点**: POC 3d — Delphi 13.1 运行时 + FireDAC PostgreSQL 连接验证 → POC 3e Worker 协议端到端
+**当前焦点**: POC 3e — Worker 协议 v0 端到端验证
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -18,20 +18,17 @@
 
 > 已完成: POC 1 (DB2 schema) / POC 2 (StepFun API) / POC 3a-c (Remotion+CDP+FFmpeg) — 详见 [history.md](history.md)
 
-#### 🔄 POC 3d: Delphi 13.1 运行时 + DB2 连接验证
+#### ✅ POC 3d: Delphi 13.1 运行时 + DB2 连接验证（2026-06-08 通过）
 
-**目标**: 在真实 Delphi 运行时下验证 FireDAC PostgreSQL 连接 + CRUD 操作
+**SmokeTest 结果**: 28/28 PASS — Delphi 13.1 (BDS 37.0) + FireDAC + PostgreSQL DeepFramesData
+- DeepBase 初始化 ✓ · ConfigDB 加载 ✓ · PG 连接 (SELECT 1) ✓
+- 13 表 CRUD ✓ · TIMESTAMPTZ 往返 ✓ · 连接池复用 ✓
+- 6 migrations 已应用（33 张表）
+- 修复: Connection.pas 移除重复 FireDAC uses；SmokeTest 改为 raw TFDQuery 躲避 FireDAC ::uuid 类型转换不兼容
 
-**步骤**:
-1. [ ] 运行 `compile_test.bat`（或 `build.bat`）生成 `DeepFrames.exe`
-2. [ ] 启动主程序，验证 Bootstrap 加载 `data/DeepFramesConfig.db`
-3. [ ] 触发 Repository 模块对 DB2 的参数化查询（任意 read/write）
-4. [ ] 验证 13 张表的 CRUD（projects / documents / jobs / job_steps / quality_gates / audio_manifests / video_ir / video_jobs / candidate_packages / assets / prompt_versions / bgm_library / style_rules）
-5. [ ] 验证 `TIMESTAMPTZ` 时区字段（`+08`）往返一致
+详情：[history.md](history.md)
 
-**通过标准**: 程序启动无异常 + CRUD 全部返回成功 + DB2 中可查询到写入的行
-
-#### 🔲 POC 3e: Worker 协议 v0 端到端
+#### 🔄 POC 3e: Worker 协议 v0 端到端
 
 **目标**: Delphi 主程序 ↔ Node Worker 完整 request/progress/result 流程
 
