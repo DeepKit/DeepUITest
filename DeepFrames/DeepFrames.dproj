@@ -1,14 +1,14 @@
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
-        <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+        <ProjectGuid>{2B92013D-8111-48AB-817C-1BA0387C49E0}</ProjectGuid>
         <MainSource>src\DeepFrames.dpr</MainSource>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
         <ProjectName Condition="'$(ProjectName)'==''">DeepFrames</ProjectName>
-        <TargetedPlatforms>3</TargetedPlatforms>
+        <TargetedPlatforms>2</TargetedPlatforms>
         <AppType>Application</AppType>
         <FrameworkType>VCL</FrameworkType>
-        <ProjectVersion>20.2</ProjectVersion>
+        <ProjectVersion>20.4</ProjectVersion>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
@@ -144,27 +144,29 @@
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.VideoChain.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.PackageChain.pas"/>
         <DCCReference Include="src\Workflow\DeepFrames.Workflow.ExtensionChain.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.ReadinessChecker.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.VideoCompiler.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.GateEvaluator.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.StyleKeeper.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.Resume.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.PromptVersion.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.EventLog.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.AudioProcessor.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.SubtitleEngine.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.AssetRetention.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.PackageExporter.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.WorkerProtocol.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.DocumentExport.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.BgmManager.pas"/>
-        <DCCReference Include="src\Workflow\DeepFrames.Workflow.ArtifactOSBridge.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Types.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Intf.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Registry.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.Fake.pas"/>
         <DCCReference Include="src\Provider\DeepFrames.Provider.StepFun.pas"/>
-        <DCCReference Include="src\UI\DeepFrames.UI.MainForm.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.VideoCompiler.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.GateEvaluator.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.StyleKeeper.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.Resume.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.PromptVersion.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.AudioProcessor.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.SubtitleEngine.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.AssetRetention.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.PackageExporter.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.WorkerProtocol.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.ReadinessChecker.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.DocumentExport.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.BgmManager.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.ArtifactOSBridge.pas"/>
+        <DCCReference Include="src\Workflow\DeepFrames.Workflow.EventLog.pas"/>
+        <DCCReference Include="src\UI\DeepFrames.UI.MainForm.pas">
+            <Form>MainForm</Form>
+        </DCCReference>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

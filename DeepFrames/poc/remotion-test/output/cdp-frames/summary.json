@@ -1,0 +1,459 @@
+{
+  "fps": 30,
+  "frameCount": 30,
+  "matched": 30,
+  "total": 30,
+  "allMatched": true,
+  "results": [
+    {
+      "frameNo": 0,
+      "virtualTimeMs": 0,
+      "pixelRgb": [
+        255,
+        0,
+        0
+      ],
+      "expectedRgb": [
+        255,
+        0,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 1,
+      "virtualTimeMs": 33.333333333333336,
+      "pixelRgb": [
+        255,
+        51,
+        0
+      ],
+      "expectedRgb": [
+        255,
+        51,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 2,
+      "virtualTimeMs": 66.66666666666667,
+      "pixelRgb": [
+        255,
+        102,
+        0
+      ],
+      "expectedRgb": [
+        255,
+        102,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 3,
+      "virtualTimeMs": 100,
+      "pixelRgb": [
+        255,
+        153,
+        0
+      ],
+      "expectedRgb": [
+        255,
+        153,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 4,
+      "virtualTimeMs": 133.33333333333334,
+      "pixelRgb": [
+        255,
+        204,
+        0
+      ],
+      "expectedRgb": [
+        255,
+        204,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 5,
+      "virtualTimeMs": 166.66666666666666,
+      "pixelRgb": [
+        255,
+        255,
+        0
+      ],
+      "expectedRgb": [
+        255,
+        255,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 6,
+      "virtualTimeMs": 200,
+      "pixelRgb": [
+        204,
+        255,
+        0
+      ],
+      "expectedRgb": [
+        204,
+        255,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 7,
+      "virtualTimeMs": 233.33333333333334,
+      "pixelRgb": [
+        153,
+        255,
+        0
+      ],
+      "expectedRgb": [
+        153,
+        255,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 8,
+      "virtualTimeMs": 266.6666666666667,
+      "pixelRgb": [
+        102,
+        255,
+        0
+      ],
+      "expectedRgb": [
+        102,
+        255,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 9,
+      "virtualTimeMs": 300,
+      "pixelRgb": [
+        51,
+        255,
+        0
+      ],
+      "expectedRgb": [
+        51,
+        255,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 10,
+      "virtualTimeMs": 333.3333333333333,
+      "pixelRgb": [
+        0,
+        255,
+        0
+      ],
+      "expectedRgb": [
+        0,
+        255,
+        0
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 11,
+      "virtualTimeMs": 366.6666666666667,
+      "pixelRgb": [
+        0,
+        255,
+        51
+      ],
+      "expectedRgb": [
+        0,
+        255,
+        51
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 12,
+      "virtualTimeMs": 400,
+      "pixelRgb": [
+        0,
+        255,
+        102
+      ],
+      "expectedRgb": [
+        0,
+        255,
+        102
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 13,
+      "virtualTimeMs": 433.3333333333333,
+      "pixelRgb": [
+        0,
+        255,
+        153
+      ],
+      "expectedRgb": [
+        0,
+        255,
+        153
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 14,
+      "virtualTimeMs": 466.6666666666667,
+      "pixelRgb": [
+        0,
+        255,
+        204
+      ],
+      "expectedRgb": [
+        0,
+        255,
+        204
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 15,
+      "virtualTimeMs": 500,
+      "pixelRgb": [
+        0,
+        255,
+        255
+      ],
+      "expectedRgb": [
+        0,
+        255,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 16,
+      "virtualTimeMs": 533.3333333333334,
+      "pixelRgb": [
+        0,
+        204,
+        255
+      ],
+      "expectedRgb": [
+        0,
+        204,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 17,
+      "virtualTimeMs": 566.6666666666666,
+      "pixelRgb": [
+        0,
+        153,
+        255
+      ],
+      "expectedRgb": [
+        0,
+        153,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 18,
+      "virtualTimeMs": 600,
+      "pixelRgb": [
+        0,
+        102,
+        255
+      ],
+      "expectedRgb": [
+        0,
+        102,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 19,
+      "virtualTimeMs": 633.3333333333334,
+      "pixelRgb": [
+        0,
+        51,
+        255
+      ],
+      "expectedRgb": [
+        0,
+        51,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 20,
+      "virtualTimeMs": 666.6666666666666,
+      "pixelRgb": [
+        0,
+        0,
+        255
+      ],
+      "expectedRgb": [
+        0,
+        0,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 21,
+      "virtualTimeMs": 700,
+      "pixelRgb": [
+        51,
+        0,
+        255
+      ],
+      "expectedRgb": [
+        51,
+        0,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 22,
+      "virtualTimeMs": 733.3333333333334,
+      "pixelRgb": [
+        102,
+        0,
+        255
+      ],
+      "expectedRgb": [
+        102,
+        0,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 23,
+      "virtualTimeMs": 766.6666666666666,
+      "pixelRgb": [
+        153,
+        0,
+        255
+      ],
+      "expectedRgb": [
+        153,
+        0,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 24,
+      "virtualTimeMs": 800,
+      "pixelRgb": [
+        204,
+        0,
+        255
+      ],
+      "expectedRgb": [
+        204,
+        0,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 25,
+      "virtualTimeMs": 833.3333333333334,
+      "pixelRgb": [
+        255,
+        0,
+        255
+      ],
+      "expectedRgb": [
+        255,
+        0,
+        255
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 26,
+      "virtualTimeMs": 866.6666666666666,
+      "pixelRgb": [
+        255,
+        0,
+        204
+      ],
+      "expectedRgb": [
+        255,
+        0,
+        204
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 27,
+      "virtualTimeMs": 900,
+      "pixelRgb": [
+        255,
+        0,
+        153
+      ],
+      "expectedRgb": [
+        255,
+        0,
+        153
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 28,
+      "virtualTimeMs": 933.3333333333334,
+      "pixelRgb": [
+        255,
+        0,
+        102
+      ],
+      "expectedRgb": [
+        255,
+        0,
+        102
+      ],
+      "match": true
+    },
+    {
+      "frameNo": 29,
+      "virtualTimeMs": 966.6666666666666,
+      "pixelRgb": [
+        255,
+        0,
+        51
+      ],
+      "expectedRgb": [
+        255,
+        0,
+        51
+      ],
+      "match": true
+    }
+  ]
+}

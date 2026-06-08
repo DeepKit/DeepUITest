@@ -12,77 +12,65 @@
 
 ## 下一步
 
-### A. POC 验证（需真实环境）
-
-#### ✅ POC 1：DB2 PostgreSQL 连接验证（2026-06-07 通过）
-
-PostgreSQL 13 表 + 16 索引创建完毕；FireDAC 编译通过。剩余：Repository 参数化查询端到端验证（需 Delphi 运行时）。详情：[history.md](history.md)
-
-#### ✅ POC 2：StepFun API 连通性验证（2026-06-07 全项通过）
-
-Chat（step-3.7-flash）/ Image（step-image-edit-2）/ TTS / ASR SSE 全连通。一个 Step Plan Key 覆盖全部能力。详情：[history.md](history.md)
-
-#### POC 3：运行时环境验证（当前阶段）
+### POC 3：运行时环境验证（当前阶段）
 
 环境状态：Node.js v22.14.0 ✓ · FFmpeg 7.1（libx264/libx265）✓ · Chrome ✓ · Delphi 13.1 ✓
 
-| # | 验证项 | 状态 | 说明 |
-|---|--------|:----:|------|
-| 3a | Node.js + Remotion 环境 | ✅ | Remotion 4.0.473 渲染 1920x1080@30fps → H.264 MP4 成功（详情：history.md） |
-| 3b | Chrome CDP 帧捕获确定性 | ✅ | puppeteer-core 30 帧 1920x1080 全精确匹配（HSL 色相 0→360° 验证） |
-| 3c | FFmpeg 音频管线验证 | ✅ | 24k→48k + loudnorm 两 pass + AAC 192k 全通（发现 linear=true 会翻倍采样率，需 -ar 显式约束） |
-| 3d | Delphi 13.1 运行时 + DB2 连接 | 🔄 | `compile_test.bat` → `DeepFrames.exe` → FireDAC 连接 → CRUD 验证 |
-| 3e | Worker 协议 v0 端到端 | 🔲 | Delphi 主程序 → request.json → Node worker → progress → result → DB2 更新 |
+> 已完成: POC 1 (DB2 schema) / POC 2 (StepFun API) / POC 3a-c (Remotion+CDP+FFmpeg) — 详见 [history.md](history.md)
 
-> 来源：`docs/ENGINEERING_HANDOFF.md` §5 POC 3 + `docs/review-report-2026-06-02-feasibility.md` §风险表
+#### 🔄 POC 3d: Delphi 13.1 运行时 + DB2 连接验证
 
-#### P5.8：端到端视频链路验证
+**目标**: 在真实 Delphi 运行时下验证 FireDAC PostgreSQL 连接 + CRUD 操作
 
-- [ ] **P5.8** 验证 15 分钟以内视频完整生成链路（需 HyperFrames/FFmpeg 真实环境）
+**步骤**:
+1. [ ] 运行 `compile_test.bat`（或 `build.bat`）生成 `DeepFrames.exe`
+2. [ ] 启动主程序，验证 Bootstrap 加载 `data/DeepFramesConfig.db`
+3. [ ] 触发 Repository 模块对 DB2 的参数化查询（任意 read/write）
+4. [ ] 验证 13 张表的 CRUD（projects / documents / jobs / job_steps / quality_gates / audio_manifests / video_ir / video_jobs / candidate_packages / assets / prompt_versions / bgm_library / style_rules）
+5. [ ] 验证 `TIMESTAMPTZ` 时区字段（`+08`）往返一致
+
+**通过标准**: 程序启动无异常 + CRUD 全部返回成功 + DB2 中可查询到写入的行
+
+#### 🔲 POC 3e: Worker 协议 v0 端到端
+
+**目标**: Delphi 主程序 ↔ Node Worker 完整 request/progress/result 流程
+
+**步骤**:
+1. [ ] Delphi 主程序生成 `request.json`（含 TaskType、WorkDir、Payload）
+2. [ ] 启动 Node Worker 子进程（`CreateProcess`）
+3. [ ] Worker 读取 request，执行（如 Remotion 渲染）
+4. [ ] Worker 写 `progress.json`（heartbeat + 百分比）
+5. [ ] Worker 写 `result.json`（成功/失败 + 输出文件路径）
+6. [ ] Delphi 主程序读取 result，更新 DB2 job_steps
+
+**通过标准**: 全链路无错误 + DB2 job_steps 状态正确转换（running → succeeded/failed）
 
 ---
 
-### B. 未完成 Feature（代码侧）
+### 后续验证
+
+- [ ] **P5.8** 端到端视频链路验证（15 分钟以内视频完整生成链路 — 需 HyperFrames/FFmpeg 真实环境）
+- [ ] 端到端 chain 测试（合并到 POC 3d 后验证 — DocumentChain + AgentChain + AudioChain + VideoChain）
+- [ ] Chromium 帧捕获时序确定性验证（合并到 POC 3b 后续 deep-dive）
+- [ ] Bilibili 候选包端到端验证（cover + title + description + tags + quality + manifest）— 待 P5.8 后
+
+---
+
+## 未完成 Feature
 
 | Phase | 项 | 说明 | 状态 |
 |-------|-----|------|------|
-| P5 | 第 9 项 | Bilibili 候选包端到端验证（cover + title + description + tags + quality + manifest） | 待 P5.8 后验证 |
+| P5 第 9 项 | Bilibili 候选包 | 端到端导出验证 | 待 P5.8 后验证 |
 | P7.1 | 商业化打包 | 授权/许可/销售打包（`docs/10.dev-roadmap:159`） | 未开始 |
+| P7.8 | H.264 专利许可审查 | `docs/16.legal-法律合规-legal-compliance.md:20` | 未开始 |
 | P7.9 | DB3 多机协作 | 多机器协作架构（`docs/10.dev-roadmap:158`） | 未开始 |
 
 ---
 
-### C. 文档缺口（来自可行性评审）
+## 法律/商业前置条件
 
-> 来源：`docs/review-report-2026-06-02-feasibility.md`
-
-- [x] `docs/04.video` — 帧捕获实现细节（时间虚拟化 + session 分块 + JPEG vs PNG + 确定性验证）
-- [x] `docs/05.audio` — `loudnorm` 两 pass（已存在于 lines 242-247）
-- [x] `docs/07.platform` — H.264 编码参数（profile/level/preset/GOP/B-frames/pixel format/码率控制）
-- [x] `docs/11.e2e` — 镜头数澄清（126 字节选 → 9 shots；全文 3800 字 → 180-200 shots）
-- [x] `docs/08.quality` — 降级方案改为"模板化布局 + 字幕"（非纯色背景）
-- [ ] Chromium 帧捕获时序确定性验证 — 最高技术风险（`review-report` lines 26-44）— 需真实环境 → 合并到 POC 3b
-
----
-
-### D. 法律/商业前置条件
-
-- [ ] **P7.8** H.264 专利许可审查（`docs/16.legal-法律合规-legal-compliance.md:20`）
 - [ ] HyperFrames 依赖许可证审查（deadline: Phase 5 end）
-- [ ] Remotion 商业许可证审查（如采用）
-
----
-
-### E. 技术债务
-
-- [x] 编译验证：0 Error / 0 Warning / 0 Hint（2026-06-06）
-- [x] 单元测试：55 tests，7 模块覆盖
-- [x] 集成测试：97 tests（I1-I5 全路径）
-- [ ] 端到端 chain 测试（需 DB2 连接）→ 合并到 POC 3d
-- [x] EventLog → DeepBase.Log 真实接入（2026-06-05）
-- [x] 编译警告清零（2026-06-06）
-- [x] StepFun LLM/Image → DeepBase ILLMClient 委托重构（2026-06-06）
-- [x] ASR 端点修正：Standard → Step Plan（POC 2d 验证，2026-06-07）
+- [ ] Remotion 商业许可证审查（如采用，>3 人营利组织需 Company License $0.01/render）
 
 ---
 

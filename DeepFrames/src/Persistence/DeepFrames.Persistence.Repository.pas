@@ -192,7 +192,7 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_project ' +
       '(project_id, title, content_type, source_uri, status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:project_id, :title, :content_type, :source_uri, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
+      'VALUES (:project_id::uuid, :title, :content_type, :source_uri, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (project_id) DO NOTHING';
     Q.ParamByName('project_id').AsString := Project.ProjectId;
     Q.ParamByName('title').AsString := Project.Title;
@@ -245,7 +245,7 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_content_unit ' +
       '(content_unit_id, project_id, unit_type, display_label, order_index, status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:content_unit_id, :project_id, :unit_type, :display_label, :order_index, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
+      'VALUES (:content_unit_id::uuid, :project_id::uuid, :unit_type, :display_label, :order_index, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (content_unit_id) DO NOTHING';
     Q.ParamByName('content_unit_id').AsString := UnitInfo.ContentUnitId;
     Q.ParamByName('project_id').AsString := UnitInfo.ProjectId;
@@ -272,7 +272,7 @@ begin
   List := TList<TContentUnitInfo>.Create;
   Q := NewQuery;
   try
-    Q.SQL.Text := 'SELECT content_unit_id, project_id, unit_type, display_label, order_index, status FROM deepframes_content_unit WHERE project_id = :project_id ORDER BY order_index';
+    Q.SQL.Text := 'SELECT content_unit_id, project_id, unit_type, display_label, order_index, status FROM deepframes_content_unit WHERE project_id = :project_id::uuid ORDER BY order_index';
     Q.ParamByName('project_id').AsString := ProjectId;
     Q.Open;
     while not Q.Eof do
@@ -308,7 +308,7 @@ begin
       Q.SQL.Text :=
         'INSERT INTO deepframes_source_document ' +
         '(document_id, project_id, content_unit_id, document_kind, content_hash, source_uri, status, schema_version, version_no, payload_json, extra_json) ' +
-        'VALUES (:document_id, :project_id, :content_unit_id, ''source'', :content_hash, :source_uri, :status, :schema_version, :version_no, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
+        'VALUES (:document_id::uuid, :project_id::uuid, :content_unit_id::uuid, ''source'', :content_hash, :source_uri, :status, :schema_version, :version_no, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
         'ON CONFLICT (document_id) DO NOTHING';
       Q.ParamByName('document_id').AsString := Doc.DocumentId;
       Q.ParamByName('project_id').AsString := Doc.ProjectId;
@@ -341,7 +341,7 @@ begin
   List := TList<TSourceDocumentVersion>.Create;
   Q := NewQuery;
   try
-    Q.SQL.Text := 'SELECT document_id, project_id, content_unit_id, version_no, content_hash, source_uri, status, payload_json FROM deepframes_source_document WHERE project_id = :project_id ORDER BY created_at DESC';
+    Q.SQL.Text := 'SELECT document_id, project_id, content_unit_id, version_no, content_hash, source_uri, status, payload_json FROM deepframes_source_document WHERE project_id = :project_id::uuid ORDER BY created_at DESC';
     Q.ParamByName('project_id').AsString := ProjectId;
     Q.Open;
     while not Q.Eof do
@@ -387,7 +387,7 @@ begin
     Q.SQL.Text :=
       'SELECT document_id, project_id, content_unit_id, version_no, content_hash, ' +
       'source_uri, status, payload_json FROM deepframes_source_document ' +
-      'WHERE document_id = :document_id';
+      'WHERE document_id = :document_id::uuid';
     Q.ParamByName('document_id').AsString := DocumentId;
     Q.Open;
     if not Q.Eof then
@@ -425,7 +425,7 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_job ' +
       '(job_id, project_id, content_unit_id, job_type, logical_key, job_queue_task_id, status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:job_id, :project_id, :content_unit_id, :job_type, :logical_key, :job_queue_task_id, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
+      'VALUES (:job_id::uuid, :project_id::uuid, :content_unit_id::uuid, :job_type, :logical_key, :job_queue_task_id, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (logical_key) DO NOTHING';
     Q.ParamByName('job_id').AsString := Job.JobId;
     Q.ParamByName('project_id').AsString := Job.ProjectId;
@@ -445,12 +445,12 @@ end;
 
 procedure TDeepFramesRepository.UpdateJobQueueTaskId(const JobId, TaskId: string);
 begin
-  FConnection.ExecSQL('UPDATE deepframes_job SET job_queue_task_id = :task_id, updated_at = NOW() WHERE job_id = :job_id', [TaskId, JobId]);
+  FConnection.ExecSQL('UPDATE deepframes_job SET job_queue_task_id = :task_id, updated_at = NOW() WHERE job_id = :job_id::uuid', [TaskId, JobId]);
 end;
 
 procedure TDeepFramesRepository.UpdateJobStatus(const JobId, NewStatus: string);
 begin
-  FConnection.ExecSQL('UPDATE deepframes_job SET status = :status, updated_at = NOW() WHERE job_id = :job_id', [NewStatus, JobId]);
+  FConnection.ExecSQL('UPDATE deepframes_job SET status = :status, updated_at = NOW() WHERE job_id = :job_id::uuid', [NewStatus, JobId]);
 end;
 
 function TDeepFramesRepository.FindJobByLogicalKey(const LogicalKey: string;
@@ -519,7 +519,7 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_job_step ' +
       '(step_id, job_id, step_type, step_key, status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:step_id, :job_id, :step_type, :step_key, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
+      'VALUES (:step_id::uuid, :job_id::uuid, :step_type, :step_key, :status, :schema_version, 1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (step_key) DO NOTHING';
     Q.ParamByName('step_id').AsString := Step.StepId;
     Q.ParamByName('job_id').AsString := Step.JobId;
@@ -538,7 +538,7 @@ end;
 procedure TDeepFramesRepository.UpdateJobStepStatus(const StepId,
   NewStatus: string);
 begin
-  FConnection.ExecSQL('UPDATE deepframes_job_step SET status = :status, updated_at = NOW() WHERE step_id = :step_id', [NewStatus, StepId]);
+  FConnection.ExecSQL('UPDATE deepframes_job_step SET status = :status, updated_at = NOW() WHERE step_id = :step_id::uuid', [NewStatus, StepId]);
 end;
 
 function TDeepFramesRepository.ListJobSteps(
@@ -551,7 +551,7 @@ begin
   List := TList<TDeepFramesJobStep>.Create;
   Q := NewQuery;
   try
-    Q.SQL.Text := 'SELECT step_id, job_id, step_type, step_key, status FROM deepframes_job_step WHERE job_id = :job_id ORDER BY created_at';
+    Q.SQL.Text := 'SELECT step_id, job_id, step_type, step_key, status FROM deepframes_job_step WHERE job_id = :job_id::uuid ORDER BY created_at';
     Q.ParamByName('job_id').AsString := JobId;
     Q.Open;
     while not Q.Eof do
@@ -582,8 +582,8 @@ begin
       'INSERT INTO deepframes_script_document ' +
       '(document_id, project_id, content_unit_id, document_kind, parent_document_id, ' +
       'source_document_id, content_hash, status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:document_id, :project_id, :content_unit_id, ''script'', :parent_document_id, ' +
-      ':source_document_id, :content_hash, :status, :schema_version, :version_no, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
+      'VALUES (:document_id::uuid, :project_id::uuid, :content_unit_id::uuid, ''script'', :parent_document_id::uuid, ' +
+      ':source_document_id::uuid, :content_hash, :status, :schema_version, :version_no, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (document_id) DO NOTHING';
     Q.ParamByName('document_id').AsString := Doc.DocumentId;
     Q.ParamByName('project_id').AsString := Doc.ProjectId;
@@ -615,7 +615,7 @@ begin
     Q.SQL.Text :=
       'SELECT document_id, project_id, content_unit_id, version_no, parent_document_id, ' +
       'source_document_id, content_hash, status ' +
-      'FROM deepframes_script_document WHERE project_id = :project_id ORDER BY created_at DESC';
+      'FROM deepframes_script_document WHERE project_id = :project_id::uuid ORDER BY created_at DESC';
     Q.ParamByName('project_id').AsString := ProjectId;
     Q.Open;
     while not Q.Eof do
@@ -647,7 +647,7 @@ begin
   Q := NewQuery;
   try
     Q.SQL.Text :=
-      'SELECT MAX(version_no) AS max_ver FROM deepframes_script_document WHERE content_unit_id = :content_unit_id';
+      'SELECT MAX(version_no) AS max_ver FROM deepframes_script_document WHERE content_unit_id = :content_unit_id::uuid';
     Q.ParamByName('content_unit_id').AsString := ContentUnitId;
     Q.Open;
     if not Q.Eof and not Q.FieldByName('max_ver').IsNull then
@@ -672,7 +672,7 @@ begin
       '(report_id, project_id, source_document_id, script_document_id, coverage_score, ' +
       'distortion_score, result, human_review_status, reviewer_note, status, schema_version, ' +
       'version_no, payload_json, extra_json) ' +
-      'VALUES (:report_id, :project_id, :source_document_id, :script_document_id, :coverage_score, ' +
+      'VALUES (:report_id::uuid, :project_id::uuid, :source_document_id::uuid, :script_document_id::uuid, :coverage_score, ' +
       ':distortion_score, :result, :human_review_status, :reviewer_note, :status, :schema_version, ' +
       '1, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (report_id) DO NOTHING';
@@ -708,7 +708,7 @@ begin
     Q.SQL.Text :=
       'SELECT report_id, project_id, source_document_id, script_document_id, ' +
       'coverage_score, distortion_score, result, human_review_status, reviewer_note, status ' +
-      'FROM deepframes_accuracy_report WHERE script_document_id = :script_document_id ORDER BY created_at DESC';
+      'FROM deepframes_accuracy_report WHERE script_document_id = :script_document_id::uuid ORDER BY created_at DESC';
     Q.ParamByName('script_document_id').AsString := ScriptDocumentId;
     Q.Open;
     while not Q.Eof do
@@ -751,7 +751,7 @@ begin
         '(document_id, project_id, content_unit_id, document_kind, parent_document_id, ' +
         'variant_kind, variant_label, target_platform, content_hash, status, schema_version, ' +
         'version_no, payload_json, extra_json) ' +
-        'VALUES (:document_id, :project_id, :content_unit_id, ''variant'', :parent_document_id, ' +
+        'VALUES (:document_id::uuid, :project_id::uuid, :content_unit_id::uuid, ''variant'', :parent_document_id::uuid, ' +
         ':variant_kind, :variant_label, :target_platform, :content_hash, :status, :schema_version, ' +
         ':version_no, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
         'ON CONFLICT (document_id) DO NOTHING';
@@ -790,7 +790,7 @@ begin
     Q.SQL.Text :=
       'SELECT document_id, project_id, content_unit_id, version_no, parent_document_id, ' +
       'variant_kind, variant_label, target_platform, content_hash, status ' +
-      'FROM deepframes_variant_document WHERE content_unit_id = :content_unit_id ORDER BY created_at DESC';
+      'FROM deepframes_variant_document WHERE content_unit_id = :content_unit_id::uuid ORDER BY created_at DESC';
     Q.ParamByName('content_unit_id').AsString := ContentUnitId;
     Q.Open;
     while not Q.Eof do
@@ -826,7 +826,7 @@ begin
       'INSERT INTO deepframes_shot_document ' +
       '(document_id, project_id, content_unit_id, document_kind, parent_document_id, ' +
       'content_hash, status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:document_id, :project_id, :content_unit_id, ''shot'', :parent_document_id, ' +
+      'VALUES (:document_id::uuid, :project_id::uuid, :content_unit_id::uuid, ''shot'', :parent_document_id::uuid, ' +
       ':content_hash, :status, :schema_version, :version_no, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (document_id) DO NOTHING';
     Q.ParamByName('document_id').AsString := Doc.DocumentId;
@@ -858,7 +858,7 @@ begin
     Q.SQL.Text :=
       'SELECT document_id, project_id, content_unit_id, version_no, parent_document_id, ' +
       'content_hash, status ' +
-      'FROM deepframes_shot_document WHERE content_unit_id = :content_unit_id ORDER BY created_at DESC';
+      'FROM deepframes_shot_document WHERE content_unit_id = :content_unit_id::uuid ORDER BY created_at DESC';
     Q.ParamByName('content_unit_id').AsString := ContentUnitId;
     Q.Open;
     while not Q.Eof do
@@ -891,7 +891,7 @@ begin
       'INSERT INTO deepframes_asset ' +
       '(asset_id, project_id, content_unit_id, asset_type, uri, sha256, byte_size, mime_type, ' +
       'producer, producer_version, status, retention_class, schema_version, payload_json, extra_json) ' +
-      'VALUES (:asset_id, :project_id, :content_unit_id, :asset_type, :uri, :sha256, :byte_size, :mime_type, ' +
+      'VALUES (:asset_id::uuid, :project_id::uuid, :content_unit_id::uuid, :asset_type, :uri, :sha256, :byte_size, :mime_type, ' +
       ':producer, :producer_version, :status, :retention_class, :schema_version, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (asset_id) DO NOTHING';
     Q.ParamByName('asset_id').AsString := Asset.AssetId;
@@ -938,7 +938,7 @@ end;
 procedure TDeepFramesRepository.UpdateAssetStatus(const AssetId, NewStatus: string);
 begin
   FConnection.ExecSQL(
-    'UPDATE deepframes_asset SET status = :status, updated_at = NOW() WHERE asset_id = :asset_id',
+    'UPDATE deepframes_asset SET status = :status, updated_at = NOW() WHERE asset_id = :asset_id::uuid',
     [NewStatus, AssetId]);
 end;
 
@@ -955,7 +955,7 @@ begin
     Q.SQL.Text :=
       'SELECT asset_id, project_id, content_unit_id, asset_type, uri, sha256, byte_size, mime_type, ' +
       'producer, producer_version, status, retention_class ' +
-      'FROM deepframes_asset WHERE content_unit_id = :content_unit_id ORDER BY created_at DESC';
+      'FROM deepframes_asset WHERE content_unit_id = :content_unit_id::uuid ORDER BY created_at DESC';
     Q.ParamByName('content_unit_id').AsString := ContentUnitId;
     Q.Open;
     while not Q.Eof do
@@ -994,7 +994,7 @@ begin
       'INSERT INTO deepframes_quality_gate_result ' +
       '(result_id, job_id, gate, gate_result, score, human_review_status, reviewer_note, ' +
       'schema_version, payload_json, extra_json) ' +
-      'VALUES (:result_id, :job_id, :gate, :gate_result, :score, :human_review_status, :reviewer_note, ' +
+      'VALUES (:result_id::uuid, :job_id::uuid, :gate, :gate_result, :score, :human_review_status, :reviewer_note, ' +
       ':schema_version, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (result_id) DO NOTHING';
     Q.ParamByName('result_id').AsString := AGateResult.ResultId;
@@ -1025,7 +1025,7 @@ begin
   try
     Q.SQL.Text :=
       'SELECT result_id, job_id, gate, gate_result, score, human_review_status, reviewer_note ' +
-      'FROM deepframes_quality_gate_result WHERE job_id = :job_id ORDER BY created_at';
+      'FROM deepframes_quality_gate_result WHERE job_id = :job_id::uuid ORDER BY created_at';
     Q.ParamByName('job_id').AsString := JobId;
     Q.Open;
     while not Q.Eof do
@@ -1052,7 +1052,7 @@ procedure TDeepFramesRepository.UpdateQualityGateHumanReview(const ResultId,
 begin
   FConnection.ExecSQL(
     'UPDATE deepframes_quality_gate_result SET human_review_status = :status, ' +
-    'reviewer_note = :note, updated_at = NOW() WHERE result_id = :result_id',
+    'reviewer_note = :note, updated_at = NOW() WHERE result_id = :result_id::uuid',
     [HumanReviewStatus, ReviewerNote, ResultId]);
 end;
 
@@ -1068,7 +1068,7 @@ begin
       '(template_id, name, agent_role, system_prompt, output_format, output_schema_json, ' +
       'extraction_hints, few_shot_examples, split_rules_json, temperature, max_tokens, ' +
       'status, schema_version, version_no, payload_json, extra_json) ' +
-      'VALUES (:template_id, :name, :agent_role, :system_prompt, :output_format, ' +
+      'VALUES (:template_id::uuid, :name, :agent_role, :system_prompt, :output_format, ' +
       'CAST(:output_schema_json AS jsonb), CAST(:extraction_hints AS jsonb), ' +
       'CAST(:few_shot_examples AS jsonb), CAST(:split_rules_json AS jsonb), ' +
       ':temperature, :max_tokens, :status, :schema_version, :version_no, ' +
@@ -1159,7 +1159,7 @@ begin
       'SELECT template_id, name, agent_role, system_prompt, output_format, ' +
       'output_schema_json, extraction_hints, few_shot_examples, split_rules_json, ' +
       'temperature, max_tokens, version_no, status ' +
-      'FROM deepframes_prompt_template WHERE template_id = :template_id';
+      'FROM deepframes_prompt_template WHERE template_id = :template_id::uuid';
     Q.ParamByName('template_id').AsString := TemplateId;
     Q.Open;
     if not Q.Eof then
@@ -1195,7 +1195,7 @@ begin
       'INSERT INTO deepframes_model_binding ' +
       '(binding_id, agent_role, provider, model, capability, api_base_url, ' +
       'temperature, max_tokens, status, schema_version, payload_json, extra_json) ' +
-      'VALUES (:binding_id, :agent_role, :provider, :model, :capability, :api_base_url, ' +
+      'VALUES (:binding_id::uuid, :agent_role, :provider, :model, :capability, :api_base_url, ' +
       ':temperature, :max_tokens, :status, :schema_version, ' +
       'CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
       'ON CONFLICT (binding_id) DO NOTHING';
@@ -1276,8 +1276,8 @@ begin
       'agent_role, raw_output, normalized_json, validation_error, repair_count, ' +
       'token_input, token_output, latency_ms, provider, model, capability, ' +
       'retry_count, error_code, status, schema_version, payload_json, extra_json) ' +
-      'VALUES (:run_id, :job_id, :job_step_id, :prompt_template_id, :prompt_version_no, ' +
-      ':model_binding_id, :agent_role, :raw_output, CAST(:normalized_json AS jsonb), ' +
+      'VALUES (:run_id::uuid, :job_id::uuid, :job_step_id::uuid, :prompt_template_id::uuid, :prompt_version_no, ' +
+      ':model_binding_id::uuid, :agent_role, :raw_output, CAST(:normalized_json AS jsonb), ' +
       ':validation_error, :repair_count, :token_input, :token_output, :latency_ms, ' +
       ':provider, :model, :capability, :retry_count, :error_code, :status, ' +
       ':schema_version, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
@@ -1345,7 +1345,7 @@ begin
       'model_binding_id, agent_role, raw_output, validation_error, repair_count, ' +
       'token_input, token_output, latency_ms, provider, model, capability, ' +
       'retry_count, error_code, status ' +
-      'FROM deepframes_prompt_run WHERE job_id = :job_id ORDER BY created_at';
+      'FROM deepframes_prompt_run WHERE job_id = :job_id::uuid ORDER BY created_at';
     Q.ParamByName('job_id').AsString := JobId;
     Q.Open;
     while not Q.Eof do
@@ -1392,7 +1392,7 @@ begin
       '(eval_id, job_id, job_step_id, prompt_run_id, shot_document_id, eval_type, ' +
       'score, dimensions_json, issues_json, gate, gate_result, recommended_action, ' +
       'reviewer_note, schema_version, payload_json, extra_json) ' +
-      'VALUES (:eval_id, :job_id, :job_step_id, :prompt_run_id, :shot_document_id, ' +
+      'VALUES (:eval_id::uuid, :job_id::uuid, :job_step_id::uuid, :prompt_run_id::uuid, :shot_document_id::uuid, ' +
       ':eval_type, :score, CAST(:dimensions_json AS jsonb), CAST(:issues_json AS jsonb), ' +
       ':gate, :gate_result, :recommended_action, :reviewer_note, ' +
       ':schema_version, CAST(:payload_json AS jsonb), CAST(:extra_json AS jsonb)) ' +
@@ -1432,7 +1432,7 @@ begin
     Q.SQL.Text :=
       'SELECT eval_id, job_id, job_step_id, prompt_run_id, shot_document_id, eval_type, ' +
       'score, dimensions_json, issues_json, gate, gate_result, recommended_action, reviewer_note ' +
-      'FROM deepframes_eval_result WHERE job_id = :job_id ORDER BY created_at';
+      'FROM deepframes_eval_result WHERE job_id = :job_id::uuid ORDER BY created_at';
     Q.ParamByName('job_id').AsString := JobId;
     Q.Open;
     while not Q.Eof do
@@ -1480,7 +1480,7 @@ begin
       'resample_from, resample_to, target_lufs, ' +
       'measured_lufs, measured_tp, measured_lra, concat_duration_delta_ms, ' +
       'status, schema_version) VALUES (' +
-      ':manifest_id, :project_id, :content_unit_id, :job_id, :shot_document_id, ' +
+      ':manifest_id::uuid, :project_id::uuid, :content_unit_id::uuid, :job_id::uuid, :shot_document_id::uuid, ' +
       ':audio_asset_id, :timestamps_asset_id, :merged_audio_asset_id, ' +
       ':duration_sec, :sample_rate, :channels, :codec, :bgm_enabled, ' +
       ':tts_rewrite_count, :tts_rewrite_log_json, ' +
@@ -1535,7 +1535,7 @@ begin
   try
     Q.SQL.Text :=
       'UPDATE deepframes_audio_manifest SET status = :status, updated_at = NOW() ' +
-      'WHERE manifest_id = :manifest_id';
+      'WHERE manifest_id = :manifest_id::uuid';
     Q.ParamByName('status').AsString := NewStatus;
     Q.ParamByName('manifest_id').AsString := ManifestId;
     Q.ExecSQL;
@@ -1556,7 +1556,7 @@ begin
       'audio_asset_id = :audio_asset_id, ' +
       'timestamps_asset_id = :timestamps_asset_id, ' +
       'merged_audio_asset_id = :merged_audio_asset_id, ' +
-      'updated_at = NOW() WHERE manifest_id = :manifest_id';
+      'updated_at = NOW() WHERE manifest_id = :manifest_id::uuid';
     Q.ParamByName('audio_asset_id').AsString := AudioAssetId;
     Q.ParamByName('timestamps_asset_id').AsString := TimestampsAssetId;
     Q.ParamByName('merged_audio_asset_id').AsString := MergedAudioAssetId;
@@ -1580,7 +1580,7 @@ begin
       'measured_lufs = :measured_lufs, measured_tp = :measured_tp, ' +
       'measured_lra = :measured_lra, loudnorm_pass1_json = :pass1, ' +
       'loudnorm_pass2_json = :pass2, updated_at = NOW() ' +
-      'WHERE manifest_id = :manifest_id';
+      'WHERE manifest_id = :manifest_id::uuid';
     Q.ParamByName('measured_lufs').AsFloat := MeasuredLufs;
     Q.ParamByName('measured_tp').AsFloat := MeasuredTp;
     Q.ParamByName('measured_lra').AsFloat := MeasuredLra;
@@ -1603,7 +1603,7 @@ begin
     Q.SQL.Text :=
       'UPDATE deepframes_audio_manifest SET ' +
       'duration_sec = :duration_sec, concat_duration_delta_ms = :delta, ' +
-      'updated_at = NOW() WHERE manifest_id = :manifest_id';
+      'updated_at = NOW() WHERE manifest_id = :manifest_id::uuid';
     Q.ParamByName('duration_sec').AsFloat := DurationSec;
     Q.ParamByName('delta').AsFloat := ConcatDeltaMs;
     Q.ParamByName('manifest_id').AsString := ManifestId;
@@ -1746,7 +1746,7 @@ begin
   try
     Q.SQL.Text :=
       'INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status)' +
-      ' VALUES (:platform_spec_id, :platform, :delivery_type, :aspect_ratio, :width, :height, :fps, :video_codec, :audio_codec, :schema_version, :status)';
+      ' VALUES (:platform_spec_id::uuid, :platform, :delivery_type, :aspect_ratio, :width, :height, :fps, :video_codec, :audio_codec, :schema_version, :status)';
     Q.ParamByName('platform_spec_id').AsString := Spec.PlatformSpecId;
     Q.ParamByName('platform').AsString := Spec.Platform;
     Q.ParamByName('delivery_type').AsString := Spec.DeliveryType;
@@ -1840,7 +1840,7 @@ begin
       ' render_backend, template_version, timeline_json, asset_refs_json, duration_source,' +
       ' estimated_duration_sec, actual_duration_sec, scene_count,' +
       ' schema_version, version_no, status, payload_json, extra_json)' +
-      ' VALUES (:video_ir_id, :project_id, :content_unit_id, :shot_document_id, :audio_manifest_id, :platform_spec_id,' +
+      ' VALUES (:video_ir_id::uuid, :project_id::uuid, :content_unit_id::uuid, :shot_document_id::uuid, :audio_manifest_id::uuid, :platform_spec_id::uuid,' +
       ' :render_backend, :template_version, :timeline_json, :asset_refs_json, :duration_source,' +
       ' :estimated_duration_sec, :actual_duration_sec, :scene_count,' +
       ' :schema_version, :version_no, :status, :payload_json, :extra_json)';
@@ -1950,8 +1950,8 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_video_job (video_job_id, job_id, video_ir_id, platform_spec_id,' +
       ' render_backend, run_mode, template_id, output_dir, schema_version, status, payload_json, extra_json)' +
-      ' VALUES (:video_job_id, :job_id, :video_ir_id, :platform_spec_id,' +
-      ' :render_backend, :run_mode, :template_id, :output_dir, :schema_version, :status, :payload_json, :extra_json)';
+      ' VALUES (:video_job_id::uuid, :job_id::uuid, :video_ir_id::uuid, :platform_spec_id::uuid,' +
+      ' :render_backend, :run_mode, :template_id::uuid, :output_dir, :schema_version, :status, :payload_json, :extra_json)';
     Q.ParamByName('video_job_id').AsString := VJob.VideoJobId;
     Q.ParamByName('job_id').AsString := VJob.JobId;
     Q.ParamByName('video_ir_id').AsString := VJob.VideoIRId;
@@ -2029,8 +2029,8 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_video_step (video_step_id, video_job_id, step_type, step_key,' +
       ' shot_id, asset_id, metrics_json, error_message, schema_version, status, payload_json, extra_json)' +
-      ' VALUES (:video_step_id, :video_job_id, :step_type, :step_key,' +
-      ' :shot_id, :asset_id, :metrics_json, :error_message, :schema_version, :status, :payload_json, :extra_json)';
+      ' VALUES (:video_step_id::uuid, :video_job_id::uuid, :step_type, :step_key,' +
+      ' :shot_id, :asset_id::uuid, :metrics_json, :error_message, :schema_version, :status, :payload_json, :extra_json)';
     Q.ParamByName('video_step_id').AsString := VStep.VideoStepId;
     Q.ParamByName('video_job_id').AsString := VStep.VideoJobId;
     Q.ParamByName('step_type').AsString := VStep.StepType;
@@ -2108,8 +2108,8 @@ begin
     Q.SQL.Text :=
       'INSERT INTO deepframes_video_asset (video_asset_id, video_job_id, video_step_id,' +
       ' asset_id, asset_category, shot_index, schema_version, payload_json)' +
-      ' VALUES (:video_asset_id, :video_job_id, :video_step_id,' +
-      ' :asset_id, :asset_category, :shot_index, :schema_version, :payload_json)';
+      ' VALUES (:video_asset_id::uuid, :video_job_id::uuid, :video_step_id::uuid,' +
+      ' :asset_id::uuid, :asset_category, :shot_index, :schema_version, :payload_json)';
     Q.ParamByName('video_asset_id').AsString := VAsset.VideoAssetId;
     Q.ParamByName('video_job_id').AsString := VAsset.VideoJobId;
     Q.ParamByName('video_step_id').AsString := VAsset.VideoStepId;
@@ -2167,8 +2167,8 @@ begin
       ' variant_document_id, audio_manifest_id, video_ir_id, target_platform, delivery_type,' +
       ' manifest_asset_id, cover_asset_id, metadata_json, quality_snapshot_json,' +
       ' source_trace_json, output_root_uri, label, schema_version, version_no, status, payload_json, extra_json)' +
-      ' VALUES (:package_id, :project_id, :content_unit_id,' +
-      ' :variant_document_id, :audio_manifest_id, :video_ir_id, :target_platform, :delivery_type,' +
+      ' VALUES (:package_id::uuid, :project_id::uuid, :content_unit_id::uuid,' +
+      ' :variant_document_id::uuid, :audio_manifest_id::uuid, :video_ir_id::uuid, :target_platform, :delivery_type,' +
       ' :manifest_asset_id, :cover_asset_id, :metadata_json, :quality_snapshot_json,' +
       ' :source_trace_json, :output_root_uri, :label, :schema_version, :version_no, :status, :payload_json, :extra_json)';
     Q.ParamByName('package_id').AsString := Pkg.PackageId;

@@ -93,13 +93,21 @@ end;
 class function TDeepFramesDB2Connection.TestConnection(out AError: string): Boolean;
 var
   Conn: TFDConnection;
+  Q: TFDQuery;
 begin
   Result := False;
   AError := '';
   Conn := nil;
   try
     Conn := CreateConnection(True);
-    Conn.ExecSQL('SELECT 1');
+    Q := TFDQuery.Create(nil);
+    try
+      Q.Connection := Conn;
+      Q.Open('SELECT 1');
+      Q.Close;
+    finally
+      Q.Free;
+    end;
     Result := True;
   except
     on E: Exception do

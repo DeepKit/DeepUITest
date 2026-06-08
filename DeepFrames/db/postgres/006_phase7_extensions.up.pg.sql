@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS deepframes_bgm_track (
   CONSTRAINT ck_bgm_track_status CHECK (status IN ('active','disabled','deleted'))
 );
 
-CREATE INDEX idx_bgm_track_library ON deepframes_bgm_track(library_id);
-CREATE INDEX idx_bgm_track_genre ON deepframes_bgm_track(genre);
+CREATE INDEX IF NOT EXISTS idx_bgm_track_library ON deepframes_bgm_track(library_id);
+CREATE INDEX IF NOT EXISTS idx_bgm_track_genre ON deepframes_bgm_track(genre);
 
 -- BGM association per audio manifest (for when BGM is enabled)
 CREATE TABLE IF NOT EXISTS deepframes_bgm_association (
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS deepframes_bgm_association (
   payload_json JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE INDEX idx_bgm_assoc_manifest ON deepframes_bgm_association(audio_manifest_id);
+CREATE INDEX IF NOT EXISTS idx_bgm_assoc_manifest ON deepframes_bgm_association(audio_manifest_id);
 
 -- Insert default (empty) BGM library
 INSERT INTO deepframes_bgm_library (library_id, name, description, is_default, schema_version, status)
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS deepframes_content_type_adapter (
   CONSTRAINT ck_adapter_status CHECK (status IN ('pending','active','disabled','deprecated'))
 );
 
-CREATE INDEX idx_adapter_content_type ON deepframes_content_type_adapter(content_type);
+CREATE INDEX IF NOT EXISTS idx_adapter_content_type ON deepframes_content_type_adapter(content_type);
 
 -- Insert default article adapter (active, since Phase 1-6 use it)
 INSERT INTO deepframes_content_type_adapter
@@ -140,8 +140,8 @@ CREATE TABLE IF NOT EXISTS deepframes_readiness_report (
   CONSTRAINT ck_readiness_status CHECK (status IN ('pending','done','failed'))
 );
 
-CREATE INDEX idx_readiness_adapter ON deepframes_readiness_report(adapter_id);
-CREATE INDEX idx_readiness_check_type ON deepframes_readiness_report(check_type);
+CREATE INDEX IF NOT EXISTS idx_readiness_adapter ON deepframes_readiness_report(adapter_id);
+CREATE INDEX IF NOT EXISTS idx_readiness_check_type ON deepframes_readiness_report(check_type);
 
 -- Insert readiness report for default article adapter (all pass)
 INSERT INTO deepframes_readiness_report

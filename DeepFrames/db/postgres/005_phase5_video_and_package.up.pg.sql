@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS deepframes_platform_spec (
   extra_json JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE INDEX idx_platform_spec_platform ON deepframes_platform_spec(platform);
-CREATE INDEX idx_platform_spec_delivery ON deepframes_platform_spec(delivery_type);
+CREATE INDEX IF NOT EXISTS idx_platform_spec_platform ON deepframes_platform_spec(platform);
+CREATE INDEX IF NOT EXISTS idx_platform_spec_delivery ON deepframes_platform_spec(delivery_type);
 
 -- Insert default bilibili platform spec
 INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
@@ -134,9 +134,9 @@ CREATE TABLE IF NOT EXISTS deepframes_video_ir (
   CONSTRAINT ck_deepframes_video_ir_status CHECK (status IN ('pending','running','blocked_review','done','skipped','failed','cancelled'))
 );
 
-CREATE INDEX idx_video_ir_project ON deepframes_video_ir(project_id);
-CREATE INDEX idx_video_ir_content_unit ON deepframes_video_ir(content_unit_id);
-CREATE INDEX idx_video_ir_shot ON deepframes_video_ir(shot_document_id);
+CREATE INDEX IF NOT EXISTS idx_video_ir_project ON deepframes_video_ir(project_id);
+CREATE INDEX IF NOT EXISTS idx_video_ir_content_unit ON deepframes_video_ir(content_unit_id);
+CREATE INDEX IF NOT EXISTS idx_video_ir_shot ON deepframes_video_ir(shot_document_id);
 
 -- Video job (video-pipeline-specific job tracking)
 CREATE TABLE IF NOT EXISTS deepframes_video_job (
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS deepframes_video_job (
   CONSTRAINT ck_deepframes_video_job_status CHECK (status IN ('pending','running','blocked_review','done','skipped','failed','cancelled'))
 );
 
-CREATE INDEX idx_video_job_ir ON deepframes_video_job(video_ir_id);
+CREATE INDEX IF NOT EXISTS idx_video_job_ir ON deepframes_video_job(video_ir_id);
 
 -- Video step (per-stage tracking within a video job)
 CREATE TABLE IF NOT EXISTS deepframes_video_step (
@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS deepframes_video_step (
   CONSTRAINT ck_deepframes_video_step_status CHECK (status IN ('pending','running','blocked_review','done','skipped','failed','cancelled'))
 );
 
-CREATE INDEX idx_video_step_job ON deepframes_video_step(video_job_id);
+CREATE INDEX IF NOT EXISTS idx_video_step_job ON deepframes_video_step(video_job_id);
 
 -- Video asset (video-pipeline-specific asset references)
 CREATE TABLE IF NOT EXISTS deepframes_video_asset (
@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS deepframes_video_asset (
   payload_json JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE INDEX idx_video_asset_job ON deepframes_video_asset(video_job_id);
+CREATE INDEX IF NOT EXISTS idx_video_asset_job ON deepframes_video_asset(video_job_id);
 
 -- Candidate package (final deliverable assembly)
 CREATE TABLE IF NOT EXISTS deepframes_candidate_package (
@@ -230,6 +230,6 @@ CREATE TABLE IF NOT EXISTS deepframes_candidate_package (
   CONSTRAINT ck_deepframes_candidate_package_status CHECK (status IN ('pending','running','blocked_review','done','skipped','failed','cancelled'))
 );
 
-CREATE INDEX idx_candidate_package_project ON deepframes_candidate_package(project_id);
-CREATE INDEX idx_candidate_package_platform ON deepframes_candidate_package(target_platform);
-CREATE INDEX idx_candidate_package_status ON deepframes_candidate_package(status);
+CREATE INDEX IF NOT EXISTS idx_candidate_package_project ON deepframes_candidate_package(project_id);
+CREATE INDEX IF NOT EXISTS idx_candidate_package_platform ON deepframes_candidate_package(target_platform);
+CREATE INDEX IF NOT EXISTS idx_candidate_package_status ON deepframes_candidate_package(status);
