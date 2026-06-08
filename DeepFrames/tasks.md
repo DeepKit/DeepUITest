@@ -2,9 +2,9 @@
 
 ## 当前状态
 
-**2026-06-08**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（Delphi 13.1 BDS 37.0，DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1 + POC 2 + POC 3a/3b/3c/3d 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通 + Remotion 渲染 + CDP 帧捕获 + FFmpeg 音频管线 + Delphi FireDAC CRUD 28/28 PASS）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
+**2026-06-08**: 全量 `dcc64` 编译通过 — **0 Error / 0 Warning / 0 Hint**（Delphi 13.1 BDS 37.0，DeepFrames 37 单元 + 测试）。152 tests 全绿（55 core + 97 integration）。Phase 2/3/4/5/6/7 代码全部完成。StepFun LLM/Image 已重构为 DeepBase ILLMClient 委托。可行性评审文档缺口全部补齐。**POC 1-3 全项验证通过**（DB2 13 表 + StepFun Chat/Image/TTS/ASR API 全连通 + Remotion 渲染 + CDP 帧捕获 + FFmpeg 音频管线 + Delphi FireDAC CRUD + Worker 协议端到端）。凭据已注入 `data/DeepFramesConfig.db`（DPAPI 加密）。
 
-**当前焦点**: POC 3e — Worker 协议 v0 端到端验证
+**当前焦点**: POC 3 全部完成 → 后续：P5.8 端到端视频链路
 
 已完成工作归档：[history.md](history.md) · Bug 记录：[bugfix.md](bugfix.md)
 
@@ -28,19 +28,14 @@
 
 详情：[history.md](history.md)
 
-#### 🔄 POC 3e: Worker 协议 v0 端到端
+#### ✅ POC 3e: Worker 协议 v0 端到端（2026-06-08 通过）
 
-**目标**: Delphi 主程序 ↔ Node Worker 完整 request/progress/result 流程
+**WorkerE2E 结果**: 12/12 PASS — Delphi ↔ Node Worker 全链路验证
+- request.json 生成 ✓ · CreateProcess 启动 ✓ · progress.json heartbeat ✓
+- result.json 解析 ✓ · schema_version 验证 ✓ · success/fail 状态 ✓
+- cancel signal ✓ · 失败场景 ✓ · 清理 ✓
 
-**步骤**:
-1. [ ] Delphi 主程序生成 `request.json`（含 TaskType、WorkDir、Payload）
-2. [ ] 启动 Node Worker 子进程（`CreateProcess`）
-3. [ ] Worker 读取 request，执行（如 Remotion 渲染）
-4. [ ] Worker 写 `progress.json`（heartbeat + 百分比）
-5. [ ] Worker 写 `result.json`（成功/失败 + 输出文件路径）
-6. [ ] Delphi 主程序读取 result，更新 DB2 job_steps
-
-**通过标准**: 全链路无错误 + DB2 job_steps 状态正确转换（running → succeeded/failed）
+详情：[history.md](history.md)
 
 ---
 

@@ -1,5 +1,30 @@
 # DeepFrames Development History
 
+## 2026-06-08 — POC 3e: Worker 协议 v0 端到端验证通过
+
+来源：`tasks.md` POC 3e
+
+**WorkerE2E 结果**: 12/12 PASS — Delphi ↔ Node Worker 全链路
+
+### 验证项目
+
+| 测试 | 结果 | 说明 |
+|------|:---:|------|
+| Test 0: DeepBase + Bootstrap | ✅ | 服务初始化 |
+| Test 1: request.json 生成 | ✅ | `TWorkerProtocol.WriteRequest` + schema_version |
+| Test 2: Worker 生命周期 | ✅ | CreateProcess → progress.json heartbeat → result.json |
+| Test 2a: result.json 解析 | ✅ | success/duration/output_files/metrics |
+| Test 3: Cancel Signal | ✅ | cancel 文件 → worker 检测 → status=cancelled |
+| Test 4: Failure Scenario | ✅ | params.fail=true → success=false + error_message |
+
+### 技术实现
+
+- **Delphi**: `WorkerE2E.dpr` — 调用 `TWorkerProtocol.BuildRequest/WriteRequest/LaunchWorker/ReadProgress/ReadResult`
+- **Node Worker**: `workers/echo/echo-worker.js` — 读取 request.json，模拟工作步骤，写入 progress/result
+- **关键修复**: `CreateProcess` 命令行格式 `"node.exe" "echo-worker.js" "workdir"`; `node.exe` 通过 PATH 解析
+
+---
+
 ## 2026-06-08 — POC 3d: Delphi 13.1 运行时 + DB2 连接验证通过
 
 来源：`tasks.md` POC 3d
