@@ -20,7 +20,7 @@ unit ArtifactOS.Services.ShadowRunScheduler;
 interface
 
 uses
-  System.SysUtils, System.JSON, System.DateUtils,
+  System.SysUtils, System.StrUtils, System.JSON, System.DateUtils,
   ArtifactOS.Core.DB.Connection;
 
 type
@@ -101,7 +101,7 @@ begin
       'INSERT INTO artifactos.shadow_run ' +
       '(run_code, status, start_date, end_date, primary_platform, ' +
       ' audience_stage_scope, theory_visibility, strategy_unit_id, run_goal_payload) ' +
-      'VALUES (''' + ARunCode + ''', ''planned', ''' +
+      'VALUES (''' + ARunCode + ''', ''planned'', ''' +
       FormatDateTime('YYYY-MM-DD', StartDate) + ''', ''' +
       FormatDateTime('YYYY-MM-DD', EndDate) + ''', ''' + APlatform + ''', ' +
       '''{S1,S2,S3}'', ''medium'', ' +

@@ -146,16 +146,28 @@ export MEDIA_PUBLISH_RUNTIME_ROOT='D:/_Progs/.BetterCiv/tools/media_publish/.med
 db/migrations/
 ```
 
-当前迁移文件为 `001_schema_init.sql` 到 `028_artifactos_runtime_command.sql`。开始任何数据库任务前，先确认目标库已经应用到对应迁移版本。
+当前迁移文件为 `001_schema_init.sql` 到 `034_contract_pipeline.sql`。开始任何数据库任务前，先确认目标库已经应用到对应迁移版本。
 
-当前仓库还没有统一迁移 runner。临时执行方式应由负责人确认后再运行，例如按编号对 `artifactos_test` 应用 SQL。不要对 `artifactos` 正式库直接试跑新迁移。
+### 迁移 Runner
 
-建议在补齐 runner 前使用这个核对清单：
+统一迁移 runner：
+
+```bash
+python db/migrate.py              # Apply all pending migrations
+python db/migrate.py --status     # Show migration status
+python db/migrate.py --dry-run    # Show what would be applied, no changes
+python db/migrate.py --target N   # Apply up to migration N only
+python db/migrate.py --rebuild    # Drop & recreate schemas, apply all from scratch
+```
+
+迁移记录保存在 `artifactos._migration_log`。Runner 默认只对 `artifactos_test` 操作，拒绝正式库。
+
+执行迁移的核对清单：
 
 - [ ] 目标库是 `artifactos_test`。
 - [ ] 已备份或可重建。
-- [ ] 按文件编号顺序执行。
-- [ ] 执行后确认 `artifactos`、`media_publish`、`legacy_bridge` schema 存在。
+- [ ] 先用 `--dry-run` 确认待应用迁移。
+- [ ] 执行后用 `--status` 确认全部 APPLIED。
 - [ ] 执行后运行 `python tests/run_all_tests.py`。
 - [ ] 若修改发布契约，额外检查 Amy Desk accounts 页和 PublishingRuntime bridge。
 

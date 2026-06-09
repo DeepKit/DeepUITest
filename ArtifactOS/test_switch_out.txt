@@ -1,0 +1,4 @@
+TEST_START 
+Runtime smoke FAIL: EDeepBaseDbError: [FireDAC][Comp][Clnt]-340. Driver ID is not defined. Set TFDConnection.DriverName or add DriverID to your connection definition
+EXITCODE=1 
+TEST_END 

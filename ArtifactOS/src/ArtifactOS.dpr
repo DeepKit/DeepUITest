@@ -1,4 +1,4 @@
-program ArtifactOS;
+﻿program ArtifactOS;
 
 { ArtifactOS — Source-to-Artifact Production and Amplification Kernel }
 { Phase 1A: shadow run only.  Target database: artifactos_test. }
@@ -6,6 +6,7 @@ program ArtifactOS;
 
 uses
   System.SysUtils,
+  System.IOUtils,
   Vcl.Forms,
   FireDAC.Stan.Intf,
   FireDAC.Stan.Option,
@@ -43,6 +44,7 @@ uses
   ArtifactOS.Services.FeedbackEvolution,
   ArtifactOS.Services.ShadowRunScheduler,
   ArtifactOS.Services.RealPublishGate,
+  ArtifactOS.Services.SourcePackScanner,
   ArtifactOS.Desk.MainForm in 'Desk\ArtifactOS.Desk.MainForm.pas' {DeskMainForm},
   ArtifactOS.Desk.Services in 'Desk\ArtifactOS.Desk.Services.pas',
   ArtifactOS.Desk.Commands in 'Desk\ArtifactOS.Desk.Commands.pas',
@@ -72,6 +74,26 @@ begin
         begin
           WriteLn('Runtime smoke FAIL: ', SmokeMessage);
           ExitCode := 1;
+        end;
+        Exit;
+      end;
+
+      // --rebuildsource: rescan SourcePack directory
+      if FindCmdLineSwitch('rebuildsource', True) then
+      begin
+        var SourceRoot: string := 'D:\_Progs\一元论';
+        WriteLn('Rebuilding source index...');
+        var SR := TSourcePackScanner.RebuildIndex(SourceRoot);
+        WriteLn(Format('  indexed=%d  skipped=%d  pack_id=%s', [SR.IndexedFiles, SR.SkippedFiles, SR.SourcePackId]));
+        for var LPair in SR.LayerCounts do
+          WriteLn(Format('  layer=%s count=%d', [LPair.Key, LPair.Value]));
+        if Length(SR.Errors) > 0 then
+        begin
+          WriteLn(Format('  errors: %d', [Length(SR.Errors)]));
+          var MaxE := High(SR.Errors);
+          if MaxE > 4 then MaxE := 4;
+          for var EIdx := 0 to MaxE do
+            WriteLn('    ', SR.Errors[EIdx]);
         end;
         Exit;
       end;
@@ -109,7 +131,7 @@ begin
       WriteLn('ArtifactOS Phase 1A');
       WriteLn('==================');
       WriteLn;
-      WriteLn('Usage: ArtifactOS.exe [--desk] [--engine] [--smoke-runtime]');
+      WriteLn('Usage: ArtifactOS.exe [--desk] [--engine] [--smoke-runtime] [--rebuildsource]');
       WriteLn;
 
       TArtifactOSDashboard.Run;

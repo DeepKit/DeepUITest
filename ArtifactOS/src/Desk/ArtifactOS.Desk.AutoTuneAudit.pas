@@ -290,7 +290,7 @@ begin
         FGrid.Cells[6, Row] := JObj.GetValue<string>('time', '');
         FGrid.Cells[7, Row] := JObj.GetValue<string>('status', '');
         // Store event ID in a hidden convention: tag the row
-        FGrid.Objects[0, Row] := TObject(Pointer(PtrUInt(I)));
+        FGrid.Objects[0, Row] := TObject(Pointer(NativeUInt(I)));
       end;
       FStatusText.Caption := IntToStr(JArr.Count) + ' auto-tune events loaded';
     finally

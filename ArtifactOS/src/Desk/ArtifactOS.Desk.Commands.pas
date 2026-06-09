@@ -4,7 +4,7 @@
   Command registration for ArtifactOS Desk shell.
   Phase 1: navigation commands for Case, Artifact, Package, Contract views.
 
-  Updated: 2026-06-04 — aligned with DeepBase.VCL.DeepShell.Commands fluent API.
+  Updated: 2026-06-05 — added tools.sourcepack.rebuild for directory re-index.
   ============================================================================ }
 
 unit ArtifactOS.Desk.Commands;
@@ -21,7 +21,9 @@ procedure RegisterDeskCommands(const ACommands: IShellCommandManager;
 implementation
 
 uses
-  DeepBase.VCL.DeepShell.Types;
+  System.SysUtils,
+  DeepBase.VCL.DeepShell.Types,
+  ArtifactOS.Services.SourcePackScanner;
 
 procedure RegisterDeskCommands(const ACommands: IShellCommandManager;
   const AStatus: IShellStatusManager);
@@ -119,6 +121,40 @@ begin
         procedure
         begin
           AStatus.Info('desk.tools', 'Quality gate check requested');
+        end));
+
+  ACommands.RegisterCommand(
+    ShellCommand('tools.sourcepack.rebuild', 'Rebuild Source Index')
+      .Category('Tools')
+      .Hint('Rescan SourcePack directory and rebuild file inventory')
+      .OnExecute(
+        procedure
+        var
+          SourceRoot, PackId: string;
+          R: TSourcePackScanResult;
+        begin
+          PackId := TSourcePackScanner.GetActiveSourcePackId;
+          if PackId <> '' then
+          begin
+            // Rebuild existing pack — fetch its source_root
+            AStatus.Info('desk.tools', 'Rebuilding source index...');
+            Exit;  // TODO: fetch root from DB and call RebuildIndex
+          end;
+
+          // First time: prompt for SourcePack root directory
+          // For now use the known default path
+          SourceRoot := 'D:\_Progs\一元论';
+          if not System.SysUtils.DirectoryExists(SourceRoot) then
+          begin
+            AStatus.Info('desk.tools', 'SourcePack directory not found: ' + SourceRoot);
+            Exit;
+          end;
+
+          AStatus.Info('desk.tools', 'Scanning SourcePack: ' + SourceRoot);
+          R := TSourcePackScanner.RebuildIndex(SourceRoot);
+          AStatus.Info('desk.tools',
+            Format('Source index rebuilt: %d files indexed (%d skipped) SPL updated',
+              [R.IndexedFiles, R.SkippedFiles]));
         end));
 end;
 

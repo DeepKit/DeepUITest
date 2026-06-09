@@ -93,7 +93,7 @@ create index if not exists idx_boundary_decision_artifact
 -- Tamper-evident seal for published artifacts. Once sealed, content hash is immutable.
 create table if not exists artifactos.publication_seal (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000001,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000001',
 
   -- What is sealed
   artifact_id uuid not null references artifactos.artifact(id),
@@ -129,9 +129,11 @@ create index if not exists idx_pub_seal_version
 
 -- ── L3-72: Recall card ──────────────────────────────────────────────
 -- Records each recall/rollback action with full chain traceability.
-create table if not exists artifactos.recall_card (
+-- Drop legacy recall_card (created in early migration with different schema)
+drop table if exists artifactos.recall_card cascade;
+create table artifactos.recall_card (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000001,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000001',
 
   -- What is being recalled
   seal_id uuid not null references artifactos.publication_seal(id),
@@ -173,7 +175,7 @@ create index if not exists idx_recall_card_artifact
 -- Triggers for sampling review, downgrade, and red-line freeze.
 create table if not exists artifactos.cognitive_disturbance_event (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null default '00000000-0000-0000-0000-000000000001,
+  tenant_id uuid not null default '00000000-0000-0000-0000-000000000001',
 
   -- What triggered the disturbance
   artifact_id uuid references artifactos.artifact(id),

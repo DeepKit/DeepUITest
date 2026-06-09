@@ -10,7 +10,7 @@ set DEEPBASE=..\DeepBase
 set DCU=dcu\Win64\Debug
 set BIN=bin\Win64\Debug
 
-set UNITS=%DEEPBASE%\Core;%DEEPBASE%\Services;%DEEPBASE%\Persistence;%DEEPBASE%\Governance;src\core;src\services
+set UNITS=%DEEPBASE%\Core;%DEEPBASE%\Services;%DEEPBASE%\Persistence;%DEEPBASE%\Governance;%DEEPBASE%\VCL;src\core;src\services;src\Desk
 
 echo ========================================
 echo ArtifactOS Phase 1A Build

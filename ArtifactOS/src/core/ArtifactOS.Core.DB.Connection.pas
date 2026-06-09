@@ -83,16 +83,14 @@ begin
   if IsConnected then Exit;
   Host  := GetConfig('ArtifactOS.DB.Host',  '127.0.0.1');
   Port  := GetConfig('ArtifactOS.DB.Port',  '5432');
-  User  := GetConfig('ArtifactOS.DB.User',  '');
+  User := GetEnvironmentVariable('ARTIFACTOS_DB_USER');
   if User = '' then
-    User := GetEnvironmentVariable('ARTIFACTOS_DB_USER');
-  Pwd := LoadSecret('ArtifactOS.DB.Pass');
+    User := GetConfig('ArtifactOS.DB.User', '');
+  if User = '' then
+    User := 'postgres';
+  Pwd := GetEnvironmentVariable('ARTIFACTOS_DB_PASS');
   if Pwd = '' then
-  begin
-    Pwd := GetEnvironmentVariable('ARTIFACTOS_DB_PASS');
-    if Pwd <> '' then
-      SaveSecret('ArtifactOS.DB.Pass', Pwd);
-  end;
+    Pwd := LoadSecret('ArtifactOS.DB.Pass');
   Db    := GetConfig('ArtifactOS.DB.Name',  FDatabaseName);
 
   FConnection.DriverName := 'PG';
@@ -153,6 +151,7 @@ end;
 
 function TArtifactDB.Context(const ATimeoutSec: Integer): TUniQueryContext;
 begin
+  Connect;
   Result := UniDbMakeContext(FConnection, udbPostgreSQL, ATimeoutSec, UniDbNewCorrelationId);
 end;
 

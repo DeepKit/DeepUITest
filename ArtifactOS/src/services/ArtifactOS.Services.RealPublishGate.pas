@@ -19,7 +19,7 @@ unit ArtifactOS.Services.RealPublishGate;
 interface
 
 uses
-  System.SysUtils, System.JSON,
+  System.SysUtils, System.StrUtils, System.JSON,
   ArtifactOS.Core.DB.Connection;
 
 type
