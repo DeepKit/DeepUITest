@@ -219,21 +219,25 @@ if ($notepad) {
 # Launch Calculator (might be UWP on modern Windows)
 $calc = Launch-TestApp "Calculator" "calc.exe"
 if ($calc) {
-    # Check if it's a real process or UWP redirect
     Start-Sleep -Milliseconds 1000
     if (-not $calc.HasExited) {
         Record "Compat" "Calculator launches" "running" "PID $($calc.Id)" $true
     } else {
-        Record "Compat" "Calculator launches" "running" "UWP redirect" $false
-        $script:results[-1].Result = "SKIP"
-        $script:fail--
+        # calc.exe exits immediately on modern Windows (UWP redirector) — SKIP, not FAIL
         $script:skip++
+        $script:results += [PSCustomObject]@{
+            Category = "Compat"; Test = "Calculator launches"; Target = "running"
+            Actual = "UWP redirect (exits immediately)"; Result = "SKIP"; Notes = "calc.exe is UWP on modern Windows"
+        }
+        Write-Host "  [SKIP] Calculator launches" -ForegroundColor Yellow
     }
 } else {
-    Record "Compat" "Calculator launches" "running" "not found" $false
-    $script:results[-1].Result = "SKIP"
-    $script:fail--
     $script:skip++
+    $script:results += [PSCustomObject]@{
+        Category = "Compat"; Test = "Calculator launches"; Target = "running"
+        Actual = "not found"; Result = "SKIP"; Notes = "calc.exe not available"
+    }
+    Write-Host "  [SKIP] Calculator launches" -ForegroundColor Yellow
 }
 
 # Check if DeepRKey sees windows (via log)
@@ -258,11 +262,12 @@ $code = Launch-TestApp "VS Code" "code.exe"
 if ($code) {
     Record "Compat" "VS Code (Electron) launches" "running" "PID $($code.Id)" $true
 } else {
-    Record "Compat" "VS Code (Electron) launches" "running" "SKIP" $false "VS Code not installed"
-    # Mark as SKIP
-    $script:results[-1].Result = "SKIP"
-    $script:fail--
     $script:skip++
+    $script:results += [PSCustomObject]@{
+        Category = "Compat"; Test = "VS Code (Electron) launches"; Target = "running"
+        Actual = "not installed"; Result = "SKIP"; Notes = "VS Code not found on this system"
+    }
+    Write-Host "  [SKIP] VS Code (Electron) launches" -ForegroundColor Yellow
 }
 
 # ============================================================================
