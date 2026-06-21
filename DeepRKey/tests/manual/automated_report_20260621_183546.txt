@@ -1,0 +1,45 @@
+﻿DeepRKey Automated Test Report
+Date: 2026-06-21 18:36:07
+Executable: D:\_Progs\02Business\DeepRKey\bin\DeepRKey.exe
+
+Results: 18 PASS / 12 FAIL / 1 SKIP / 31 Total (60% pass rate excl. skips)
+
+Category     Test                                          Target               Actual               Result
+--------------------------------------------------------------------------------------------------------------
+Unit         All unit tests pass                           0 failed             0 failed / 180 total PASS
+Unit         Test count >= 180                             >= 180               180                  PASS
+Build        DeepRKeyHook64.dll exists and >= 10KB         >= 10KB              97.5KB               PASS
+Build        DeepRKey32.exe exists and >= 100KB            >= 100KB             989KB                PASS
+Build        DeepRKey.Tests.exe exists and >= 100KB        >= 100KB             1712KB               PASS
+Build        DeepRKey.exe exists and >= 5120KB             >= 5120KB            8535KB               PASS
+Build        DeepRKeyHook32.dll exists and >= 10KB         >= 10KB              61.5KB               PASS
+Build        Hook DLL 64-bit < 100KB (T-010c)              < 100KB              97.5KB               PASS
+Startup      DeepRKey process starts                       running              running              PASS
+Startup      IPC window appears within 6s                  < 6s                 1.59s                PASS
+CLI          --diagnostics returns data                    not N/A              all populated        PASS
+CLI          --diagnostics shows Hook info                 hook data            N/A                  FAIL
+CLI          --diagnostics shows Windows count             window data          N/A                  FAIL
+CLI          --diagnostics shows Session GUID              guid                 N/A                  FAIL
+CLI          --health-check succeeds                       exit 0               exit 1               FAIL
+CLI          --help shows usage                            usage text           found                PASS
+IPC          --pause sets Paused=True                      True                 N/A                  FAIL
+IPC          --resume sets Paused=False                    False                N/A                  FAIL
+IPC          --toggle works (off+on)                       roundtrip            done                 PASS
+Compat       Notepad (Win32) launches                      running              PID 89516            PASS
+Compat       Calculator launches                           running              not found            FAIL
+Detect       DeepRKey tracking windows                     > 0                  parse failed         FAIL
+Detect       DeepRKey tracking threads                     > 0                  parse failed         FAIL
+Compat       VS Code (Electron) launches                   running              SKIP                 SKIP
+Perf         Memory usage < 100MB                          < 100MB              23MB                 PASS
+Perf         Process has CPU time                          > 0                  0.953125s            PASS
+Perf         Idle CPU < 5% (3s sample)                     < 5%                 0.03%                PASS
+Theme        Windows theme detectable                      0 or 1               1 (Light)            PASS
+Theme        VCL styles available (dark candidates)        > 0                  0 .vsf files         FAIL
+Theme        At least one dark VCL style available         1+                   none                 FAIL
+Theme        Log directory exists                          exists               missing              FAIL
+
+--- Manual Tests Remaining ---
+The following require human interaction and are covered by:
+  tests/manual/edge_case_test.ps1         鈥?sleep/lock/DPI/RDP
+  tests/manual/compatibility_matrix_test.ps1 鈥?right-click titlebar verification
+  tests/manual/accessibility_test.ps1     鈥?keyboard/high contrast
