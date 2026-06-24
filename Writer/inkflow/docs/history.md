@@ -1,0 +1,1157 @@
+# InkFlow v3.9 — 开发历史
+
+> 记录已完成的修复和里程碑
+
+---
+
+## 第一轮 专家审查修复 (2026-06-17)
+
+> 5 位专家审查 → 44 项问题 → 全部修复 → 170 tests pass
+
+### 🔴 Critical — 8/8 ✅
+
+| ID | 问题 | 修复方式 |
+|----|------|----------|
+| C1 | smart_redo permanent_red 不可达 | Schema `CHECK BETWEEN 0 AND 3` |
+| C2 | import-baseline 重复运行数据翻倍 | `_import_shot` 查重 + `import_chapter` 复用 run_id |
+| C3 | run 硬编码 8 个 shot | 从 baseline 动态读�� + `--shot-count` 选项 |
+| C4 | 30+ FK 约束缺失 | schema.sql 全面重写，添加所有 REFERENCES |
+| C5 | Migration 失败后强制标记版本 | 删除 force-mark + SAVEPOINT 包裹 |
+| C6 | Backup 使用 shutil.copy2 不安全 | 改用 SQLite Online Backup API |
+| C7 | 写操作缺少事务保护 | SAVEPOINT 事务保护 migration |
+| C8 | project_config UNIQUE 约束崩溃 | 改用 INSERT OR REPLACE |
+
+### 🟡 Important — 12/12 ✅
+
+| ID | 问题 | 修复方式 |
+|----|------|----------|
+| I1 | --writer-count 无范围校验 | click.IntRange(2, 4) |
+| I2 | 畸形 .models YAML 崩溃 | try/except yaml.YAMLError |
+| I3 | _build_previous_shots 边界错误 | len(window) 替代 len(original) |
+| I4 | detect_conflicts 不过滤 run_id | 查询加 AND run_id = ? |
+| I5 | generate_motif_task 忽略 min_shot_gap | 检查 shot_index 间距 |
+| I6 | 缺少高频查询列索引 | 添加 5 个索引 |
+| I7 | writing_jury_scores 缺 UNIQUE | 复合 UNIQUE 约束 |
+| I8 | _execute_schema 不处理内联注释 | _strip_inline_comment() |
+| I9 | split_by_scene_headers 丢弃前言 | 保留 "前言" prologue shot |
+| I10 | --file 相对路径解析错误 | 按 story_dir 解析 |
+| I11 | setup 硬编码 "分流" | f-string 动态项目名 |
+| I12 | types.py TypedDict 未导出 | models/__init__.py 导出 |
+
+### 🧪 测试缺口 — 9/9 ✅
+
+| ID | 测试 | 新增测试数 |
+|----|------|-----------|
+| T1 | smart_redo 耗尽路径 | TestSmartRedoExhaustion (4) |
+| T2 | detect_conflicts 冲突路径 | TestDetectConflicts (2) |
+| T3 | CLI 命令实际执行 | TestStatusSmoke + TestImportBaselineSmoke (2) |
+| T4 | 端到端 pipeline 集成 | TestPipelineE2E (1) |
+| T5 | gate1 边界值 | TestGate1BoundaryValues (3) |
+| T6 | finalize_shot 黄/红路径 | TestFinalizeShotPaths (2) |
+| T7 | determine_light 精确边界 | TestDetermineLightBoundary (6) |
+| T8 | _activate_dynamic_jury | TestActivateDynamicJury (6) |
+| T9 | gate1_result_json 持久化 | TestGate1ResultPersistence (2) |
+
+### 🔵 Minor — 15/15 ✅
+
+| ID | 问题 | 修复方式 |
+|----|------|----------|
+| M1 | busy_timeout 未设置 | PRAGMA busy_timeout=5000 加入 open_db() |
+| M2 | _estimate_tokens 中文偏低 | /1.5 → /1.2 |
+| M3 | _has_excessive_repetition 仅 trigram | 扩展为 2-6 gram |
+| M4 | _split_statements 不处理字符串内分号 | 追踪 in_string 状态 + '' 转义 |
+| M5 | auto_select_writer_count 对话比例 | 实现 dialogue_ratio > 0.4 → 3 |
+| M6 | register_motif 不验证必需字段 | 添加 name/density/variants 必需检查 |
+| M7 | temperature 列无范围 CHECK | CHECK (BETWEEN 0.0 AND 2.0) |
+| M8 | min_shot_gap 无非负 CHECK | CHECK (min_shot_gap >= 0) |
+| M9 | _rotate_backups 按 mtime 排序 | 改为按文件名排序 |
+| M10 | services/__init__.py 全量导入 | __getattr__ lazy import |
+| M11 | pyproject.toml 缺 dev 工具 | 添加 mypy/ruff/black |
+| M12 | load_env 无测试 | TestLoadEnv (2 tests) |
+| M13 | 原始字符串用于状态转换 | 接受 str | Enum 并自动转换 |
+| M14 | baseline_importer 硬编码 snapshot_hash | 改用 text_hash_normalized() |
+| M15 | sessions list/abort 全目录扫描 | 添加可选 project 参数 |
+
+### 结果
+
+| 指标 | 值 |
+|------|-----|
+| 总问题 | 44 |
+| 已修复 | 44 |
+| 测试数 | 139 → 170 (+31) |
+| 涉及文件 | 30+ |
+
+---
+
+## 第二轮 专家审查修复 (2026-06-17)
+
+> 5 位专家审查 → 58 项问题 → 全部修复 → 184 tests pass
+
+### 完成统计
+
+| 分类 | 已完成 |
+|------|--------|
+| Critical | 16/16 |
+| Important | 22/22 |
+| Minor | 20/20 |
+| 总计 | 58/58 |
+
+### 最后一批修复
+
+| ID | 修复内容 |
+|----|----------|
+| I19 | `load_env` 无路径时发出警告 |
+| I20 | 创建异常层次，`contract_compiler` 采用 `ContractError` |
+| I21 | `load_models_config` 验证 `primary` 字段 |
+| M4 | `review-shots` 命令添加 `--help` + smoke test |
+| M5 | `setup` 命令添加 smoke test |
+| M6 | `auto_select_writer_count` 添加 `dialogue_ratio` / `pov_count` 测试 |
+| M7 | `idempotent_import` 验证 DB count 不重复 |
+| M9 | `_split_statements` 处理块注释 `/* ... */` |
+| M16 | 添加 `inkflow.logger` (`logging.NullHandler`) |
+
+### 测试增长
+
+| 阶段 | 测试数 |
+|------|--------|
+| 初始 | 139 |
+| 第一轮修复后 | 170 |
+| 第二轮修复后 | 184 |
+
+### 结果
+
+| 指标 | 值 |
+|------|-----|
+| 总问题 | 58 |
+| 已修复 | 58 |
+| 累计修复 | 102 |
+| 测试结果 | 184 passed |
+
+---
+
+## 第三轮 P0 设计/实现审阅 (2026-06-18)
+
+> 4 个专家视角审阅当前开发文档与实现。结论：文档设计接近最优，但当前程序实现仍未完成 P0 纵向闭环。
+
+### 已完成动作
+
+| 项 | 结果 |
+|----|------|
+| 文档审阅 | `design.md` / `flow.md` / `role-system.md` / `implementation-contract-v0.md` 已核对 |
+| 实现审阅 | CLI、schema、contract/session/writer/jury/gate/fact-anchor 等核心模块已核对 |
+| 测试复核 | `pytest -q` 通过，结果为 184 passed / 2 warnings |
+| 新任务归档 | 新的 P0 阻塞项已转入 `TASKS.md` |
+| 新 bug 记录 | 新发现问题已转入 `docs/bugfix.md` 第三轮 |
+
+---
+
+## P0 纵向闭环实现 (2026-06-18)
+
+> 实现 P0 全部 8 个阻塞项。测试结果从 184 → 212 passed。
+
+### 已完成修复
+
+| Bug | 修复内容 | 新增测试 |
+|-----|----------|---------|
+| B13 | 新增 `ink confirm-contract` CLI 命令 + `--lock` 选项 | 4 tests (TestConfirmContract) |
+| B14 | 新增 `ModelClient` 协议 + `LocalDefaultGenerator` 确定性生成器；`WriterDispatcher` 接入 | 7 tests (TestLocalDefaultGenerator, TestCreateModelClient) |
+| B15 | Jury 分制统一为 0-100；新增 `score_override` 支持测试构造三种 verdict | 7 tests (TestJuryScoreScale) |
+| B16 | 删除 `cli.py` 二次覆盖 `done_green` 的代码，由 `finalize_shot` 统一处理 | 1 test (test_yellow_status_preserved) |
+| B17 | Fact Anchor 实现 3 类关键词提取 (character_state/object_location/event_occurred)；CLI 集成提取 + 注入 | 8 tests (TestFactAnchorExtraction, TestFactAnchorInjection) |
+| B17-P0-7 | 新增 `_print_scope_report` 章完成摘要（绿/黄/红统计 + 锚点数 + 平均分） | 1 test (TestScopeReport) |
+| B17-P0-8 | Chesil 新增 `InkFlowImporter`，read-only 导入 InkFlow DB | 4 tests (TestInkFlowImporter) |
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/inkflow/services/model_client.py` | ModelClient 协议 + LocalDefaultGenerator |
+| `tests/test_model_client.py` | ModelClient 测试 |
+| `tests/test_jury_scoring.py` | Jury 分制与灯色阈值测试 |
+| `tests/test_fact_anchor.py` | Fact Anchor 提取+注入测试 |
+| `tests/test_scope_report.py` | Scope Report 测试 |
+| `chesil/chisel/ingest/inkflow_importer.py` | Chesil read-only 导入 InkFlow DB |
+| `chesil/tests/test_inkflow_importer.py` | Chesil 导入测试 |
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `src/inkflow/cli.py` | 新增 confirm-contract 命令；修复黄灯状态覆盖；集成 fact anchor 提取+注入；新增 scope report |
+| `src/inkflow/services/writer_dispatcher.py` | 接入 ModelClient，替换占位文本 |
+| `src/inkflow/services/jury_service.py` | 统一 0-100 分制；新增 score_override |
+| `src/inkflow/services/fact_anchor_extractor.py` | 实现 3 类关键词提取 |
+| `src/inkflow/db/schema.sql` | score 约束从 0-10 改为 0-100 |
+| `src/inkflow/services/__init__.py` | 导出 ModelClient 系列 |
+| `tests/test_schema.py` | 更新 score 范围测试 |
+| `tests/test_cli.py` | 新增 confirm-contract 和 yellow status 测试 |
+
+### 测试结果
+
+| 阶段 | 测试数 |
+|------|--------|
+| 第三轮审阅后 | 184 |
+| P0 实现后 | **212** (+28) |
+
+---
+
+## P1 数据一致性 + LLM + CLI 修复 (2026-06-18)
+
+### 已完成
+
+| Bug | 修复内容 | 新增测试 |
+|-----|----------|---------|
+| B18 (DB-1) | baseline shot 增加 `is_baseline=1` 标记；`write_revision` 拒绝覆盖 | 2 tests (TestBaselineProtection) |
+| B19 (DB-2/3) | partial unique index `idx_revisions_one_current`；服务层校验 | 1 test (TestCurrentRevisionConstraint) |
+| B21 (DB-5) | fact anchor 唯一键改为 `(project_id, anchor_key, source_revision_id)` | - |
+| B22 (DB-6) | 新增 `model_attempts` 审计表 + idempotency_key | 3 tests (TestModelAttemptsAudit) |
+| B14/B22 (LLM-1) | `ModelClient.generate()` 自动写入 audit 表 | - |
+| B15 (LLM-4) | Gate2 不再把 yellow 标记为 `below_green_threshold` | - |
+| B23 (LLM-5) | `compile_static_prefix` 超限时 emit warning + `cacheable` 标志 | - |
+| CLI-4 | `repair` 使用真实 run_id 而非空字符串 | - |
+| CLI-5 | 所有硬编码 `D:\\_Progs\\.Story` 替换为 `_STORY_BASE` | - |
+
+### Schema 变更
+
+| 变更 | 说明 |
+|------|------|
+| `writing_shots.is_baseline` | 新增列，baseline 标记 |
+| `idx_revisions_one_current` | partial unique index |
+| `model_attempts` | 新增 26 号表（模型调用审计） |
+| `writing_fact_anchors` unique key | 改为 `(project_id, anchor_key, source_revision_id)` |
+| SCHEMA_VERSION | 1 → 2 |
+
+### 迁移
+
+`@register_migration(1, 2)` 处理所有 schema 变更（含 fact anchor 表重建）。
+
+### 测试结果
+
+| 阶段 | 测试数 |
+|------|--------|
+| P0 实现后 | 212 |
+| P1 实现后 | **218** (+6) |
+
+
+---
+
+
+基于第 01-03 章阅读发现的问题，映射到 7 个管线改动。
+
+### 文学问题 → 代码改动映射
+
+| ID | 文学问题 | 改动 | 涉及文件 | 优先级 | 状态 |
+|----|---------|------|----------|:---:|:---:|
+| OPT-1 | 段落膨胀（Ch02 多段 >1000 字） | L4 新增 `_check_paragraph_length()` | `architect_gate.py` | 🔴 P0 | ✅ |
+| OPT-2 | 感官密度平铺（每段都有冷/湿/锈/霉） | per-shot `sensory_pressure` + `dominant_sense` | `contract_compiler.py` + `prompt_compiler.py` + YAML | 🔴 P0 | ✅ |
+| OPT-3 | 叙述者越位（"她不是在…她是在…"） | 扩展 `_NARRATOR_INTRUSION_PATTERNS` | `architect_gate.py` + `jury_service.py` | 🔴 P0 | ✅ |
+| OPT-4 | 角色消失（郑坤 Ch02/03 隐身） | L3 新增 `_check_character_presence()` | `architect_gate.py` | 🟡 P1 | ✅ |
+| OPT-5 | 缺少精确细节（无"破"点） | jury `reading_fluency` 增加 precision detail 加分 | `jury_service.py` + `prompt_compiler.py` | 🟡 P1 | ✅ |
+| OPT-6 | Shot 间情绪降速太快 | shot contract 增加 `entry_mood` | `prompt_compiler.py` + YAML | 🟡 P1 | ✅ |
+| OPT-7 | 系统被过度解释（环境→解剖对象） | L4 新增 `_check_system_voice()` | `architect_gate.py` | 🟢 P2 | ✅ |
+
+### 实施完成报告
+
+**修改文件清单**：
+- `src/inkflow/services/architect_gate.py` — 新增 3 个 L4 检查方法 + L3 角色存在感检查
+- `src/inkflow/services/prompt_compiler.py` — 新增感官密度指令 + 精确细节要求 + 情绪入口
+- `src/inkflow/services/contract_compiler.py` — shot contract 透传新字段 (sensory_pressure, dominant_sense, entry_mood)
+- `src/inkflow/cli.py` — 从 YAML 提取新字段传入 shot contract
+- `src/inkflow/services/jury_service.py` — reading_fluency 维度增加精确细节评分规则
+- `tests/test_schema.py` — 修复 pre-existing 失败（添加 writing_information_gaps 表）
+
+**测试结果**：全部 260 个测试通过 ✅
+
+### 各 OPT 详细说明
+
+**OPT-1 段落长度强制**
+- `architect_gate.py` 新增 `_check_paragraph_length(text, max_chars=800)`
+- 按 
+ 分割段落，检查每段字符数
+- 超标段落记录 paragraph_index, char_count, overshoot, preview
+- 结果纳入 suspense_summary 评分（0 违规=100分，≤2=60分，>2 线性递减）
+
+**OPT-2 感官密度动态化**
+- `contract_compiler.py` compile_shot_contracts 从 shot dict 提取 sensory_pressure/dominant_sense 写入 contract_json
+- `prompt_compiler.py` _build_shot_context 读取这两个字段，生成分级指令：
+  - 高：每段至少叠加两种感官，营造压迫感
+  - 中：每段一到两种感官
+  - 低：空旷安静留白，沉默本身成为感官
+- `cli.py` 从 YAML chapter events 提取这两个字段传入 shot_data
+
+**OPT-3 叙述者越位检测**
+- `architect_gate.py` 新增 `_NARRATOR_INTRUSION_PATTERNS`（13 条正则）
+- 捕获 "她不是在…她是在" / "问题不在于…而在于" / "他其实是" 等模式
+- 新增 `_check_narrator_intrusion()` 方法
+- severity=high，单独计数
+- `jury_service.py` reading_fluency prompt 追加精确细节加分规则
+
+**OPT-4 角色存在感追踪**
+- L3 evaluate_l3 新增 Check 4
+- 从 meta_contract 读取 pov_characters 列表
+- 对比本章 pov_counts，找出缺席角色
+- 新增 `_check_cross_chapter_absence()` 方法：查询前一章 POV，判断是否连续缺席
+- 连续两章缺席核心角色时发出警告
+
+**OPT-5 精确细节奖励**
+- `prompt_compiler.py` _build_style_locks 追加"精确细节"要求段，含 4 个示例
+- `jury_service.py` reading_fluency 维度说明中追加精确细节加分规则（有则 +5，无则 cap 80）
+
+**OPT-6 情绪过渡桥接**
+- `contract_compiler.py` 从 shot dict 提取 entry_mood 写入 contract_json
+- `prompt_compiler.py` _build_shot_context 读取 entry_mood，注入 ## 情绪入口 段落
+- `cli.py` 从 YAML chapter events 提取 entry_mood 字段传入 shot_data
+
+**OPT-7 系统声音分离**
+- `architect_gate.py` 新增 `_SYSTEM_DIRECT_PATTERNS`（3 条）和 `_SYSTEM_INTERPRETIVE_PATTERNS`（5 条）
+- 新增 `_check_system_voice()` 方法
+- 当 interpretive > direct 且 interpretive >= 2 时触发 warning
+- 结果纳入 suspense_summary 评分（warning=30, 仅 interpretive=60, 仅 direct=100）
+
+---
+
+## 十二、AI 架构师·全书节奏统筹 — 2026-06-21
+
+> 灵感来源：DeepStory（长篇小说工厂）的留白哲学与抽卡机制
+> 核心洞察：**留白是全局决策，不是局部决策**。当前 InkFlow 对每个 shot 施加相同的约束粒度，导致"情节起伏机械化"。
+
+### 核心公式（来自 DeepStory）
+
+```
+契约保下限 → 留白出上限 → 抽卡找高光 → 评价筛候选 → 人类定审美 → 系统学偏好
+```
+
+InkFlow 当前状态：
+- ✅ 契约保下限（meta-contract + shot contract + L4 gate）
+- ⚠️ 生成（2 路赛马，但差异化不足）
+- ✅ 评价（9 评委）
+- ❌ 留白出上限（无 deviation_budget、无叙事相位、无三层偏离分类）
+- ❌ 系统学偏好（无风格偏好学习闭环）
+
+### 关键设计原则（来自 DeepStory）
+
+1. **"留白不是少给硬事实。留白是少给过细表达指令。"**
+   - must_land.beats 当前把"写什么"和"怎么写"混在一起
+   - 必须分离：硬事实（不可偏离）vs 软约束（可偏离后记录）vs 参考层（仅供灵感）
+
+2. **任何新功能如果只强化约束一端而不考虑自由一端，就是设计缺陷。**
+   - 现有 OPT 全是加法（更多检查），需要补充减法（不干预声明、留白空间）
+
+3. **AI 是演奏者，不是作曲者。**
+   - 人类作曲（契约）→ AI 演奏（生成）→ 机器验证（gate）
+   - 但演奏需要"表现空间"——当前 prompt 没有给这个空间
+
+### 架构位置：5 层治理体系
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  L0: Book Constitution（全书宪法）                        │
+│  执行频率: 每项目 1 次    LLM: 80% / 规则: 20%           │
+│  人工介入: 必须确认       输出: rhythm_constitution（不可变）│
+├───────────────────────────────────────────────────────────┤
+│  L0.5: Volume Rhythm（卷部节奏）           ← 中间翻译层   │
+│  执行频率: 每卷 1 次      LLM: 70% / 规则: 30%           │
+│  人工介入: 无（冲突上报 L0）                               │
+│  输出: volume_rhythm_map（章角色 + 章张力预算）            │
+├───────────────────────────────────────────────────────────┤
+│  L1: Chapter Rhythm（章级节奏）                           │
+│  执行频率: 每章 1 次      LLM: 60% / 规则: 40%           │
+│  人工介入: 无（冲突上报 L0.5）                             │
+│  输出: chapter_rhythm_map（shot 级 phase + budget）        │
+├───────────────────────────────────────────────────────────┤
+│  L2: Shot Enrichment（Shot 契约富化）                     │
+│  执行频率: 每 Shot 1 次   LLM: 30% / 规则: 70%           │
+│  人工介入: 无                                             │
+│  输出: enriched_shot_contract（三层偏离结构）              │
+├───────────────────────────────────────────────────────────┤
+│  L3: Prompt Assembly（Prompt 组装）                       │
+│  执行频率: 每 Shot × 每 Persona          LLM: 0%（模板）  │
+│  人工介入: 无                                             │
+│  输出: final_prompt_text                                  │
+└───────────────────────────────────────────────────────────┘
+
+setup → confirm-contract → [L0 全书宪法] → [L0.5 卷部节奏] →
+[L1 章级节奏] → [L2 Shot 富化 + compile] → [L3 Prompt 组装] → run → gate
+```
+
+**为什么需要 L0.5 卷部级**：
+- 一本书 20+ 章时，全书架构师 context window 会爆，决策质量下降
+- 卷部级做中间翻译：把全书战略分解为卷部战术，再下发到章级
+- 每卷有自己的 mini-arc（起承转合），同时服从全书 arc
+- 经典分层控制：战略（L0）→ 战术（L0.5）→ 执行（L1/L2/L3）
+
+### 任务清单
+
+| ID | 任务 | 治理层 | 描述 | 涉及文件 | 优先级 | 状态 |
+|----|------|:---:|------|----------|:---:|:---:|
+| ARCH-1 | **三层偏离分类** | L2 | shot contract 拆分为 hard_facts / soft_constraints / reference 三层，prompt 注入时区别对待 | `contract_compiler.py` + `prompt_compiler.py` + `cli.py` + YAML schema | 🔴 P0 | ✅ |
+| ARCH-2 | **deviation_budget 参数** | L1→L2 | 每个 shot 携带 0.0-1.0 的留白预算，控制表达自由度 | `contract_compiler.py` + `prompt_compiler.py` | 🔴 P0 | ✅ |
+| ARCH-3 | **叙事相位分类** | L1 | 6 相位（chaos/pulse/ripple/sediment/fold/sublime），自动推导 paragraph_length、sensory_pressure、deviation_budget | `contract_compiler.py` + `prompt_compiler.py` + YAML schema | 🔴 P0 | ✅ |
+| ARCH-4 | **Book Constitution 服务** | L0 | 新建 `book_constitution.py`：读取全书大纲 + meta-contract，用 LLM 生成全书宪法（arc_shape、章角色分组、motif 生命周期、全局 deviation 范围），规则引擎验证，人类确认后锁定 | `services/book_constitution.py`（新建） | 🔴 P0 | ⏳ |
+| ARCH-5 | **Volume Rhythm 服务** | L0.5 | 新建 `volume_rhythm.py`：读取 L0 宪法 + 本卷所有章 events，为每章分配卷内角色（起承转合）+ 张力预算 + deviation_budget 范围，规则引擎验证卷内 mini-arc 完整性 | `services/volume_rhythm.py`（新建） | 🔴 P0 | ⏳ |
+| ARCH-6 | **Chapter Rhythm 服务** | L1 | 新建 `chapter_rhythm.py`：读取 L0.5 卷节奏 + 本章 events，为每个 shot 分配 narrative_phase + deviation_budget，规则引擎验证 5 条节奏规则 | `services/chapter_rhythm.py`（新建）+ `db/migration.py` v6→v7 | 🔴 P0 | ✅ |
+| ARCH-7 | **CLI 集成** | L0+L0.5+L1 | L1 已集成到 run 循环；L0/L0.5 CLI 命令待实现 | `cli.py` | 🟡 P1 | ⏳ |
+| ARCH-8 | **4 路赛马 + 风格方向** | L3 下消 | writer_dispatcher 从 2 路扩展到 4 路：意象师(诗意/0.95) + 节奏师(克制/0.75) + 对话师(生活化/0.85) + 结构师(极简/0.60) | `writer_dispatcher.py` + `cli.py` | 🟡 P1 | ✅ |
+| ARCH-9 | **不干预声明** | L3 | prompt static prefix 新增"不干预声明"段，明确告知 AI 哪些维度不在系统检查范围内 | `prompt_compiler.py` | 🟡 P1 | ✅ |
+| ARCH-10 | **风格偏好学习** | 跨层反馈 | jury 选出获胜草稿后，记录其 persona/model/temperature/style_direction，反馈 L0.5/L1 调整后续 shot | `jury_service.py` + `prompt_compiler.py` + 新表 | 🟢 P2 | ⏳ |
+| ARCH-11 | **反契约沙盒** | L2 变体 | 允许 1 路赛马故意偏离契约，用"意外价值"标准评估；如果明显更好，触发人类裁决 | `writer_dispatcher.py` + `architect_gate.py` | 🟢 P2 | ⏳ |
+| ARCH-12 | **三棵树架构** | 跨层 | 数据库从扁平结构升��为三棵树（契约树/故事树/执行树），4 张新表（`tree_nodes`/`contract_versions`/`story_content`/`execution_records`），8 层标准金字塔统一，Schema v7→v8，详见 `docs/design-3tree-architecture.md` | `db/schema.sql` + `db/migration.py` + `docs/design-3tree-architecture.md` | 🔴 P0 | ✅ |
+| ARCH-12 | **三棵树架构** | 跨层 | 数据库从扁平结构升级为三棵树，4 张新表（tree_nodes/contract_versions/story_content/execution_records），8 层标准金字塔统一，Schema v7-v8，详见 docs/design-3tree-architecture.md | db/schema.sql + db/migration.py + docs/design-3tree-architecture.md | P0 | + |
+| ARCH-13 | **正文真相源锚定** | 跨层 | shot_revisions.text 确认为正文唯一真相源（未封版=MAX(seq)，已封版=is_current=1）；execution_records 加 revision_id FK-shot_revisions；三棵树为索引非正文 | db/schema.sql + db/migration.py + 4 design docs | P0 | + |
+
+### L0 全书宪法算法（ARCH-4 详解）
+
+```
+输入：
+  - 已确认 meta-contract（identity.character_arcs, suspense_config, foreshadow_tracker）
+  - 全书所有章节的 chapter_X_events
+  - motif_definitions
+
+步骤 1：LLM 分析全书结构
+  - 全书 arc_shape（slow_build → crisis → resolution / 三幕式 / 五幕式 / ...）
+  - 张力峰值位置（哪一章是全书高潮）
+  - 张力谷值位置（哪里需要喘息）
+
+步骤 2：LLM 分组卷部（如果章节数 > 5）
+  - 将连续章节分组为卷/部
+  - 每卷 3-7 章
+  - 分组依据：场景集中度、POV 角色群、时间线连续性
+  - 输出：volume_chapter_map
+
+步骤 3：LLM 规划 motif 生命周期
+  - 每个 motif：planted_at → developed_at[] → resolved_at
+  - 规则引擎验证：每个 motif 至少 planted + resolved
+
+步骤 4：LLM 设定全局留白基调
+  - global_deviation_mean（���书留白均值）
+  - global_deviation_range（允许的偏差范围）
+
+步骤 5：规则引擎验证
+  ✓ 所有章节都被分配到卷部
+  ✓ 张力弧有且仅有 1 个峰值
+  ✓ 每个 motif 的 lifecycle 完整
+  ✓ character_arcs 的转折点在高潮章之前有铺垫
+  ✓ 卷部数量合理（2-6 个）
+
+步骤 6：人类确认 → 锁定为 constitution（不可变）
+
+输出：rhythm_constitution.json
+```
+
+### L0.5 卷部节奏算法（ARCH-5 详解）
+
+```
+输入：
+  - L0 constitution（本卷的角色：铺垫卷/升级卷/高潮卷/收束卷）
+  - 本卷所有章的 chapter_events
+  - 前一卷的 volume_rhythm_map（如有，用于跨卷衔接）
+
+步骤 1：LLM 设计卷内 mini-arc
+  - 本卷有自己的起承转合（不是全书 arc 的简单复制）
+  - 例如高潮卷：起（紧张积累）→ 承（冲突爆发）→ 转（反转/顿悟）→ 合（余波）
+  - 输出：volume_arc_shape
+
+步骤 2：LLM 为每章分配卷内角色
+  - 每章的角色：establishment / rising / climax / falling / bridge
+  - bridge = 连接下一卷的过渡章（末尾必须有跨卷钩子）
+  - 规则引擎验证：
+    ✓ 每卷至少 1 个 rising + 1 个 climax
+    ✓ 如果是最后一卷，至少 1 个 falling/resolution
+    ✓ 如果有后续卷，最后一章角色为 bridge
+
+步骤 3：LLM 分配每章的张力预算
+  - 每章获得 chapter_tension_budget（0.0-1.0）
+  - 高潮章 → 高张力（0.7-0.9）
+  - 铺垫章 → 低张力（0.3-0.5）
+  - 过渡章 → 中张力（0.4-0.6）
+
+步骤 4：LLM 分配每章的 deviation_budget 范围
+  - 每章获得 [min_budget, max_budget]
+  - 高潮章：范围窄且低（[0.15, 0.45]）→ 需要精确控制
+  - 铺垫章：范围宽且高（[0.45, 0.80]）→ 允许自由发挥
+  - 规则引擎验证：
+    ✓ 每章范围在 L0 全局范围内
+    ✓ 卷内 deviation 均值接近 L0 的全局均值（±0.1）
+
+步骤 5：LLM 规划本卷的 motif 推进
+  - 本卷哪些 motif 被植入/发展/回收
+  - 跨卷 motif 的延续（从上一卷接什么）
+
+步骤 6：LLM 设计跨卷衔接点
+  - 本卷最后一章的 hook → 下一卷的第一章必须承接
+  - 输出：volume_transition（{exit_hook, entry_expectation}）
+
+步骤 7：规则引擎验证
+  ✓ mini-arc 完整性（有起有收）
+  ✓ 张力曲线不是一条直线（至少 2 个拐点）
+  ✓ 跨卷衔接点存在
+  ✓ 与前一卷的 exit_hook 兼容
+  ✓ 违规 → LLM 重试（最多 3 轮）→ 仍失败则上报 L0 人类
+
+输出：volume_rhythm_map.json
+```
+
+### L1 章级节奏算法（ARCH-6 详解）
+
+```
+输入：
+  - L0.5 volume_rhythm_map（本章的角色 + 张力预算 + deviation 范围）
+  - 本章的 chapter_events（shot 列表）
+  - 前一章的 chapter_rhythm_map（用于跨章衔接）
+
+步骤 1：标记"锚点 shot"（低 deviation_budget）
+  - foreshadow recovery 所在 shot → 锚点（motif 回收必须精确）
+  - 章末钩子 shot → 锚点（hook 必须落地）
+  - character_arc 转折点 → 锚点（认知断裂/觉醒时刻）
+  - 锚点 deviation_budget: 0.2 ~ 0.35
+  - 约束：预算必须在 L0.5 给定的 [min, max] 范围内
+
+步骤 2：标记"呼吸 shot"（高 deviation_budget）
+  - 两个锚点之间的过渡 → 呼吸
+  - 日常场景、环境描写、次要人物互动 → 呼吸
+  - 呼吸 deviation_budget: 0.6 ~ 0.8
+
+步骤 3：推导叙事相位（narrative_phase）
+  - 锚点根据事件类型：
+    - 对抗/冲突 → pulse
+    - 揭示/反转 → chaos
+    - 顿悟/告别/认知断裂 → sublime
+  - 呼吸根据上下文：
+    - 锚点后 → ripple（余波）
+    - 日常场景 → sediment（沉积）
+    - 涉及时间跳跃/多视角交织 → fold（折叠）
+
+步骤 4：推导衍生参数
+  - pulse: paragraph_length [200,400], sensory_pressure 高
+  - ripple: paragraph_length [400,600], sensory_pressure 中
+  - sediment: paragraph_length [500,800], sensory_pressure 低
+  - chaos: paragraph_length [300,500], sensory_pressure 高
+  - fold: paragraph_length [400,600], sensory_pressure 中
+  - sublime: paragraph_length [300,600], sensory_pressure 中偏高
+
+步骤 5：节奏规则验证（规则引擎，非 LLM）
+  - 相邻 shot 的 deviation_budget 不能连续 3 个相同
+  - 相邻 shot 的 narrative_phase 不能连续 3 个相同
+  - 每章至少 1 个呼吸 shot（budget > 0.5）
+  - 每章至少 1 个锚点 shot（budget < 0.4）
+  - 本章 deviation_budget 均值必须在 L0.5 给定的范围内
+  - 如果违反规则 → LLM 重新调整 → 最多 3 轮
+  - 3 轮仍违规 → 上报 L0.5（请求调整本章张力预算）
+
+步骤 6：跨章衔接检查
+  - 本章第一个 shot 的 entry_mood 与前一章最后一个 shot 的 exit_mood 兼容
+  - 如果不兼容 → 调整 entry_mood 或上报
+
+输出：chapter_rhythm_map.json
+```
+
+### L2 Shot 富化算法（ARCH-1 详解）
+
+```
+输入：
+  - 现有 shot contract（must_land + anti_write）
+  - L1 chapter_rhythm_map（本 shot 的 phase + budget）
+
+步骤 1：规则引擎分类 must_land beats（70%）
+  - 涉及具体事件动作（到达/发现/弹出/看见）→ hard_facts
+  - 涉及情绪/氛围/叙事距离 → soft_constraints
+  - 分类规则：可量化/可验证 → hard，主观判断 → soft
+
+步骤 2：LLM 生成 reference 层（30%）
+  - style_direction：根据 narrative_phase 推荐
+  - example_text：如果前一 shot 有获胜草稿，从中摘取风格参考
+  - motif_connection：当前 shot 与 motif 生命周期的关系
+
+步骤 3：规则引擎后验
+  ✓ hard_facts 覆盖原 must_land 的所有事件性 beats
+  ✓ deviation_budget 与 L1 分配一致
+  ✓ narrative_phase 与 L1 分配一致
+  ✓ reference 层不为空（至少有 style_direction）
+
+输出：enriched_shot_contract（三层结构 + phase + budget）
+```
+
+### 三层偏离分类示例（ARCH-1 详解）
+
+当前 InkFlow 的 shot contract：
+```json
+{
+  "must_land": {"beats": "- 郑坤到达太古里\n- 发现收件人换地方\n- 系统弹出配送失败\n- 玻璃幕墙看见自己的倒影\n- 保鲜膜从裤腿露出来..."},
+  "anti_write": {"pov_only": "只写郑坤", "forbidden": "不要写其他人的活动"}
+}
+```
+
+改造后的三层结构：
+```json
+{
+  "hard_facts": [
+    "郑坤到达太古里",
+    "收件人换了地方（IFS）",
+    "系统弹出'配送失败'",
+    "玻璃幕墙前看见自己的倒影，保鲜膜从裤腿露出来"
+  ],
+  "soft_constraints": [
+    "情绪基调：羞耻 + 被困",
+    "至少两种感官叠加（温度 + 触觉）",
+    "叙事距离：贴身，不离开郑坤的身体"
+  ],
+  "reference": {
+    "style_direction": "粗粝",
+    "example_text": "玻璃里面是暖黄色的灯光。玻璃外面是十二月的雨。",
+    "motif_connection": "保鲜膜第三次出现——从生存工具变成可见的标记"
+  },
+  "deviation_budget": 0.25,
+  "narrative_phase": "pulse",
+  "anti_write": {"pov_only": "只写郑坤", "forbidden": "不要写其他人的活动"}
+}
+```
+
+Prompt 注入方式：
+```
+## 硬事实（不可偏离）
+- 郑坤到达太古里
+- 收件人换了地方
+...
+
+## 软约束（建议遵守，允许表达偏离）
+- 情绪基调：羞耻 + 被困
+...
+以上约束你可以偏离——如果你的偏离产生了更好的文本。偏离不需要解释。
+
+## 灵感参考（不检查，不约束）
+- 风格方向：粗粝
+- 示例："玻璃里面是暖黄色的灯光..."
+
+## 不干预声明
+以下维度不在系统检查范围，完全由你决定：
+- 读者的个人联想
+- 审美偏好
+- 具体的意象选择（只要不违反硬事实）
+- 句子的节奏和长度变化
+```
+
+### 4 路赛马风格方向设计（ARCH-6 详解）
+
+| Persona | 温度 | 风格方向 | 差异化重点 | deviation_multiplier |
+|---|---|---|---|---|
+| 意象师 | 0.95 | 诗意 | 感官密度最高，隐喻最多，允许跳跃性思维 | 1.2x |
+| 节奏师 | 0.75 | 克制 | 句长变化最大，长短交替，信息释放节奏最讲究 | 0.8x |
+| 对话师 | 0.85 | 生活化 | 对话占比最高，潜台词，成都方言最多 | 1.0x |
+| 结构师 | 0.60 | 极简 | 情节推进最快，零废话，硬事实覆盖率最高 | 0.6x |
+
+4 路共用同一个 shot contract（相同的 hard_facts），但 prompt 的"灵感参考"和"风格方向"不同，temperature 不同，deviation_budget 被 multiplier 调整。
+
+Jury 从 4 份差异显著的草稿中选择，而不是从 2 份相似草稿中选择。
+
+### 实施顺序
+
+```
+Phase 1（核心留白机制）：ARCH-1 + ARCH-2 + ARCH-3
+  → 让 shot contract 有三层结构和留白预算
+  → 预计改动量：~200 行（contract_compiler + prompt_compiler + cli）
+
+Phase 2（分层 AI 架构师）：ARCH-4 + ARCH-5 + ARCH-6 + ARCH-7
+  → L0 全书宪法 → L0.5 卷部节奏 → L1 章级节奏
+  → 预计改动量：~500 行
+    · book_constitution.py（L0）~150 行
+    · volume_rhythm.py（L0.5）~150 行
+    · chapter_rhythm.py（L1）~120 行
+    · CLI 集成（ARCH-7）~80 行
+
+Phase 3（赛马升级）：ARCH-8 + ARCH-9
+  → 4 路赛马 + 不干预声明
+  → 预计改动量：~150 行（writer_dispatcher + prompt_compiler）
+
+Phase 4（学习闭环）：ARCH-10 + ARCH-11
+  → 风格偏好学习 + 反契约沙盒
+  → 预计改动量：~200 行 + 新表
+```
+
+### 数据库变更（更新版）
+
+```sql
+-- L0: 全书宪法
+CREATE TABLE writing_book_constitutions (
+    constitution_id    TEXT PRIMARY KEY,
+    project_id         TEXT NOT NULL REFERENCES projects(project_id),
+    arc_shape          TEXT NOT NULL,
+    volume_map_json    TEXT NOT NULL,      -- 卷部→章节的映射
+    chapter_roles_json TEXT NOT NULL,      -- 每章的全书级角色
+    motif_lifecycle_json TEXT NOT NULL,    -- motif 的 planted/developed/resolved
+    global_deviation_mean REAL NOT NULL,
+    global_deviation_range_json TEXT NOT NULL,
+    confirmed_at       TEXT,               -- 人类确认时间（NULL=未确认）
+    created_at         TEXT DEFAULT (datetime('now'))
+);
+
+-- L0.5: 卷部节奏
+CREATE TABLE writing_volume_rhythms (
+    volume_rhythm_id   TEXT PRIMARY KEY,
+    project_id         TEXT NOT NULL REFERENCES projects(project_id),
+    constitution_id    TEXT NOT NULL REFERENCES writing_book_constitutions(constitution_id),
+    volume_key         TEXT NOT NULL,       -- 卷标识（如 "vol_01"）
+    volume_arc_shape   TEXT NOT NULL,       -- 卷内 mini-arc
+    chapter_rhythms_json TEXT NOT NULL,     -- 每章的 {role, tension_budget, deviation_range}
+    motif_progress_json TEXT,               -- 本卷的 motif 推进计划
+    volume_transition_json TEXT,            -- 跨卷衔接点
+    validation_log     TEXT,
+    created_at         TEXT DEFAULT (datetime('now'))
+);
+
+-- L1: 章级节奏（原 writing_rhythm_maps 拆分）
+CREATE TABLE writing_chapter_rhythms (
+    chapter_rhythm_id  TEXT PRIMARY KEY,
+    project_id         TEXT NOT NULL REFERENCES projects(project_id),
+    volume_rhythm_id   TEXT NOT NULL REFERENCES writing_volume_rhythms(volume_rhythm_id),
+    chapter_key        TEXT NOT NULL,
+    shot_rhythms_json  TEXT NOT NULL,       -- 每 shot 的 {phase, budget, paragraph_length, sensory_pressure}
+    chapter_tension_curve TEXT,
+    validation_log     TEXT,
+    created_at         TEXT DEFAULT (datetime('now'))
+);
+
+-- L2/L3: 风格偏好（跨层反馈）
+CREATE TABLE writing_style_preferences (
+    preference_id       TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(project_id),
+    shot_id             TEXT NOT NULL,
+    winning_persona     TEXT NOT NULL,
+    winning_model       TEXT NOT NULL,
+    winning_temperature REAL,
+    winning_style_dir   TEXT,
+    created_at          TEXT DEFAULT (datetime('now'))
+);
+```
+
+### 《分流》5 层治理示例
+
+#### L0 全书宪法输出
+
+```json
+{
+  "arc_shape": "slow_build → crisis → revelation",
+  "volumes": {
+    "vol_01": {
+      "name": "V01·膝盖与螺丝刀",
+      "chapters": ["ch01", "ch02", "ch03", "ch04", "ch05"],
+      "role": "establishment + first_crack",
+      "description": "建立四人世界观，第一道裂缝出现"
+    }
+  },
+  "chapter_roles": {
+    "ch01": "establishment",
+    "ch02": "rising",
+    "ch03": "rising",
+    "ch04": "climax",
+    "ch05": "bridge_to_vol2"
+  },
+  "motif_lifecycles": {
+    "保鲜膜":     {"planted": "ch01", "developed": ["ch02","ch03"], "resolved": "ch04"},
+    "太阳神鸟":   {"planted": "ch01", "developed": ["ch03"],        "resolved": "vol_02"},
+    "34分健康积分":{"planted": "ch01", "developed": ["ch02"],        "resolved": "ch04"},
+    "四份通知":   {"planted": "ch01", "developed": ["ch02","ch03"], "resolved": "ch05"}
+  },
+  "global_deviation_mean": 0.5,
+  "global_deviation_range": [0.25, 0.75]
+}
+```
+
+#### L0.5 卷部节奏输出（V01）
+
+```json
+{
+  "volume_key": "vol_01",
+  "volume_arc_shape": "grounding → unease → fracture → aftershock",
+  "chapter_rhythms": [
+    {
+      "chapter": "ch01",
+      "role": "grounding",
+      "tension_budget": 0.35,
+      "deviation_range": [0.45, 0.75],
+      "notes": "建立基调，允许大量留白让 AI 自由构建世界"
+    },
+    {
+      "chapter": "ch02",
+      "role": "rising",
+      "tension_budget": 0.55,
+      "deviation_range": [0.35, 0.65],
+      "notes": "张力开始上升，留白收窄"
+    },
+    {
+      "chapter": "ch03",
+      "role": "rising",
+      "tension_budget": 0.60,
+      "deviation_range": [0.30, 0.65],
+      "notes": "苏然和韩教授的章节，认知裂缝加深"
+    },
+    {
+      "chapter": "ch04",
+      "role": "climax",
+      "tension_budget": 0.85,
+      "deviation_range": [0.15, 0.45],
+      "notes": "V01 高潮，motif 回收，必须精确落地"
+    },
+    {
+      "chapter": "ch05",
+      "role": "bridge",
+      "tension_budget": 0.50,
+      "deviation_range": [0.40, 0.70],
+      "notes": "收束 V01 + 钩住 V02，四份通知的余波"
+    }
+  ],
+  "motif_progress": {
+    "保鲜膜": "ch02=变形(从工具到标记), ch03=扩散(他人也看到)",
+    "四份通知": "ch02=第二份, ch03=第三份, ch05=第四份+余波"
+  },
+  "volume_transition": {
+    "exit_hook": "ch05 末尾：郑坤手机上弹出第五条通知——来自一个不该存在的号码",
+    "entry_expectation": "V02 ch01 必须承接这个号码的身份悬念"
+  },
+  "validation": {
+    "mini_arc_complete": true,
+    "tension_inflection_points": 2,
+    "all_chapters_assigned": true,
+    "cross_volume_hook_present": true
+  }
+}
+```
+
+#### L1 章级节奏输出（ch03·rising）
+
+```json
+{
+  "chapter": "ch03",
+  "volume_role": "rising",
+  "l05_budget_range": [0.30, 0.65],
+  "shots": [
+    {"shot": "glass_knee",      "phase": "ripple",   "budget": 0.35, "note": "锚点：保鲜膜 motif 在玻璃中的变形"},
+    {"shot": "four_notices",    "phase": "sediment", "budget": 0.60, "note": "呼吸：通知的累积，日常中的异常"},
+    {"shot": "pencil_question", "phase": "ripple",   "budget": 0.65, "note": "呼吸：苏然的铅笔——允许 AI 自由探索"},
+    {"shot": "three_year_log",  "phase": "sublime",  "budget": 0.25, "note": "锚点：认知断裂时刻，必须精确"},
+    {"shot": "slow_down",       "phase": "sediment", "budget": 0.55, "note": "呼吸：减速，为 ch04 高潮蓄力"}
+  ],
+  "validation": {
+    "rule_1_pass": true,
+    "rule_2_pass": true,
+    "rule_3_pass": true,
+    "rule_4_pass": true,
+    "rule_5_pass": true,
+    "mean_budget": 0.48,
+    "l05_range": [0.30, 0.65],
+    "mean_in_range": true
+  }
+}
+```
+
+**注意约束链的传递**：
+- L0 说 ch03 是 "rising"，deviation_range [0.30, 0.65]
+- L0.5 说 V01 是 "establishment + first_crack"，ch03 张力 0.60
+- L1 根据 L0.5 的 [0.30, 0.65] 给每个 shot 分配 budget
+- 锚点 shot (three_year_log) 的 0.25 低于 L0.5 下限 0.30
+  → 规则引擎报警 → L1 LLM 调整到 0.30 或上报 L0.5 请求降低下限
+  → 最终决定：0.30（规则引擎赢了）
+
+这就是分层治理的意义：**每一层的自由度被上一层约束，但不能被忽略**。
+
+### 层间治理协议
+
+**约束向下流动**：
+```
+L0 constitution → 约束 L0.5 的卷角色和张力范围
+L0.5 volume_rhythm → 约束 L1 的章角色和 deviation 范围
+L1 chapter_rhythm → 约束 L2 的 shot phase + budget
+L2 enriched_contract → 约束 L3 的 prompt 内容
+```
+
+**冲突向上反馈**：
+```
+L1 发现 L0.5 的 budget 范围无法容纳锚点 shot
+  → 生成 conflict_report 上报 L0.5
+  → L0.5 LLM 评估：扩展范围 or 调整章角色
+  → 如果超出 L0.5 权限 → 上报 L0 人类
+
+每层最多 3 轮自动调整
+```
+
+**层间不可越级**：
+```
+L3 不能直接修改 L1 的 deviation_budget
+L2 不能直接修改 L0.5 的章角色
+L1 不能直接修改 L0 的 constitution
+每一层只能修改自己的输出，不能修改其他层的输出
+```
+
+### 验证标准
+
+**L0 全书宪法验证**：
+1. ✅ 所有章节被分配到卷部
+2. ✅ 张力弧有且仅有 1 个峰值
+3. ✅ 每个 motif 的 lifecycle 完整（planted → resolved）
+4. ✅ 人类确认后 constitution 不可变（二次写入报错）
+
+**L0.5 卷部节奏验证**：
+5. ✅ 卷内 mini-arc 完整性（有 rising + climax）
+6. ✅ 张力曲线至少 2 个拐点
+7. ✅ 跨卷衔接点（exit_hook）存在
+8. ✅ 每章 deviation_range 在 L0 全局范围内
+
+**L1 章级节奏验证**：
+9. ✅ Shot 3（苏然·铅笔的问号）的 deviation_budget 应为 0.65（呼吸 shot）
+10. ✅ Shot 4（苏然·三年前的记录）的 deviation_budget 应为 0.30（锚点 shot）
+11. ✅ 两个苏然 shot 的 narrative_phase 不同（ripple vs sublime）
+12. ✅ 每章至少 1 个锚点 + 1 个呼吸 shot
+13. ✅ 本章 budget 均值在 L0.5 给定范围内
+
+**L2/L3 验证**：
+14. ✅ paragraph_length 随 phase 变化，不是全局 500-800
+15. ✅ Jury 评审 4 份草稿而非 2 份，winner 风格与前一个 shot 不同
+16. ✅ L4 gate 不再因"段落超 800 字"报警 pulse-phase 的短段落
+17. ✅ 叙述者越位检测不会误判 soft_constraint 范围内的合理表达
+18. ✅ 不干预声明出现在每个 prompt 中
+
+### Phase 1+3 实施报告 — 2026-06-21
+
+**完成的任务**：ARCH-1, ARCH-2, ARCH-3, ARCH-6, ARCH-8, ARCH-9（共 6 个）
+
+**修改文件清单**：
+
+| 文件 | 改动 | 行数 |
+|------|------|------|
+| `services/contract_compiler.py` | 新增 hard_facts/soft_constraints/reference/deviation_budget/narrative_phase 字段透传 | +20 |
+| `services/prompt_compiler.py` | 重构 `_build_shot_context()` 支持三层偏离格式 + deviation 指令 + phase 指令 + 不干预声明 | +200 |
+| `services/chapter_rhythm.py` | **新建**：L1 章级节奏架构师（LLM 分配 + 7 条规则验证 + fallback） | +380 |
+| `services/writer_dispatcher.py` | 新增 `dispatch_quad_track()` + `QUAD_TRACK_PERSONAS` 配置 | +180 |
+| `services/architect_gate.py` | L4 段落长度检查改为 phase-aware（6 相位不同阈值） | +40 |
+| `cli.py` | 集成章级节奏分析到 run 循环 + 4 路赛马替换 2 路 + rhythm 参数透传 | +50 |
+| `db/schema.sql` | 新增 `writing_chapter_rhythms` 表 | +12 |
+| `db/migration.py` | v6→v7 迁移（新增 chapter_rhythms 表） | +30 |
+| `tests/test_chapter_rhythm.py` | **新建**：8 个测试用例覆盖 L1 架构师 | +210 |
+| `tests/test_schema.py` | 新增 chapter_rhythms 表 + 索引到 ALL_TABLES/EXPECTED_INDEXES | +3 |
+
+**测试结果**：277 passed（新增 8 个）
+
+**关键设计决策**：
+
+1. **三层偏离分类（ARCH-1）**：
+   - `hard_facts`：事件性 beats，不可偏离
+   - `soft_constraints`：情绪/氛围/距离约束，允许偏离
+   - `reference`：风格方向/示例/motif 关联，不检查不约束
+   - **向后兼容**：如果 YAML 没有 hard_facts，自动降级为 must_land 格式
+
+2. **deviation_budget 指令（ARCH-2）**：
+   - 5 档描述：极低/低/中等/高/极高
+   - 每档明确告知 AI 什么是可以做的、什么是不能做的
+
+3. **叙事相位参数（ARCH-3）**：
+   - 6 相位 × 3 参数：paragraph_length、sensory_pressure、phase_description
+   - 直接注入 prompt，AI 根据相位调整写法
+
+4. **章级节奏 L1 架构师（ARCH-6）**：
+   - LLM 分配 narrative_phase + deviation_budget
+   - 7 条规则验证（无连续相同、至少 1 锚点 + 1 呼吸、均值在范围内等）
+   - 最多 3 轮 LLM 重试
+   - 确定性 fallback（LLM 失败时的兜底）
+
+5. **4 路赛马（ARCH-8）**：
+   - 意象师(诗意/0.95) + 节奏师(克制/0.75) + 对话师(生活化/0.85) + 结构师(极简/0.60)
+   - 每路有独立的 style_injection 注入到 prompt
+   - deviation_budget 影响有效温度
+   - Jury 从 4 份风格显著不同的草稿中选择
+
+6. **不干预声明（ARCH-9）**：
+   - 每个 prompt 末尾固定段
+   - 明确列出 5 个不检查维度：读者联想、意象选择、句子节奏、审美偏好、感官组合
+
+7. **Phase-aware L4 gate**：
+   - pulse: max 500 chars
+   - chaos: max 600 chars
+   - sublime: max 700 chars
+   - ripple/fold: max 800 chars
+   - sediment: max 1000 chars
+
+### ARCH-12 实施报告 — 2026-06-21
+
+**任务**：三棵树架构（契约树/故事树/执行树），数据库从扁平结构升级为 3 棵树 × 8 层标准金字塔
+
+**核心决策**：
+
+1. **为什么 3 棵树**：
+   - **契约树**（Contract Tree）：治理之树，"应该怎么写"。版本化，设计时产物，跨 run 稳定。
+   - **故事树**（Story Tree）：内容之树，"这本书里有什么"。追加式，角色状态/伏笔/时间线。
+   - **执行树**（Execution Tree）：生产之树，"这次 run 干了什么"。per-run，每次重新生成。
+   - 三者正交：契约可升级而不影响故事，每次 run 记录执行但不污染设计。
+
+2. **为什么 4 张表**：
+   - `tree_nodes`：三棵树共用骨架（`tree_type` 区分），`parent_id` 构成树，`node_level` 标识 L0~L7
+   - `contract_versions`：契约树正文，支持版本化（`version`），支持折叠继承（`is_collapsed`）
+   - `story_content`：故事��正文，含角色状态/伏笔/时间线
+   - `execution_records`：执行树正文，含 prompt/草稿/质量结果
+
+3. **8 层统一，空则占位**：
+   - 《分流》展开层：L0 全书 / L2 卷 / L4 章 / L6 场景
+   - 《分流》折叠层：L1 部 / L3 弧 / L5 节 / L7 段落（`is_collapsed=1`，自动继承父层）
+
+4. **不删现有表**：27 张旧表全部保留，`tree_nodes` 等 4 张新表平行存在；277 个旧测试不受影响。
+
+**修改文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `docs/design-3tree-architecture.md` | **新建**：三棵树架构完整设计文档 |
+| `docs/design-8layer-hierarchy.md` | 更新：加入 3 棵树引用，更新第 6 节数据库存储 |
+| `docs/implementation-contract-v0.md` | 更新：§3 标题改为 31 表，新增 §3.4 v8 新增表 DDL |
+| `db/schema.sql` | Schema v7→v8，新增 4 张表（`tree_nodes`/`contract_versions`/`story_content`/`execution_records`） |
+| `db/migration.py` | SCHEMA_VERSION 7→8，新增 `_migrate_v7_to_v8()` |
+| `tests/test_schema.py` | ALL_TABLES 新增 4 表，EXPECTED_INDEXES 新增 7 索引 |
+| `tasks.md` | 新增 ARCH-12 任务条目 + 本实施报告 |
+
+**验证**：
+- ✅ 全新 DB 初始化：SCHEMA_VERSION=8，4 张新表全部创建
+- ✅ v7→v8 迁移：4 张新表 + 7 个新索引全部正确创建
+- ✅ test_schema.py：22 passed
+- ✅ test_chapter_rhythm.py：8 passed（不受影响）
+
+### ARCH-13 实施报告 — 2026-06-23
+
+**任务**：正文真相源锚定 — 明确 `shot_revisions.text` 为正文唯一真相源，三棵树为索引
+
+**核心决策**：
+
+1. **正文唯一真相源 = `shot_revisions.text`**：
+   - **未封版**：正文 = `shot_revisions` 中 `revision_sequence` 最大的行（最后一次生成的版本）
+   - **已封版**：正文 = `shot_revisions` 中 `is_current=1` 的行（封版锁定的版本，不再更新）
+   - `shot_revisions.is_current` 被重新定义为**封版标记**（不是"当前 winner"），仅在封版时设置一次
+   - `writing_shots.current_revision_id` 始终指向最新 revision（未封版 = MAX(seq)，封版后 = 封版版本）
+
+2. **三棵树是索引，不是正文**：
+   - **契约树**（`contract_versions.contract_body_json`）：存契约约束（must_land / anti_write），不存正文
+   - **故事树**（`story_content.content_body_json`）：存世界状态（角色/伏笔/时间线），不存正文
+   - **执行树**（`execution_records.*`）：存执行元数据（draft_ids / selected_draft），通过 `revision_id` FK 指向 `shot_revisions`，不复制正文
+
+3. **表结构变更**：
+   - `execution_records` 新增 `revision_id TEXT REFERENCES shot_revisions(revision_id)` 指针
+   - 执行树通过该 FK 成为"正文的访问路径"，不再尝试复制或冗余存储正文
+
+**修改文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `docs/design-3tree-architecture.md` | 新增 §8 正文真相源规则；更新 §10 与现有表关系表；新增 T7 决策 |
+| `docs/design.md` | 更新 §9.4：三棵树表格增加"正文关系"列，新增正文真相源规则段落 |
+| `docs/implementation-contract-v0.md` | 更新 `execution_records` DDL 加入 `revision_id`；新增正文真相源规则说明 |
+| `db/schema.sql` | 更新 `execution_records` 表加入 `revision_id` FK 列 |
+| `db/migration.py` | 更新 `_migrate_v7_to_v8()` 中 `execution_records` 创建 DDL 加入 `revision_id` |
+| `tests/test_schema.py` | 新增 `TestTreeArchitecture` 类（3 个测试）：revision_id 列存在性 + 未封版/封版真相源规则 |
+| `tasks.md` | 新增 ARCH-13 任务条目 + 本实施报告 |
+
+**验证**：
+- ✅ test_schema.py：25 passed（新增 3 个）
+- ✅ 全量测试集：280 passed（ARCH-13 无回归）
+
+---
+
+### ARCH-4 实施报告：L0 全书宪法服务（2026-06-24）
+
+**目标**：实现 L0 全书节奏治理层，从大纲源文件生成全书宪法（arc_shape、volume_map、chapter_roles、motif_lifecycle、global_deviation），经规则引擎验证后由人类确认锁定。
+
+**设计决策**：
+- L0 宪法（`writing_book_constitutions`）与 meta-contract（`writing_meta_contract`）是**两个独立产物**：前者是节奏治理参数，后者是 10 层身份/声音/边界内容
+- 两者通过 `writing_meta_contract.constitution_version_id` 指针关联
+- 状态生命周期：`draft → human_review → confirmed → locked`（locked 不可变）
+- LLM 80% + 规则引擎 20%：LLM 生成结构，规则引擎验证完整性
+- 6 条验证规则：卷数(2-6)、章节分配完整性、单峰张力弧、motif 生命周期完整、deviation_mean∈[0,1]、deviation_range 合法性
+
+**Schema v8 → v9**：
+
+```sql
+-- 新增表
+CREATE TABLE writing_book_constitutions (
+    constitution_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(project_id),
+    version INTEGER NOT NULL DEFAULT 1,
+    arc_shape TEXT,
+    tension_peak_chapter TEXT,
+    tension_valley_chapters_json JSON,
+    volume_map_json JSON,
+    chapter_roles_json JSON,
+    motif_lifecycle_json JSON,
+    global_deviation_mean REAL,
+    global_deviation_range_json JSON,
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','human_review','confirmed','locked')),
+    confirmed_at TEXT, locked_at TEXT,
+    source_outline_hash TEXT, llm_model_ref TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(project_id, version)
+);
+
+-- 新增指针列
+ALTER TABLE writing_meta_contract
+ADD COLUMN constitution_version_id TEXT REFERENCES writing_book_constitutions(constitution_id);
+```
+
+**新建文件**：
+- `src/inkflow/services/book_constitution.py` — `BookConstitutionService`（~330 行）
+  - `generate_constitution(story_dir)` — 读源文件 → LLM → 解析 → 验证 → 存储
+  - `validate_constitution(data)` — 6 条规则引擎验证
+  - `update_status(id, status)` — 状态机转换
+  - `lock_constitution(id)` — 锁定（不可变）
+  - `get_latest_constitution()` / `get_locked_constitution()` — 查询
+  - `_collect_source_materials()` — 读取 5 个 .md 源文件
+  - `_build_generation_prompt()` — 构造 LLM prompt
+  - `_parse_llm_response()` — 从 markdown 包裹中提取 JSON
+
+**CLI 命令**：`ink constitution <project>`
+- 默认：生成或显示已有宪法
+- `--show`：仅显示当前宪法摘要
+- `--confirm`：确认草稿
+- `--lock`：确认并锁定
+
+**修改文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `db/schema.sql` | 新增 `writing_book_constitutions` DDL（Layer 2）；`writing_meta_contract` 加 `constitution_version_id` 列；header 更新为 Schema v9（35 表） |
+| `db/migration.py` | `SCHEMA_VERSION=9`；新增 `_migrate_v8_to_v9()` |
+| `services/book_constitution.py` | 新建，~330 行 |
+| `services/__init__.py` | 导出 `BookConstitutionService` |
+| `cli.py` | 新增 `ink constitution` 命令（含 `_print_constitution` 格式化输出） |
+| `tests/test_book_constitution.py` | 新建，28 个测试（4 类：Validation/Status/Query/Generation） |
+| `tests/test_schema.py` | `ALL_TABLES` 加入 `writing_book_constitutions`；`EXPECTED_INDEXES` 加入 `idx_book_constitutions_project` |
+| `docs/implementation-contract-v0.md` | DDL 段加入 `writing_book_constitutions` + `constitution_version_id` |
+| `docs/design-3tree-architecture.md` | §10.1 表更新 constitution_version_id 注释 |
+
+**验证**：
+- ✅ test_book_constitution.py：28 passed（新建）
+- ✅ test_schema.py：25 passed（含 `writing_book_constitutions` 存在性验证）
+- ✅ Schema v9：35 张用户表 + `_schema_meta` = 36 total
+
+---
+
+## 文档对齐与 B35 修复 — 2026-06-24
+
+**目标**：按当前 InkFlow 实现状态重写任务入口，把已完成任务从待办清单移入历史记录，并同步开发文档中漂移的版本、表数和实施状态。
+
+### 已完成
+
+| 项 | 内容 |
+|----|------|
+| 任务清单对齐 | 根 `tasks.md` 与 `inkflow/TASKS.md` 改为 InkFlow-only 当前待办，完成项仅保留归档索引 |
+| 完成项归档 | P0、DB/LLM/CLI 修复、OPT-1~7、ARCH-1/2/3/4/6/8/9/12/13 均指向本 history |
+| Bug 记录 | `docs/bugfix.md` 新增 B35/B36 |
+| B35 修复 | 修复 `ink constitution <project>` 已有宪法默认展示路径的 `conststitution` 拼写错误 |
+| 测试补强 | 新增 CLI smoke test 覆盖已有 L0 宪法展示路径 |
+| 设计文档同步 | `design.md` 更新到 v3.12 / Schema v9 / 35 张业务表 |
+| 实现契约同步 | `implementation-contract-v0.md` 顶部口径更新为 Schema v9 / 35 张业务表 |
+| 悬疑引擎同步 | `suspense-engine.md` 从“待实施”改为“部分实施”，标注可靠性与 benchmark 未完成 |
+
+### 当前设计复审结论
+
+当前设计仍是 near-optimal，不建议推倒重做。下一步最优路径是补齐 L0.5 Volume Rhythm 和 D-25 全局重试预算/熔断器；同时避免在三棵树之外继续添加互相竞争的契约来源。
+
+### 验证
+
+- ✅ `tests/test_cli.py::TestConstitutionCommand`：1 passed
+- ✅ `tests/test_book_constitution.py tests/test_schema.py`：53 passed
+- ✅ 全量 `python -m pytest -q`：309 passed, 4 warnings

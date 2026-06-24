@@ -1,0 +1,2150 @@
+"""InkFlow CLI — `ink` command entry point.
+
+P0 commands:
+  ink setup <project>
+  ink import-baseline <project> --chapter <key> --file <path>
+  ink review-shots <project> --chapter <key>
+  ink run <project> [flags]
+  ink repair <project> --red/--yellow
+  ink resume <session_id>
+  ink sessions list
+  ink sessions abort <id>
+  ink status <project>
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import click
+
+from inkflow import __version__
+from inkflow.services.model_client import ModelCallError
+
+
+# ── Windows UTF-8 fix ──
+if sys.platform == "win32" and "pytest" not in sys.modules:
+    sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
+    sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
+
+# Module-level constant for story base directory
+_STORY_BASE = Path(os.environ.get("INKFLOW_STORY_DIR", r"D:\_Progs\.Story"))
+
+
+@click.group()
+@click.version_option(version=__version__, prog_name="ink")
+def main():
+    """ink — 墨韵 (InkFlow) v3.6 文学文本生产引擎
+
+    全自动文学创作系统。P0: 导入人工样章 → setup 契约 → 逐 Shot 生成。
+    """
+
+
+# ── Helpers ──
+
+def _derive_baseline_chapter(chapter: str) -> str:
+    """Derive the baseline chapter key from the target chapter.
+
+    Baseline is the preceding chapter: v01.c02 → v01.c01, v02.c01 → v01.cNN.
+    For the first chapter of any volume, the baseline is the last chapter
+    of the previous volume.
+    """
+    import re
+    m = re.match(r"v(\d+)\.c(\d+)", chapter)
+    if not m:
+        return "v01.c01"  # fallback
+    vol = int(m.group(1))
+    ch = int(m.group(2))
+    if ch > 1:
+        return f"v{vol:02d}.c{ch - 1:02d}"
+    elif vol > 1:
+        return f"v{vol - 1:02d}.c01"  # caller should resolve last chapter
+    return "v01.c01"
+
+
+def _compute_brilliance_level(score: float) -> str:
+    """Map jury score to brilliance level."""
+    if score >= 95:
+        return "S"
+    elif score >= 90:
+        return "A+"
+    elif score >= 85:
+        return "A"
+    return "A"  # minimum for green
+
+
+def _compute_badsmell_level(score: float) -> str:
+    """Map jury score to badsmell level (inverted)."""
+    if score >= 85:
+        return "B"  # clean
+    elif score >= 75:
+        return "Br"  # minor issues
+    return "Bz"  # significant issues
+
+
+def _seed_motifs_from_contract(motif_tracker, compiler) -> None:
+    """Seed motif definitions from the contract's motif_system into DB.
+
+    Converts the human-readable motif descriptions into searchable
+    keyword variants so the MotifTracker can detect them in text.
+    Idempotent — skips already-registered motifs.
+    """
+    motif_system = compiler.get_motif_system()
+    if not motif_system:
+        return
+
+    # Map motif names to their search keywords
+    motif_keyword_map = {
+        # primary
+        "膝盖/螺丝刀": ["膝盖", "螺丝刀", "拧", "关节", "骨", "损伤"],
+        "都江堰分流": ["都江堰", "分流", "内江", "外江", "系统", "边界"],
+        "金沙垃圾层": ["金沙", "金沙遗址", "垃圾层", "堆填", "地层"],
+        # secondary
+        "盖碗茶": ["盖碗茶", "茶", "盖碗", "茶社"],
+        "太阳神鸟": ["太阳神鸟", "金箔", "神鸟", "金饰", "图腾"],
+        "保鲜膜": ["保鲜膜", "薄膜", "缠绕", "透明"],
+        "握空的手": ["握空", "握", "空", "抓", "松开"],
+        # visual_markers
+        "屏幕颜色边界": ["屏幕", "蓝色", "橙色", "内江蓝", "外江橙", "颜色边界"],
+        "系统之眼": ["摄像头", "传感器", "系统之眼", "监控"],
+    }
+
+    existing = {
+        r["name"] for r in
+        motif_tracker.db.execute(
+            "SELECT name FROM writing_motif_definitions WHERE project_id = ?",
+            (motif_tracker.project_id,),
+        ).fetchall()
+    }
+
+    for name, keywords in motif_keyword_map.items():
+        if name in existing:
+            continue
+        try:
+            motif_tracker.register_motif({
+                "name": name,
+                "planned_density_json": {"target_per_100_shots": 30},
+                "variants_json": {"keywords": keywords},
+                "min_shot_gap": 1,
+            })
+        except Exception:
+            continue
+
+
+def _read_shot_title_from_yaml(project: str, shot_index: int, chapter_key: str | None = None) -> str:
+    """Read shot title from contract-draft.yaml as fallback.
+
+    The DB meta-contract may not have the title field yet (e.g. old confirmed contracts).
+    This reads directly from the YAML file as a safety net.
+    """
+    try:
+        import yaml
+        draft_path = _STORY_BASE / f"《{project}》" / ".inkflow" / "contract-draft.yaml"
+        if draft_path.exists():
+            with open(draft_path, encoding="utf-8") as f:
+                contract = yaml.safe_load(f)
+            # Try chapter-specific field first, then fallback to chapter_2_events
+            if chapter_key:
+                ch_num = chapter_key.split(".c")[-1] if ".c" in chapter_key else "2"
+                field_name = f"chapter_{ch_num}_events"
+                events = contract.get(field_name, [])
+            else:
+                events = contract.get("chapter_2_events", [])
+            for ev in events:
+                if ev.get("shot") == shot_index + 1:  # shot_index is 0-based, YAML is 1-based
+                    return ev.get("title", "")
+    except Exception:
+        pass
+    return ""
+
+
+def _build_previous_context(
+    db, run_id: str, baseline_shots: list[dict], current_index: int,
+    pov_character: str | None = None,
+    project_id: str | None = None,
+) -> list[dict]:
+    """Build previous-shots context — only for the SAME POV character.
+
+    Rules:
+    1. Find the most recent completed shot with the same pov_character
+       across ALL runs (cross-chapter continuity).
+    2. If none found in any run, look in baseline.
+    3. Return a 100-char summary, NOT full text.
+    4. If no relevant context exists, return empty list.
+
+    Rationale: multi-POV chapters have independent scenes. Injecting
+    unrelated POV content causes LLM hallucination of cross-POV links.
+    Only inject the character's own prior state.
+    """
+    if not pov_character:
+        return []
+
+    # 1. Find same POV character's previous shot across ALL runs
+    # (cross-chapter: ch3 郑坤 should see ch2 郑坤's last state)
+    shot = db.execute(
+        "SELECT ws.shot_index, ws.layer_key, sr.text "
+        "FROM writing_shots ws "
+        "JOIN shot_revisions sr ON ws.current_revision_id = sr.revision_id "
+        "JOIN writing_shot_contracts wsc ON ws.shot_id = wsc.shot_id "
+        "  AND ws.run_id = wsc.run_id "
+        "WHERE ws.shot_status IN ('done_green', 'done_yellow') "
+        "  AND json_extract(wsc.pov_routing_json, '$.pov_character') = ? "
+        "  AND (? IS NULL OR ws.project_id = ?) "
+        "ORDER BY ws.layer_key DESC, ws.shot_index DESC LIMIT 1",
+        (pov_character, project_id, project_id),
+    ).fetchone()
+
+    if shot:
+        text = shot["text"]
+        return [{
+            "shot_index": shot["shot_index"],
+            "text": _summarize_text(text, 100),
+        }]
+
+    # 2. Fallback: look in baseline for same character
+    if baseline_shots:
+        for bs in reversed(baseline_shots):
+            text = bs.get("text", "")
+            if pov_character in text[:200]:
+                return [{
+                    "shot_index": bs.get("shot_index", "基线"),
+                    "text": _summarize_text(text, 100),
+                }]
+
+    return []
+
+
+def _summarize_text(text: str, max_chars: int) -> str:
+    """Create a short summary by taking the first max_chars chars."""
+    clean = text.replace("\n", " ").replace("\r", " ").strip()
+    if len(clean) <= max_chars:
+        return clean
+    return clean[:max_chars] + "…"
+
+
+def _resume_or_create_session(mgr, db, project_id, chapter, num_shots):
+    """Resume the latest incomplete session, or create a new one."""
+    # Find latest incomplete session for this project
+    row = db.execute(
+        "SELECT session_id, run_id FROM writing_sessions "
+        "WHERE project_id = ? AND status IN ('active', 'paused', 'crashed') "
+        "ORDER BY created_at DESC LIMIT 1",
+        (project_id,),
+    ).fetchone()
+    if row:
+        click.echo(f"恢复 Session: {row['session_id'][:12]}...")
+        return row["session_id"], row["run_id"]
+
+    # No incomplete session → create new
+    click.echo("没有未完成的 session，创建新的...")
+    session_id = mgr.create_session(act_id=chapter, total_shots=num_shots)
+    session = mgr.get_session(session_id)
+    return session_id, session["run_id"]
+
+
+def _resolve_project_db(title: str) -> Path:
+    """Resolve inkflow.db path from project title.
+
+    Convention: D:\\_Progs\\.Story\\《title》\\.inkflow\\inkflow.db
+    """
+    from inkflow.db import init_project_db
+
+    story_dir = _STORY_BASE / f"《{title}》"
+    if not story_dir.exists():
+        raise click.ClickException(f"项目目录不存在: {story_dir}")
+
+    db_path = story_dir / ".inkflow" / "inkflow.db"
+    return db_path
+
+
+def _next_steps(*lines: str) -> None:
+    """Print human-friendly next steps."""
+    click.echo()
+    click.echo("下一步:")
+    for line in lines:
+        click.echo(f"  {line}")
+
+
+# ── import-baseline ──
+
+@main.command("import-baseline")
+@click.argument("project")
+@click.option("--chapter", required=True, help="章节 key，如 v01.c01")
+@click.option("--file", "file_path", required=True, help="章节 Markdown 文件路径")
+def import_baseline(project: str, chapter: str, file_path: str):
+    """导入人工样章为锁定 baseline。
+
+    \b
+    示例:
+      ink import-baseline "分流" --chapter v01.c01 --file "正文/V01_第01章.md"
+    """
+    from inkflow.db import init_project_db, backup_project_db
+    from inkflow.importers import BaselineImporter
+    from inkflow.utils.ulid import generate
+
+    db_path = _resolve_project_db(project)
+    story_dir = _STORY_BASE / f"《{project}》"
+
+    # Resolve relative file path against project directory
+    file_path_obj = Path(file_path)
+    if not file_path_obj.is_absolute():
+        file_path_obj = story_dir / file_path_obj
+
+    # Ensure project exists in DB
+    project_id = generate()
+    db = init_project_db(db_path)
+
+    # Check or create project
+    existing = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if existing:
+        project_id = existing["project_id"]
+    else:
+        db.execute(
+            "INSERT INTO projects (project_id, name) VALUES (?, ?)",
+            (project_id, project),
+        )
+        db.commit()
+
+    # Backup before write
+    backup_project_db(db_path, label="before_import_baseline")
+
+    importer = BaselineImporter(db, project_id)
+    result = importer.import_chapter(chapter, file_path_obj)
+
+    click.echo(f"导入完成: {project}")
+    click.echo(f"  章节: {result['chapter_key']}")
+    click.echo(f"  Shot 数: {result['shot_count']}")
+    click.echo(f"  总字数: {result['total_chars']}")
+    click.echo(f"  状态: locked (human_baseline)")
+
+    _next_steps(
+        f"ink review-shots \"{project}\" --chapter {chapter}",
+        f"ink setup \"{project}\"",
+    )
+
+    db.close()
+
+
+# ── review-shots ──
+
+@main.command("review-shots")
+@click.argument("project")
+@click.option("--chapter", required=True, help="章节 key，如 v01.c01")
+def review_shots(project: str, chapter: str):
+    """审核/确认 baseline shot 边界。
+
+    \b
+    示例:
+      ink review-shots "分流" --chapter v01.c01
+    """
+    from inkflow.db import init_project_db
+    from inkflow.importers import BaselineImporter
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。请先运行 import-baseline。")
+
+    project_id = row["project_id"]
+    importer = BaselineImporter(db, project_id)
+    shots = importer.get_baseline_shots(chapter)
+
+    if not shots:
+        db.close()
+        raise click.ClickException(f"章节 {chapter} 没有 baseline shot。请先运行 import-baseline。")
+
+    click.echo(f"章节: {chapter}")
+    click.echo(f"Shot 数: {len(shots)}")
+    click.echo()
+
+    for shot in shots:
+        text_preview = shot["text"][:100].replace("\n", " ") if shot["text"] else ""
+        click.echo(f"  Shot {shot['shot_index']:02d}: {text_preview}...")
+        click.echo()
+
+    if importer.is_baseline_locked(chapter):
+        click.echo("状态: locked (human_baseline)")
+
+    _next_steps(f"ink setup \"{project}\"")
+    db.close()
+
+
+# ── setup ──
+
+@main.command("setup")
+@click.argument("project")
+@click.option(
+    "--chapter-file",
+    default=None,
+    help="第 1 章 Markdown 文件路径 (相对于项目目录)",
+)
+def setup_project(project: str, chapter_file: str | None):
+    """Setup 对话 + 契约编译 — 人类与 AI 架构师沟通阶段。
+
+    \b
+    流程:
+      1. 初始化项目 + 导入第 1 章为 locked baseline
+      2. AI 架构师分析第 1 章 + 大纲
+      3. 生成 contract-draft.yaml (高创造力字段留空等人类填写)
+      4. 人类编辑 contract-draft.yaml → ink confirm-contract 确认
+
+    \b
+    示例:
+      ink setup "分流"
+    """
+    from inkflow.db import init_project_db
+    from inkflow.importers.baseline_importer import BaselineImporter
+    from inkflow.services import SessionManager
+    from pathlib import Path
+
+    db_path = _resolve_project_db(project)
+    story_dir = _STORY_BASE / f"《{project}》"
+    inkflow_dir = story_dir / ".inkflow"
+    draft_path = inkflow_dir / "contract-draft.yaml"
+
+    # ── Step 1: Init project if needed ──
+    db = init_project_db(db_path)
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        from inkflow.utils.ulid import generate as generate_ulid
+        project_id = generate_ulid()
+        db.execute(
+            "INSERT INTO projects (project_id, name) VALUES (?, ?)",
+            (project_id, project),
+        )
+        db.commit()
+        click.echo(f"项目 '{project}' 已初始化")
+    else:
+        project_id = row["project_id"]
+        click.echo(f"项目 '{project}' 已存在")
+
+    # ── Step 2: Import chapter 1 as baseline ──
+    importer = BaselineImporter(db, project_id)
+    existing_shots = db.execute(
+        "SELECT COUNT(*) as cnt FROM writing_shots WHERE project_id = ? AND layer_key = 'v01.c01'",
+        (project_id,),
+    ).fetchone()
+
+    if existing_shots and existing_shots["cnt"] > 0:
+        click.echo(f"第 1 章已导入 ({existing_shots['cnt']} shots, locked)")
+        baseline_shots = importer.get_baseline_shots("v01.c01")
+    else:
+        if chapter_file is None:
+            candidates = sorted(story_dir.glob("正文/V01*第01章*.md"))
+            if not candidates:
+                candidates = sorted(story_dir.glob("正文/*01*.md"))
+            if candidates:
+                chapter_file = str(candidates[0].relative_to(story_dir))
+
+        if chapter_file is None:
+            click.echo("未找到第 1 章文件，跳过 baseline 导入。")
+            baseline_shots = []
+        else:
+            chapter_path = story_dir / chapter_file
+            if not chapter_path.exists():
+                click.echo(f"警告: 第 1 章文件不存在: {chapter_path}")
+                baseline_shots = []
+            else:
+                click.echo(f"导入第 1 章: {chapter_file}")
+                result = importer.import_chapter("v01.c01", chapter_path)
+                click.echo(f"  已导入 {result['shot_count']} shots, {result['total_chars']} 字 (locked)")
+                baseline_shots = importer.get_baseline_shots("v01.c01")
+
+    # ── Step 3: Load .models ──
+    mgr = SessionManager(db, project_id)
+    try:
+        mgr.init_project_config(str(story_dir))
+        click.echo(f"模型配置已加载")
+    except FileNotFoundError:
+        click.echo("警告: .models 文件不存在")
+
+    # ── Step 4: AI 架构师分析 → 生成 contract-draft.yaml ──
+    _generate_contract_draft(project, story_dir, baseline_shots, draft_path)
+
+    db.close()
+
+    # ── Step 5: Print summary ──
+    click.echo()
+    click.echo("═" * 60)
+    click.echo("  📋 契约草稿已生成")
+    click.echo("═" * 60)
+    click.echo(f"  文件: {draft_path}")
+    click.echo()
+    click.echo("  【高创造力字段 — 人类必须填写】")
+    click.echo("    identity.character_arcs: 各角色核心弧线")
+    click.echo("    narrative_voice.register_tone: 叙事语气基调")
+    click.echo("    creative_zones.chapter_2_interpretation: 第 2 章创作诠释")
+    click.echo()
+    click.echo("  【低创造力字段 — AI 已推断，请审核】")
+    click.echo("    hard_boundaries: 硬边界 (存活角色/世界规则)")
+    click.echo("    style_locks: 风格铁律 (身体时刻/感官密度/方言)")
+    click.echo("    anti_patterns: 反模式 (禁止的做法)")
+    click.echo("    world_knowledge: 世界观 (地点/物件/季节)")
+    click.echo("    motif_system: 意象系统 (主意象/视觉符号)")
+    click.echo()
+    click.echo("  【第 2 章 must_land 事件 — AI 从大纲提取，请审核】")
+    click.echo("    chapter_2_events: 逐 shot 必须落地的事件")
+    click.echo()
+    click.echo("  下一步:")
+    click.echo(f"    1. 编辑 {draft_path}")
+    click.echo(f"    2. 填写高创造力字段，审核 AI 推断")
+    click.echo(f"    3. ink confirm-contract \"{project}\"")
+    click.echo("═" * 60)
+
+
+# ── confirm-contract ──
+
+
+@main.command("confirm-contract")
+@click.argument("project")
+def confirm_contract(project: str):
+    """确认契约: 读取 contract-draft.yaml → 验证 → 写入 DB → confirmed。
+
+    \b
+    前置条件: 已运行 ink setup 并编辑过 contract-draft.yaml。
+    """
+    from inkflow.db import init_project_db
+    from inkflow.services import ContractCompiler
+    import yaml
+
+    db_path = _resolve_project_db(project)
+    story_dir = _STORY_BASE / f"《{project}》"
+    draft_path = story_dir / ".inkflow" / "contract-draft.yaml"
+
+    if not draft_path.exists():
+        raise click.ClickException(
+            f"契约草稿不存在: {draft_path}\n请先运行: ink setup \"{project}\""
+        )
+
+    # Read and validate
+    try:
+        draft = yaml.safe_load(draft_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise click.ClickException(f"contract-draft.yaml YAML 语法错误: {e}")
+
+    if not isinstance(draft, dict):
+        raise click.ClickException("contract-draft.yaml 格式错误: 期望 YAML 字典")
+
+    # Validate required fields
+    required = ["identity", "narrative_voice", "hard_boundaries", "style_locks",
+                 "anti_patterns", "world_knowledge", "motif_system", "creative_zones",
+                 "suspense_config"]
+    # chapter_2_events is required; chapter_3_events, chapter_4_events etc. are optional
+    has_any_chapter = any(
+        k.startswith("chapter_") and k.endswith("_events") and draft.get(k)
+        for k in draft
+    )
+    if not has_any_chapter:
+        raise click.ClickException(
+            "contract-draft.yaml 缺少必填字段: 至少需要 chapter_2_events"
+        )
+
+    # Check high-creativity fields are filled
+    identity = draft.get("identity", {})
+    if not identity.get("character_arcs") or "<<请填写" in str(identity.get("character_arcs", "")):
+        raise click.ClickException(
+            "identity.character_arcs 尚未填写。这是高创造力字段，必须由人类填写。"
+        )
+
+    creative = draft.get("creative_zones", {})
+    if not creative.get("chapter_2_interpretation") or "<<请填写" in str(creative.get("chapter_2_interpretation", "")):
+        raise click.ClickException(
+            "creative_zones.chapter_2_interpretation 尚未填写。这是高创造力字段，必须由人类填写。"
+        )
+
+    # Create meta-contract from draft
+    db = init_project_db(db_path)
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。请先运行 setup。")
+    project_id = row["project_id"]
+
+    compiler = ContractCompiler(db, project_id)
+    existing = compiler.get_meta_contract()
+
+    # Build contract data — include all chapter_X_events fields
+    structure_rules = {
+        "chapter_2_interpretation": creative.get("chapter_2_interpretation", ""),
+    }
+    for k in draft:
+        if k.startswith("chapter_") and k.endswith("_events") and draft.get(k):
+            structure_rules[k] = draft[k]
+
+    contract_data = {
+        "identity": identity,
+        "narrative_voice": draft.get("narrative_voice", {}),
+        "hard_boundaries": draft.get("hard_boundaries", {}),
+        "anti_reveal": draft.get("anti_reveal", {"do_not_reveal": "", "keep_ambiguous": ""}),
+        "world_knowledge": draft.get("world_knowledge", {}),
+        "structure_rules": structure_rules,
+        "anti_patterns": draft.get("anti_patterns", {}),
+        "style_locks": draft.get("style_locks", {}),
+        "motif_system": draft.get("motif_system", {}),
+        "creative_zones": creative,
+        "suspense_config": draft.get("suspense_config", {}),
+        "suspense_blueprint": draft.get("suspense_blueprint", {}),
+    }
+
+    if existing:
+        click.echo(f"元契约已存在 (status={existing['status']})，将更新。")
+        # TODO: revision tracking
+
+    mc_id = compiler.create_meta_contract(contract_data)
+    click.echo(f"元契约已创建: {mc_id[:12]}...")
+
+    # Transition to confirmed
+    contract = compiler.get_meta_contract()
+    if contract["status"] == "draft":
+        compiler.update_contract_status(mc_id, "human_review")
+        click.echo("draft → human_review")
+    compiler.update_contract_status(mc_id, "confirmed")
+    click.echo("human_review → confirmed ✅")
+
+    click.echo()
+    click.echo("契约已确认。可以运行:")
+    click.echo(f"  ink run \"{project}\" --chapter v01.c02")
+    db.close()
+
+
+# ── constitution ──
+
+
+@main.command("constitution")
+@click.argument("project")
+@click.option("--show", is_flag=True, help="仅显示当前宪法（不生成）")
+@click.option("--confirm", is_flag=True, help="确认当前草稿 → confirmed")
+@click.option("--lock", is_flag=True, help="确认并锁定 → locked")
+def constitution_command(project: str, show: bool, confirm: bool, lock: bool):
+    """L0 全书宪法管理 — 生成/确认/锁定全书节奏宪法。
+
+    \b
+    流程:
+      1. ink constitution "分流"            → LLM 生成草稿
+      2. 审核输出（arc_shape, volume_map, motif_lifecycle）
+      3. ink constitution "分流" --confirm  → 确认
+      4. ink constitution "分流" --lock     → 锁定（不可变）
+
+    \b
+    示例:
+      ink constitution "分流"
+      ink constitution "分流" --confirm
+      ink constitution "分流" --show
+    """
+    from inkflow.db import init_project_db
+    from inkflow.services import BookConstitutionService
+
+    db_path = _resolve_project_db(project)
+    story_dir = _STORY_BASE / f"《{project}》"
+
+    db = init_project_db(db_path)
+    try:
+        row = db.execute(
+            "SELECT project_id FROM projects WHERE name = ?", (project,)
+        ).fetchone()
+        if row is None:
+            raise click.ClickException(f"项目不存在: {project}")
+        project_id = row[0]
+
+        svc = BookConstitutionService(db, project_id)
+        constitution = svc.get_latest_constitution()
+
+        # --show: 仅显示
+        if show:
+            if constitution is None:
+                click.echo("无宪法。运行: ink constitution \"{}\"".format(project))
+                return
+            _print_constitution(constitution)
+            return
+
+        # --confirm: draft → confirmed
+        if confirm:
+            if constitution is None:
+                raise click.ClickException("无宪法可确认。先生成: ink constitution \"{}\"".format(project))
+            status = constitution["status"]
+            if status == "locked":
+                click.echo("宪法已锁定，不可修改。")
+                return
+            if status == "confirmed":
+                click.echo("宪法已确认。")
+                if lock:
+                    svc.lock_constitution(constitution["constitution_id"])
+                    click.echo("confirmed → locked ✅")
+                return
+            svc.update_status(constitution["constitution_id"], "confirmed")
+            click.echo("draft → confirmed ✅")
+            if lock:
+                svc.lock_constitution(constitution["constitution_id"])
+                click.echo("confirmed → locked ✅")
+            _print_constitution(svc.get_latest_constitution())
+            return
+
+        # --lock (without confirm): 如果已 confirmed，直接 lock
+        if lock:
+            if constitution is None:
+                raise click.ClickException("无宪法可锁定。")
+            if constitution["status"] == "locked":
+                click.echo("宪法已锁定。")
+                return
+            if constitution["status"] != "confirmed":
+                svc.update_status(constitution["constitution_id"], "confirmed")
+                click.echo("draft → confirmed ✅")
+            svc.lock_constitution(constitution["constitution_id"])
+            click.echo("confirmed → locked ✅")
+            _print_constitution(svc.get_latest_constitution())
+            return
+
+        # 默认: 生成或显示已有
+        if constitution is not None:
+            click.echo(f"已有宪法 (status={constitution['status']}):")
+            _print_constitution(constitution)
+            click.echo()
+            click.echo("如需重新生成，请先确认/锁定当前宪法。")
+            return
+
+        # 生成新宪法
+        if not story_dir.exists():
+            raise click.ClickException(f"项目目录不存在: {story_dir}")
+
+        click.echo("正在生成 L0 全书宪法...")
+        click.echo(f"  源目录: {story_dir}")
+        click.echo()
+
+        try:
+            cid = svc.generate_constitution(str(story_dir))
+        except ModelCallError as e:
+            raise click.ClickException(f"LLM 调用失败: {e}")
+
+        constitution = svc.get_latest_constitution()
+        click.echo("宪法草稿已生成 ✅")
+        click.echo(f"  constitution_id: {cid}")
+        click.echo()
+        _print_constitution(constitution)
+        click.echo()
+        click.echo("下一步:")
+        click.echo(f"  ink constitution \"{project}\" --confirm   # 确认")
+        click.echo(f"  ink constitution \"{project}\" --lock      # 确认并锁定")
+
+    finally:
+        db.close()
+
+
+def _print_constitution(constitution: dict) -> None:
+    """格式化输出宪法摘要。"""
+    import json
+
+    click.echo(f"═══ L0 全书宪法 (status={constitution['status']}) ═══")
+    click.echo()
+
+    arc = constitution.get("arc_shape", "")
+    if arc:
+        click.echo(f"叙事弧: {arc}")
+
+    peak = constitution.get("tension_peak_chapter", "")
+    if peak:
+        click.echo(f"张力峰值: {peak}")
+
+    valleys = constitution.get("tension_valley_chapters_json")
+    if valleys:
+        try:
+            v = json.loads(valleys) if isinstance(valleys, str) else valleys
+            click.echo(f"张力谷底: {', '.join(v)}")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    click.echo()
+
+    # Volume map
+    vol_map = constitution.get("volume_map_json")
+    if vol_map:
+        try:
+            vm = json.loads(vol_map) if isinstance(vol_map, str) else vol_map
+            click.echo("卷部结构:")
+            for vk, vdata in sorted(vm.items()):
+                name = vdata.get("name", "")
+                chapters = vdata.get("chapters", [])
+                summary = vdata.get("arc_summary", "")[:40]
+                click.echo(f"  {vk} ({name}): {len(chapters)} 章")
+                if summary:
+                    click.echo(f"    → {summary}...")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    click.echo()
+
+    # Chapter roles
+    roles = constitution.get("chapter_roles_json")
+    if roles:
+        try:
+            cr = json.loads(roles) if isinstance(roles, str) else roles
+            role_groups: dict[str, list[str]] = {}
+            for ck, role in sorted(cr.items()):
+                role_groups.setdefault(role, []).append(ck)
+            click.echo("章角色:")
+            for role in ["起", "承", "转", "合"]:
+                chs = role_groups.get(role, [])
+                if chs:
+                    click.echo(f"  {role}: {', '.join(chs)}")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    click.echo()
+
+    # Motif lifecycle
+    ml = constitution.get("motif_lifecycle_json")
+    if ml:
+        try:
+            motifs = json.loads(ml) if isinstance(ml, str) else ml
+            click.echo(f"Motif 生命周期 ({len(motifs)} 条):")
+            for m in motifs[:5]:
+                mid = m.get("motif_id", "?")
+                plant = m.get("planted_at", "?")
+                resolve = m.get("resolved_at", "?")
+                click.echo(f"  {mid}: 种于 {plant} → 收于 {resolve}")
+            if len(motifs) > 5:
+                click.echo(f"  ... 共 {len(motifs)} 条")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    click.echo()
+
+    # Deviation
+    mean = constitution.get("global_deviation_mean")
+    rng = constitution.get("global_deviation_range_json")
+    if mean is not None:
+        try:
+            r = json.loads(rng) if isinstance(rng, str) else rng
+            click.echo(f"偏离参数: mean={mean:.2f}, range=[{r[0]:.2f}, {r[1]:.2f}]")
+        except (json.JSONDecodeError, TypeError, IndexError):
+            click.echo(f"偏离参数: mean={mean:.2f}")
+
+
+# ── run ──
+
+@main.command("run")
+@click.argument("project")
+@click.option("--chapter", default=None, help="目标章节 key，如 v01.c02")
+@click.option("--shot", "shot_id", default=None, help="单 Shot 运行")
+@click.option("--writer-count", type=click.IntRange(2, 4), default=2, help="写手数量 (2-4)")
+@click.option("--shot-count", type=int, default=None, help="每章 Shot 数 (默认从 baseline 读取)")
+@click.option("--resume", is_flag=True, help="从断点恢复")
+def run_project(project: str, chapter: str | None, shot_id: str | None, writer_count: int, shot_count: int | None, resume: bool):
+    """全自动生产。
+
+    P0: 按 shot 生成第 2 章。writer race → jury → gate → revision → checkpoint。
+
+    \b
+    示例:
+      ink run "分流" --chapter v01.c02
+    """
+    from inkflow.db import init_project_db, backup_project_db
+    from inkflow.services import (
+        SessionManager, ContractCompiler, PromptCompiler,
+        WriterDispatcher, JuryService, QualityController,
+        FactAnchorExtractor, MotifTracker,
+    )
+    from inkflow.utils.config import load_models_config
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+    try:
+        _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, shot_count, resume)
+    finally:
+        db.close()
+
+
+def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, shot_count, resume):
+    """Inner run logic — db is guaranteed to be closed by the caller."""
+    from inkflow.services import (
+        SessionManager, ContractCompiler, PromptCompiler,
+        WriterDispatcher, JuryService, QualityController,
+        FactAnchorExtractor, MotifTracker, ArchitectGate,
+        OutlineEvaluator,
+    )
+    from inkflow.utils.config import load_models_config, get_quality_threshold
+
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+
+    project_id = row["project_id"]
+
+    # Verify contract is confirmed
+    compiler = ContractCompiler(db, project_id)
+    if not compiler.is_contract_confirmed():
+        raise click.ClickException(
+            "元契约尚未确认。请先运行 setup 并确认契约。"
+        )
+
+    # Load models config
+    story_dir = _STORY_BASE / f"《{project}》"
+    try:
+        models_config = load_models_config(str(story_dir))
+    except FileNotFoundError:
+        models_config = {
+            "providers": {},
+            "writer": {"primary": "local-default", "fallback": "local-default"},
+            "jury": {"primary": "local-default", "fallback": "local-default"},
+            "architect": {"primary": "local-default", "fallback": "local-default"},
+        }
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    providers = models_config.get("providers", {})
+
+    # Get meta-contract — this is the authority for shot count, not baseline
+    meta_contract = compiler.get_meta_contract()
+    compiler.lock_contract(meta_contract["meta_contract_id"])
+    layers = compiler._get_layers()
+
+    # Get baseline shots from chapter 1
+    from inkflow.importers import BaselineImporter
+    importer = BaselineImporter(db, project_id)
+
+    # Derive baseline chapter from target chapter
+    if chapter:
+        baseline_chapter = _derive_baseline_chapter(chapter)
+    else:
+        baseline_chapter = "v01.c01"
+    baseline_shots = importer.get_baseline_shots(baseline_chapter)
+
+    # Determine shot count from contract, not baseline
+    # Contract is the authority — the chapter outline defines how many shots exist.
+    chapter_events = compiler.get_chapter_events(chapter)
+    num_shots = shot_count or compiler.get_shot_count(chapter) or 8
+
+    # Create session or resume
+    mgr = SessionManager(db, project_id)
+    if resume:
+        session_id, run_id = _resume_or_create_session(mgr, db, project_id, chapter, num_shots)
+    else:
+        session_id = mgr.create_session(act_id=chapter, total_shots=num_shots)
+        session = mgr.get_session(session_id)
+        run_id = session["run_id"]
+
+    click.echo(f"Session: {session_id}")
+    click.echo(f"Run: {run_id}")
+    click.echo(f"目标章节: {chapter or '全部'}")
+    click.echo(f"契约驱动: {num_shots} shots (来自 {len(chapter_events)} 个 chapter_events)")
+
+    # Create run snapshot
+    from inkflow.utils.hashing import snapshot_hash, config_hash
+    mgr.create_run_snapshot(
+        run_id=run_id,
+        meta_contract_id=meta_contract["meta_contract_id"],
+        config_hash_str=config_hash(models_config),
+        contract_snapshot_hash=snapshot_hash(layers),
+        snapshot_data={"chapter": chapter, "writer_count": writer_count},
+    )
+
+    # Create shots for chapter 2
+    if chapter:
+        if shot_id:
+            # Single-shot mode: create only the specified shot
+            existing = db.execute(
+                "SELECT shot_id FROM writing_shots WHERE shot_id = ?", (shot_id,)
+            ).fetchone()
+            if not existing:
+                # CLI-3: Create new shot and use its real ID
+                new_ids = mgr.create_shots(run_id, [{"layer_key": chapter, "shot_index": 1}])
+                shot_ids = new_ids
+            else:
+                shot_ids = [shot_id]
+        else:
+            shots_data = [
+                {"layer_key": chapter, "shot_index": i + 1}
+                for i in range(num_shots)
+            ]
+            shot_ids = mgr.create_shots(run_id, shots_data)
+
+        # Build shot data with must_land from meta-contract (already loaded above)
+        shots_with_contracts = []
+        for i, sid in enumerate(shot_ids):
+            shot_data = {
+                "shot_id": sid,
+                "shot_index": i + 1,
+                "layer_key": chapter,
+                "must_land": {},
+                "pov_routing": {},
+            }
+            if i < len(chapter_events):
+                ev = chapter_events[i]
+                # Convert narrative event to bullet-point writing directive
+                event_text = ev.get("event", "")
+                import re as _re
+                # Strip **X线** markers (e.g. **阿坤线**：)
+                clean = _re.sub(r'\*\*[^*]+\*\*[：:]?\s*', '', event_text)
+                # Strip chapter-end hooks: everything from **章末钩子** to end
+                clean = _re.sub(r'\*\*章末钩子\*\*.*$', '', clean, flags=_re.DOTALL)
+                # Strip separator lines
+                clean = _re.sub(r'---\s*$', '', clean)
+                # Split into key beats
+                beats = _re.split(r'[。！？]', clean)
+                key_points = []
+                for b in beats:
+                    b = b.strip()
+                    if b and len(b) > 8 and '---' not in b:
+                        key_points.append(b)
+                # Build a writing directive with shot title as first line
+                title = ev.get("title", "")
+                if not title:
+                    # Fallback: try reading from contract-draft.yaml directly
+                    title = _read_shot_title_from_yaml(project, i, chapter)
+                title_line = f"## {title}\n\n" if title else ""
+                writing_directive = title_line + '\n'.join(f'- {p}' for p in key_points[:8])
+                shot_data["must_land"] = {"beats": writing_directive, "title": title}
+
+                # Build anti_write: POV isolation constraint
+                this_pov = ev.get("pov", "unknown")
+                other_povs = [e.get("pov") for e in chapter_events if e.get("pov") != this_pov]
+                shot_data["anti_write"] = {
+                    "pov_only": f"只写 {this_pov} 的视角。不要切换到其他角色的场景。",
+                    "forbidden": f"不要直接描写 {', '.join(other_povs)} 的活动",
+                }
+                shot_data["pov_routing"] = {"pov_character": this_pov}
+
+                # OPT-2: Per-shot sensory density control
+                if ev.get("sensory_pressure"):
+                    shot_data["sensory_pressure"] = ev["sensory_pressure"]
+                if ev.get("dominant_sense"):
+                    shot_data["dominant_sense"] = ev["dominant_sense"]
+
+                # OPT-6: Emotional transition bridge
+                if ev.get("entry_mood"):
+                    shot_data["entry_mood"] = ev["entry_mood"]
+
+                # ARCH-1: Three-layer deviation taxonomy (from YAML if present)
+                if ev.get("hard_facts"):
+                    shot_data["hard_facts"] = ev["hard_facts"]
+                if ev.get("soft_constraints"):
+                    shot_data["soft_constraints"] = ev["soft_constraints"]
+                if ev.get("reference"):
+                    shot_data["reference"] = ev["reference"]
+
+                # ARCH-2/3: Rhythm parameters (from YAML if present)
+                if ev.get("deviation_budget") is not None:
+                    shot_data["deviation_budget"] = ev["deviation_budget"]
+                if ev.get("narrative_phase"):
+                    shot_data["narrative_phase"] = ev["narrative_phase"]
+            shots_with_contracts.append(shot_data)
+
+        # Compile shot contracts using compiler (DB-driven, not JSON blob)
+        contract_ids = compiler.compile_shot_contracts(
+            run_id=run_id,
+            shots=shots_with_contracts,
+            meta_contract=compiler._get_layers(),
+        )
+        compiler.lock_shot_contracts(run_id)
+
+        # Initialize services
+        prompt_compiler = PromptCompiler(db)
+        writer_dispatcher = WriterDispatcher(db, run_id, models_config, providers=providers)
+        jury_service = JuryService(db, run_id, models_config)
+        quality_controller = QualityController(db, run_id)
+        fact_extractor = FactAnchorExtractor(db, project_id, models_config)
+        motif_tracker = MotifTracker(db, project_id, run_id)
+
+        # D-25: Extract suspense blueprint from contract
+        suspense_blueprint = layers.get("suspense_blueprint", {})
+
+        # D-25: Initialize information gap tracker
+        from inkflow.services.information_gap_tracker import InformationGapTracker
+        info_gap_tracker = InformationGapTracker(db, project_id, run_id)
+        if suspense_blueprint:
+            info_gap_tracker.seed_from_blueprint(suspense_blueprint)
+
+        # ARCH: Chapter Rhythm Architect (L1) — analyze chapter rhythm before production
+        from inkflow.services.chapter_rhythm import ChapterRhythmArchitect
+        from inkflow.services.model_client import ModelRequest, ModelResponse
+        # Use primary writer model for architect analysis
+        architect_model = providers.get("writer", {}).get("primary")
+        chapter_rhythm_map = None
+        if architect_model:
+            try:
+                chapter_rhythm_arch = ChapterRhythmArchitect(db, architect_model)
+                chapter_rhythm_map = chapter_rhythm_arch.analyze_chapter(
+                    chapter_key=chapter,
+                    chapter_events=chapter_events,
+                )
+                chapter_rhythm_arch.store_rhythm_map(chapter_rhythm_map, run_id)
+                click.echo(
+                    f"  🎵 章级节奏分析完成: "
+                    f"{len(chapter_rhythm_map.get('shots', []))} shots, "
+                    f"均值 budget={chapter_rhythm_map.get('mean_deviation_budget', 0):.2f}"
+                )
+            except Exception as exc:
+                click.echo(f"  ⚠ 章级节奏分析失败: {exc}，使用默认参数")
+                chapter_rhythm_map = None
+
+        # Seed motifs from contract into DB (idempotent)
+        _seed_motifs_from_contract(motif_tracker, compiler)
+
+        # Compile static prefix for each writer persona (from compiler, not raw JSON)
+        # D-25: Inject suspense blueprint into static prefix
+        static_prefixes = {}
+        for persona in ["意象师", "节奏师", "对话师"]:
+            static_prefixes[persona] = prompt_compiler.compile_static_prefix(
+                layers,
+                persona,
+                suspense_blueprint=suspense_blueprint,
+            )
+
+        # 初始化大纲评估器
+        outline_evaluator = OutlineEvaluator(db, run_id, models_config, providers=providers)
+        quality_threshold = get_quality_threshold(models_config)
+
+        # Process each shot — 新流水线：大纲评估 → 双线赛马 → 九评委 → 阈值判断
+        for i, shot_id in enumerate(shot_ids):
+            click.echo(f"\nShot {i + 1}/{len(shot_ids)}...")
+
+            # Resume guard: skip already-completed shots (idempotent recovery)
+            shot_status_row = db.execute(
+                "SELECT shot_status, light_status FROM writing_shots WHERE shot_id = ?",
+                (shot_id,),
+            ).fetchone()
+            if shot_status_row and shot_status_row["shot_status"] in (
+                "done_green", "done_yellow",
+            ):
+                click.echo(
+                    f"  ⏭ 已 ({shot_status_row['shot_status']}/"
+                    f"{shot_status_row['light_status']})，跳过"
+                )
+                continue
+
+            mgr.update_current_shot(session_id, shot_id)
+
+            # Get shot contract
+            sc = compiler.get_shot_contract(shot_id, run_id)
+            if sc is None:
+                click.echo(f"  ⚠ 无契约，跳过")
+                continue
+
+            # Step 1: 大纲评估 → 不合格则重新生成
+            click.echo(f"  📋 大纲评估...")
+            try:
+                outline_result = outline_evaluator.evaluate_and_fix(
+                    shot_id=shot_id,
+                    shot_contract=dict(sc),
+                    meta_contract=layers,
+                    max_retries=1,
+                )
+                outline_score = outline_result["initial_score"]
+                was_regenerated = outline_result["regenerated"]
+                click.echo(
+                    f"    大纲评分: {outline_score}"
+                    f"{' → 已重新生成' if was_regenerated else ' → 通过'}"
+                )
+            except (ModelCallError, ValueError, KeyError) as exc:
+                click.echo(f"    ⚠ 大纲评估失败: {exc}，使用原大纲")
+
+            # Step 2: 编译 prompt（两线共用）
+            motif_task = motif_tracker.generate_motif_task(shot_id)
+            active_anchors = fact_extractor.get_active_anchors(limit=5)
+
+            # 构建前文上下文：仅同 POV 角色，简短摘要
+            pov_routing = sc.get("pov_routing_json", {})
+            if isinstance(pov_routing, str):
+                import json as _json
+                pov_routing = _json.loads(pov_routing) if pov_routing else {}
+            pov_character = pov_routing.get("pov_character")
+            previous_shots = _build_previous_context(
+                db, run_id, baseline_shots, i, pov_character=pov_character,
+                project_id=project_id,
+            )
+
+            # D-25: 获取当前活跃的信息差
+            active_gaps = info_gap_tracker.get_active_gaps()
+
+            # 用"意象师" persona 编译一份共用的 prompt
+            # ARCH-1/2/3: Extract rhythm + three-layer fields from contract_json
+            cj = sc.get("contract_json", "{}")
+            if isinstance(cj, str):
+                import json as _json2
+                cj = _json2.loads(cj) if cj else {}
+
+            # ARCH: Override rhythm params from chapter_rhythm_map if available
+            rhythm_budget = cj.get("deviation_budget")
+            rhythm_phase = cj.get("narrative_phase")
+            rhythm_sensory = cj.get("sensory_pressure")
+            if chapter_rhythm_map:
+                rhythm_shots = chapter_rhythm_map.get("shots", [])
+                # Find this shot's rhythm data (shot_index is 1-based)
+                this_rhythm = next(
+                    (rs for rs in rhythm_shots if rs.get("shot_index") == i + 1),
+                    None,
+                )
+                if this_rhythm:
+                    rhythm_budget = this_rhythm.get("deviation_budget", rhythm_budget)
+                    rhythm_phase = this_rhythm.get("narrative_phase", rhythm_phase)
+                    # Override sensory_pressure from phase parameters if not set in contract
+                    if not rhythm_sensory:
+                        rhythm_sensory = this_rhythm.get("sensory_pressure")
+
+            pid = prompt_compiler.compile_shot_prompt(
+                shot_id, run_id, "意象师",
+                static_prefixes.get("意象师", ""),
+                {
+                    "must_land": sc.get("must_land_json", {}),
+                    "anti_write": sc.get("anti_write_json", {}),
+                    "exit_to": sc.get("exit_to_json"),
+                    # ARCH-1: Three-layer deviation taxonomy
+                    "hard_facts": cj.get("hard_facts"),
+                    "soft_constraints": cj.get("soft_constraints"),
+                    "reference": cj.get("reference"),
+                    # ARCH-2/3: Rhythm parameters (from L1 architect or contract)
+                    "deviation_budget": rhythm_budget,
+                    "narrative_phase": rhythm_phase,
+                    # OPT-2/6: Sensory + mood (still pass through)
+                    "sensory_pressure": rhythm_sensory or cj.get("sensory_pressure"),
+                    "dominant_sense": cj.get("dominant_sense"),
+                    "entry_mood": cj.get("entry_mood"),
+                },
+                previous_shots=previous_shots,
+                fact_anchors=active_anchors,
+                motif_tasks=motif_task,
+            )
+            prompt_row = db.execute(
+                "SELECT assembled_prompt FROM writing_shot_prompts WHERE prompt_id = ?",
+                (pid,),
+            ).fetchone()
+            compiled_prompt = (prompt_row["assembled_prompt"] if prompt_row else "") or ""
+
+            # D-25: Append active information gaps to the prompt
+            if active_gaps:
+                gaps_text = info_gap_tracker.build_active_gaps_prompt()
+                if gaps_text:
+                    compiled_prompt += "\n\n" + gaps_text
+
+            if not compiled_prompt:
+                # 兜底：从合约构建简单 prompt
+                import json as _json
+                ml = sc.get("must_land_json", "{}")
+                if isinstance(ml, str):
+                    try:
+                        ml = _json.loads(ml) if ml else {}
+                    except Exception:
+                        ml = {}
+                beats = ml.get("beats", "")
+                if beats:
+                    compiled_prompt = f"请直接写出以下场景的小说正文。\n\n{beats}"
+                else:
+                    compiled_prompt = f"请为场景 {shot_id} 写一段小说正文。"
+
+            # Step 3: 四线赛马 → 4 份草稿 (ARCH-8)
+            click.echo(f"  ✍️ 四线赛马（意象师/节奏师/对话师/结构师）...")
+            race_result = writer_dispatcher.dispatch_quad_track(
+                shot_id=shot_id,
+                base_prompt=compiled_prompt,
+                attempt=1,
+                deviation_budget=rhythm_budget,
+            )
+            draft_ids = [d["draft_id"] for d in race_result["drafts"]]
+
+            # Step 4: 质量门 1（机械检查：空文/太短/重复）
+            usable = quality_controller.gate1_check(shot_id, draft_ids)
+            for d in race_result["drafts"]:
+                if d["draft_id"] in usable:
+                    writer_dispatcher.mark_draft_usable(d["draft_id"])
+
+            if not usable:
+                click.echo(f"  🔴 质量门 1 全部失败（空文/太短），进入第二轮")
+                # 第二轮写作
+                race_result2 = writer_dispatcher.dispatch_quad_track(
+                    shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
+                    deviation_budget=rhythm_budget,
+                )
+                draft_ids = [d["draft_id"] for d in race_result2["drafts"]]
+                usable = quality_controller.gate1_check(shot_id, draft_ids)
+                for d in race_result2["drafts"]:
+                    if d["draft_id"] in usable:
+                        writer_dispatcher.mark_draft_usable(d["draft_id"])
+
+                if not usable:
+                    click.echo(f"  🔴 第二轮仍失败，跳过此 Shot")
+                    quality_controller.smart_redo(shot_id, 0)
+                    continue
+                draft_ids = usable  # 第二轮通过的
+
+            # Step 5: 九评委评分
+            click.echo(f"  ⚖️ 九评委评分（3模型 × 3维度）...")
+            jury_verdict = jury_service.score_candidates(
+                shot_id=shot_id,
+                draft_ids=draft_ids if isinstance(draft_ids, list) else usable,
+                meta_contract=layers,
+                quality_threshold=quality_threshold,
+            )
+
+            winner_id = jury_verdict.get("winner_draft_id")
+            winner_score = jury_verdict.get("winner_score", 0)
+            winner_track = jury_verdict.get("winner_track")
+
+            # Step 6: 阈值判断 → 全部低于阈值则第二轮重写
+            if not jury_verdict.get("all_passed_threshold", False) and winner_score < quality_threshold:
+                click.echo(
+                    f"    最高分 {winner_score} < 阈值 {quality_threshold}"
+                    f" → 触发第二轮重写"
+                )
+                race_result2 = writer_dispatcher.dispatch_quad_track(
+                    shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
+                )
+                draft_ids2 = [d["draft_id"] for d in race_result2["drafts"]]
+                usable2 = quality_controller.gate1_check(shot_id, draft_ids2)
+                for d in race_result2["drafts"]:
+                    if d["draft_id"] in usable2:
+                        writer_dispatcher.mark_draft_usable(d["draft_id"])
+
+                if usable2:
+                    click.echo(f"  ⚖️ 第二轮九评委评分...")
+                    jury_verdict2 = jury_service.score_candidates(
+                        shot_id=shot_id,
+                        draft_ids=usable2,
+                        meta_contract=layers,
+                        quality_threshold=quality_threshold,
+                    )
+                    # 选分数更高的那份
+                    if jury_verdict2.get("winner_score", 0) > winner_score:
+                        jury_verdict = jury_verdict2
+                        winner_id = jury_verdict.get("winner_draft_id")
+                        winner_score = jury_verdict.get("winner_score", 0)
+                        winner_track = jury_verdict.get("winner_track")
+
+            # 打印评分详情
+            for did, ds in jury_verdict.get("draft_scores", {}).items():
+                click.echo(f"    草稿 {did[:8]}…  均分: {ds['trimmed_mean']}  原始: {ds['raw_scores']}")
+
+            # Step 7: 写入修订记录
+            if winner_id:
+                gate2 = quality_controller.gate2_check(shot_id, winner_id, jury_verdict)
+                light = gate2["light_status"]
+
+                winner_draft = db.execute(
+                    "SELECT * FROM writing_drafts WHERE draft_id = ?", (winner_id,)
+                ).fetchone()
+
+                from inkflow.utils.hashing import text_hash_normalized
+                rev_id = mgr.write_revision(
+                    shot_id=shot_id,
+                    run_id=run_id,
+                    contract_id=sc["contract_id"],
+                    revision_sequence=1,
+                    operation="write_generate",
+                    text=winner_draft["text"],
+                    text_hash=text_hash_normalized(winner_draft["text"]),
+                    writer_persona=winner_draft["writer_persona"],
+                    jury_scores_json={"winner_score": winner_score},
+                    gate_result_json=gate2,
+                )
+
+                # Finalize — compute brilliance/badsmell from jury scores
+                brilliance_level = _compute_brilliance_level(winner_score)
+                badsmell_level = _compute_badsmell_level(winner_score)
+                quality_controller.finalize_shot(
+                    shot_id, winner_id, gate2,
+                    brilliance_level=brilliance_level,
+                    badsmell_level=badsmell_level,
+                )
+                mgr.increment_completed_shots(session_id)
+
+                # L4 Gate: Shot-level architect check
+                architect_gate = ArchitectGate(db, run_id, project_id, models_config, providers)
+                l4_result = architect_gate.evaluate_l4(shot_id, winner_id, gate2)
+                if not l4_result["passed"]:
+                    click.echo(f"  ⚠ L4 Gate: {l4_result['issues']}")
+                dh = l4_result.get("dual_helix", {})
+                ca = l4_result.get("closing_audit", {})
+                if dh.get("碎裂") and dh["碎裂"] != ["no_loss_detected"]:
+                    click.echo(f"  💔 碎裂: {', '.join(dh['碎裂'])}")
+                if dh.get("重建") and dh["重建"] != ["no_grab_detected"]:
+                    click.echo(f"  🤲 重建: {', '.join(dh['重建'])}")
+                if ca.get("violation"):
+                    click.echo(f"  📝 收束句: ⚠ {ca['violation']}")
+                elif ca.get("type"):
+                    click.echo(f"  📝 收束句: {ca['type']}")
+
+                # 事实锚点提取
+                if light in ("green", "yellow"):
+                    try:
+                        anchor_ids = fact_extractor.extract(
+                            shot_id=shot_id,
+                            run_id=run_id,
+                            text=winner_draft["text"],
+                            revision_id=rev_id,
+                        )
+                        if anchor_ids:
+                            click.echo(f"  📌 提取 {len(anchor_ids)} 个事实锚点")
+                    except Exception as exc:
+                        click.echo(f"  ⚠ 锚点提取失败: {exc}")
+
+                # Motif 密度追踪：扫描生成文本中的意象出现
+                if light in ("green", "yellow"):
+                    try:
+                        detected = motif_tracker.scan_and_record(
+                            shot_id=shot_id, text=winner_draft["text"],
+                        )
+                        if detected:
+                            click.echo(f"  🎭 检测到 {len(detected)} 个意象")
+                    except Exception as exc:
+                        click.echo(f"  ⚠ 意象检测失败: {exc}")
+
+                # Checkpoint
+                mgr.write_checkpoint(session_id, shot_id, {
+                    "shot_index": i + 1,
+                    "draft_id": winner_id,
+                    "light_status": light,
+                    "score": winner_score,
+                })
+
+                track_str = f"赛道{winner_track}" if winner_track else "未知"
+                click.echo(
+                    f"  {'🟢' if light == 'green' else '🟡' if light == 'yellow' else '🔴'} "
+                    f"{light} — 均分: {winner_score} — {track_str}胜出"
+                )
+            else:
+                click.echo(f"  🔴 无 winner，创建 placeholder")
+                quality_controller.smart_redo(shot_id, 0)
+
+        # Complete session
+        mgr.complete_session(session_id)
+        click.echo(f"\n✅ 章节 {chapter} 生成完成。")
+
+        # L3 Gate: Chapter-level architect check
+        if chapter:
+            architect_gate = ArchitectGate(db, run_id, project_id, models_config, providers)
+            if architect_gate.should_trigger_l3(chapter):
+                l3_result = architect_gate.evaluate_l3(chapter)
+                status_icon = "✅" if l3_result["passed"] else "⚠️"
+                click.echo(
+                    f"\n{status_icon} L3 章节 Gate: {chapter} — "
+                    f"POV: {l3_result['pov_coverage']}, "
+                    f"绿{l3_result['green_count']}/黄{l3_result['yellow_count']}/红{l3_result['red_count']}"
+                )
+                if l3_result["issues"]:
+                    for issue in l3_result["issues"]:
+                        click.echo(f"  ⚠ {issue}")
+
+        # P0-7: Generate minimal scope report
+        _print_scope_report(db, project_id, session_id, run_id, chapter)
+
+    _next_steps(
+        f"ink status \"{project}\"",
+        f"chisel import-inkflow \"{db_path}\" --title \"{project}\"",
+    )
+
+
+# ── contract draft generator ─────────────────────────────────────────────
+
+
+def _generate_contract_draft(
+    project: str,
+    story_dir: Path,
+    baseline_shots: list[dict],
+    draft_path: Path,
+) -> None:
+    """AI 架构师分析第 1 章 + 大纲 → 生成 contract-draft.yaml。
+
+    高创造力字段留空等待人类填写，
+    低创造力字段由 AI 推断填充，
+    第 2 章 must_land 事件从大纲提取。
+    """
+    import yaml
+
+    # Collect chapter 1 sample text
+    sample_text = ""
+    for shot in baseline_shots:
+        text = shot.get("text", "")
+        if text:
+            sample_text += text[:300] + "\n"
+
+    # Read outline
+    outline_text = ""
+    outline_path = story_dir / "04_逐章大纲.md"
+    if outline_path.exists():
+        outline_text = outline_path.read_text(encoding="utf-8")
+
+    # Extract chapter 2 events
+    chapter_2_events = _extract_chapter_2_events(outline_text)
+
+    # Detect patterns from chapter 1
+    has_sensory = any(w in sample_text for w in ["膝盖", "螺丝刀", "灰", "湿", "保鲜膜", "露水", "茶", "雾"])
+    has_body = any(w in sample_text for w in ["拧", "麻", "疼", "抖", "划", "蹭", "撕"])
+    locations = _extract_locations(sample_text)
+    objects = _extract_objects(sample_text)
+    pov_chars = [n for n in ["阿坤", "白英", "苏然", "韩教授"] if n in sample_text]
+
+    # Build draft
+    draft = {
+        "# 这是 InkFlow 的契约草稿文件": None,
+        "# 高创造力字段 (标记为 <<请填写>>) 必须由人类填写": None,
+        "# 低创造力字段 (AI 已推断) 请审核后确认": None,
+        "# 编辑完成后运行: ink confirm-contract \"{}\"".format(project): None,
+        "": None,
+
+        "identity": {
+            "title": project,
+            "genre": "文学小说",
+            "setting": "成都，当代",
+            "pov_count": len(pov_chars),
+            "pov_characters": pov_chars,
+            "character_arcs": "<<请填写: 各角色核心弧线, 如: 阿坤: 从被动承受到主动选择>>",
+        },
+
+        "narrative_voice": {
+            "style": "现实主义 + 感官密度",
+            "sensory_density": "高" if has_sensory else "中",
+            "body_moment": "是" if has_body else "否",
+            "dialogue_ratio": "中",
+            "register": "文学性普通话 + 成都方言点缀",
+            "register_tone": "<<请填写: 叙事语气基调, 如: 冷静克制, 不煽情, 让事实本身说话>>",
+        },
+
+        "hard_boundaries": {
+            "characters_alive": pov_chars,
+            "world_rules": [
+                "鱼嘴系统分流外卖/教育/医疗/住房/信用五领域",
+                "内江=核心城区，外江=三环外",
+                "系统不恶意，但代价在积累",
+                "P0 只生成第 2 章，不引入第 3 章及以后的新角色/新事件",
+            ],
+            "fixed_events": "<<请填写: 第 2 章中不可改变的事件, 如: 阿坤遇到拖行李箱的年轻人>>",
+        },
+
+        "style_locks": {
+            "opening": "身体时刻开场（感官冲击）",
+            "ending": "动作/物件/沉默结尾，不总结",
+            "sensory": "每段至少一处气味/声音/温度/湿度描写",
+            "dialect": "成都话点缀，不是普通话翻译",
+            "paragraph_length": "500-800 字/段落，3-4 段/shot",
+        },
+
+        "anti_patterns": {
+            "avoid": [
+                "概念总结性结尾",
+                "系统被描绘为纯粹恶人",
+                "人物内心独白过长",
+                "成都写成旅游宣传",
+                "意象被解释（如'太阳神鸟象征XX'）",
+            ],
+        },
+
+        "world_knowledge": {
+            "locations": locations or ["成都城区"],
+            "key_objects": objects or ["保鲜膜", "头盔", "太阳神鸟", "盖碗茶"],
+            "time_period": "当代",
+            "season": "十二月（成都冬季）",
+            "weather": "灰白、湿冷、雾、雨",
+        },
+
+        "motif_system": {
+            "primary": ["膝盖/螺丝刀（损伤）", "都江堰分流（系统）", "金沙垃圾层（时间）"],
+            "secondary": ["盖碗茶", "太阳神鸟", "保鲜膜", "握空的手"],
+            "visual_markers": ["屏幕颜色边界（内江蓝/外江橙）", "系统之眼（摄像头/传感器）", "待评估（多场景重复）"],
+        },
+
+        "creative_zones": {
+            "allowed_freedom": "对话细节、环境描写、次要人物互动、成都感官细节",
+            "must_consult": "POV 角色核心情节走向、重要事件变更",
+            "chapter_2_scope": "严格执行 04_逐章大纲.md 第 2 章章级事件，只允许补充细节不允许改变走向",
+            "chapter_2_interpretation": "<<请填写: 第 2 章的创作诠释, 如: 这一章的核心情绪是什么? 希望读者感受到什么?>>",
+        },
+
+        "suspense_config": {
+            "# 悬疑引擎配置": None,
+            "# 前台抓手：读者第一秒追什么": None,
+            "# 信息差：读者知道但角色不知道的事": None,
+            "# 核心物件：每次出现读者理解不同": None,
+            "# 章末钩子：未完成动作，不能是感官收束": None,
+            "# 数字有体温：数字+具体的人或物": None,
+            "": None,
+            "reader_anchor": "<<请填写: 读者第一秒追什么？如: 阿坤的膝盖还能撑多久？系统会不会把他完全推到外江？>>",
+            "information_gap": [
+                "苏然发现了6%的边界外推，但阿坤、白英、韩教授都不知道——读者知道，角色不知道",
+                "骨片上的握空手势，韩教授在三星堆也见过类似图案——读者知道这个关联，但韩教授还没说出来",
+                "茶社对面的火锅店昨天还在营业，今天挂了'装修中'——读者知道城市在收缩，但白英还不知道这意味着什么",
+            ],
+            "core_objects": {
+                "骨片/握空的手": "背景→线索→证据：第一次是韩教授发现的刻痕，第二次读者意识到这手势在三星堆也出现过，第三次揭示它指向某种制度性的'放弃'",
+                "太阳神鸟": "从阿坤头盔上的褪色贴纸→白英茶社里学生临摹的蓝色画→苏然屏幕上的系统图标→金沙出土的金饰残片，四层理解",
+                "保鲜膜": "从阿坤的护膝工具→系统对身体的'包裹'和'隔离'→边界标记，意义逐层升级",
+                "34分": "阿坤跑了三年，膝盖跑废了，系统给了34分——这个数字在第2章就要出现，让读者知道它，但不知道它还会不会涨",
+            },
+            "chapter_hooks": [
+                "每章最后一句必须是未完成动作（物理中断/对话中断/决策悬置/感知突变），不能是感官收束或解释",
+                "不要让读者在章末感到'这一章结束了'，要感到'必须翻下一页才知道发生了什么'",
+                "至少每2章出现一次信息差——读者知道某件事，但POV角色不知道",
+            ],
+            "numbers_with_temperature": [
+                "37单 → 阿坤的膝盖（内江有37单，系统却让他去外江）",
+                "6% → 苏然的屏幕（边界线每年外推6%，这不是数字，是每年被推出去的人）",
+                "34分 → 阿坤的健康积分（三年膝盖换34分，够不够换一副护具？）",
+                "4个通知 → 白英的抽屉（去年是'建议优化'，今年是'建议转型'，明年是什么？）",
+            ],
+            "suspense_density": "制度悬疑——悬念不是'谁杀了人'，而是'为什么这个结构会逼出这样的处境'，以及'谁该负责'",
+        },
+
+        "chapter_2_events": chapter_2_events or [
+            {"shot": 1, "pov": "阿坤", "event": "<<请从大纲填写第 2 章第 1 shot 事件>>"},
+            {"shot": 2, "pov": "韩教授", "event": "<<请从大纲填写第 2 章第 2 shot 事件>>"},
+            {"shot": 3, "pov": "白英", "event": "<<请从大纲填写第 2 章第 3 shot 事件>>"},
+            {"shot": 4, "pov": "苏然", "event": "<<请从大纲填写第 2 章第 4 shot 事件>>"},
+        ],
+    }
+
+    # Write draft
+    draft_path.parent.mkdir(parents=True, exist_ok=True)
+    yaml_text = _yaml_dump_contract(draft)
+    draft_path.write_text(yaml_text, encoding="utf-8")
+    click.echo(f"契约草稿已生成: {draft_path}")
+
+
+def _extract_locations(text: str) -> list[str]:
+    """Extract locations from chapter 1."""
+    locs = []
+    for loc in ["人民公园", "春熙路", "锦江区", "龙潭寺", "石板滩", "新都",
+                 "天府软件园", "金沙遗址", "望鹤茶社", "九眼桥", "都江堰"]:
+        if loc in text:
+            locs.append(loc)
+    return locs or ["成都城区"]
+
+
+def _extract_objects(text: str) -> list[str]:
+    """Extract key recurring objects from chapter 1."""
+    objs = []
+    for obj in ["保鲜膜", "头盔", "太阳神鸟", "盖碗茶", "竹椅", "泡菜坛",
+                 "薄荷", "螺丝刀", "护膝", "杯子"]:
+        if obj in text:
+            objs.append(obj)
+    return objs[:8]
+
+
+def _extract_chapter_2_events(outline_text: str) -> list[dict]:
+    """Extract chapter 2 must-land events from the outline."""
+    if "第 02 章" not in outline_text:
+        return []
+
+    idx = outline_text.find("第 02 章")
+    end = outline_text.find("第 03 章", idx)
+    if end == -1:
+        end = idx + 5000
+    chapter_text = outline_text[idx:end]
+
+    events = []
+    # Parse structured POV blocks
+    lines = chapter_text.split("\n")
+    current_pov = ""
+    current_event = ""
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("**阿坤"):
+            if current_pov and current_event:
+                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
+            current_pov = "阿坤"
+            current_event = stripped
+        elif stripped.startswith("**韩教授"):
+            if current_pov and current_event:
+                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
+            current_pov = "韩教授"
+            current_event = stripped
+        elif stripped.startswith("**白英"):
+            if current_pov and current_event:
+                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
+            current_pov = "白英"
+            current_event = stripped
+        elif stripped.startswith("**苏然"):
+            if current_pov and current_event:
+                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
+            current_pov = "苏然"
+            current_event = stripped
+        elif current_pov and stripped and not stripped.startswith("#"):
+            current_event += " " + stripped
+
+    # Flush last
+    if current_pov and current_event:
+        events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
+
+    return events
+
+
+def _yaml_dump_contract(draft: dict) -> str:
+    """Dump contract dict to readable YAML."""
+    import yaml
+
+    # Filter out comment keys (starting with #)
+    clean = {k: v for k, v in draft.items() if not k.startswith("#") and k != ""}
+
+    # Use yaml.dump with block style
+    return yaml.dump(
+        clean,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        width=120,
+    )
+
+
+# ── scope report helper ──────────────────────────────────────────────────
+
+
+def _print_scope_report(
+    db, project_id: str, session_id: str, run_id: str, chapter: str
+) -> None:
+    """P0-7: Print minimal scope report for a completed chapter."""
+    # Shot counts by status
+    shot_rows = db.execute(
+        "SELECT shot_status, light_status, COUNT(*) as cnt "
+        "FROM writing_shots WHERE project_id = ? AND layer_key = ? "
+        "GROUP BY shot_status, light_status",
+        (project_id, chapter),
+    ).fetchall()
+
+    green = yellow = red = other = 0
+    for row in shot_rows:
+        if row["light_status"] == "green":
+            green += row["cnt"]
+        elif row["light_status"] == "yellow":
+            yellow += row["cnt"]
+        elif row["shot_status"] in ("done_red_permanent", "placeholder"):
+            red += row["cnt"]
+        else:
+            other += row["cnt"]
+    total = green + yellow + red + other
+
+    # Average winner score
+    score_row = db.execute(
+        "SELECT AVG(jury_scores_json->>'winner_score') as avg_score "
+        "FROM shot_revisions sr "
+        "JOIN writing_shots ws ON sr.shot_id = ws.shot_id "
+        "WHERE ws.project_id = ? AND ws.layer_key = ? "
+        "AND sr.jury_scores_json IS NOT NULL",
+        (project_id, chapter),
+    ).fetchone()
+    avg_score = score_row["avg_score"] if score_row else None
+
+    # Fact anchors extracted
+    anchor_row = db.execute(
+        "SELECT COUNT(*) as cnt FROM writing_fact_anchors fa "
+        "JOIN writing_shots ws ON fa.shot_id = ws.shot_id "
+        "WHERE ws.project_id = ? AND ws.layer_key = ?",
+        (project_id, chapter),
+    ).fetchone()
+    anchor_count = anchor_row["cnt"] if anchor_row else 0
+
+    click.echo()
+    click.echo("═" * 50)
+    click.echo(f"  📋 Scope Report — {chapter}")
+    click.echo("═" * 50)
+    click.echo(f"  总 Shot: {total}")
+    click.echo(f"    🟢 Green:   {green}")
+    click.echo(f"    🟡 Yellow:  {yellow}")
+    click.echo(f"    🔴 Red/PH:  {red}")
+    if other:
+        click.echo(f"    ⚪ Other:   {other}")
+    if avg_score is not None:
+        click.echo(f"  平均得分: {avg_score:.1f}")
+    click.echo(f"  事实锚点: {anchor_count}")
+    click.echo("═" * 50)
+
+
+# ── repair ──
+
+@main.command("repair")
+@click.argument("project")
+@click.option("--red", "target_red", is_flag=True, help="修复红灯 shot")
+@click.option("--yellow", "target_yellow", is_flag=True, help="修复黄灯 shot")
+def repair_project(project: str, target_red: bool, target_yellow: bool):
+    """AI 修复红灯/黄灯 shot。
+
+    \b
+    示例:
+      ink repair "分流" --red
+      ink repair "分流" --yellow
+    """
+    from inkflow.db import init_project_db
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+
+    project_id = row["project_id"]
+
+    target_status = []
+    if target_red:
+        target_status.append("done_red_permanent")
+    if target_yellow:
+        target_status.append("done_yellow")
+
+    if not target_status:
+        db.close()
+        raise click.ClickException("请指定 --red 或 --yellow。")
+
+    placeholders = ",".join("?" for _ in target_status)
+    shots = db.execute(
+        f"SELECT shot_id, shot_index, layer_key, light_status, redo_attempt "
+        f"FROM writing_shots "
+        f"WHERE project_id = ? AND shot_status IN ({placeholders}) "
+        f"ORDER BY shot_index",
+        [project_id] + target_status,
+    ).fetchall()
+
+    if not shots:
+        click.echo("没有需要修复的 shot。")
+        db.close()
+        return
+
+    from inkflow.services import QualityController
+    # Get the run_id from the shot's run
+    shot_run = db.execute(
+        "SELECT run_id FROM writing_shots WHERE shot_id = ?",
+        (shots[0]["shot_id"],),
+    ).fetchone()
+    run_id = shot_run["run_id"] if shot_run else ""
+    qc = QualityController(db, run_id)
+
+    click.echo(f"待修复 Shot: {len(shots)}")
+    for shot in shots:
+        icon = "🔴" if shot["light_status"] == "red" else "🟡"
+        current_attempt = shot["redo_attempt"]
+        if current_attempt >= 3:
+            click.echo(f"  {icon} Shot {shot['shot_index']}: 已达最大重试次数，跳过")
+            continue
+
+        result = qc.smart_redo(shot["shot_id"], current_attempt)
+        click.echo(
+            f"  {icon} Shot {shot['shot_index']}: "
+            f"redo → {result['action']} (level={result['level']})"
+        )
+
+    click.echo(f"\n已触发修复，请运行 ink run \"{project}\" --resume 继���生成。")
+    db.close()
+
+
+# ── resume ──
+
+@main.command("resume")
+@click.argument("session_id")
+def resume_session(session_id: str):
+    """从崩溃/断点恢复。自动找到 session 并委托给 run --resume。
+
+    \b
+    示例:
+      ink resume <session_id>
+    """
+    from inkflow.db import init_project_db
+
+    # Find the project for this session
+    story_base = Path(r"D:\_Progs\.Story")
+
+    for story_dir in story_base.iterdir():
+        if not story_dir.is_dir():
+            continue
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        if not db_path.exists():
+            continue
+
+        db = init_project_db(db_path)
+        row = db.execute(
+            "SELECT project_id, run_id, act_id, status, completed_shots, total_shots "
+            "FROM writing_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+
+        if row:
+            project_name = story_dir.name.strip("《》")
+            click.echo(f"项目: {project_name}")
+            click.echo(f"Session: {session_id}")
+            click.echo(f"状态: {row['status']}")
+            click.echo(f"已完成: {row['completed_shots']}/{row['total_shots']} shots")
+
+            checkpoint = db.execute(
+                "SELECT checkpoint_json FROM writing_session_checkpoints "
+                "WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+                (session_id,),
+            ).fetchone()
+            if checkpoint:
+                import json
+                cp_data = json.loads(checkpoint["checkpoint_json"])
+                click.echo(f"最新检查点: shot {cp_data.get('shot_index', '?')}")
+
+            db.close()
+
+            # Delegate to run --resume
+            click.echo(f"\n恢复生成中...")
+            ctx = click.get_current_context()
+            ctx.invoke(
+                run_project,
+                project=project_name,
+                chapter=row["act_id"],
+                shot_id=None,
+                writer_count=2,
+                shot_count=row["total_shots"],
+                resume=True,
+            )
+            return
+
+        db.close()
+
+    # ── sessions ──
+
+@main.group("sessions")
+def sessions_group():
+    """Session 管理命令。"""
+    pass
+
+
+@sessions_group.command("list")
+@click.argument("project", required=False)
+def sessions_list(project: str | None):
+    """列出未完成的 session。可指定项目名缩小范围。
+
+    \b
+    示例:
+      ink sessions list           # 扫描所有项目
+      ink sessions list "分流"    # 仅指定项目
+    """
+    from inkflow.db import init_project_db
+
+    story_base = Path(r"D:\_Progs\.Story")
+    found_any = False
+
+    if project:
+        targets = [story_base / f"《{project}》"]
+    else:
+        if not story_base.exists():
+            click.echo("没有未完成的 session。")
+            return
+        targets = [d for d in story_base.iterdir() if d.is_dir()]
+
+    for story_dir in targets:
+        if not story_dir.is_dir():
+            continue
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        if not db_path.exists():
+            continue
+
+        db = init_project_db(db_path)
+        rows = db.execute(
+            "SELECT * FROM writing_sessions "
+            "WHERE status IN ('active', 'paused', 'crashed') "
+            "ORDER BY created_at DESC"
+        ).fetchall()
+
+        if rows:
+            if not found_any:
+                click.echo("未完成 Session:")
+                found_any = True
+
+            project_name = story_dir.name
+            for row in rows:
+                status_icon = {"active": "▶", "paused": "⏸", "crashed": "💥"}.get(row["status"], "?")
+                click.echo(f"  {status_icon} {row['session_id'][:12]}... "
+                          f"| {project_name} | {row['status']} "
+                          f"| {row['completed_shots']}/{row['total_shots']} shots")
+
+        db.close()
+
+    if not found_any:
+        click.echo("没有未完成的 session。")
+
+
+@sessions_group.command("abort")
+@click.argument("session_id")
+@click.option("--project", default=None, help="项目名（加速查找）")
+def sessions_abort(session_id: str, project: str | None):
+    """放弃 session，已生成文本保留。
+
+    \b
+    示例:
+      ink sessions abort <session_id>
+      ink sessions abort <session_id> --project "分流"
+    """
+    from inkflow.db import init_project_db
+    from inkflow.services import SessionManager
+
+    story_base = Path(r"D:\_Progs\.Story")
+
+    if project:
+        targets = [story_base / f"《{project}》"]
+    else:
+        if not story_base.exists():
+            raise click.ClickException(f"未找到 session: {session_id}")
+        targets = [d for d in story_base.iterdir() if d.is_dir()]
+
+    for story_dir in targets:
+        if not story_dir.is_dir():
+            continue
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        if not db_path.exists():
+            continue
+
+        db = init_project_db(db_path)
+        row = db.execute(
+            "SELECT project_id FROM writing_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+
+        if row:
+            mgr = SessionManager(db, row["project_id"])
+            mgr.abort_session(session_id)
+
+            # Clean up non-terminal shots for this session's run
+            run_row = db.execute(
+                "SELECT run_id FROM writing_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if run_row:
+                db.execute(
+                    "UPDATE writing_shots SET shot_status = 'placeholder', "
+                    "placeholder_type = 'redo_placeholder', updated_at = datetime('now') "
+                    "WHERE run_id = ? AND shot_status NOT IN "
+                    "('done_green', 'done_yellow', 'done_red_permanent')",
+                    (run_row["run_id"],),
+                )
+                db.commit()
+
+            click.echo(f"Session {session_id[:12]}... 已放弃。")
+            click.echo("已生成文本已保留。")
+            db.close()
+            return
+
+        db.close()
+
+    raise click.ClickException(f"未找到 session: {session_id}")
+
+
+# ── status ──
+
+@main.command("status")
+@click.argument("project")
+def status_project(project: str):
+    """查看写作进度。
+
+    \b
+    示例:
+      ink status "分流"
+    """
+    from inkflow.db import init_project_db
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+
+    project_id = row["project_id"]
+
+    # Session stats
+    sessions = db.execute(
+        "SELECT status, COUNT(*) as cnt FROM writing_sessions "
+        "WHERE project_id = ? GROUP BY status",
+        (project_id,),
+    ).fetchall()
+
+    click.echo(f"项目: {project}")
+
+    # Shot stats
+    shot_stats = db.execute(
+        "SELECT shot_status, light_status, COUNT(*) as cnt "
+        "FROM writing_shots WHERE project_id = ? "
+        "GROUP BY shot_status, light_status",
+        (project_id,),
+    ).fetchall()
+
+    if shot_stats:
+        click.echo("\nShot 状态:")
+        for s in shot_stats:
+            click.echo(f"  {s['shot_status']} ({s['light_status'] or '-'}): {s['cnt']}")
+
+    # Contract status
+    contract = db.execute(
+        "SELECT status FROM writing_meta_contract WHERE project_id = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (project_id,),
+    ).fetchone()
+
+    if contract:
+        click.echo(f"\n元契约: {contract['status']}")
+
+    # Session list
+    if sessions:
+        click.echo("\nSession:")
+        for s in sessions:
+            click.echo(f"  {s['status']}: {s['cnt']}")
+
+    db.close()
+
+
+# ── export ──
+
+@main.command("export")
+@click.argument("project")
+@click.option("--chapter", default=None, help="章节 key，如 v01.c02（默认全部）")
+@click.option("--output", "-o", default=None, help="输出文件路径（默认 .inkflow/export/ 目录）")
+@click.option("--plain", is_flag=True, help="纯文本模式（无标注，无标题）")
+def export_project(project: str, chapter: str | None, output: str | None, plain: bool):
+    """导出当前修订为 Markdown 文件。
+
+    \b
+    示例:
+      ink export "分流"                        # 导出全部章节
+      ink export "分流" --chapter v01.c02      # 仅导出第 2 章
+      ink export "分流" --plain -o out.txt     # 纯文本导出
+    """
+    from inkflow.db import init_project_db
+    from inkflow.export import export_markdown, export_plain_text
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+
+    story_dir = _STORY_BASE / f"《{project}》"
+    export_dir = story_dir / ".inkflow" / "export"
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    if chapter:
+        chapters = [chapter]
+    else:
+        chapters = None  # export function will list all
+
+    if output:
+        out_path = Path(output)
+    else:
+        chapter_suffix = f"_{chapter}" if chapter else ""
+        out_path = export_dir / f"{project}{chapter_suffix}_导出.md"
+
+    if plain:
+        result = export_plain_text(db, out_path, chapters=chapters)
+    else:
+        result = export_markdown(db, out_path, chapters=chapters)
+
+    db.close()
+
+    click.echo(f"导出完成: {result}")
+    click.echo(f"  {len(result.read_text(encoding='utf-8'))} 字符")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,305 @@
+# InkFlow v3.12 — Bug 记录
+
+> 记录开发过程中发现和修复的 bug
+> ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
+> ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
+> 2026-06-24 文档对齐：新增 B35/B36；开放实现任务见 `../TASKS.md`
+
+---
+
+## 第一轮 (2026-06-17)
+
+### B1. smart_redo permanent_red 不可达
+- **严重性**: Critical
+- **发现**: 服务专家 + 架构专家 + QA专家 (3 人重复发现)
+- **根因**: `schema.sql` CHECK 约束 `redo_attempt BETWEEN 0 AND 2`，代码检查 `current_attempt >= 3`，永远 False
+- **修复**: CHECK 改为 `BETWEEN 0 AND 3`
+- **文件**: `schema.sql`, `quality_controller.py`
+
+### B2. import-baseline 重复运行数据翻倍
+- **严重性**: Critical
+- **发现**: CLI专家
+- **根因**: `_import_shot` 无条件 INSERT，不检查已有 shot；`import_chapter` 每次生成新 run_id
+- **修复**: `_import_shot` 添加 `(run_id, layer_key, shot_index)` 查重；`import_chapter` 复用已有 run_id
+- **文件**: `baseline_importer.py`
+
+### B3. Migration 失败后 force-mark 到当前版本
+- **严重性**: Critical
+- **发现**: DB专家
+- **根因**: 迁移失败后 `set_schema_version(conn, SCHEMA_VERSION)` 强制标记，部分执行状态被标记为"已完成"
+- **修复**: 删除强制标记逻辑，保留在最后一个成功版本
+- **文件**: `migration.py`
+
+### B4. Backup 使用 shutil.copy2 对 WAL 不安全
+- **严重性**: Critical
+- **发现**: DB专家
+- **根因**: WAL 模式数据分布在 .db, .db-wal, .db-shm，shutil.copy2 仅拷贝 .db
+- **修复**: 改用 SQLite Online Backup API (`src.backup(dst)`)
+- **文件**: `backup.py`
+
+### B5. _build_previous_shots 边界计算错误
+- **严重性**: Important
+- **发现**: 服务专家
+- **根因**: 使用 `len(original)` 而非 `len(window)` 判断摘要/全文边界；>5 shots 时最近 2 个也只显示摘要
+- **修复**: `i >= len(window) - 2`
+- **文件**: `prompt_compiler.py`
+
+### B6. detect_conflicts 不过滤 run_id
+- **严重性**: Important
+- **发现**: 服务专家
+- **根因**: 同 anchor_key 不同 run 的值被误报为 explicit_contradiction
+- **修复**: 查询加 `AND run_id = ?`
+- **文件**: `fact_anchor_extractor.py`
+
+### B7. _execute_schema 不处理内联注释
+- **严重性**: Important
+- **发现**: DB专家
+- **根因**: 仅过滤行首 `--`，行内 `col TEXT, -- comment` 破坏 SQL
+- **修复**: 添加 `_strip_inline_comment()` 函数
+- **文件**: `connection.py`
+
+### B8. open_db 不设置 row_factory
+- **严重性**: Important
+- **发现**: 测试失败排查
+- **根因**: `open_db()` 不设 `row_factory = sqlite3.Row`，通过 `open_db` 打开的连接返回 tuple 而非 Row
+- **修复**: 在 `open_db()` 中添加 `conn.row_factory = sqlite3.Row`
+- **文件**: `connection.py`
+
+### B9. _split_statements 不处理字符串内分号
+- **严重性**: Minor
+- **发现**: DB专家
+- **根因**: 仅追踪括号深度，不追踪字符串边界
+- **修复**: 添加 `in_string` 状态追踪 + `''` 转义处理
+- **文件**: `connection.py`
+
+### B10. baseline_importer 硬编码 snapshot_hash
+- **严重性**: Minor
+- **发现**: 架构专家
+- **根因**: `snapshot_hash = 'baseline_hash'` 硬编码，破坏完整性验证
+- **修复**: 改用 `text_hash_normalized(shot["text"])`
+- **文件**: `baseline_importer.py`
+
+### B11. _estimate_tokens 中文估算偏低
+- **严重性**: Minor
+- **发现**: 服务专家
+- **根因**: 中文按 `/1.5` 估算，实际约 `/1.2`
+- **修复**: 改为 `/1.2`
+- **文件**: `prompt_compiler.py`
+
+### B12. _has_excessive_repetition 仅检查 trigram
+- **严重性**: Minor
+- **发现**: 服务专家
+- **根因**: docstring 说 2-6 字符，但代码仅检查 3-gram
+- **修复**: 扩展为 `range(2, 7)` 循环检查
+- **文件**: `quality_controller.py`
+
+---
+
+## 第二轮 (2026-06-17)
+
+> 5 位专家审查发现 58 项问题，已全部修复。摘要见 `docs/history.md` 第二轮记录。
+
+---
+
+## 第三轮 P0 纵向闭环审阅 (2026-06-18)
+
+> 4 个专家视角审阅当前开发文档与实现。结论：设计接近最优，但实现仍有 P0 阻塞 bug。
+
+### B13. setup 无法形成 confirmed 契约
+- **严重性**: Critical
+- **发现**: 架构/运行期审阅
+- **根因**: `ink setup` 只创建 `draft` 元契约并提示人工确认，但 CLI 没有提供确认命令；`ink run` 又要求 confirmed/locked 契约。
+- **影响**: 标准用户路径 `import-baseline → setup → run` 会停在契约未确认状态，P0 无法端到端执行。
+- **修复建议**: 增加 `ink confirm-contract <project>`，或在 P0 setup 中完成最小确认流程并记录审计。
+- **文件**: `cli.py`, `contract_compiler.py`
+- **✅ 已修复**: 新增 `ink confirm-contract <project>` 命令，支持 `--lock` 选项。4 tests added.
+
+### B14. writer race 仍是短占位文本，Gate1 必然失败
+- **严重性**: Critical
+- **发现**: LLM/质量审阅
+- **根因**: `WriterDispatcher.dispatch_race()` 生成 `"[{persona} 生成中...]"`，而 Gate1 要求正文至少 50 字。
+- **影响**: `ink run` 无法产出可用正文，只会进入 Smart-Redo；P0 第 2 章生成闭环不可交付。
+- **修复建议**: 增加最小 `ModelClient` 适配层，P0 支持 `local-default` 可控长文本生成；真实模型调用后续接入同一接口。
+- **文件**: `writer_dispatcher.py`, `quality_controller.py`
+- **✅ 已修复**: 新增 ModelClient 协议 + LocalDefaultGenerator（≥200字确定性输出），WriterDispatcher 接入。7 tests added.
+
+### B15. Jury 分制与灯色阈值冲突
+- **严重性**: Critical
+- **发现**: LLM/质量审阅
+- **根因**: `writing_jury_scores.score` schema 为 0-10，`JuryService` stub 固定给 7 分，但灯色阈值使用 green≥85 / yellow≥65。
+- **影响**: 即使候选通过 Gate1，也会因分制不一致被判 red。
+- **修复建议**: 统一为 0-100 总分，或将阈值改为 8.5/6.5 并调整类型与文档。
+- **文件**: `schema.sql`, `jury_service.py`, `quality_controller.py`, `models/enums.py`, `implementation-contract-v0.md`
+- **✅ 已修复**: Schema 改为 0-100；JuryService 默认 70 分；新增 score_override 支持测试构造三种 verdict。7 tests added.
+
+### B16. `run` 将黄灯也覆盖成 `done_green`
+- **严重性**: Critical
+- **发现**: 运行期审阅
+- **根因**: `quality_controller.finalize_shot()` 已根据 gate2 设置 done_green/done_yellow/placeholder，随后 CLI 又调用 `mgr.update_shot_status(shot_id, "done_green", light_status=light)`。
+- **影响**: DB 可出现 `shot_status='done_green'` 且 `light_status='yellow'` 的不一致状态。
+- **修复建议**: 删除 CLI 二次覆盖，或用 `light_status` 映射正确状态。
+- **文件**: `cli.py`
+- **✅ 已修复**: 删除 cli.py 中二次覆盖代码，统一由 finalize_shot 处理状态。1 test added (test_yellow_status_preserved).
+
+### B17. Fact Anchor 提取仍为空实现
+- **严重性**: Critical
+- **发现**: 数据/一致性审阅
+- **根因**: `FactAnchorExtractor.extract()` 直接返回空列表。
+- **影响**: 文档要求的绿/黄 Shot 自动提取 9 类事实锚点不存在；后续 prompt 事实约束、冲突检测、Chesil 导入都缺数据。
+- **修复建议**: P0 先实现三类最小锚点（人物状态、地点/物品、事件），并在下一 Shot prompt 注入。
+- **文件**: `fact_anchor_extractor.py`, `cli.py`, `prompt_compiler.py`
+- **✅ 已修复**: 实现 3 类关键词提取；CLI 集成提取（绿/黄 shot）+ 下一 shot 注入。8 tests added.
+
+### B18. locked human_baseline 只有约定，没有防改保护
+- **严重性**: Important
+- **发现**: 数据/一致性审阅
+- **根因**: baseline 导入把 revision 标记为 `writer_persona='human_baseline'` 和 `gate_result_json.locked=true`，但 DB 和服务层没有阻止后续 current revision 被替换。
+- **影响**: 第 1 章人工样章可能被后续代码误改，违反 P0 边界。
+- **修复建议**: 为 baseline 增加应用层保护和审计；必要时扩展 revision operation 为 `human_baseline`。
+- **文件**: `baseline_importer.py`, `session_manager.py`, `schema.sql`
+
+### B19. current revision 缺少硬一致性约束
+- **严重性**: Important
+- **发现**: 数据/一致性审阅
+- **根因**: `writing_shots.current_revision_id` 没有 FK，`shot_revisions` 没有 `shot_id WHERE is_current=1` 唯一约束。
+- **影响**: 可能出现 current 指向不存在 revision，或同一 shot 多个 current revision。
+- **修复建议**: 增加 partial unique index，并在服务层校验 `current_revision_id`。
+- **文件**: `schema.sql`, `session_manager.py`
+- **ARCH-13 更新 (2026-06-24)**: 字段 `is_current` 语义已重新定义为**封版标记**（不是"当前 winner"）——只在封版时设置一次，之后不再随新生成而更新。未封版时正文通过 `MAX(revision_sequence)` 查询；封版后通过 `is_current=1` 查询。详见 `design-3tree-architecture.md` §8。
+
+### B20. implementation-contract 与 schema/tests 已漂移
+- **严重性**: Important
+- **发现**: 架构/数据审阅
+- **根因**: `implementation-contract-v0.md` 仍有旧约束，如 `redo_attempt BETWEEN 0 AND 2`，实际 schema 为 0-3；`writing_meta_contract.project_id`、`writing_project_config.project_id` 的 UNIQUE 口径也不一致。
+- **影响**: 后续迁移和测试会围绕不同权威口径反复冲突。
+- **修复建议**: 先确定 schema 权威，再同步 implementation contract、tests、history。
+- **文件**: `implementation-contract-v0.md`, `schema.sql`, `tests/test_schema.py`
+
+### B21. fact anchor 唯一键与 POV/更新语义冲突
+- **严重性**: Important
+- **发现**: 数据/一致性审阅
+- **根因**: `UNIQUE(project_id, anchor_key, run_id)` 会阻止同一 run 同 key 的后续事实更新或 POV 差异记录。
+- **影响**: 设计中的“新增锚点 / 更新锚点 / 确认锚点 / POV-dependent 冲突”难以落库。
+- **修复建议**: 为 fact anchor 增加版本/状态语义，或把唯一键调整为更贴合 source/pov/revision 的组合。
+- **文件**: `schema.sql`, `fact_anchor_extractor.py`
+
+### B22. 缺少 idempotency_key / usage 审计落库
+- **严重性**: Important
+- **发现**: 架构/数据审阅
+- **根因**: 文档要求所有外部模型调用和 DB 写入有 `attempt_id` / `idempotency_key`，且成本只记录 usage；当前 schema 只有分散的 `attempt_id`，没有统一调用审计。
+- **影响**: 恢复、重放、费用追踪和模型调用排障不可审计。
+- **修复建议**: 增加 `model_attempts` 或等价审计表，记录 idempotency_key、phase、model、request/response hash、usage。
+- **文件**: `schema.sql`, `writer_dispatcher.py`, `jury_service.py`, `fact_anchor_extractor.py`
+
+### B23. Prompt 编译缓存降级策略未真正实现
+- **严重性**: Minor
+- **发现**: LLM/提示词审阅
+- **根因**: `compile_static_prefix()` 只返回 `cacheable` 标志；超过 4096 tokens 时没有按文档拆分缓存段或摘要模式。
+- **影响**: 长契约项目会失去文档承诺的 Prompt Caching 行为。
+- **修复建议**: P0 可先记录 warning；Phase 1 再实现拆段与摘要降级。
+- **文件**: `prompt_compiler.py`
+
+---
+
+## 第四轮 (2026-06-21)
+
+### B24. repair 命令 SELECT 缺少 `redo_attempt` 列 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 代码审查
+- **根因**: `cli.py` repair 命令只 SELECT 了 `shot_id, shot_index, layer_key, light_status` 4 列，但后面访问 `shot["redo_attempt"]` 导致 KeyError。
+- **修复**: 查询增加 `redo_attempt` 列。
+- **文件**: `cli.py`
+
+### B25. `compile_static_prefix()` 返回 dict 有重复 `"cacheable"` key ✅ 已修复
+- **严重性**: Minor
+- **发现**: 代码审查
+- **根因**: 返回 dict 中 `"cacheable"` 写了两次，第一次用局部变量 `cacheable`，第二次用表达式 `prefix_length <= CACHE_BREAKPOINT_LIMIT`。第二个覆盖第一个，语义等价但代码意图不清晰。
+- **修复**: 删除重复行，直接使用 `CACHE_BREAKPOINT_LIMIT` 常量。
+- **文件**: `prompt_compiler.py`
+
+### B26. test_llm6_context_window_order 断言与当前 prompt 格式不匹配 ✅ 已修复
+- **严重性**: Minor
+- **发现**: 测试失败排查
+- **根因**: 测试查找 "当前 Shot 契约" / "前文上下文" 但代码使用 "必须落地" / "前文摘要"。section 标题变更后测试未同步更新。
+- **修复**: 更新测试断言匹配当前 prompt 格式；移除已废弃的 N-3~N-5 摘要排序断言。
+- **文件**: `tests/test_prompt_compiler.py`
+
+### B27. test_all_tables_exist 缺少 `writing_outline_evaluations` ✅ 已修复
+- **严重性**: Minor
+- **发现**: 测试失败排查
+- **根因**: v4 migration 新增了 `writing_outline_evaluations` 表但 `ALL_TABLES` 列表未更新。
+- **修复**: 添加 `writing_outline_evaluations` 到 `ALL_TABLES`。
+- **文件**: `tests/test_schema.py`
+
+---
+
+## 第五轮 (2026-06-21) — 生产流水线评估修复
+
+### B28. previous_shots 只用 baseline，忽略已生成内容 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产流水线全面评估
+- **根因**: `_run_project_inner` 中 prompt 编译的 `previous_shots` 始终硬编码为 `baseline_shots[:2]`，不管当前 run 已生成了几个 shot。Shot 3 看不到 Shot 2 的内容，跨 shot 叙事连贯性完全断裂。
+- **修复**: 新增 `_build_previous_context()` 函数，优先从当前 run 的已完成 shot 中取最后 2 个 revision 文本，首 shot 回退到 baseline 末尾。
+- **文件**: `cli.py`
+
+### B29. resume 不跳过已完成 shot → 覆盖已有成果 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产流水线全面评估
+- **根因**: `_run_project_inner` 的 per-shot 循环没有任何 shot 状态检查。崩溃后 resume 会重新生成已 `done_green`/`done_yellow` 的 shot，覆盖已有 revision。
+- **修复**: 在循环开头添加 shot 状态检查，`done_green`/`done_yellow` 直接 skip。
+- **文件**: `cli.py`
+
+### B30. MotifTracker 密度追踪完全未集成 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产流水线全面评估
+- **根因**: `generate_motif_task()` 被调用了，但 `record_instance()` 和 `update_density_after_shot()` 从未被调用。所有 motif 的 `density_status` 永远是 gray，`current_count` 永远是 0。
+- **修复**: 新增 `MotifTracker.scan_and_record()` 方法，在生成文本中扫描 motif 关键词并自动记录；在 main loop 的锚点提取之后集成调用。
+- **文件**: `motif_tracker.py`, `cli.py`
+
+### B31. motif_tracker.py 三重 import + 双重常量 ✅ 已修复
+- **严重性**: Minor
+- **发现**: 代码审查
+- **根因**: `from inkflow.models.enums import EvolutionPhase, DensityStatus` 写了 3 次，`DEFAULT_MOTIF_DENSITY_PER_100 = 10` 写了 2 次。
+- **修复**: 删除重复，保留各 1 份。
+- **文件**: `motif_tracker.py`
+
+### B32. brilliance_level / badsmell_level 从未填充 ✅ 已修复
+- **严重性**: Medium
+- **发现**: 生产流水线全面评估
+- **根因**: `finalize_shot()` 调用时 `brilliance_level` 和 `badsmell_level` 始终为 None，schema 中这两个字段闲置。
+- **修复**: 新增 `_compute_brilliance_level()` 和 `_compute_badsmell_level()` 映射函数，从 jury score 自动计算。
+- **文件**: `cli.py`
+
+### B33. _generate_contract_draft 在 db.close() 之后调用 ✅ 已修复
+- **严重性**: Minor
+- **发现**: 代码审查
+- **根因**: `setup` 命令中 `db.close()` 在 `_generate_contract_draft()` 之前，如果未来 contract draft 生成需要访问 DB 会崩。
+- **修复**: 移动 `db.close()` 到 `_generate_contract_draft()` 调用之后。
+- **文件**: `cli.py`
+
+### B34. 大纲评估异常处理过于宽泛 ✅ 已修复
+- **严重性**: Minor
+- **发现**: 代码审查
+- **根因**: `except Exception` 捕获所有异常（包括编程错误如 `AttributeError`），应只捕获可恢复的异常。
+- **修复**: 改为 `except (ModelCallError, ValueError, KeyError)`。
+- **文件**: `cli.py`
+
+---
+
+## 第六轮 (2026-06-24) — 任务/文档对齐审阅
+
+### B35. `ink constitution <project>` 已有宪法默认展示路径崩溃 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 任务与开发文档对齐审阅
+- **根因**: `cli.py` 默认分支中调用 `_print_constitution(conststitution)`，变量名拼写错误；当项目已有 `writing_book_constitutions` 记录且用户直接运行 `ink constitution "分流"` 时会触发 `NameError`。
+- **影响**: L0 全书宪法 CLI 的“已有则展示”路径不可用，ARCH-4 的人工复核流程会中断。
+- **修复**: 改为 `_print_constitution(constitution)`；新增 CLI smoke test 覆盖已有宪法展示。
+- **文件**: `src/inkflow/cli.py`, `tests/test_cli.py`
+
+### B36. 任务/设计文档版本、表数与实施状态漂移 ✅ 已修复
+- **严重性**: Important
+- **发现**: 任务与开发文档对齐审阅
+- **根因**: `tasks.md`、`inkflow/TASKS.md`、`design.md`、`implementation-contract-v0.md`、`suspense-engine.md` 分别停留在 v3.6/v3.9、Schema v3/v8、31/32/35 表、待实施/已实施等不同口径。
+- **影响**: 后续开发可能把已完成 ARCH-4/12/13 当成待办，或按旧 Schema 表数实现迁移和测试。
+- **修复**: 根任务文件和 InkFlow 任务文件重写为当前待办；设计/实现契约/悬疑引擎文档同步到 Schema v9 / 35 表 / 部分实施状态；完成项统一指向 `docs/history.md`。
+- **文件**: `tasks.md`, `TASKS.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/suspense-engine.md`, `docs/design-evaluation-conclusion.md`, `src/inkflow/db/schema.sql`
