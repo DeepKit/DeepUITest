@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39；开放实现任务见 `../tasks.md`
+> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39/B40；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -331,3 +331,11 @@
 - **影响**: 后续开发可能按旧 DDL/协议实现 Jury 或迁移，遗漏 `suspense_effectiveness`、`unexpected_value` 与 CREATIVE-3 选稿逻辑。
 - **修复**: 更新设计、实现契约、评估结论和历史归档；实现契约改为当前 0-100、默认 3 模型 × 5 维评分口径，并记录留白 shot 使用 `creative_score` 选 winner。
 - **文件**: `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/design-evaluation-conclusion.md`, `docs/history.md`, `docs/role-system.md`, `src/inkflow/services/jury_service.py`, `src/inkflow/utils/config.py`, `tests/test_core_services.py`
+
+### B40. 旧 `.models` 显式三维 Jury 配置会禁用 D-25/CREATIVE 维度 ✅ 已修复
+- **严重性**: Important
+- **发现**: VAL-1 真实项目验证前检查
+- **根因**: `get_jury_config()` 直接信任 `jury_config.dimensions`。真实《分流》项目的 `.models` 仍显式配置 3 个旧维度，导致 `suspense_effectiveness` 和 `unexpected_value` 被覆盖掉。
+- **影响**: 真实项目运行时 CREATIVE-1/3 和 D-25 悬疑评分不会参与 winner 选择，留白创意评审会退化成普通三维加权。
+- **修复**: `get_jury_config()` 保留项目配置顺序，同时自动补齐当前必需 v4 维度并去重；新增回归测试覆盖旧三维配置和重复维度。
+- **文件**: `src/inkflow/utils/config.py`, `tests/test_utils.py`, `docs/implementation-contract-v0.md`

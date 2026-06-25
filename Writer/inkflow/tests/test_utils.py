@@ -20,7 +20,7 @@ from inkflow.utils import (
     load_env,
     resolve_model,
 )
-from inkflow.utils.config import write_project_config_record
+from inkflow.utils.config import get_jury_config, write_project_config_record
 
 
 class TestULID:
@@ -208,6 +208,46 @@ class TestConfig:
         layers = json.loads(row["layers_json"])
         assert layers["models_file_hash"] == "abc123"
         assert "function_models" in layers
+
+    def test_jury_config_appends_required_current_dimensions(self):
+        """旧 .models 显式三维配置也必须补齐当前 v4 必需维度。"""
+        config = {
+            "jury_config": {
+                "dimensions": [
+                    "contract_compliance",
+                    "forbidden_expression",
+                    "reading_fluency",
+                ],
+            },
+        }
+
+        jury = get_jury_config(config)
+
+        assert jury["dimensions"][:3] == [
+            "contract_compliance",
+            "forbidden_expression",
+            "reading_fluency",
+        ]
+        assert "suspense_effectiveness" in jury["dimensions"]
+        assert "unexpected_value" in jury["dimensions"]
+        assert len(jury["dimensions"]) == 5
+
+    def test_jury_config_deduplicates_dimensions(self):
+        """配置中已有必需维度时不重复追加。"""
+        config = {
+            "jury_config": {
+                "dimensions": [
+                    "unexpected_value",
+                    "contract_compliance",
+                    "unexpected_value",
+                ],
+            },
+        }
+
+        jury = get_jury_config(config)
+
+        assert jury["dimensions"].count("unexpected_value") == 1
+        assert jury["dimensions"][0] == "unexpected_value"
 
 
 class TestLoadEnv:

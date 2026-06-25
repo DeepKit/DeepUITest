@@ -1277,3 +1277,29 @@ CREATIVE-3 从待办移入历史。后续不再继续放宽留白机制，优先
 
 - 目标测试：2 passed
 - 全量测试：353 passed, 4 warnings
+
+---
+
+## B40 Jury 配置兼容修复 — 2026-06-25
+
+**目标**：进入 VAL-1 真实项目验证前，确保旧 `.models` 显式配置的三维 Jury 不会覆盖当前必需的 D-25/CREATIVE 维度。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 配置兼容 | `get_jury_config()` 保留项目配置维度顺序，同时追加缺失的当前 v4 必需维度 |
+| 去重 | 配置中重复出现的维度只保留第一次 |
+| 真实项目影响 | 《分流》旧三维 `.models` 会在运行时自动补齐 `suspense_effectiveness` 与 `unexpected_value` |
+
+### 新增测试
+
+| 测试 | 覆盖 |
+|------|------|
+| `test_jury_config_appends_required_current_dimensions` | 旧三维配置自动补齐当前必需维度 |
+| `test_jury_config_deduplicates_dimensions` | 重复维度不会重复写入 Jury 维度列表 |
+
+### 验证
+
+- 目标测试：2 passed
+- 全量测试：355 passed, 4 warnings

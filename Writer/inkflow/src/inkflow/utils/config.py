@@ -205,12 +205,31 @@ def get_jury_config(models_config: dict) -> dict:
     from inkflow.models.enums import JURY_V4_MODELS_DEFAULT, JURY_V4_DIMENSIONS
 
     jury_cfg = models_config.get("jury_config", {})
+    dimensions = _merge_required_dimensions(
+        jury_cfg.get("dimensions"),
+        JURY_V4_DIMENSIONS,
+    )
     return {
         "models": jury_cfg.get("models", JURY_V4_MODELS_DEFAULT),
-        "dimensions": jury_cfg.get("dimensions", JURY_V4_DIMENSIONS),
+        "dimensions": dimensions,
         "quality_threshold": jury_cfg.get("quality_threshold", 80),
         "outline_threshold": jury_cfg.get("outline_threshold", 70),
     }
+
+
+def _merge_required_dimensions(configured: object, required: list[str]) -> list[str]:
+    """Preserve configured order while appending required current dimensions."""
+    if not isinstance(configured, list) or not configured:
+        return list(required)
+
+    dimensions: list[str] = []
+    for dimension in configured:
+        if isinstance(dimension, str) and dimension not in dimensions:
+            dimensions.append(dimension)
+    for dimension in required:
+        if dimension not in dimensions:
+            dimensions.append(dimension)
+    return dimensions
 
 
 def get_quality_threshold(models_config: dict) -> int:

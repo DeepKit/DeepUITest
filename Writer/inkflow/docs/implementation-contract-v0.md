@@ -897,6 +897,8 @@ repair:
 
 标准 shot 使用 `trimmed_mean` 选 winner；CREATIVE-3 留白 shot 使用 `creative_score` 选 winner，权重为：契约履约 0.10、禁用表达 0.10、阅读流畅 0.20、悬疑效果 0.25、意外价值 0.35。
 
+配置兼容规则：旧 `.models` 若显式配置了 `jury_config.dimensions`，运行时必须保留其顺序并自动补齐当前必需维度（`suspense_effectiveness`、`unexpected_value` 等），避免旧三维项目禁用 D-25/CREATIVE 评分能力。
+
 ```json
 {
   "attempt_id": "<ulid>",
