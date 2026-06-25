@@ -1,7 +1,7 @@
 # 墨韵 (InkFlow) v3.12: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.12（Schema v15：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法、ARCH-5 L0.5 卷部节奏、ARCH-10 风格偏好、ARCH-11 反契约沙盒、CREATIVE-1 意外价值、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v15：2026-06-25
+> 版本：v3.12（Schema v16：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法、ARCH-5 L0.5 卷部节奏、ARCH-10 风格偏好、ARCH-11 反契约沙盒、CREATIVE-1 意外价值、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审、B41 模型审计 phase）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -594,7 +594,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **38 张业务表 + `_schema_meta` 元表**（Schema v15）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
+数据库为 **38 张业务表 + `_schema_meta` 元表**（Schema v16）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -669,11 +669,11 @@ execution_records             -- 执行树正文（per-run）
 - `shot_id` = `layer_key + ".s" + zfill(shot_index, 2)` = `v01.c02.s03`
 - 排序：字典序即可（零填充保证）
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v15，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v16，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v15 总计 38 张业务表 + `_schema_meta` 元表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v16 总计 38 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。

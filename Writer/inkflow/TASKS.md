@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-25
-Status: v3.12；Schema v15；38 张业务表 + `_schema_meta` 元表；最近全量验证：`355 passed, 4 warnings`
+Status: v3.12；Schema v16；38 张业务表 + `_schema_meta` 元表；最近全量验证：`361 passed, 4 warnings`
 
 ---
 
@@ -19,13 +19,13 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 文档 | 位置 | 状态 |
 |------|------|:---:|
-| 技术设计权威 | `docs/design.md` | ✅ v3.12 / Schema v15 |
-| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v15 / 38 业务表 |
+| 技术设计权威 | `docs/design.md` | ✅ v3.12 / Schema v16 |
+| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v16 / 38 业务表 |
 | 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | ✅ |
 | 8 层层级 | `docs/design-8layer-hierarchy.md` | ✅ |
 | 悬疑引擎 | `docs/suspense-engine.md` | ✅ 已实施核心闭环，待实战验证 |
 | 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-25 归档 |
-| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B37/B38/B39/B40 |
+| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B37/B38/B39/B40/B41 |
 
 ---
 
@@ -43,7 +43,7 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 | 正文读取治理 | TS-1 `TextRepository` 统一正文读取入口 |
 | Prompt caching | B23-P1 上下文降级与 token budget 裁剪 |
 | 创作质量 | CREATIVE-1 `unexpected_value`；CREATIVE-2 `write_polish`；CREATIVE-3 留白创意评审 |
-| 文档与测试对齐 | B37/B38/B39/B40：Schema v15 / 表数 / 索引 / CREATIVE 测试、配置兼容与权威契约口径同步 |
+| 文档与测试对齐 | B37/B38/B39/B40/B41：Schema v16 / 表数 / 索引 / CREATIVE 测试、配置兼容、模型审计与权威契约口径同步 |
 
 ---
 

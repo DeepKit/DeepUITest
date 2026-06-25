@@ -1,5 +1,5 @@
--- InkFlow v3.12 — Schema v15 (CREATIVE-2 polish 精修阶段)
--- SCHEMA_VERSION: 15
+-- InkFlow v3.12 — Schema v16 (model audit phase 扩展)
+-- SCHEMA_VERSION: 16
 -- Generated from implementation-contract-v0.md; aligned 2026-06-25
 -- 38 business tables total (+ _schema_meta = 39 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -12,6 +12,7 @@
 -- v12→v13: 新增 writing_anti_contract_reviews 表 (ARCH-11)
 -- v13→v14: writing_jury_scores.dimension 新增 unexpected_value (CREATIVE-1)
 -- v14→v15: shot_revisions.operation 新增 write_polish；model_attempts.phase 新增 polish (CREATIVE-2)
+-- v15→v16: model_attempts.phase 新增 outline/constitution/chapter/volume architect phases (B41)
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -496,7 +497,10 @@ CREATE TABLE model_attempts (
     shot_id TEXT REFERENCES writing_shots(shot_id),
     phase TEXT NOT NULL CHECK (phase IN (
         'write_generate', 'jury_score', 'fact_extract', 'repair',
-        'motif_task', 'contract_compile', 'prompt_compile', 'polish'
+        'motif_task', 'contract_compile', 'prompt_compile', 'polish',
+        'outline_evaluate', 'constitution_generate',
+        'architect_chapter_rhythm', 'architect_chapter_rhythm_retry',
+        'architect_volume_rhythm', 'architect_volume_rhythm_retry'
     )),
     model_name TEXT NOT NULL,
     idempotency_key TEXT NOT NULL,

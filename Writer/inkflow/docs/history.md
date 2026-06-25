@@ -1303,3 +1303,26 @@ CREATIVE-3 从待办移入历史。后续不再继续放宽留白机制，优先
 
 - 目标测试：2 passed
 - 全量测试：355 passed, 4 warnings
+
+---
+
+## B41 模型调用审计 phase 扩展 — 2026-06-25
+
+**目标**：进入 VAL-1 前确保 `model_attempts` 能覆盖所有当前真实模型调用，避免 token/调用统计缺口。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| Schema v16 | `model_attempts.phase` 新增大纲评估、全书宪法、章级节奏、卷部节奏及 retry phase |
+| 迁移 | 新增 v15→v16，重建 `model_attempts` CHECK 约束并保留旧审计数据 |
+| 测试 | 参数化验证所有当前架构/大纲模型调用 phase 均可插入 |
+
+### 新增 phase
+
+`outline_evaluate` / `constitution_generate` / `architect_chapter_rhythm` / `architect_chapter_rhythm_retry` / `architect_volume_rhythm` / `architect_volume_rhythm_retry`
+
+### 验证
+
+- 目标测试：14 passed, 3 warnings
+- 全量测试：361 passed, 4 warnings

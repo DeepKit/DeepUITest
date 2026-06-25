@@ -177,6 +177,37 @@ class TestModelAttemptsAudit:
         row = db.execute("SELECT phase FROM model_attempts WHERE attempt_id = 'a1'").fetchone()
         assert row["phase"] == "polish"
 
+    @pytest.mark.parametrize("phase", [
+        "outline_evaluate",
+        "constitution_generate",
+        "architect_chapter_rhythm",
+        "architect_chapter_rhythm_retry",
+        "architect_volume_rhythm",
+        "architect_volume_rhythm_retry",
+    ])
+    def test_architect_audit_phases_are_valid(self, db, phase):
+        """B41: model_attempts.phase accepts all real architect/model operations."""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', 'test')")
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s1', 'p1', 'run_01', 'active')"
+        )
+        db.commit()
+
+        db.execute(
+            "INSERT INTO model_attempts "
+            "(attempt_id, run_id, phase, model_name, idempotency_key, request_prompt_hash) "
+            "VALUES (?, 'run_01', ?, 'local-default', ?, 'ph1')",
+            (f"a_{phase}", phase, f"key_{phase}"),
+        )
+        db.commit()
+
+        row = db.execute(
+            "SELECT phase FROM model_attempts WHERE attempt_id = ?",
+            (f"a_{phase}",),
+        ).fetchone()
+        assert row["phase"] == phase
+
     def test_idempotency_key_unique(self, db):
         """Duplicate idempotency_key should be rejected."""
         db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', 'test')")

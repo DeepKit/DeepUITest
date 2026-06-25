@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -915,6 +915,53 @@ def _migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_revisions_one_current "
             "ON shot_revisions(shot_id) WHERE is_current = 1"
         )
+    except sqlite3.OperationalError:
+        pass
+
+
+@register_migration(15, 16)
+def _migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
+    """v16: 扩展 model_attempts.phase，保留架构/大纲模型调用审计。"""
+    try:
+        conn.execute("ALTER TABLE model_attempts RENAME TO model_attempts_v15")
+        conn.execute(
+            "CREATE TABLE model_attempts ("
+            "attempt_id TEXT PRIMARY KEY, "
+            "run_id TEXT NOT NULL REFERENCES writing_sessions(run_id), "
+            "shot_id TEXT REFERENCES writing_shots(shot_id), "
+            "phase TEXT NOT NULL CHECK (phase IN ("
+            "'write_generate', 'jury_score', 'fact_extract', 'repair', "
+            "'motif_task', 'contract_compile', 'prompt_compile', 'polish', "
+            "'outline_evaluate', 'constitution_generate', "
+            "'architect_chapter_rhythm', 'architect_chapter_rhythm_retry', "
+            "'architect_volume_rhythm', 'architect_volume_rhythm_retry'"
+            ")), "
+            "model_name TEXT NOT NULL, "
+            "idempotency_key TEXT NOT NULL, "
+            "request_prompt_hash TEXT NOT NULL, "
+            "response_text_hash TEXT, "
+            "usage_prompt_tokens INTEGER DEFAULT 0, "
+            "usage_completion_tokens INTEGER DEFAULT 0, "
+            "usage_total_tokens INTEGER DEFAULT 0, "
+            "error_message TEXT, "
+            "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+            "UNIQUE(idempotency_key)"
+            ")"
+        )
+        conn.execute(
+            "INSERT INTO model_attempts ("
+            "attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
+            "request_prompt_hash, response_text_hash, usage_prompt_tokens, "
+            "usage_completion_tokens, usage_total_tokens, error_message, created_at"
+            ") SELECT "
+            "attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
+            "request_prompt_hash, response_text_hash, usage_prompt_tokens, "
+            "usage_completion_tokens, usage_total_tokens, error_message, created_at "
+            "FROM model_attempts_v15"
+        )
+        conn.execute("DROP TABLE model_attempts_v15")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_model_attempts_run ON model_attempts(run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_model_attempts_shot ON model_attempts(shot_id)")
     except sqlite3.OperationalError:
         pass
 

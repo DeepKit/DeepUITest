@@ -3,7 +3,7 @@
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
 > 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3）
 > 日期：2026-06-17；最近对齐：2026-06-25
-> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v15）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略
+> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v16）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase
 > 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline，按 shot 生成第 2 章。
 
 ---
@@ -170,8 +170,9 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v15）
+## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v16）
 
+> v16 变更（2026-06-25，B41）：`model_attempts.phase` 新增 `outline_evaluate`、`constitution_generate`、`architect_chapter_rhythm(_retry)`、`architect_volume_rhythm(_retry)`，避免架构/大纲模型调用审计被 CHECK 约束静默丢弃。
 > v15 变更（2026-06-25，CREATIVE-2）：`shot_revisions.operation` 新增 `write_polish`；`model_attempts.phase` 新增 `polish`。winner 后处理精修必须通过 `parent_revision_id` 指向原 winner revision。
 > 运行时变更（2026-06-25，CREATIVE-3，无 DDL）：每 5 个 shot 的留白 shot 使用 `creative_review=True`，按 `creative_score` 选稿，提高 `unexpected_value` 权重，同时保留逐维评分审计。
 > v14 变更（2026-06-25，CREATIVE-1）：`writing_jury_scores.dimension` 新增 `unexpected_value`，用于奖励“意料之外、情理之中”的有效偏离。
@@ -965,6 +966,12 @@ repair:
 | `contract_compile` | 契约编译 | index: 0 |
 | `prompt_compile` | prompt 编译 | index: 0 |
 | `polish` | winner 后处理精修 | index: 0 |
+| `outline_evaluate` | 大纲评估 | index: 0 |
+| `constitution_generate` | L0 全书宪法生成 | index: 0 |
+| `architect_chapter_rhythm` | L1 章级节奏生成 | index: 0 |
+| `architect_chapter_rhythm_retry` | L1 章级节奏重试 | index: retry |
+| `architect_volume_rhythm` | L0.5 卷部节奏生成 | index: 0 |
+| `architect_volume_rhythm_retry` | L0.5 卷部节奏重试 | index: retry |
 
 ### 5.3 示例
 

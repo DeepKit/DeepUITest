@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39/B40；开放实现任务见 `../tasks.md`
+> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39/B40/B41；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -339,3 +339,11 @@
 - **影响**: 真实项目运行时 CREATIVE-1/3 和 D-25 悬疑评分不会参与 winner 选择，留白创意评审会退化成普通三维加权。
 - **修复**: `get_jury_config()` 保留项目配置顺序，同时自动补齐当前必需 v4 维度并去重；新增回归测试覆盖旧三维配置和重复维度。
 - **文件**: `src/inkflow/utils/config.py`, `tests/test_utils.py`, `docs/implementation-contract-v0.md`
+
+### B41. 架构/大纲模型调用 phase 不在 `model_attempts` CHECK 中 ✅ 已修复
+- **严重性**: Important
+- **发现**: VAL-1 真实项目验证前审计
+- **根因**: `ModelRequest.operation` 已使用 `outline_evaluate`、`constitution_generate`、`architect_chapter_rhythm`、`architect_volume_rhythm` 等 phase，但 `model_attempts.phase` CHECK 只接受 writer/jury/fact/repair/polish 等少数值；`_record_model_attempt()` 捕获异常后静默跳过。
+- **影响**: 大纲评估、全书宪法、章级节奏、卷部节奏的模型调用不会进入审计表，导致 VAL-1 的 token/调用统计不完整。
+- **修复**: Schema v16 扩展 `model_attempts.phase`，新增 v15→v16 迁移并补充回归测试，确保所有当前架构/大纲模型调用 phase 可落库。
+- **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `tests/test_db_consistency.py`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/design-evaluation-conclusion.md`
