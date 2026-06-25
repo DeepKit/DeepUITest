@@ -2306,7 +2306,7 @@ def status_project(project: str):
 @main.command("export")
 @click.argument("project")
 @click.option("--chapter", default=None, help="章节 key，如 v01.c02（默认全部）")
-@click.option("--output", "-o", default=None, help="输出文件路径（默认 .inkflow/export/ 目录）")
+@click.option("--output", "-o", default=None, help="输出文件路径（默认 正文/ 目录）")
 @click.option("--plain", is_flag=True, help="纯文本模式（无标注，无标题）")
 def export_project(project: str, chapter: str | None, output: str | None, plain: bool):
     """导出当前修订为 Markdown 文件。
@@ -2324,7 +2324,7 @@ def export_project(project: str, chapter: str | None, output: str | None, plain:
     db = init_project_db(db_path)
 
     story_dir = _STORY_BASE / f"《{project}》"
-    export_dir = story_dir / ".inkflow" / "export"
+    export_dir = story_dir / "正文"
     export_dir.mkdir(parents=True, exist_ok=True)
 
     if chapter:
@@ -2334,6 +2334,8 @@ def export_project(project: str, chapter: str | None, output: str | None, plain:
 
     if output:
         out_path = Path(output)
+        if not out_path.is_absolute():
+            out_path = export_dir / out_path
     else:
         chapter_suffix = f"_{chapter}" if chapter else ""
         out_path = export_dir / f"{project}{chapter_suffix}_导出.md"

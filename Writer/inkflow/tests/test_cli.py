@@ -465,6 +465,45 @@ class TestStatusSmoke:
             assert "测试" in result.output
 
 
+class TestExportSmoke:
+    """Export command path smoke tests."""
+
+    def test_export_defaults_to_story_text_dir(self, runner, sample_project, tmp_dir):
+        """默认导出应写入项目 正文 目录，而不是 .inkflow/export。"""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        out_path = story_dir / "正文" / "测试_v01.c02_导出.md"
+        old_export_dir = story_dir / ".inkflow" / "export"
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+
+        assert result.exit_code == 0, result.output
+        assert out_path.exists()
+        assert "导出完成" in result.output
+        assert not old_export_dir.exists()
+
+    def test_relative_export_output_resolves_under_story_text_dir(self, runner, sample_project, tmp_dir):
+        """相对 -o 路径应落在项目 正文 目录下。"""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        out_path = story_dir / "正文" / "custom.md"
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02", "-o", "custom.md"])
+
+        assert result.exit_code == 0, result.output
+        assert out_path.exists()
+
+
 class TestImportBaselineSmoke:
     """T3: import-baseline idempotent re-import"""
 
