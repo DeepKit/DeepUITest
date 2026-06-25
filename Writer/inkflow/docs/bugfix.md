@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38；开放实现任务见 `../tasks.md`
+> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -323,3 +323,11 @@
 - **影响**: 创作质量链路可能退回“只偏合规”的安全评分，或留白 shot 温度上限失效而无人发现。
 - **修复**: 新增测试验证 `unexpected_value` 会落库、Schema CHECK 接受该维度、`dispatch_quad_track(blank_shot=True)` 会返回留白标记并将温度上限放宽到 1.4；同时把 v10/v12/v13 新增索引纳入 schema 回归。
 - **文件**: `tests/test_core_services.py`, `tests/test_jury_scoring.py`, `tests/test_schema.py`
+
+### B39. CREATIVE-3 已实现但权威文档仍停留在 CREATIVE-2 / 旧 Jury 维度 ✅ 已修复
+- **严重性**: Important
+- **发现**: CREATIVE-3 收尾复核
+- **根因**: `jury_service.py` 已支持 `creative_review=True`、`creative_score` 和留白权重，但 `design.md`、`implementation-contract-v0.md`、`design-evaluation-conclusion.md` 未同步；实现契约中的 `writing_jury_scores.dimension` DDL 仍只列旧 9 维，模型协议示例仍写旧 0-10 评分。
+- **影响**: 后续开发可能按旧 DDL/协议实现 Jury 或迁移，遗漏 `suspense_effectiveness`、`unexpected_value` 与 CREATIVE-3 选稿逻辑。
+- **修复**: 更新设计、实现契约、评估结论和历史归档；实现契约改为当前 0-100、默认 3 模型 × 5 维评分口径，并记录留白 shot 使用 `creative_score` 选 winner。
+- **文件**: `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/design-evaluation-conclusion.md`, `docs/history.md`, `docs/role-system.md`, `src/inkflow/services/jury_service.py`, `src/inkflow/utils/config.py`, `tests/test_core_services.py`

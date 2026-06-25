@@ -1,9 +1,9 @@
 # InkFlow v3.12 Phase 1 实现契约 v1.2
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1）
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3）
 > 日期：2026-06-17；最近对齐：2026-06-25
-> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v14）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略
+> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v15）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略
 > 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline，按 shot 生成第 2 章。
 
 ---
@@ -170,8 +170,10 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v14）
+## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v15）
 
+> v15 变更（2026-06-25，CREATIVE-2）：`shot_revisions.operation` 新增 `write_polish`；`model_attempts.phase` 新增 `polish`。winner 后处理精修必须通过 `parent_revision_id` 指向原 winner revision。
+> 运行时变更（2026-06-25，CREATIVE-3，无 DDL）：每 5 个 shot 的留白 shot 使用 `creative_review=True`，按 `creative_score` 选稿，提高 `unexpected_value` 权重，同时保留逐维评分审计。
 > v14 变更（2026-06-25，CREATIVE-1）：`writing_jury_scores.dimension` 新增 `unexpected_value`，用于奖励“意料之外、情理之中”的有效偏离。
 > v13 变更（2026-06-24，ARCH-11）：新增 `writing_anti_contract_reviews` 表，记录反契约沙盒的软约束偏离与人类裁决。
 > v12 变更（2026-06-24，ARCH-10）：新增 `writing_style_preferences` 表，`writing_drafts` 增加 `model_ref` / `temperature` / `style_direction`。
@@ -416,7 +418,7 @@ CREATE TABLE shot_revisions (
   parent_revision_id TEXT REFERENCES shot_revisions(revision_id),
   contract_id TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
   revision_sequence INTEGER NOT NULL,
-  operation TEXT NOT NULL CHECK (operation IN ('write_generate','write_placeholder','write_repair','write_redo')),
+  operation TEXT NOT NULL CHECK (operation IN ('write_generate','write_placeholder','write_repair','write_redo','write_polish')),
   text TEXT NOT NULL,
   text_hash_normalized TEXT NOT NULL,
   writer_persona TEXT,
@@ -599,17 +601,19 @@ CREATE TABLE writing_jury_scores (
   score_id TEXT PRIMARY KEY,
   draft_id TEXT NOT NULL REFERENCES writing_drafts(draft_id),
   shot_id TEXT NOT NULL REFERENCES writing_shots(shot_id),
-  run_id TEXT NOT NULL,
+  run_id TEXT NOT NULL REFERENCES writing_sessions(run_id),
   jury_persona TEXT NOT NULL,
   phase TEXT NOT NULL CHECK (phase IN ('independent','comparative','final')),
   dimension TEXT NOT NULL CHECK (dimension IN (
     'literary_quality','narrative_pacing','voice_consistency','contract_compliance',
-    'motif_compatibility','anti_pattern_avoidance','hook_transition','character_coherence','reader_engagement'
+    'motif_compatibility','anti_pattern_avoidance','hook_transition','character_coherence','reader_engagement',
+    'forbidden_expression','reading_fluency','suspense_effectiveness','unexpected_value'
   )),
   score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
   comment TEXT,
   attempt_id TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(shot_id, draft_id, jury_persona, phase, dimension, attempt_id)
 );
 ```
 
@@ -885,22 +889,27 @@ repair:
 }
 ```
 
-### 4.3 Jury 评分（Phase 1 并行）
+### 4.3 Jury 评分（当前默认 3 模型 × 5 维）
 
-Phase 1（独立阅读）N 个候选互不依赖，并行发送 N 个并发 API 调用。
+当前实现按候选稿、评委模型和评分维度逐项记录分数。默认维度为：
+
+`contract_compliance` / `forbidden_expression` / `reading_fluency` / `suspense_effectiveness` / `unexpected_value`
+
+标准 shot 使用 `trimmed_mean` 选 winner；CREATIVE-3 留白 shot 使用 `creative_score` 选 winner，权重为：契约履约 0.10、禁用表达 0.10、阅读流畅 0.20、悬疑效果 0.25、意外价值 0.35。
 
 ```json
 {
   "attempt_id": "<ulid>",
-  "idempotency_key": "{run_id}:{snapshot_hash}:{shot_id}:jury:{jury_index}:0",
+  "idempotency_key": "{run_id}:{snapshot_hash}:{shot_id}:jury_score:{jury_index}:0",
   "phase": "independent",
-  "jury_persona": "禁元官",
+  "jury_persona": "评委_deepseek-v4-pro",
+  "dimension": "unexpected_value",
   "draft_text": "...",
   "contract_snapshot": {...}
 }
 ```
 
-Phase 2（比较判断）等待所有 Phase 1 返回后单次调用。Phase 3（最终输出）复用 Phase 2 输出。
+每个维度写入 `writing_jury_scores`。当前代码保留 `phase='independent'` 记录；比较/最终阶段枚举保留给后续扩展。
 
 ### 4.4 Jury 评分响应
 
@@ -909,14 +918,14 @@ Phase 2（比较判断）等待所有 Phase 1 返回后单次调用。Phase 3（
   "attempt_id": "<ulid>",
   "phase": "independent",
   "scores": [
-    {"dimension": "literary_quality", "score": 8, "comment": "..."}
+    {"dimension": "unexpected_value", "score": 88, "comment": "..."}
   ],
   "brilliance_markers": [],
   "badsmell_markers": []
 }
 ```
 
-> 9 维度：`literary_quality` / `narrative_pacing` / `voice_consistency` / `contract_compliance` / `motif_compatibility` / `anti_pattern_avoidance` / `hook_transition` / `character_coherence` / `reader_engagement`
+> 分数统一为 0-100。旧 9 维枚举仍被 DDL 接受以兼容历史数据；当前默认使用 5 个 v4 维度。留白创意评审不改变落库维度，只改变 winner 选择用的 `score_key`。
 
 ### 4.5 通用错误响应
 
@@ -946,17 +955,20 @@ Phase 2（比较判断）等待所有 Phase 1 返回后单次调用。Phase 3（
 
 | phase | 含义 | index 语义 |
 |------|------|-----------|
-| `writer` | writer race | writer_index: 0-3 |
-| `jury` | 9-jury 评分 | jury_index: 0-8 |
-| `redo` | smart-redo | redo_level: 0-2 |
-| `extract` | 事实锚点提取 | extractor_index: 0 |
+| `write_generate` | writer race / redo 生成 | writer_index: 0-3 |
+| `jury_score` | 评委评分 | jury_index: 0-14（默认 3 模型 × 5 维） |
+| `fact_extract` | 事实锚点提取 | extractor_index: 0 |
 | `repair` | repair 调用 | repair_layer: 1-4 |
+| `motif_task` | 意象任务生成 | index: 0 |
+| `contract_compile` | 契约编译 | index: 0 |
+| `prompt_compile` | prompt 编译 | index: 0 |
+| `polish` | winner 后处理精修 | index: 0 |
 
 ### 5.3 示例
 
 ```
-run_01j7k2v:snap_a1b2c3:act1_ch3_s37:writer:0:0
-run_01j7k2v:snap_a1b2c3:act1_ch3_s37:jury:4:1
+run_01j7k2v:snap_a1b2c3:act1_ch3_s37:write_generate:0:0
+run_01j7k2v:snap_a1b2c3:act1_ch3_s37:jury_score:4:1
 ```
 
 ---

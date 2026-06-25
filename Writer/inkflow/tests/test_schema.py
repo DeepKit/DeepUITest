@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 
-# ── 38 张业务表名（按 implementation-contract-v0.md §3.3 + §3.4 + ARCH-4/5/8/10/11/12 + CREATIVE-1） ──
+# ── 38 张业务表名（按 implementation-contract-v0.md §3.3 + §3.4 + ARCH-4/5/8/10/11/12 + CREATIVE-1/2） ──
 
 ALL_TABLES = [
     "projects",
@@ -261,7 +261,7 @@ class TestCheckConstraints:
         )
 
     def test_revision_operation_invalid(self, db):
-        """shot_revisions.operation 只接受 4 种操作"""
+        """shot_revisions.operation 只接受已登记操作"""
         pid = self._insert_project(db)
         db.execute(
             "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
@@ -280,6 +280,26 @@ class TestCheckConstraints:
                 "INSERT INTO shot_revisions (revision_id, shot_id, run_id, contract_id, revision_sequence, operation, text, text_hash_normalized, attempt_id) "
                 "VALUES ('r1', 'sh1', 'run_01', 'c1', 1, 'invalid_op', 'text', 'hash', 'att1')"
             )
+
+    def test_revision_operation_write_polish_valid(self, db):
+        """CREATIVE-2: shot_revisions.operation 接受 write_polish。"""
+        pid = self._insert_project(db)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s1', ?, 'run_01', 'active')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO writing_shots (shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+            "VALUES ('sh1', ?, 'run_01', 'v01.c01', 1, 'pending')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts (contract_id, project_id, run_id, shot_id, layer_key, contract_status, snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c1', ?, 'run_01', 'sh1', 'v01.c01', 'draft', 'hash1', '{}', '{}', '{}')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO shot_revisions (revision_id, shot_id, run_id, contract_id, revision_sequence, operation, text, text_hash_normalized, attempt_id) "
+            "VALUES ('r1', 'sh1', 'run_01', 'c1', 1, 'write_polish', 'polished text', 'hash', 'att1')"
+        )
 
     def test_motif_evolution_phase_invalid(self, db):
         """writing_motif_instances.evolution_phase 只接受 4 种阶段"""

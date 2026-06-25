@@ -1,9 +1,8 @@
-"""九评委 LLM 评分服务 (Jury Service)。
+"""多模型 LLM 评分服务 (Jury Service)。
 
-3 个模型 × 3 个维度 = 9 分/草稿
-评分维度：契约履约 / 禁用表达 / 阅读流畅
-计分规则：去 1 最高 + 去 1 最低 → 平均剩余 7 分 (Trimmed Mean)
-选 trimmed mean 更高的草稿。
+默认配置为 3 个模型 × 5 个维度 = 15 分/草稿。
+评分维度：契约履约 / 禁用表达 / 阅读流畅 / 悬疑效果 / 意外价值。
+标准模式按 trimmed mean 选稿；留白 shot 可按 creative_score 加权选稿。
 """
 
 from __future__ import annotations
@@ -102,12 +101,20 @@ DIMENSION_DESCRIPTIONS = {
 }
 
 
-class JuryService:
-    """九评委 LLM 评分服务。
+CREATIVE_BLANK_WEIGHTS = {
+    "contract_compliance": 0.10,
+    "forbidden_expression": 0.10,
+    "reading_fluency": 0.20,
+    "suspense_effectiveness": 0.25,
+    "unexpected_value": 0.35,
+}
 
-    3 模型 × 3 维度 = 9 分/草稿。
-    Trimmed mean：去 1 最高 + 去 1 最低 → 平均剩余 7。
-    选得分更高的草稿。
+
+class JuryService:
+    """多模型多维度 LLM 评分服务。
+
+    默认 3 模型 × 5 维度 = 15 分/草稿。
+    标准模式按 trimmed mean 选稿；CREATIVE-3 留白模式按创意权重选稿。
     """
 
     def __init__(self, db: sqlite3.Connection, run_id: str, models_config: dict):
@@ -128,11 +135,15 @@ class JuryService:
         meta_contract: dict | None = None,
         quality_threshold: int | None = None,
         score_override: int | None = None,
+        score_overrides: dict[str, dict[str, int]] | None = None,
+        creative_review: bool = False,
     ) -> dict:
         """九评委评分 + 选择 winner。
 
         Args:
             score_override: 强制评分 (0-100)，仅用于测试/修复场景。跳过 LLM 调用。
+            score_overrides: Per-draft/per-dimension score override for tests.
+            creative_review: Use blank-shot creative weighting for winner selection.
 
         Returns:
             {
@@ -154,7 +165,7 @@ class JuryService:
 
         # 检测是否有可用的 API（空 providers → 用启发式评分）
         providers = self.models_config.get("providers", {})
-        use_llm = bool(providers) and score_override is None
+        use_llm = bool(providers) and score_override is None and score_overrides is None
 
         draft_scores: dict[str, dict] = {}
 
@@ -167,6 +178,7 @@ class JuryService:
 
             draft_text = draft["text"]
             scores: list[int] = []
+            dimension_scores: dict[str, list[int]] = {}
 
             if use_llm:
                 # 真实 LLM 九评委评分
@@ -185,6 +197,7 @@ class JuryService:
                         score = result["score"]
                         comment = result["comment"]
                         scores.append(score)
+                        dimension_scores.setdefault(dimension, []).append(score)
 
                         # 用模型名作为评委标识
                         self.db.execute(
@@ -208,7 +221,12 @@ class JuryService:
                 for model_ref in self.jury_models:
                     _, model_name = parse_model_ref(model_ref)
                     for dimension in self.dimensions:
-                        if score_override is not None:
+                        override_for_draft = (score_overrides or {}).get(draft_id, {})
+                        if dimension in override_for_draft:
+                            score = override_for_draft[dimension]
+                        elif "*" in override_for_draft:
+                            score = override_for_draft["*"]
+                        elif score_override is not None:
                             # 精确模式：不添加 variation
                             score = base_score
                         else:
@@ -235,12 +253,33 @@ class JuryService:
                             ),
                         )
                         scores.append(score)
+                        dimension_scores.setdefault(dimension, []).append(score)
 
             self.db.commit()
 
             trimmed_mean = self._compute_trimmed_mean(scores)
-            draft_scores[draft_id] = {"trimmed_mean": trimmed_mean, "raw_scores": scores}
+            dimension_means = {
+                dim: round(sum(values) / len(values), 2)
+                for dim, values in dimension_scores.items()
+                if values
+            }
+            creative_score = self._compute_weighted_score(
+                dimension_means, CREATIVE_BLANK_WEIGHTS,
+            )
+            draft_scores[draft_id] = {
+                "trimmed_mean": trimmed_mean,
+                "raw_scores": scores,
+                "dimension_means": dimension_means,
+                "creative_score": creative_score,
+            }
 
+        if creative_review:
+            return self._select_winner(
+                draft_scores,
+                threshold,
+                score_key="creative_score",
+                review_mode="creative_blank",
+            )
         return self._select_winner(draft_scores, threshold)
 
     # ── 单次 LLM 调用 ──
@@ -348,27 +387,55 @@ class JuryService:
 
     @staticmethod
     def _compute_trimmed_mean(scores: list[int]) -> float:
-        """9 分 → 去 1 最高 + 去 1 最低 → 平均 7 分。"""
+        """去 1 个最高分和 1 个最低分，返回剩余分数均值。"""
         if len(scores) < 3:
             return sum(scores) / len(scores) if scores else 0.0
         sorted_scores = sorted(scores)
         trimmed = sorted_scores[1:-1]
         return round(sum(trimmed) / len(trimmed), 2)
 
+    @staticmethod
+    def _compute_weighted_score(scores: dict[str, float], weights: dict[str, float]) -> float:
+        """Compute weighted score using only dimensions present in scores."""
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for dimension, score in scores.items():
+            weight = weights.get(dimension, 0.0)
+            if weight <= 0:
+                continue
+            weighted_sum += score * weight
+            total_weight += weight
+        if total_weight <= 0:
+            return 0.0
+        return round(weighted_sum / total_weight, 2)
+
     # ── 选择 ──
 
-    def _select_winner(self, draft_scores: dict[str, dict], threshold: int) -> dict:
-        """按 trimmed mean 选择 winner，判定灯色。"""
+    def _select_winner(
+        self,
+        draft_scores: dict[str, dict],
+        threshold: int,
+        *,
+        score_key: str = "trimmed_mean",
+        review_mode: str = "standard",
+    ) -> dict:
+        """按指定 score_key 选择 winner，判定灯色。"""
         if not draft_scores:
             return {
                 "winner_draft_id": None, "winner_score": 0,
                 "winner_track": None, "light_status": "red",
                 "draft_scores": {}, "all_passed_threshold": False,
+                "review_mode": review_mode,
+                "score_key": score_key,
             }
 
-        ranked = sorted(draft_scores.items(), key=lambda x: x[1]["trimmed_mean"], reverse=True)
+        ranked = sorted(
+            draft_scores.items(),
+            key=lambda x: x[1].get(score_key, x[1].get("trimmed_mean", 0)),
+            reverse=True,
+        )
         winner_id, winner_data = ranked[0]
-        winner_score = winner_data["trimmed_mean"]
+        winner_score = winner_data.get(score_key, winner_data.get("trimmed_mean", 0))
 
         # 获取 winner 赛道
         winner_draft = self.db.execute(
@@ -404,8 +471,11 @@ class JuryService:
             "light_status": light_status,
             "draft_scores": draft_scores,
             "all_passed_threshold": all(
-                d["trimmed_mean"] >= threshold for d in draft_scores.values()
+                d.get(score_key, d.get("trimmed_mean", 0)) >= threshold
+                for d in draft_scores.values()
             ),
+            "review_mode": review_mode,
+            "score_key": score_key,
         }
 
     # ── 辅助 ──

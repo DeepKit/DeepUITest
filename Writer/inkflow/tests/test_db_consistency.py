@@ -158,6 +158,25 @@ class TestModelAttemptsAudit:
         assert row["model_name"] == "local-default"
         assert row["usage_total_tokens"] == 300
 
+    def test_polish_phase_is_valid(self, db):
+        """CREATIVE-2: model_attempts.phase accepts polish."""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', 'test')")
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s1', 'p1', 'run_01', 'active')"
+        )
+        db.commit()
+
+        db.execute(
+            "INSERT INTO model_attempts "
+            "(attempt_id, run_id, phase, model_name, idempotency_key, request_prompt_hash) "
+            "VALUES ('a1', 'run_01', 'polish', 'local-default', 'polish_key', 'ph1')"
+        )
+        db.commit()
+
+        row = db.execute("SELECT phase FROM model_attempts WHERE attempt_id = 'a1'").fetchone()
+        assert row["phase"] == "polish"
+
     def test_idempotency_key_unique(self, db):
         """Duplicate idempotency_key should be rejected."""
         db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', 'test')")

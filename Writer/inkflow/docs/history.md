@@ -1205,3 +1205,75 @@ ADD COLUMN constitution_version_id TEXT REFERENCES writing_book_constitutions(co
 
 - 目标测试：4 passed
 - 全量测试：347 passed, 4 warnings
+
+---
+
+## CREATIVE-2 二次精修阶段 — 2026-06-25
+
+**目标**：在 Jury winner 之后增加非阻塞 `polish` 后处理阶段。原 winner revision 必须保留；精修结果若有效，则作为 `write_polish` 子 revision 写入，并通过 `parent_revision_id` 指回原 winner。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| Schema v15 | `shot_revisions.operation` 新增 `write_polish`；`model_attempts.phase` 新增 `polish` |
+| 迁移 | 新增 v14→v15，重建 `shot_revisions` 与 `model_attempts` CHECK 约束并保留旧数据 |
+| 服务 | 新增 `PolishService`，执行保守精修：规范空白/标点间距、长段落按句界切分 |
+| 审计链 | `write_polish` revision 的 `parent_revision_id` 指向原 `write_generate` winner revision |
+| CLI 集成 | `ink run` 在绿/黄 winner 写入后尝试 polish；失败或无变化不阻塞原 winner |
+| 后续读取 | 事实锚点提取和 motif 扫描使用最终 revision 文本（polish 成功则用精修文本） |
+
+### 安全边界
+
+- polish 不新增情节、不补硬事实、不改人物关系。
+- 只有精修文本非空、长度达标且显示文本发生变化时才写新 revision。
+- 原 winner revision 永远保留；polish 只是当前 revision 的子版本。
+- 本轮采用本地保守精修，不依赖外部模型调用，便于稳定验证。
+
+### 新增测试
+
+| 测试 | 覆盖 |
+|------|------|
+| `tests/test_polish_service.py` | 保守精修、子 revision 写入、no-op 跳过 |
+| `test_revision_operation_write_polish_valid` | Schema CHECK 接受 `write_polish` |
+| `test_polish_phase_is_valid` | `model_attempts.phase` 接受 `polish` |
+
+### 当前待办变化
+
+CREATIVE-2 从待办移入历史。下一项高优先级为 CREATIVE-3：留白 shot 独立创意评审。
+
+### 验证
+
+- 目标测试：6 passed
+- 全量测试：352 passed, 4 warnings
+
+---
+
+## CREATIVE-3 留白创意评审 — 2026-06-25
+
+**目标**：让每 5 个 shot 的留白创作不再被常规 Jury 的合规偏好压低。留白 shot 仍写入逐维评分审计，但 winner 选择改用创意权重，提高 `unexpected_value` 与悬疑效果的影响。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 创意权重 | 新增 `CREATIVE_BLANK_WEIGHTS`：contract 0.10、forbidden 0.10、fluency 0.20、suspense 0.25、unexpected 0.35 |
+| 评分结果 | 每个 draft 保留 `trimmed_mean`、`dimension_means`、`creative_score` 和原始分 |
+| winner 选择 | 标准 shot 继续按 `trimmed_mean`；留白 shot 使用 `score_key='creative_score'`、`review_mode='creative_blank'` |
+| CLI 集成 | `ink run` 对留白 shot 传入 `creative_review=True`，第二轮重写也保留留白 budget、温度上限和创意评审 |
+| 审计边界 | 不新增 DDL；`writing_jury_scores` 仍保存逐模型逐维评分，创意加权只影响本轮 winner 选择 |
+
+### 新增测试
+
+| 测试 | 覆盖 |
+|------|------|
+| `test_creative_review_can_choose_less_safe_high_value_draft` | 常规均分选择安全稿；留白创意评审选择更高意外价值稿 |
+
+### 当前待办变化
+
+CREATIVE-3 从待办移入历史。后续不再继续放宽留白机制，优先进入真实项目验证：比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好。
+
+### 验证
+
+- 目标测试：2 passed
+- 全量测试：353 passed, 4 warnings

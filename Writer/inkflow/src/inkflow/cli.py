@@ -880,7 +880,7 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
         WriterDispatcher, JuryService, QualityController,
         FactAnchorExtractor, MotifTracker, ArchitectGate,
         OutlineEvaluator, RetryBudgetService, StylePreferenceService,
-        AntiContractSandbox,
+        AntiContractSandbox, PolishService,
     )
     from inkflow.services.retry_budget import (
         RetryBudgetExhausted, CircuitBreakerTriggered, classify_failure_type,
@@ -1334,7 +1334,9 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 # 第二轮写作
                 race_result2 = writer_dispatcher.dispatch_quad_track(
                     shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
-                    deviation_budget=rhythm_budget,
+                    deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
+                    temperature_cap=blank_temp_cap,
+                    blank_shot=is_blank_shot,
                 )
                 draft_ids = [d["draft_id"] for d in race_result2["drafts"]]
                 usable = quality_controller.gate1_check(shot_id, draft_ids)
@@ -1349,12 +1351,16 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 draft_ids = usable  # 第二轮通过的
 
             # Step 5: 九评委评分
-            click.echo(f"  ⚖️ 九评委评分（3模型 × 3维度）...")
+            if is_blank_shot:
+                click.echo(f"  ⚖️ 留白创意评审（提高 unexpected_value 权重）...")
+            else:
+                click.echo(f"  ⚖️ 九评委评分（标准权重）...")
             jury_verdict = jury_service.score_candidates(
                 shot_id=shot_id,
                 draft_ids=draft_ids if isinstance(draft_ids, list) else usable,
                 meta_contract=layers,
                 quality_threshold=quality_threshold,
+                creative_review=is_blank_shot,
             )
 
             winner_id = jury_verdict.get("winner_draft_id")
@@ -1409,6 +1415,9 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 )
                 race_result2 = writer_dispatcher.dispatch_quad_track(
                     shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
+                    deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
+                    temperature_cap=blank_temp_cap,
+                    blank_shot=is_blank_shot,
                 )
                 draft_ids2 = [d["draft_id"] for d in race_result2["drafts"]]
                 usable2 = quality_controller.gate1_check(shot_id, draft_ids2)
@@ -1423,6 +1432,7 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                         draft_ids=usable2,
                         meta_contract=layers,
                         quality_threshold=quality_threshold,
+                        creative_review=is_blank_shot,
                     )
                     # 选分数更高的那份
                     if jury_verdict2.get("winner_score", 0) > winner_score:
@@ -1457,6 +1467,30 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                     jury_scores_json={"winner_score": winner_score},
                     gate_result_json=gate2,
                 )
+                final_rev_id = rev_id
+                final_text = winner_draft["text"]
+
+                # CREATIVE-2: winner 后处理精修。保留原 winner revision，
+                # 仅在精修有实质变化且通过保守 gate 时写入 write_polish 子 revision。
+                if light in ("green", "yellow"):
+                    try:
+                        polish_svc = PolishService(db, project_id, run_id)
+                        polish_result = polish_svc.polish_revision(
+                            shot_id=shot_id,
+                            source_revision_id=rev_id,
+                            contract_id=sc["contract_id"],
+                            gate_result=gate2,
+                            jury_summary={"winner_score": winner_score},
+                        )
+                        if polish_result.get("applied"):
+                            final_rev_id = polish_result["revision_id"]
+                            final_text = polish_result["text"]
+                            click.echo(
+                                f"  ✨ 二次精修: revision {rev_id[:8]}… "
+                                f"→ {final_rev_id[:8]}…"
+                            )
+                    except Exception as exc:
+                        click.echo(f"  ⚠ 二次精修失败: {exc}")
 
                 # Finalize — compute brilliance/badsmell from jury scores
                 brilliance_level = _compute_brilliance_level(winner_score)
@@ -1534,8 +1568,8 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                         anchor_ids = fact_extractor.extract(
                             shot_id=shot_id,
                             run_id=run_id,
-                            text=winner_draft["text"],
-                            revision_id=rev_id,
+                            text=final_text,
+                            revision_id=final_rev_id,
                         )
                         if anchor_ids:
                             click.echo(f"  📌 提取 {len(anchor_ids)} 个事实锚点")
@@ -1546,7 +1580,7 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 if light in ("green", "yellow"):
                     try:
                         detected = motif_tracker.scan_and_record(
-                            shot_id=shot_id, text=winner_draft["text"],
+                            shot_id=shot_id, text=final_text,
                         )
                         if detected:
                             click.echo(f"  🎭 检测到 {len(detected)} 个意象")

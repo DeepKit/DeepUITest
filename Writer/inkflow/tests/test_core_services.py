@@ -469,7 +469,7 @@ class TestGate1ResultPersistence:
 
 
 class TestJuryV4Config:
-    """v4 九评委：固定 3 模型 × 3 维度结构。"""
+    """v4 评委：默认 3 模型 × 5 维度结构。"""
 
     def test_default_jury_models(self, setup_run):
         """空配置 → 使用默认评委模型。"""
@@ -482,7 +482,7 @@ class TestJuryV4Config:
         assert jury.quality_threshold == 80
 
     def test_trimmed_mean_calculation(self, setup_run):
-        """9分 → 去1高1低 → 平均7分。"""
+        """样例分组 → 去1高1低 → 平均剩余分数。"""
         scores = [68, 72, 75, 78, 80, 82, 82, 85, 88]
         result = JuryService._compute_trimmed_mean(scores)
         # 去掉 68 和 88 → (72+75+78+80+82+82+85)/7 = 554/7 ≈ 79.14

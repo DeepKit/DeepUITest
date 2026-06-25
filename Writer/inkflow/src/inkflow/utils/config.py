@@ -201,7 +201,7 @@ def build_providers_for_model(model_ref: str, models_config: dict) -> dict:
 
 
 def get_jury_config(models_config: dict) -> dict:
-    """获取九评委配置 (3模型 + 3维度 + 阈值)。"""
+    """获取评委配置 (默认 3 模型 + 5 维度 + 阈值)。"""
     from inkflow.models.enums import JURY_V4_MODELS_DEFAULT, JURY_V4_DIMENSIONS
 
     jury_cfg = models_config.get("jury_config", {})

@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -868,3 +868,92 @@ def _migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass  # 表已存在
+
+
+@register_migration(14, 15)
+def _migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
+    """v15: CREATIVE-2 polish 阶段 — 扩展 revision operation 与 model audit phase。"""
+    try:
+        conn.execute("ALTER TABLE shot_revisions RENAME TO shot_revisions_v14")
+        conn.execute(
+            "CREATE TABLE shot_revisions ("
+            "revision_id TEXT PRIMARY KEY, "
+            "shot_id TEXT NOT NULL REFERENCES writing_shots(shot_id), "
+            "run_id TEXT NOT NULL REFERENCES writing_sessions(run_id), "
+            "parent_revision_id TEXT REFERENCES shot_revisions(revision_id), "
+            "contract_id TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id), "
+            "revision_sequence INTEGER NOT NULL, "
+            "operation TEXT NOT NULL CHECK (operation IN ("
+            "'write_generate', 'write_placeholder', 'write_repair', "
+            "'write_redo', 'write_polish'"
+            ")), "
+            "text TEXT NOT NULL, "
+            "text_hash_normalized TEXT NOT NULL, "
+            "writer_persona TEXT, "
+            "jury_scores_json JSON, "
+            "gate_result_json JSON, "
+            "is_current BOOLEAN NOT NULL DEFAULT 0, "
+            "attempt_id TEXT NOT NULL, "
+            "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+            "UNIQUE(shot_id, operation, attempt_id)"
+            ")"
+        )
+        conn.execute(
+            "INSERT INTO shot_revisions ("
+            "revision_id, shot_id, run_id, parent_revision_id, contract_id, "
+            "revision_sequence, operation, text, text_hash_normalized, writer_persona, "
+            "jury_scores_json, gate_result_json, is_current, attempt_id, created_at"
+            ") SELECT "
+            "revision_id, shot_id, run_id, parent_revision_id, contract_id, "
+            "revision_sequence, operation, text, text_hash_normalized, writer_persona, "
+            "jury_scores_json, gate_result_json, is_current, attempt_id, created_at "
+            "FROM shot_revisions_v14"
+        )
+        conn.execute("DROP TABLE shot_revisions_v14")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_revisions_shot ON shot_revisions(shot_id)")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_revisions_one_current "
+            "ON shot_revisions(shot_id) WHERE is_current = 1"
+        )
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE model_attempts RENAME TO model_attempts_v14")
+        conn.execute(
+            "CREATE TABLE model_attempts ("
+            "attempt_id TEXT PRIMARY KEY, "
+            "run_id TEXT NOT NULL REFERENCES writing_sessions(run_id), "
+            "shot_id TEXT REFERENCES writing_shots(shot_id), "
+            "phase TEXT NOT NULL CHECK (phase IN ("
+            "'write_generate', 'jury_score', 'fact_extract', 'repair', "
+            "'motif_task', 'contract_compile', 'prompt_compile', 'polish'"
+            ")), "
+            "model_name TEXT NOT NULL, "
+            "idempotency_key TEXT NOT NULL, "
+            "request_prompt_hash TEXT NOT NULL, "
+            "response_text_hash TEXT, "
+            "usage_prompt_tokens INTEGER DEFAULT 0, "
+            "usage_completion_tokens INTEGER DEFAULT 0, "
+            "usage_total_tokens INTEGER DEFAULT 0, "
+            "error_message TEXT, "
+            "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+            "UNIQUE(idempotency_key)"
+            ")"
+        )
+        conn.execute(
+            "INSERT INTO model_attempts ("
+            "attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
+            "request_prompt_hash, response_text_hash, usage_prompt_tokens, "
+            "usage_completion_tokens, usage_total_tokens, error_message, created_at"
+            ") SELECT "
+            "attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
+            "request_prompt_hash, response_text_hash, usage_prompt_tokens, "
+            "usage_completion_tokens, usage_total_tokens, error_message, created_at "
+            "FROM model_attempts_v14"
+        )
+        conn.execute("DROP TABLE model_attempts_v14")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_model_attempts_run ON model_attempts(run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_model_attempts_shot ON model_attempts(shot_id)")
+    except sqlite3.OperationalError:
+        pass

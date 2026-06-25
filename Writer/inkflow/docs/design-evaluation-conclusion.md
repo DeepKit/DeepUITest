@@ -1,7 +1,7 @@
 # InkFlow 设计评估结论
 
 > 评估日期：2026-06-16
-> 最近复核：2026-06-24
+> 最近复核：2026-06-25
 > 评估范围：inkflow/docs/design.md、flow.md、role-system.md、module-v3.6.md、implementation-contract-v0.md
 > 评估方法：四轮专家审阅（本地审计 + 4 + 3 + 3 + 3 位专家，共 13 人次）
 
@@ -9,7 +9,7 @@
 
 **经过四轮评估，InkFlow v3.6 的完整架构达到 near-optimal；2026-06-17 开发目标已收敛为 P0 单书纵向闭环。**
 
-2026-06-25 复核结论：P0 纵向闭环、三棵树、正文真相源、D-25 能力、L0 全书宪法、L0.5 卷部节奏、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度已经落地，当前实现为 Schema v14 / 38 张业务表 + `_schema_meta` 元表。设计仍不需要推倒重做；后续最优路径是实战验证、二次精修（polish）和非阻塞议题评估。
+2026-06-25 复核结论：P0 纵向闭环、三棵树、正文真相源、D-25 能力、L0 全书宪法、L0.5 卷部节奏、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审已经落地，当前实现为 Schema v15 / 38 张业务表 + `_schema_meta` 元表。设计仍不需要推倒重做；后续最优路径是实战验证、留白/polish 效果评估和非阻塞议题评估。
 
 第一轮（4 专家）：needs fix — 方向正确，工程规格未冻结。
 第二轮（3 专家）：发现 30 跨文档不一致，确立 9 条人类决策。
@@ -26,7 +26,7 @@
 | 4 | 成本不作为开发和运行约束；只记录 usage，不设成本确认门 | 2026-06-17 目标重校准 |
 | 5 | Phase 2 未来会做（表结构预留字段） | 第一轮 |
 | 6 | 合并 3 组服务（16→13） | 第二轮 |
-| 7 | 合并异常表；DDL 以 implementation-contract-v0.md 和 `src/inkflow/db/schema.sql` 的当前 Schema v14 为准 | 2026-06-25 复核 |
+| 7 | 合并异常表；DDL 以 implementation-contract-v0.md 和 `src/inkflow/db/schema.sql` 的当前 Schema v15 为准 | 2026-06-25 复核 |
 | 8 | 精简文档体系（design.md 唯一权威） | 第二轮 |
 | 9 | InkFlow/Chesil 数据库独立，不共享 | 迁移 |
 
@@ -50,7 +50,7 @@
 
 ## 最终状态
 
-- **implementation-contract-v0.md**：当前实现对齐版，DDL（38 张业务表 + `_schema_meta` 元表，Schema v14）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径已记录；P0 以《分流》第 1 章导入、第 2 章生成为验收闭环
+- **implementation-contract-v0.md**：当前实现对齐版，DDL（38 张业务表 + `_schema_meta` 元表，Schema v15）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审已记录；P0 以《分流》第 1 章导入、第 2 章生成为验收闭环
 - **tasks.md**：10 条验收标准，7 个待编码时细化的议题（非阻塞）
 - **文档卫生**：CLI 统一为 `ink`、L2 Opus 移除、编码修复、日期修正、旧表述替换全部完成
 - **Phase 1 编码可以开工**
@@ -98,5 +98,7 @@ P0 链路 `import-baseline → setup → confirm-contract → run → scope repo
 | ~~L0.5 Volume Rhythm 未实现~~ | ~~L0 全书宪法到 L1 章级节奏之间缺少战术层~~ | ✅ ARCH-5 已完成 |
 | ~~D-25 全局重试预算/熔断器未实现~~ | ~~red/redo 策略可能在局部失败上消耗过多调用~~ | ✅ D25-R1 已完成 |
 | ~~Prompt caching 仍是 warning 级降级~~ | ~~长契约项目会失去缓存收益和上下文稳定性~~ | ✅ B23-P1 已完成 |
-| 文档曾有版本/表数漂移 | 后续开发可能围绕旧口径实现 | ✅ 已同步到 v14 / 38 业务表 + `_schema_meta` |
+| 文档曾有版本/表数漂移 | 后续开发可能围绕旧口径实现 | ✅ 已同步到 v15 / 38 业务表 + `_schema_meta` |
+| ~~二次精修未实现~~ | ~~winner 直接封版，缺少不改硬事实的后处理升华阶段~~ | ✅ CREATIVE-2 已完成，后续评估真实收益 |
+| ~~留白 shot 仍按常规均分选稿~~ | ~~高意外价值文本可能被合规偏好压掉~~ | ✅ CREATIVE-3 已完成，后续评估人工偏好与合规风险 |
 | 实战验证未完成 | 代码层面完成但端到端产出质量未在真实项目验证 | 下一阶段 |

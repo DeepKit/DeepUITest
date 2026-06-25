@@ -1,15 +1,15 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-25
-Status: v3.12；Schema v14；38 张业务表 + `_schema_meta` 元表；最近全量验证：`347 passed, 4 warnings`
+Status: v3.12；Schema v15；38 张业务表 + `_schema_meta` 元表；最近全量验证：`353 passed, 4 warnings`
 
 ---
 
 ## 1. 当前结论
 
-P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contract -> constitution -> run -> scope report` 可跑通。L0 全书宪法、L0.5 卷部节奏、L1 章级节奏、三棵树架构、正文真相源、D-25 悬疑可靠性、风格偏好学习、反契约沙盒和 CREATIVE-1 意外价值维度均已落地。
+P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contract -> constitution -> run -> scope report` 可跑通。L0 全书宪法、L0.5 卷部节奏、L1 章级节奏、三棵树架构、正文真相源、D-25 悬疑可靠性、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修和 CREATIVE-3 留白创意评审均已落地。
 
-当前任务不再是补 P0 阻塞项，而是进入“产出更优秀文本”的创作闭环阶段：二次精修、留白 shot 的独立创意评审、真实项目实战验证，以及 prompt caching / 风格学习的效果评估。
+当前任务不再是补 P0 阻塞项，而是进入真实项目验证与效果评估阶段：用真实《分流》项目跑完整流程，收集 prompt caching / polish / 留白创意评审 / 风格学习的实际收益。
 
 设计审阅结论不变：当前方向 near-optimal，不建议推倒重做。下一步应避免继续堆检查项，重点把“约束保下限 + 留白出上限 + 评审学偏好”跑成可验证闭环。
 
@@ -19,13 +19,13 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 文档 | 位置 | 状态 |
 |------|------|:---:|
-| 技术设计权威 | `docs/design.md` | ✅ v3.12 / Schema v14 |
-| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v14 / 38 业务表 |
+| 技术设计权威 | `docs/design.md` | ✅ v3.12 / Schema v15 |
+| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v15 / 38 业务表 |
 | 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | ✅ |
 | 8 层层级 | `docs/design-8layer-hierarchy.md` | ✅ |
 | 悬疑引擎 | `docs/suspense-engine.md` | ✅ 已实施核心闭环，待实战验证 |
 | 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-25 归档 |
-| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B37/B38 |
+| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B37/B38/B39 |
 
 ---
 
@@ -42,8 +42,8 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 | D-25 悬疑引擎 | Jury 悬疑维度、悬疑蓝图、信息差表与服务、重试预算/熔断、benchmark 样本 |
 | 正文读取治理 | TS-1 `TextRepository` 统一正文读取入口 |
 | Prompt caching | B23-P1 上下文降级与 token budget 裁剪 |
-| 创作质量 | CREATIVE-1 `unexpected_value` 评审维度 + 留白 shot 温度上限回归测试 |
-| 文档与测试对齐 | B37/B38：Schema v14 / 表数 / 索引 / CREATIVE 测试口径同步 |
+| 创作质量 | CREATIVE-1 `unexpected_value`；CREATIVE-2 `write_polish`；CREATIVE-3 留白创意评审 |
+| 文档与测试对齐 | B37/B38/B39：Schema v15 / 表数 / 索引 / CREATIVE 测试与权威契约口径同步 |
 
 ---
 
@@ -51,9 +51,9 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
-| 高 | CREATIVE-2 | 二次精修 `polish` 阶段 | 待实现 | winner 正文可在不改硬事实的前提下生成精修 revision；保留原 winner 与 polish 版本的审计链 |
-| 高 | CREATIVE-3 | 留白 shot 独立创意评审 | 部分实现：已有每 5 shot 的 budget×2、temp≤1.4、`blank_shot` 标记 | 留白 shot 可启用独立“创意评审”策略，避免常规 Jury 过度偏向安全稿 |
 | 高 | VAL-1 | 真实项目实战验证 | 待执行 | 用真实《分流》项目跑完 `ink run` 全流程，记录绿/黄/红、重试预算、prompt token、文本质量问题 |
+| 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |
+| 中 | CREATIVE-3-EVAL | 留白创意评审效果评估 | 已有 `creative_review=True` 评分路径，待真实文本验证 | 比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好 |
 | 中 | PERF-1 | Prompt caching 性能基线 | 待测量 | 在真实 prompt 上记录 B23-P1 降级前后 token 节省量与 cacheable 比例 |
 | 中 | ARCH-10-EVAL | 风格偏好反馈效果评估 | 待样本积累 | 验证 `get_effective_temperature()` 是否提高 winner 稳定性或降低红灯率 |
 | 中 | TS-2 | 正文读取调用点审计 | 待复核 | 新增代码不得绕过 `TextRepository` 读取正文真相源 |
@@ -65,10 +65,10 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 问题 | 已落地 | 剩余任务 |
 |------|--------|----------|
-| Jury 偏重合规 | CREATIVE-1 新增 `unexpected_value`，奖励意外但有效的表达 | CREATIVE-3 对留白 shot 使用独立创意评审 |
-| 重写是修复不是升华 | 已有 smart-redo / 反契约沙盒 | CREATIVE-2 新增 polish：基于 winner 做二次精修 |
+| Jury 偏重合规 | CREATIVE-3 已对留白 shot 使用独立创意评审，提高 `unexpected_value` 权重 | 评估真实文本中创意 winner 是否更受人类偏好 |
+| 重写是修复不是升华 | CREATIVE-2 已新增 polish：基于 winner 写 `write_polish` 子 revision | 评估 polish 对真实文本质量的收益 |
 | deviation_budget 被层层压缩 | L0.5 -> L1 -> L2 已传递；每 5 shot 留白一次 | 评估真实文本中留白 shot 是否提高高光率 |
-| 四轨赛马选“最安全” | ARCH-11 记录反契约偏离；CREATIVE-1 评分维度已补 | 对留白 shot 降低常规合规权重或改用创意评审 |
+| 四轨赛马选“最安全” | CREATIVE-3 已在留白 shot 降低常规合规权重并改用创意评审 | 跟踪合规风险，不让硬事实被破坏 |
 
 **留白节奏：每 5 个 shot 留白 1 次。**
 

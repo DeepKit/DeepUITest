@@ -1,7 +1,7 @@
 # 墨韵 (InkFlow) v3.12: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.12（Schema v14：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法、ARCH-5 L0.5 卷部节奏、ARCH-10 风格偏好、ARCH-11 反契约沙盒、CREATIVE-1 意外价值）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v14：2026-06-25
+> 版本：v3.12（Schema v15：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法、ARCH-5 L0.5 卷部节奏、ARCH-10 风格偏好、ARCH-11 反契约沙盒、CREATIVE-1 意外价值、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v15：2026-06-25
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -81,7 +81,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 | AI 架构师 | AI | 识别项目结构、编译全链契约、生成元契约、冲突检测、诊断红灯原因、Voice Calibration、Intent Drift 检测 |
 | 赛车场经理 | Python 编排 | 锁定契约快照、加载预编译提示词、调度写手/裁判/门控、提取 9 类事实锚点、Motif 追踪、检查点、状态恢复、落库 |
 | 写手池 | AI | 按 4 人格差异化提示词 + voice samples + 反例生成候选正文 |
-| 裁判团 | AI | 3-phase 评分：独立→比较→输出，9 维 + 相对排序+绝对分 |
+| 裁判团 | AI | 当前默认 3 模型 × 5 维评分；标准 shot 按 `trimmed_mean`，留白 shot 按 `creative_score` |
 | Chisel 校准链 | Python + AI + 人类 | 全书完成后做 scan/report/fix/二次校准 |
 
 生产期的人类角色是旁观者，不参与单章或单 Shot 决策。
@@ -456,8 +456,8 @@ scene_position 由一个字段控制整条流水线：哪些检查点激活、�
 
 ```
 Phase 1: 独立阅读（不比较）
-├── 阅读候选 A → 9 维打分 + 注释
-├── 阅读候选 B → 9 维打分 + 注释
+├── 阅读候选 A → 当前默认 5 维打分 + 注释
+├── 阅读候选 B → 当前默认 5 维打分 + 注释
 ├── 阅读候选 C → ...
 └── 阅读候选 D → ...
 
@@ -468,7 +468,7 @@ Phase 2: 比较判断
 
 Phase 3: 最终输出
 ├── winner 正文
-├── 每位候选的 9 维分数
+├── 每位候选的逐维分数
 ├── winner 比较性评语
 ├── 被拒绝候选的亮点摘录
 └── 综合置信度 (0-1)
@@ -476,7 +476,7 @@ Phase 3: 最终输出
 
 **评分模式**：相对排序 + 绝对分双重机制。相对排序用于选 winner，绝对分用于 Gate（是否绿灯）。
 
-**量程**：每维度 0-10 分，0.1 精度。
+**量程**：每维度 0-100 分，整数分；灯色阈值使用 green≥85 / yellow≥65。
 
 **模型**：使用 `model_tiers.jury`（默认 Sonnet）——Jury 是评判工作，不是创造工作。
 
@@ -484,7 +484,7 @@ Phase 3: 最终输出
 
 ### 7.2 配置
 
-采用 9 裁判团（6 基础 + 0-3 动态）。
+当前实现采用 3 个评委模型 × 默认 5 个评分维度。旧设计中的 9 裁判团维度作为历史兼容枚举保留，不再作为默认运行口径。
 
 动态裁判从系统级维度池中由元契约自动激活：
 
@@ -594,7 +594,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **38 张业务表 + `_schema_meta` 元表**（Schema v14）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度。
+数据库为 **38 张业务表 + `_schema_meta` 元表**（Schema v15）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -642,6 +642,8 @@ execution_records             -- 执行树正文（per-run）
 ### 9.2 正文版本规则
 
 - 绿灯/黄灯 winner → `shot_revisions(status='current', operation='write_generate')`
+- 留白 shot winner → Jury 保留逐维原始分，同时使用 `creative_score` 提高 `unexpected_value` 权重选稿
+- winner 后处理精修 → `shot_revisions(operation='write_polish', parent_revision_id=<winner_revision_id>)`，只有通过保守 gate 且有实质显示变化才写入；原 winner revision 保留为父版本
 - 红灯占位 → `shot_revisions(status='current', operation='write_placeholder', placeholder_type='best_failed_candidate|redo_placeholder|permanent_red')`
 - AI 修红/修黄 → `shot_revisions(status='current', operation='write_repair')`，旧 current 进入历史
 - 所有 revision 必须记录 `parent_revision_id`、`run_id`、`contract_id`、`text_hash_normalized`
@@ -667,11 +669,11 @@ execution_records             -- 执行树正文（per-run）
 - `shot_id` = `layer_key + ".s" + zfill(shot_index, 2)` = `v01.c02.s03`
 - 排序：字典序即可（零填充保证）
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v14，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v15，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v14 总计 38 张业务表 + `_schema_meta` 元表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v15 总计 38 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。
@@ -1200,7 +1202,7 @@ import finalized book
 
 不新建独立 Stage 2 Extractor。悬疑评估通过扩展现有系统实现：
 
-- **Jury 第四维度**：从 3 模型 × 3 维度 = 9 分 → 3 模型 × 4 维度 = 12 分。新增 `suspense_effectiveness` 维度，让赛马自然筛选出更有悬疑感的文本。
+- **Jury 第四维度**：D-25 阶段从 3 模型 × 3 维度 = 9 分扩展为 3 模型 × 4 维度 = 12 分，新增 `suspense_effectiveness` 维度，让赛马自然筛选出更有悬疑感的文本。当前实现已在 CREATIVE-1 继续扩展到默认 3 模型 × 5 维度，新增 `unexpected_value`。
 - **悬疑蓝图**：Shot-level 悬疑配置，在 `contract-draft.yaml` 中定义每章的 `tension_target`、`info_gap_action`、`hook_type`。
 - **信息差追踪**：新增 `writing_information_gaps` 表，追踪信息差的完整生命周期（pending → active → reinforced → revealed → resolved → new gap）。
 

@@ -87,3 +87,43 @@ class TestJuryScoreScale:
         ).fetchall()
         dimensions = {row["dimension"] for row in rows}
         assert "unexpected_value" in dimensions
+
+    def test_creative_review_can_choose_less_safe_high_value_draft(self, setup_run_with_draft):
+        """CREATIVE-3: blank-shot review weights unexpected_value over safe compliance."""
+        setup_run_with_draft.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d2', 'shot_01', 'run_01', '对话师', 1, "
+            "'她把杯子转了半圈，没有说系统两个字。水面停在杯沿下一毫米，像一个没有提交的决定。"
+            "门外有人咳嗽，咳声短得不自然。阿坤看着那一毫米，突然明白她已经知道了通知的来源。', 'att2')"
+        )
+        setup_run_with_draft.commit()
+
+        scores = {
+            "d1": {
+                "contract_compliance": 98,
+                "forbidden_expression": 95,
+                "reading_fluency": 90,
+                "suspense_effectiveness": 85,
+                "unexpected_value": 50,
+            },
+            "d2": {
+                "contract_compliance": 65,
+                "forbidden_expression": 75,
+                "reading_fluency": 80,
+                "suspense_effectiveness": 90,
+                "unexpected_value": 98,
+            },
+        }
+
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        regular = jury.score_candidates("shot_01", ["d1", "d2"], score_overrides=scores)
+        creative = jury.score_candidates(
+            "shot_01", ["d1", "d2"], score_overrides=scores, creative_review=True,
+        )
+
+        assert regular["winner_draft_id"] == "d1"
+        assert regular["review_mode"] == "standard"
+        assert creative["winner_draft_id"] == "d2"
+        assert creative["review_mode"] == "creative_blank"
+        assert creative["score_key"] == "creative_score"

@@ -1,5 +1,5 @@
--- InkFlow v3.12 — Schema v14 (CREATIVE-1 意外价值维度)
--- SCHEMA_VERSION: 14
+-- InkFlow v3.12 — Schema v15 (CREATIVE-2 polish 精修阶段)
+-- SCHEMA_VERSION: 15
 -- Generated from implementation-contract-v0.md; aligned 2026-06-25
 -- 38 business tables total (+ _schema_meta = 39 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -11,6 +11,7 @@
 -- v11→v12: 新增 writing_style_preferences 表 + writing_drafts 风格字段 (ARCH-10)
 -- v12→v13: 新增 writing_anti_contract_reviews 表 (ARCH-11)
 -- v13→v14: writing_jury_scores.dimension 新增 unexpected_value (CREATIVE-1)
+-- v14→v15: shot_revisions.operation 新增 write_polish；model_attempts.phase 新增 polish (CREATIVE-2)
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -267,7 +268,7 @@ CREATE TABLE shot_revisions (
     parent_revision_id TEXT REFERENCES shot_revisions(revision_id),
     contract_id TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
     revision_sequence INTEGER NOT NULL,
-    operation TEXT NOT NULL CHECK (operation IN ('write_generate', 'write_placeholder', 'write_repair', 'write_redo')),
+    operation TEXT NOT NULL CHECK (operation IN ('write_generate', 'write_placeholder', 'write_repair', 'write_redo', 'write_polish')),
     text TEXT NOT NULL,
     text_hash_normalized TEXT NOT NULL,
     writer_persona TEXT,
@@ -495,7 +496,7 @@ CREATE TABLE model_attempts (
     shot_id TEXT REFERENCES writing_shots(shot_id),
     phase TEXT NOT NULL CHECK (phase IN (
         'write_generate', 'jury_score', 'fact_extract', 'repair',
-        'motif_task', 'contract_compile', 'prompt_compile'
+        'motif_task', 'contract_compile', 'prompt_compile', 'polish'
     )),
     model_name TEXT NOT NULL,
     idempotency_key TEXT NOT NULL,

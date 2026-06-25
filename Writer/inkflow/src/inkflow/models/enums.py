@@ -85,6 +85,7 @@ class RevisionOperation(str, Enum):
     WRITE_PLACEHOLDER = "write_placeholder"
     WRITE_REPAIR = "write_repair"
     WRITE_REDO = "write_redo"
+    WRITE_POLISH = "write_polish"
     # P0: human_baseline uses write_generate temporarily
     # Future: may add HUMAN_BASELINE = "human_baseline"
 

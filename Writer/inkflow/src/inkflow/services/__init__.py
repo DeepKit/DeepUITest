@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from .text_repository import TextRepository
     from .style_preference import StylePreferenceService
     from .anti_contract import AntiContractSandbox
+    from .polish_service import PolishService
     from .retry_budget import RetryBudgetService, RetryBudgetExhausted, CircuitBreakerTriggered, classify_failure_type
 
 _LAZY_MAP = {
@@ -46,6 +47,7 @@ _LAZY_MAP = {
     "TextRepository": "text_repository",
     "StylePreferenceService": "style_preference",
     "AntiContractSandbox": "anti_contract",
+    "PolishService": "polish_service",
     "RetryBudgetService": "retry_budget",
     "RetryBudgetExhausted": "retry_budget",
     "CircuitBreakerTriggered": "retry_budget",
