@@ -1,17 +1,24 @@
 """InkFlow exporter — DB → Markdown.
 
 Reads current revisions from inkflow.db and writes a clean Markdown file
-suitable for human review. Separates chapters by layer_key, marks baseline
-shots, and annotates AI-generated shots with light status and POV.
+suitable for human review. Separates chapters by layer_key while keeping
+internal production metadata out of the editor-facing manuscript.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from inkflow.services.text_repository import TextRepository
+
+_TARGET_PARAGRAPH_CHARS = 300
+_MAX_PARAGRAPH_CHARS = 420
+_SENTENCE_END_CHARS = "。！？；…"
+_SOFT_BREAK_CHARS = "，、：,;"
+_CLOSING_PUNCT = "”’）】》」』"
 
 
 def export_markdown(
@@ -50,9 +57,7 @@ def export_markdown(
         lines.append(f"\n## 第 {_chapter_label(chapter_key)} 章\n")
 
         shots = db.execute(
-            "SELECT ws.shot_id, ws.shot_index, ws.shot_status, ws.light_status, "
-            "ws.is_baseline, ws.brilliance_level, ws.badsmell_level, "
-            "wsc.pov_routing_json, wsc.must_land_json "
+            "SELECT ws.shot_id, ws.shot_index, wsc.must_land_json "
             "FROM writing_shots ws "
             "LEFT JOIN writing_shot_contracts wsc "
             "  ON ws.shot_id = wsc.shot_id AND ws.run_id = wsc.run_id "
@@ -65,35 +70,22 @@ def export_markdown(
             lines.append("\n（无内容）\n")
             continue
 
+        rendered_shot_count = 0
         for s in shots:
             text = repo.get_shot_text(s["shot_id"])
             if not text.strip():
                 continue
 
-            # Build shot header with title from contract
+            if rendered_shot_count > 0:
+                lines.append("\n---\n")
+
+            # Editor-facing export keeps contract titles but hides pipeline metadata.
             header_title = _resolve_title_from_contract(s["must_land_json"])
-            annotations = []
-            if s["is_baseline"]:
-                annotations.append("baseline · locked")
-            else:
-                icon = _light_icon(s["light_status"])
-                pov = _resolve_pov(s["pov_routing_json"])
-                annotations.append(f"{icon} {s['light_status']}")
-
-                if s["brilliance_level"]:
-                    annotations.append(f"brilliance={s['brilliance_level']}")
-                if s["badsmell_level"]:
-                    annotations.append(f"badsmell={s['badsmell_level']}")
-                if pov:
-                    annotations.append(f"POV={pov}")
-
             if header_title:
-                header = f"### 场景 {s['shot_index']}：{header_title} — {' · '.join(annotations)}"
-            else:
-                header = f"### 场景 {s['shot_index']} — {' · '.join(annotations)}"
-            lines.append(f"\n{header}\n")
-            lines.append(text)
+                lines.append(f"\n### {header_title}\n")
+            lines.append(_format_prose_for_export(text))
             lines.append("")
+            rendered_shot_count += 1
 
     content = "\n".join(lines)
     output_path.write_text(content, encoding="utf-8")
@@ -173,24 +165,106 @@ def _chapter_label(layer_key: str) -> str:
     return layer_key
 
 
-def _light_icon(status: str | None) -> str:
-    if status == "green":
-        return "🟢"
-    if status == "yellow":
-        return "🟡"
-    if status == "red":
-        return "🔴"
-    return "⚪"
+def _format_prose_for_export(text: str) -> str:
+    """Normalize manuscript spacing and split long prose paragraphs for review."""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return ""
+
+    output_blocks: list[str] = []
+    for block in re.split(r"\n\s*\n+", normalized):
+        block = block.strip()
+        if not block:
+            continue
+
+        if _is_structural_markdown_block(block):
+            output_blocks.append(block)
+            continue
+
+        lines = [line.strip() for line in block.split("\n") if line.strip()]
+        if len(lines) > 1:
+            for line in lines:
+                output_blocks.extend(_split_long_paragraph(line))
+        else:
+            output_blocks.extend(_split_long_paragraph(lines[0]))
+
+    return "\n\n".join(output_blocks)
 
 
-def _resolve_pov(pov_json: str | None) -> str | None:
-    if not pov_json:
-        return None
-    try:
-        data = json.loads(pov_json) if isinstance(pov_json, str) else pov_json
-        return data.get("pov_character")
-    except (json.JSONDecodeError, TypeError):
-        return None
+def _is_structural_markdown_block(block: str) -> bool:
+    """Leave headings, lists, quotes, tables, and code blocks untouched."""
+    stripped = block.lstrip()
+    if stripped.startswith(("```", "#", "- ", "* ", "> ", "|")):
+        return True
+    return False
+
+
+def _split_long_paragraph(paragraph: str) -> list[str]:
+    paragraph = re.sub(r"[ \t]+", " ", paragraph.strip())
+    if len(paragraph) <= _MAX_PARAGRAPH_CHARS:
+        return [paragraph]
+
+    chunks: list[str] = []
+    current = ""
+    for sentence in _split_sentences(paragraph):
+        pieces = _split_oversized_sentence(sentence)
+        for piece in pieces:
+            if not current:
+                current = piece
+                continue
+            if len(current) >= _TARGET_PARAGRAPH_CHARS or (
+                len(current) + len(piece) > _MAX_PARAGRAPH_CHARS
+            ):
+                chunks.append(current.strip())
+                current = piece
+            else:
+                current += piece
+
+    if current.strip():
+        chunks.append(current.strip())
+
+    return chunks or [paragraph]
+
+
+def _split_sentences(paragraph: str) -> list[str]:
+    sentences: list[str] = []
+    start = 0
+    i = 0
+    while i < len(paragraph):
+        if paragraph[i] in _SENTENCE_END_CHARS:
+            end = i + 1
+            while end < len(paragraph) and paragraph[end] in _CLOSING_PUNCT:
+                end += 1
+            sentence = paragraph[start:end].strip()
+            if sentence:
+                sentences.append(sentence)
+            start = end
+            i = end
+            continue
+        i += 1
+
+    tail = paragraph[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences or [paragraph]
+
+
+def _split_oversized_sentence(sentence: str) -> list[str]:
+    """Best-effort fallback for very long sentences with comma-like pauses."""
+    if len(sentence) <= _MAX_PARAGRAPH_CHARS:
+        return [sentence]
+
+    parts: list[str] = []
+    start = 0
+    for i, char in enumerate(sentence):
+        if char in _SOFT_BREAK_CHARS and i - start >= _TARGET_PARAGRAPH_CHARS:
+            parts.append(sentence[start : i + 1].strip())
+            start = i + 1
+
+    tail = sentence[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts or [sentence]
 
 
 def _resolve_title_from_contract(must_land_json: str | None) -> str | None:

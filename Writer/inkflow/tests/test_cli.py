@@ -503,6 +503,147 @@ class TestExportSmoke:
         assert result.exit_code == 0, result.output
         assert out_path.exists()
 
+    def test_markdown_export_hides_pipeline_metadata(self, runner, sample_project, tmp_dir):
+        """编辑稿导出不应泄露灯色、精彩/坏味评分或 POV 路由。"""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        out_path = story_dir / "正文" / "测试_v01.c02_导出.md"
+
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_export', 'p1', 'run_export', 'active')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots ("
+            "shot_id, project_id, run_id, layer_key, shot_index, shot_status, "
+            "light_status, brilliance_level, badsmell_level"
+            ") VALUES ("
+            "'shot_export', 'p1', 'run_export', 'v01.c02', 5, 'done_green', "
+            "'green', 'A', 'B'"
+            ")"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts ("
+            "contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, pov_routing_json, contract_json"
+            ") VALUES ("
+            "'contract_export', 'p1', 'run_export', 'shot_export', 'v01.c02', 'locked', "
+            "'hash_export', '{\"title\":\"慢下来\"}', '{}', "
+            "'{\"pov_character\":\"韩教授\"}', '{}'"
+            ")"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions ("
+            "revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, is_current, attempt_id"
+            ") VALUES ("
+            "'rev_export', 'shot_export', 'run_export', 'contract_export', 1, "
+            "'write_generate', '他把屏幕合上。', 'text_hash_export', 1, 'attempt_export'"
+            ")"
+        )
+        db.execute(
+            "UPDATE writing_shots SET current_revision_id = 'rev_export' "
+            "WHERE shot_id = 'shot_export'"
+        )
+        db.commit()
+        db.close()
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+
+        assert result.exit_code == 0, result.output
+        content = out_path.read_text(encoding="utf-8")
+        assert "### 慢下来" in content
+        assert "### 场景" not in content
+        assert "green" not in content
+        assert "brilliance=" not in content
+        assert "badsmell=" not in content
+        assert "POV=" not in content
+
+    def test_markdown_export_formats_paragraphs_and_scene_breaks(self, runner, sample_project, tmp_dir):
+        """编辑稿导出应拆分过长自然段，并在镜头之间加入分隔线。"""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        out_path = story_dir / "正文" / "测试_v01.c02_导出.md"
+
+        sentence = (
+            "雨水贴着窗缝往里钻，屏幕上的蓝线在她眼底一闪，"
+            "像有人把城市的边缘重新描了一遍。"
+        )
+        long_paragraph = sentence * 12
+
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_layout', 'p1', 'run_layout', 'active')"
+        )
+        for index, title, text in [
+            (1, "第一镜", long_paragraph),
+            (2, "第二镜", "她把报告合上。"),
+        ]:
+            shot_id = f"shot_layout_{index}"
+            contract_id = f"contract_layout_{index}"
+            revision_id = f"rev_layout_{index}"
+            db.execute(
+                "INSERT INTO writing_shots ("
+                "shot_id, project_id, run_id, layer_key, shot_index, shot_status"
+                ") VALUES (?, 'p1', 'run_layout', 'v01.c02', ?, 'done_green')",
+                (shot_id, index),
+            )
+            db.execute(
+                "INSERT INTO writing_shot_contracts ("
+                "contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+                "snapshot_hash, must_land_json, anti_write_json, contract_json"
+                ") VALUES (?, 'p1', 'run_layout', ?, 'v01.c02', 'locked', "
+                "'hash_layout', ?, '{}', '{}')",
+                (contract_id, shot_id, f'{{"title":"{title}"}}'),
+            )
+            db.execute(
+                "INSERT INTO shot_revisions ("
+                "revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+                "text, text_hash_normalized, is_current, attempt_id"
+                ") VALUES (?, ?, 'run_layout', ?, 1, "
+                "'write_generate', ?, ?, 1, ?)",
+                (revision_id, shot_id, contract_id, text, f"text_hash_layout_{index}", f"attempt_layout_{index}"),
+            )
+            db.execute(
+                "UPDATE writing_shots SET current_revision_id = ? WHERE shot_id = ?",
+                (revision_id, shot_id),
+            )
+        db.commit()
+        db.close()
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+
+        assert result.exit_code == 0, result.output
+        content = out_path.read_text(encoding="utf-8")
+        assert "### 第一镜" in content
+        assert "\n---\n" in content
+        assert "### 第二镜" in content
+        assert long_paragraph not in content
+
+        prose_blocks = [
+            block.strip()
+            for block in content.split("\n\n")
+            if block.strip()
+            and not block.startswith("#")
+            and block.strip() != "---"
+        ]
+        assert any(sentence in block for block in prose_blocks)
+        assert all(len(block) <= 420 for block in prose_blocks)
+
 
 class TestImportBaselineSmoke:
     """T3: import-baseline idempotent re-import"""
