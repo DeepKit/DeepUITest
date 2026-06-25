@@ -1155,3 +1155,53 @@ ADD COLUMN constitution_version_id TEXT REFERENCES writing_book_constitutions(co
 - ✅ `tests/test_cli.py::TestConstitutionCommand`：1 passed
 - ✅ `tests/test_book_constitution.py tests/test_schema.py`：53 passed
 - ✅ 全量 `python -m pytest -q`：309 passed, 4 warnings
+
+---
+
+## 任务对齐与 CREATIVE-1 回归补强 — 2026-06-25
+
+**目标**：对齐 `tasks.md`，把已完成的 ARCH/D25/TS/CREATIVE 项从待办区移入历史，修正 Schema 版本和表数口径，并为“产出优秀作品”的下一阶段开发补上回归测试。
+
+### 已完成归档
+
+| ID | 内容 | 实现位置 |
+|----|------|----------|
+| ARCH-5 | L0.5 `VolumeRhythmService`，生成卷部 mini-arc、章节角色、张力预算和 deviation range | `services/volume_rhythm.py`, `writing_volume_rhythms` |
+| ARCH-7R | Runtime 将 L0.5 约束传入 L1 `ChapterRhythmArchitect.analyze_chapter()` | `cli.py` |
+| D25-R1 | 悬疑可靠性闭环：`RetryBudgetService` + failure signature + 熔断 | `services/retry_budget.py`, `quality_controller.py`, `cli.py` |
+| D25-R2 | 悬疑 benchmark：8 个人工标注样本 + jury 维度验证 | `tests/fixtures/suspense_benchmark`, `tests/test_suspense_benchmark.py` |
+| B23-P1 | Prompt caching 上下文降级：完整 -> 摘要 -> 事件 -> drop + token budget 裁剪 | `services/prompt_compiler.py`, `tests/test_prompt_caching.py` |
+| TS-1 | `TextRepository` 统一正文真相源读取，替换 exporter/cli/session_manager 散落 SQL | `services/text_repository.py` |
+| ARCH-10 | 风格偏好学习：记录 winner persona/model/temperature/style_direction | `services/style_preference.py`, `writing_style_preferences` |
+| ARCH-11 | 反契约沙盒：记录 soft-constraint 偏离的意外价值与人类裁决 | `services/anti_contract.py`, `writing_anti_contract_reviews` |
+| CREATIVE-1 | Jury 新增 `unexpected_value` 意外价值维度，Schema v14 CHECK 约束同步 | `jury_service.py`, `models/enums.py`, `migration.py`, `schema.sql` |
+
+### 本轮新增测试
+
+| 测试 | 覆盖 |
+|------|------|
+| `test_blank_shot_quad_track_caps_temperature` | 留白 shot 会携带 `blank_shot=True`，且四线赛马温度上限放宽到 1.4 但不越界 |
+| `test_unexpected_value_dimension_is_persisted` | 默认 Jury 评分会写入 `unexpected_value` 维度 |
+| `test_jury_unexpected_value_dimension_valid` | DB CHECK 接受 `writing_jury_scores.dimension='unexpected_value'` |
+| `test_indexes_exist` 扩展 | v10/v12/v13 新增索引纳入 schema 回归 |
+
+### 文档与 Schema 口径
+
+| 项 | 旧口径 | 新口径 |
+|----|--------|--------|
+| Schema 版本 | 文档混用 v9/v13，代码为 v14 | 统一为 Schema v14 |
+| 表数 | 文档写 39 张业务表，测试注释写 35/37 | 统一为 38 张业务表 + `_schema_meta` 元表 |
+| 当前待办 | 已完成 ARCH-5/10/11/D25 仍残留在待办描述 | `tasks.md` 只保留 CREATIVE-2/3、实战验证和评估类任务 |
+
+### 下一阶段入口
+
+| ID | 任务 |
+|----|------|
+| CREATIVE-2 | 二次精修 `polish` 阶段：基于 winner 生成精修 revision，并保留原 winner 审计链 |
+| CREATIVE-3 | 留白 shot 独立创意评审：避免常规 Jury 因合规偏好压掉高光稿 |
+| VAL-1 | 用真实项目跑完 `ink run`，收集文本质量、重试预算和 prompt token 数据 |
+
+### 验证
+
+- 目标测试：4 passed
+- 全量测试：347 passed, 4 warnings

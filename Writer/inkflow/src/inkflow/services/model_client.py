@@ -1,0 +1,430 @@
+"""ModelClient — 统一的 LLM / 生成器调用协议。
+
+支持:
+  - OpenAI 兼容协议 (StepFun, DeepSeek)
+  - Anthropic 兼容协议 (百炼/Qwen)
+  - local-default 确定性生成器 (无 API key 时的兜底)
+  - 每次调用自动写入 model_attempts 审计表
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import random
+import sqlite3
+import time
+import urllib.request
+import urllib.error
+from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
+
+from inkflow.utils.ulid import generate as generate_ulid
+
+
+# ── 协议定义 ──────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ModelRequest:
+    """统一请求格式。"""
+
+    operation: str  # write_generate / jury_score / fact_extract / ...
+    persona: str  # imagist / pacer / dialogist / structuralist / ...
+    prompt: str
+    model: str = "local-default"
+    temperature: float = 0.8
+    max_tokens: int = 16384
+    shot_id: str | None = None
+    run_id: str | None = None
+    extra: dict = field(default_factory=dict)
+
+
+@dataclass
+class ModelResponse:
+    """统一响应格式。"""
+
+    text: str
+    model: str
+    usage: dict = field(default_factory=dict)
+    finish_reason: str = "stop"
+    self_note: str = ""
+
+
+class ModelCallError(Exception):
+    """模型调用错误。"""
+
+    def __init__(self, message: str, recoverable: bool = True):
+        super().__init__(message)
+        self.recoverable = recoverable
+
+
+@runtime_checkable
+class ModelClient(Protocol):
+    """统一的生成器调用接口。"""
+
+    def generate(self, request: ModelRequest) -> ModelResponse: ...
+
+
+# ── OpenAI 兼容客户端 ────────────────────────────────────────────────────
+
+
+class OpenAIClient:
+    """OpenAI 兼容协议客户端 (StepFun, DeepSeek)。"""
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model_name: str,
+        db: sqlite3.Connection | None = None,
+    ) -> None:
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.db = db
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        url = f"{self.base_url}/chat/completions"
+        body = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": request.prompt}],
+            "max_tokens": request.max_tokens,
+            "temperature": request.temperature,
+        }
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            raise ModelCallError(
+                f"OpenAI API HTTP {e.code}: {body[:500]}",
+                recoverable=e.code >= 500,
+            )
+        except Exception as e:
+            raise ModelCallError(f"OpenAI API error: {e}", recoverable=True)
+
+        choice = result.get("choices", [{}])[0]
+        msg = choice.get("message", {})
+        text = msg.get("content", "")
+        # Fallback: reasoning models (step-3.7-flash) put output in reasoning_content
+        if not text or not text.strip():
+            text = msg.get("reasoning_content", "") or msg.get("reasoning", "")
+        usage_raw = result.get("usage", {})
+        usage = {
+            "prompt_tokens": usage_raw.get("prompt_tokens", 0),
+            "completion_tokens": usage_raw.get("completion_tokens", 0),
+            "total": usage_raw.get("total_tokens", 0),
+        }
+
+        response = ModelResponse(
+            text=text.strip(),
+            model=self.model_name,
+            usage=usage,
+            finish_reason=choice.get("finish_reason", "stop"),
+            self_note=f"[{self.model_name}] OpenAI",
+        )
+
+        if self.db is not None:
+            _record_model_attempt(self.db, request, response, request.operation)
+
+        return response
+
+
+# ── Anthropic 兼容客户端 ─────────────────────────────────────────────────
+
+
+class AnthropicClient:
+    """Anthropic 兼容协议客户端 (百炼/Qwen)。"""
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model_name: str,
+        db: sqlite3.Connection | None = None,
+    ) -> None:
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.db = db
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        url = f"{self.base_url}/messages"
+        body = {
+            "model": self.model_name,
+            "max_tokens": request.max_tokens,
+            "messages": [{"role": "user", "content": request.prompt}],
+            "thinking": {"type": "disabled"},  # Disable thinking for creative writing
+        }
+        if request.temperature:
+            body["temperature"] = request.temperature
+
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            raise ModelCallError(
+                f"Anthropic API HTTP {e.code}: {body[:500]}",
+                recoverable=e.code >= 500,
+            )
+        except Exception as e:
+            raise ModelCallError(f"Anthropic API error: {e}", recoverable=True)
+
+        # Anthropic format: content is a list of blocks
+        content_blocks = result.get("content", [])
+        text = ""
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text += block.get("text", "")
+
+        usage_raw = result.get("usage", {})
+        usage = {
+            "prompt_tokens": usage_raw.get("input_tokens", 0),
+            "completion_tokens": usage_raw.get("output_tokens", 0),
+            "total": usage_raw.get("input_tokens", 0) + usage_raw.get("output_tokens", 0),
+        }
+
+        response = ModelResponse(
+            text=text.strip(),
+            model=self.model_name,
+            usage=usage,
+            finish_reason=result.get("stop_reason", "stop"),
+            self_note=f"[{self.model_name}] Anthropic",
+        )
+
+        if self.db is not None:
+            _record_model_attempt(self.db, request, response, request.operation)
+
+        return response
+
+
+# ── local-default 确定性生成器 ──────────────────────────────────────────
+
+
+_PERSONA_TEMPLATES: dict[str, list[str]] = {
+    "imagist": [
+        "光线从{scene}的缝隙间漏进来，落在{object}上，像一记无声的叩问。",
+        "{character}的目光停在{object}上，那东西仿佛在回应某种久违的召唤。",
+        "风从{scene}的方向吹来，裹挟着{object}的气味，整个房间都为之侧目。",
+    ],
+    "pacer": [
+        "{character}先是没有动，然后忽然站了起来。动作快得让人来不及反应。",
+        "沉默持续了三秒。三秒之后，{character}开口了，语速比平时快了一倍。",
+        "事情发生得毫无预兆——前一秒还风平浪静，后一秒已是另一番局面。",
+    ],
+    "dialogist": [
+        '"你真的这么想？"{character}的声音里带着某种不容置疑的东西。',
+        '"我没有别的选择。"他说这句话的时候，目光没有看向任何人。',
+        '"听我说完。"她打断了他，语气不重，却让所有人都安静了下来。',
+    ],
+    "structuralist": [
+        "从这一刻起，所有的伏线开始收拢。{character}终于看清了事情的全貌。",
+        "这个决定将改变接下来所有事件的走向。{character}心里清楚，但已无退路。",
+        "表面上看只是 ordinary 的一步，实际上却连接着三条完全不同的叙事线。",
+    ],
+}
+
+_FILLER_SCENES = ["窗棂", "走廊尽头", "天台", "旧书房", "后院", "码头", "街角"]
+_FILLER_OBJECTS = ["那封信", "半杯凉茶", "一把旧钥匙", "褪色的照片", "断掉的表带"]
+_FILLER_CHARACTERS = ["他", "她", "来人", "青年", "老者"]
+
+
+class LocalDefaultGenerator:
+    """无 API key 时的确定性兜底生成器。"""
+
+    def __init__(self, db: sqlite3.Connection | None = None) -> None:
+        self.db = db
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        persona = request.persona.lower()
+        seed_str = f"{request.shot_id or 'default'}::{persona}::{request.run_id or 'x'}"
+        seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+        rng = random.Random(seed)
+
+        templates = _PERSONA_TEMPLATES.get(persona, _PERSONA_TEMPLATES["pacer"])
+        num_paragraphs = rng.randint(3, 5)
+        paragraphs: list[str] = []
+        for _ in range(num_paragraphs):
+            tpl = rng.choice(templates)
+            text = tpl.format(
+                scene=rng.choice(_FILLER_SCENES),
+                object=rng.choice(_FILLER_OBJECTS),
+                character=rng.choice(_FILLER_CHARACTERS),
+            )
+            paragraphs.append(text)
+
+        narrative = (
+            f"\n\n{persona.upper()} 视角下的这一段，重点在于呈现 {_FILLER_OBJECTS[0]} "
+            f"与 {_FILLER_CHARACTERS[0]} 之间的微妙关系。"
+            f"场景设在 {_FILLER_SCENES[0]}，气氛随着叙述的推进逐渐升温。"
+            f"每一个细节都在为后续的转折埋下伏笔。"
+        )
+        full_text = "\n\n".join(paragraphs) + narrative
+        while len(full_text) < 200:
+            full_text += f"\n（{persona} 继续推进叙事，补充更多细节与情绪层次。）"
+
+        response = ModelResponse(
+            text=full_text,
+            model="local-default",
+            usage={"prompt_tokens": len(request.prompt) // 2,
+                   "completion_tokens": len(full_text) // 2,
+                   "total": (len(request.prompt) + len(full_text)) // 2},
+            finish_reason="stop",
+            self_note=f"[local-default] deterministic output for {persona}",
+        )
+
+        if self.db is not None:
+            _record_model_attempt(self.db, request, response, request.operation)
+
+        return response
+
+
+# ── 审计 ─────────────────────────────────────────────────────────────────
+
+
+def _record_model_attempt(
+    db: sqlite3.Connection,
+    request: ModelRequest,
+    response: ModelResponse,
+    phase: str,
+) -> None:
+    idempotency_key = hashlib.md5(
+        f"{request.shot_id}:{request.persona}:{request.run_id}:{phase}:{response.model}".encode()
+    ).hexdigest()[:32]
+    request_hash = hashlib.md5(request.prompt.encode()).hexdigest()[:16]
+    response_hash = hashlib.md5(response.text.encode()).hexdigest()[:16]
+
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO model_attempts "
+            "(attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
+            "request_prompt_hash, response_text_hash, "
+            "usage_prompt_tokens, usage_completion_tokens, usage_total_tokens) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                generate_ulid(), request.run_id, request.shot_id,
+                phase, response.model, idempotency_key,
+                request_hash, response_hash,
+                response.usage.get("prompt_tokens", 0),
+                response.usage.get("completion_tokens", 0),
+                response.usage.get("total", 0),
+            ),
+        )
+        db.commit()
+    except Exception:
+        pass
+
+
+# ── 工厂 ─────────────────────────────────────────────────────────────────
+
+
+# 模型名 → (provider_key, protocol)
+_MODEL_REGISTRY: dict[str, tuple[str, str]] = {
+    # StepFun (OpenAI)
+    "step-router-v1": ("stepfun", "openai"),
+    "step-3.7-flash": ("stepfun", "openai"),
+    # DeepSeek (OpenAI)
+    "deepseek-v4-pro": ("deepseek", "openai"),
+    "deepseek-v4-flash": ("deepseek", "openai"),
+    # 百炼 (OpenAI 兼容 - coding.dashscope)
+    "qwen3.7-plus": ("bailian", "openai"),
+    "qwen3.6-plus": ("bailian", "openai"),
+    "qwen3.5-plus": ("bailian", "openai"),
+    "qwen3-coder-plus": ("bailian", "openai"),
+}
+
+
+def create_model_client(
+    model_name: str = "local-default",
+    *,
+    db: sqlite3.Connection | None = None,
+    providers: dict | None = None,
+) -> ModelClient:
+    """根据 model_name 和 providers 配置返回对应的 ModelClient 实例。
+
+    providers 格式:
+      { "stepfun": {"api_key": "...", "base_url": "...", "protocol": "openai"}, ... }
+    """
+    if model_name == "local-default":
+        return LocalDefaultGenerator(db=db)
+
+    if model_name not in _MODEL_REGISTRY:
+        raise ValueError(
+            f"Unknown model: {model_name}. Known: {list(_MODEL_REGISTRY.keys())}"
+        )
+
+    provider_key, protocol = _MODEL_REGISTRY[model_name]
+
+    if providers is None:
+        raise ValueError(f"No providers config for model {model_name}")
+
+    if provider_key not in providers:
+        raise ValueError(
+            f"Provider '{provider_key}' not found in providers config. "
+            f"Available: {list(providers.keys())}"
+        )
+
+    cfg = providers[provider_key]
+    api_key = cfg.get("api_key", "")
+    base_url = cfg.get("base_url", "")
+    actual_model = cfg.get("model", model_name)
+
+    if not api_key:
+        raise ValueError(f"No API key for provider '{provider_key}'")
+
+    if protocol == "openai":
+        return OpenAIClient(
+            api_key=api_key, base_url=base_url, model_name=actual_model, db=db,
+        )
+    elif protocol == "anthropic":
+        return AnthropicClient(
+            api_key=api_key, base_url=base_url, model_name=actual_model, db=db,
+        )
+    else:
+        raise ValueError(f"Unknown protocol: {protocol}")
+
+
+def resolve_model_for_tier(
+    models_config: dict,
+    tier: str = "primary",
+) -> str:
+    """Resolve model name from config for a given tier.
+
+    tiers: 'primary', 'candidates' (list), 'fallback'
+    """
+    if tier == "primary":
+        return models_config.get("primary", "local-default")
+    elif tier == "candidates":
+        candidates = models_config.get("candidates", [])
+        return candidates[0] if candidates else "local-default"
+    elif tier == "fallback":
+        return models_config.get("fallback", "local-default")
+    return "local-default"

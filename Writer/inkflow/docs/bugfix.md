@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-24 文档对齐：新增 B35/B36；开放实现任务见 `../TASKS.md`
+> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -303,3 +303,23 @@
 - **影响**: 后续开发可能把已完成 ARCH-4/12/13 当成待办，或按旧 Schema 表数实现迁移和测试。
 - **修复**: 根任务文件和 InkFlow 任务文件重写为当前待办；设计/实现契约/悬疑引擎文档同步到 Schema v9 / 35 表 / 部分实施状态；完成项统一指向 `docs/history.md`。
 - **文件**: `tasks.md`, `TASKS.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/suspense-engine.md`, `docs/design-evaluation-conclusion.md`, `src/inkflow/db/schema.sql`
+
+---
+
+## 第七轮 (2026-06-25) — Schema v14 / CREATIVE 对齐
+
+### B37. Schema 版本与表数口径再次漂移 ✅ 已修复
+- **严重性**: Important
+- **发现**: 任务对齐与全量验证复核
+- **根因**: `migration.py` 已是 `SCHEMA_VERSION = 14`，但 `schema.sql` 文件头仍写 Schema v9 / 35 business tables；`tasks.md`、`design.md`、`implementation-contract-v0.md`、`design-evaluation-conclusion.md` 又写 Schema v13 / 39 张业务表。实际为 38 张业务表，加 `_schema_meta` 后 SQLite 用户表总数为 39。
+- **影响**: 后续迁移、测试和文档会围绕不同表数实现，尤其容易把 `_schema_meta` 误算为业务表。
+- **修复**: 统一文档和 schema 文件头为 Schema v14 / 38 张业务表 + `_schema_meta` 元表；`tasks.md` 改为当前待办入口；`tests/test_schema.py` 注释改为 38 张业务表。
+- **文件**: `tasks.md`, `docs/history.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/design-evaluation-conclusion.md`, `src/inkflow/db/schema.sql`, `tests/test_schema.py`
+
+### B38. CREATIVE-1 与留白 shot 缺少直接回归测试 ✅ 已修复
+- **严重性**: Minor
+- **发现**: 后续开发入口复核
+- **根因**: `unexpected_value` 已进入 Jury 维度和 Schema CHECK，CLI 也已实现每 5 个 shot 的留白 budget/temp 机制，但测试只间接覆盖，无法防止后续重构悄悄移除该能力。
+- **影响**: 创作质量链路可能退回“只偏合规”的安全评分，或留白 shot 温度上限失效而无人发现。
+- **修复**: 新增测试验证 `unexpected_value` 会落库、Schema CHECK 接受该维度、`dispatch_quad_track(blank_shot=True)` 会返回留白标记并将温度上限放宽到 1.4；同时把 v10/v12/v13 新增索引纳入 schema 回归。
+- **文件**: `tests/test_core_services.py`, `tests/test_jury_scoring.py`, `tests/test_schema.py`

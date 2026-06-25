@@ -183,10 +183,11 @@ def _build_previous_context(
 
     # 1. Find same POV character's previous shot across ALL runs
     # (cross-chapter: ch3 郑坤 should see ch2 郑坤's last state)
+    from inkflow.services.text_repository import TextRepository
+    repo = TextRepository(db)
     shot = db.execute(
-        "SELECT ws.shot_index, ws.layer_key, sr.text "
+        "SELECT ws.shot_id, ws.shot_index, ws.layer_key "
         "FROM writing_shots ws "
-        "JOIN shot_revisions sr ON ws.current_revision_id = sr.revision_id "
         "JOIN writing_shot_contracts wsc ON ws.shot_id = wsc.shot_id "
         "  AND ws.run_id = wsc.run_id "
         "WHERE ws.shot_status IN ('done_green', 'done_yellow') "
@@ -195,6 +196,12 @@ def _build_previous_context(
         "ORDER BY ws.layer_key DESC, ws.shot_index DESC LIMIT 1",
         (pov_character, project_id, project_id),
     ).fetchone()
+    if shot:
+        text = repo.get_shot_text(shot["shot_id"])
+        return [{
+            "shot_index": shot["shot_index"],
+            "text": _summarize_text(text, 100),
+        }]
 
     if shot:
         text = shot["text"]
@@ -872,7 +879,11 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
         SessionManager, ContractCompiler, PromptCompiler,
         WriterDispatcher, JuryService, QualityController,
         FactAnchorExtractor, MotifTracker, ArchitectGate,
-        OutlineEvaluator,
+        OutlineEvaluator, RetryBudgetService, StylePreferenceService,
+        AntiContractSandbox,
+    )
+    from inkflow.services.retry_budget import (
+        RetryBudgetExhausted, CircuitBreakerTriggered, classify_failure_type,
     )
     from inkflow.utils.config import load_models_config, get_quality_threshold
 
@@ -941,6 +952,10 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
     click.echo(f"Run: {run_id}")
     click.echo(f"目标章节: {chapter or '全部'}")
     click.echo(f"契约驱动: {num_shots} shots (来自 {len(chapter_events)} 个 chapter_events)")
+
+    # D25-R1: Retry budget + circuit breaker
+    retry_budget = RetryBudgetService(db, run_id)
+    click.echo(f"  重试预算: {retry_budget.max_budget} 次（{num_shots} shots × 2）")
 
     # Create run snapshot
     from inkflow.utils.hashing import snapshot_hash, config_hash
@@ -1068,6 +1083,34 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
         if suspense_blueprint:
             info_gap_tracker.seed_from_blueprint(suspense_blueprint)
 
+        # ARCH-7R: Wire L0.5 volume rhythm constraints into L1 chapter rhythm
+        volume_constraints_for_chapter = None
+        try:
+            from inkflow.services.volume_rhythm import VolumeRhythmService
+            from inkflow.services.model_client import create_model_client
+            vol_client = create_model_client(
+                "local-default", providers=models_config.get("providers")
+            )
+            vol_svc = VolumeRhythmService(db, project_id, vol_client)
+            if chapter:
+                vol_rhythm = vol_svc.get_volume_rhythm_for_chapter(chapter, run_id)
+                if vol_rhythm:
+                    volume_key = chapter.split(".")[0]
+                    vr_chapter_data = vol_rhythm.get("deviation_range_per_chapter", {}).get(chapter)
+                    vr_role = vol_rhythm.get("chapter_roles_in_volume", {}).get(chapter)
+                    if vr_chapter_data or vr_role:
+                        volume_constraints_for_chapter = {
+                            "deviation_range": vr_chapter_data or [0.3, 0.7],
+                            "chapter_role": vr_role or "rising",
+                            "volume_key": volume_key,
+                        }
+                        click.echo(
+                            f"  📐 L0.5 卷部节奏约束: "
+                            f"角色={vr_role}, deviation_range={vr_chapter_data or [0.3, 0.7]}"
+                        )
+        except Exception as exc:
+            click.echo(f"  ⚠ 卷部节奏约束加载失败: {exc}")
+
         # ARCH: Chapter Rhythm Architect (L1) — analyze chapter rhythm before production
         from inkflow.services.chapter_rhythm import ChapterRhythmArchitect
         from inkflow.services.model_client import ModelRequest, ModelResponse
@@ -1080,6 +1123,7 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 chapter_rhythm_map = chapter_rhythm_arch.analyze_chapter(
                     chapter_key=chapter,
                     chapter_events=chapter_events,
+                    volume_constraints=volume_constraints_for_chapter,
                 )
                 chapter_rhythm_arch.store_rhythm_map(chapter_rhythm_map, run_id)
                 click.echo(
@@ -1128,6 +1172,13 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
 
             mgr.update_current_shot(session_id, shot_id)
 
+            # 留白机制：每 5 个 shot 释放 1 个（第 5、10、15... 个 shot）
+            is_blank_shot = ((i + 1) % 5 == 0)
+            blank_budget_multiplier = 2.0 if is_blank_shot else 1.0
+            blank_temp_cap = 1.4 if is_blank_shot else 1.2
+            if is_blank_shot:
+                click.echo(f"  🪨 留白 shot：释放创造自由度（budget×2, temp≤{blank_temp_cap}）")
+
             # Get shot contract
             sc = compiler.get_shot_contract(shot_id, run_id)
             if sc is None:
@@ -1157,10 +1208,12 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
             active_anchors = fact_extractor.get_active_anchors(limit=5)
 
             # 构建前文上下文：仅同 POV 角色，简短摘要
-            pov_routing = sc.get("pov_routing_json", {})
+            pov_routing = sc.get("pov_routing_json") or {}
             if isinstance(pov_routing, str):
                 import json as _json
                 pov_routing = _json.loads(pov_routing) if pov_routing else {}
+            elif not isinstance(pov_routing, dict):
+                pov_routing = {}
             pov_character = pov_routing.get("pov_character")
             previous_shots = _build_previous_context(
                 db, run_id, baseline_shots, i, pov_character=pov_character,
@@ -1251,7 +1304,9 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 shot_id=shot_id,
                 base_prompt=compiled_prompt,
                 attempt=1,
-                deviation_budget=rhythm_budget,
+                deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
+                temperature_cap=blank_temp_cap,
+                blank_shot=is_blank_shot,
             )
             draft_ids = [d["draft_id"] for d in race_result["drafts"]]
 
@@ -1262,6 +1317,19 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                     writer_dispatcher.mark_draft_usable(d["draft_id"])
 
             if not usable:
+                # D25-R1: 记录 gate1 失败
+                try:
+                    ft = classify_failure_type(
+                        gate1_violations=["empty_text", "too_short", "excessive_repetition"],
+                    )
+                    retry_budget.record_failure(shot_id, ft, detail="gate1 all failed")
+                except CircuitBreakerTriggered:
+                    click.echo(f"  🔴 熔断：此 shot 同类失败 {retry_budget.circuit_breaker_threshold} 次，跳过")
+                    continue
+                except RetryBudgetExhausted as exc:
+                    click.echo(f"  🔴 重试预算耗尽: {exc}，跳过后续 shots")
+                    break
+
                 click.echo(f"  🔴 质量门 1 全部失败（空文/太短），进入第二轮")
                 # 第二轮写作
                 race_result2 = writer_dispatcher.dispatch_quad_track(
@@ -1293,8 +1361,48 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
             winner_score = jury_verdict.get("winner_score", 0)
             winner_track = jury_verdict.get("winner_track")
 
+            # ARCH-11: 反契约沙盒评估 — 如果 deviation 赛道胜出，记录人类裁决需求
+            try:
+                sandbox = AntiContractSandbox(db, run_id)
+                deviant_draft_id = race_result.get("deviant_draft_id")
+                if deviant_draft_id and deviant_draft_id != winner_id:
+                    # Build compliant draft IDs (all non-deviant drafts)
+                    compliant_ids = [
+                        d["draft_id"] for d in race_result["drafts"]
+                        if d["draft_id"] != deviant_draft_id
+                    ]
+                    # Only evaluate if deviant draft got a score
+                    deviant_score = jury_verdict.get("draft_scores", {}).get(deviant_draft_id, {}).get("trimmed_mean", 0)
+                    if deviant_score > 0 and compliant_ids:
+                        deviation_result = sandbox.evaluate_deviation(
+                            shot_id=shot_id,
+                            deviant_draft_id=deviant_draft_id,
+                            compliant_draft_ids=compliant_ids,
+                            jury_scores=jury_verdict.get("draft_scores", {}),
+                        )
+                        if deviation_result.get("flagged"):
+                            click.echo(
+                                f"  🔓 反契约沙盒: {race_result.get('deviant_persona', '?')} 偏离胜出 "
+                                f"(优势={deviation_result['advantage']:.1f}) → 人类裁决 #{deviation_result.get('human_review_id', '?')}"
+                            )
+            except Exception:
+                pass  # Sandbox evaluation is non-blocking
+
             # Step 6: 阈值判断 → 全部低于阈值则第二轮重写
             if not jury_verdict.get("all_passed_threshold", False) and winner_score < quality_threshold:
+                # D25-R1: 记录 jury 阈值失败
+                try:
+                    retry_budget.record_failure(
+                        shot_id, "below_threshold",
+                        detail=f"score={winner_score:.2f}<threshold={quality_threshold}",
+                    )
+                except CircuitBreakerTriggered:
+                    click.echo(f"  🔴 熔断：此 shot 同类失败 {retry_budget.circuit_breaker_threshold} 次，跳过")
+                    continue
+                except RetryBudgetExhausted as exc:
+                    click.echo(f"  🔴 重试预算耗尽: {exc}，跳过后续 shots")
+                    break
+
                 click.echo(
                     f"    最高分 {winner_score} < 阈值 {quality_threshold}"
                     f" → 触发第二轮重写"
@@ -1360,11 +1468,55 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 )
                 mgr.increment_completed_shots(session_id)
 
+                # ARCH-10: 记录风格偏好 (jury winner persona/model/temperature/style_direction)
+                try:
+                    style_svc = StylePreferenceService(db, project_id, run_id)
+                    winner_draft_row = db.execute(
+                        "SELECT writer_persona, model_ref, temperature, style_direction "
+                        "FROM writing_drafts WHERE draft_id = ?",
+                        (winner_id,),
+                    ).fetchone()
+                    if winner_draft_row:
+                        writer_persona = winner_draft_row["writer_persona"]
+                        style_direction = winner_draft_row["style_direction"] or {
+                            "意象师": "诗意", "节奏师": "克制", "对话师": "生活化", "结构师": "极简"
+                        }.get(writer_persona, "未定义")
+                        style_svc.record_winner_preference(
+                            shot_id=shot_id,
+                            draft_id=winner_id,
+                            persona=writer_persona,
+                            model_ref=winner_draft_row["model_ref"] or "",
+                            temperature=winner_draft_row["temperature"] or 0.8,
+                            style_direction=style_direction,
+                            score=winner_score,
+                        )
+                        click.echo(
+                            f"  🧠 风格偏好: {writer_persona}"
+                            f" ({style_direction}) → 已记录"
+                        )
+                except Exception as exc:
+                    click.echo(f"  ⚠ 风格偏好记录失败: {exc}")
+
+                # D25-R1: 记录成功
+                retry_budget.record_success(shot_id)
+
                 # L4 Gate: Shot-level architect check
                 architect_gate = ArchitectGate(db, run_id, project_id, models_config, providers)
                 l4_result = architect_gate.evaluate_l4(shot_id, winner_id, gate2)
                 if not l4_result["passed"]:
                     click.echo(f"  ⚠ L4 Gate: {l4_result['issues']}")
+                    # D25-R1: 记录 L4 失败
+                    try:
+                        retry_budget.record_failure(
+                            shot_id, "l4_violation",
+                            detail="; ".join(l4_result.get("issues", [])[:3]),
+                        )
+                    except CircuitBreakerTriggered:
+                        click.echo(f"  🔴 熔断：此 shot 同类失败 {retry_budget.circuit_breaker_threshold} 次，跳过")
+                        continue
+                    except RetryBudgetExhausted as exc:
+                        click.echo(f"  🔴 重试预算耗尽: {exc}，跳过后续 shots")
+                        break
                 dh = l4_result.get("dual_helix", {})
                 ca = l4_result.get("closing_audit", {})
                 if dh.get("碎裂") and dh["碎裂"] != ["no_loss_detected"]:

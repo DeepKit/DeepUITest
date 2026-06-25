@@ -1,4 +1,4 @@
-"""Verify all 35 tables, CHECK constraints, UNIQUE constraints, and FK references."""
+"""Verify all 38 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 
-# ── 35 张表名（按 implementation-contract-v0.md §3.3 + §3.4 + ARCH-4/12） ──
+# ── 38 张业务表名（按 implementation-contract-v0.md §3.3 + §3.4 + ARCH-4/5/8/10/11/12 + CREATIVE-1） ──
 
 ALL_TABLES = [
     "projects",
@@ -41,6 +41,9 @@ ALL_TABLES = [
     "writing_outline_evaluations",
     "writing_information_gaps",
     "writing_chapter_rhythms",
+    "writing_volume_rhythms",   # v10: L0.5 卷部节奏 (ARCH-5)
+    "writing_style_preferences", # v12: 风格偏好学习 (ARCH-10)
+    "writing_anti_contract_reviews", # v13: 反契约沙盒 (ARCH-11)
     # v8: 三棵树架构 (ARCH-12)
     "tree_nodes",
     "contract_versions",
@@ -73,6 +76,15 @@ EXPECTED_INDEXES = [
     "idx_architect_gates_level",
     "idx_chapter_rhythms_run",
     "idx_chapter_rhythms_chapter",
+    # v10: L0.5 卷部节奏 (ARCH-5)
+    "idx_volume_rhythms_run",
+    "idx_volume_rhythms_volume",
+    # v12: 风格偏好学习 (ARCH-10)
+    "idx_style_prefs_run",
+    "idx_style_prefs_project",
+    "idx_style_prefs_persona",
+    # v13: 反契约沙盒 (ARCH-11)
+    "idx_anti_contract_reviews_run",
     # v8: 三棵树架构 (ARCH-12)
     "idx_tree_nodes_parent",
     "idx_tree_nodes_lookup",
@@ -87,10 +99,10 @@ EXPECTED_INDEXES = [
 
 
 class TestSchemaTables:
-    """验证所有 35 张表存在"""
+    """验证所有 38 张业务表存在"""
 
     def test_all_tables_exist(self, db):
-        """init_project_db() 应创建全部 35 张业务表"""
+        """init_project_db() 应创建全部 38 张业务表"""
         rows = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_schema_%' ORDER BY name"
         ).fetchall()
@@ -227,6 +239,26 @@ class TestCheckConstraints:
                 "INSERT INTO writing_jury_scores (score_id, draft_id, shot_id, run_id, jury_persona, phase, dimension, score, attempt_id) "
                 "VALUES ('s2', 'd1', 'sh1', 'run_01', '契约官', 'independent', 'literary_quality', -1, 'att1')"
             )
+
+    def test_jury_unexpected_value_dimension_valid(self, db):
+        """CREATIVE-1: writing_jury_scores.dimension 接受 unexpected_value。"""
+        pid = self._insert_project(db)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s1', ?, 'run_01', 'active')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO writing_shots (shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+            "VALUES ('sh1', ?, 'run_01', 'v01.c01', 1, 'pending')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO writing_drafts (draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d1', 'sh1', 'run_01', '意象师', 0, 'test', 'att1')"
+        )
+        db.execute(
+            "INSERT INTO writing_jury_scores (score_id, draft_id, shot_id, run_id, jury_persona, phase, dimension, score, attempt_id) "
+            "VALUES ('s1', 'd1', 'sh1', 'run_01', '创意评审', 'independent', 'unexpected_value', 88, 'att1')"
+        )
 
     def test_revision_operation_invalid(self, db):
         """shot_revisions.operation 只接受 4 种操作"""

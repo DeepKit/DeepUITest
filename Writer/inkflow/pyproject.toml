@@ -1,0 +1,52 @@
+[project]
+name = "inkflow"
+version = "3.6.0"
+description = "InkFlow (墨韵) — fully automated literary text production engine"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "mypy>=1.0",
+    "ruff>=0.4",
+    "black>=24.0",
+]
+
+[project.scripts]
+ink = "inkflow.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]

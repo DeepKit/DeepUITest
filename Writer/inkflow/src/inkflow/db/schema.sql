@@ -1,11 +1,16 @@
--- InkFlow v3.12 — Schema v9 (ARCH-4 L0 全书宪法)
--- SCHEMA_VERSION: 9
--- Generated from implementation-contract-v0.md; aligned 2026-06-24
--- 35 business tables total, ordered by FK dependency
+-- InkFlow v3.12 — Schema v14 (CREATIVE-1 意外价值维度)
+-- SCHEMA_VERSION: 14
+-- Generated from implementation-contract-v0.md; aligned 2026-06-25
+-- 38 business tables total (+ _schema_meta = 39 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
 -- v6→v7: 新增 writing_chapter_rhythms 表 (AI 架构师 L1 章级节奏)
 -- v7→v8: 新增 tree_nodes / contract_versions / story_content / execution_records (ARCH-12 三棵树架构)
 -- v8→v9: 新增 writing_book_constitutions 表 + writing_meta_contract.constitution_version_id (ARCH-4 L0 全书宪法)
+-- v9→v10: 新增 writing_volume_rhythms 表 (ARCH-5 L0.5 卷部节奏)
+-- v10→v11: writing_shots 新增 failure_signature_json (D-25 可靠性闭环)
+-- v11→v12: 新增 writing_style_preferences 表 + writing_drafts 风格字段 (ARCH-10)
+-- v12→v13: 新增 writing_anti_contract_reviews 表 (ARCH-11)
+-- v13→v14: writing_jury_scores.dimension 新增 unexpected_value (CREATIVE-1)
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -209,6 +214,7 @@ CREATE TABLE writing_shots (
     context_injection_status TEXT CHECK (context_injection_status IN ('full', 'warning', 'summary_only')),
     current_revision_id TEXT,
     is_baseline INTEGER NOT NULL DEFAULT 0 CHECK (is_baseline IN (0, 1)),
+    failure_signature_json JSON,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(run_id, shot_index)
@@ -288,6 +294,9 @@ CREATE TABLE writing_drafts (
     gate2_result_json JSON,
     is_usable BOOLEAN NOT NULL DEFAULT 0,
     attempt_id TEXT NOT NULL,
+    model_ref TEXT,
+    temperature REAL DEFAULT 0.8,
+    style_direction TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_drafts_shot ON writing_drafts(shot_id);
@@ -383,7 +392,8 @@ CREATE TABLE writing_jury_scores (
     dimension TEXT NOT NULL CHECK (dimension IN (
         'literary_quality', 'narrative_pacing', 'voice_consistency', 'contract_compliance',
         'motif_compatibility', 'anti_pattern_avoidance', 'hook_transition', 'character_coherence',
-        'reader_engagement', 'forbidden_expression', 'reading_fluency', 'suspense_effectiveness'
+        'reader_engagement', 'forbidden_expression', 'reading_fluency', 'suspense_effectiveness',
+        'unexpected_value'
     )),
     score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
     comment TEXT,
@@ -627,3 +637,54 @@ CREATE TABLE execution_records (
 );
 CREATE INDEX idx_execution_records_node ON execution_records(node_id);
 CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
+
+-- =============================================================================
+-- Layer 15: Volume Rhythms — AI 架构师 L0.5 卷部节奏 (v10, ARCH-5)
+-- =============================================================================
+
+CREATE TABLE writing_volume_rhythms (
+    rhythm_id       TEXT PRIMARY KEY,
+    volume_key      TEXT NOT NULL,
+    project_id      TEXT NOT NULL REFERENCES projects(project_id),
+    run_id          TEXT NOT NULL REFERENCES writing_sessions(run_id),
+    rhythm_json     JSON NOT NULL,
+    validation_json JSON,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_volume_rhythms_run ON writing_volume_rhythms(run_id);
+CREATE INDEX idx_volume_rhythms_volume ON writing_volume_rhythms(volume_key);
+
+-- v12: ARCH-10 风格偏好学习 — 记录 jury winner 的 persona/model/temperature/style_direction
+CREATE TABLE writing_style_preferences (
+    preference_id     TEXT PRIMARY KEY,
+    shot_id           TEXT NOT NULL REFERENCES writing_shots(shot_id),
+    draft_id          TEXT NOT NULL REFERENCES writing_drafts(draft_id),
+    project_id        TEXT NOT NULL REFERENCES projects(project_id),
+    run_id            TEXT NOT NULL REFERENCES writing_sessions(run_id),
+    persona           TEXT NOT NULL,
+    model_ref         TEXT,
+    temperature       REAL NOT NULL DEFAULT 0.8,
+    style_direction   TEXT NOT NULL,
+    score             REAL,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_style_prefs_run ON writing_style_preferences(run_id);
+CREATE INDEX idx_style_prefs_project ON writing_style_preferences(project_id);
+CREATE INDEX idx_style_prefs_persona ON writing_style_preferences(persona);
+
+-- v13: ARCH-11 反契约沙盒 — 记录软约束偏离的人类裁决
+CREATE TABLE writing_anti_contract_reviews (
+    review_id         TEXT PRIMARY KEY,
+    shot_id           TEXT NOT NULL REFERENCES writing_shots(shot_id),
+    run_id            TEXT NOT NULL REFERENCES writing_sessions(run_id),
+    deviant_draft_id  TEXT NOT NULL REFERENCES writing_drafts(draft_id),
+    deviant_score     REAL NOT NULL,
+    compliant_mean    REAL NOT NULL,
+    advantage         REAL NOT NULL,
+    soft_constraints_json JSON NOT NULL,
+    human_decision    TEXT NOT NULL DEFAULT 'pending' CHECK (human_decision IN ('pending', 'accept', 'reject', 'conditional')),
+    human_notes       TEXT,
+    reviewed_at       TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_anti_contract_reviews_run ON writing_anti_contract_reviews(run_id);

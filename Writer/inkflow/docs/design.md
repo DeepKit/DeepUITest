@@ -1,7 +1,7 @@
 # 墨韵 (InkFlow) v3.12: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.12（Schema v9：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24
+> 版本：v3.12（Schema v14：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法、ARCH-5 L0.5 卷部节奏、ARCH-10 风格偏好、ARCH-11 反契约沙盒、CREATIVE-1 意外价值）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v14：2026-06-25
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -594,7 +594,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **35 张业务表**（Schema v9）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表，并保留 D-25 信息差表和 L1 章级节奏表。
+数据库为 **38 张业务表 + `_schema_meta` 元表**（Schema v14）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -618,7 +618,7 @@ writing_context_snaps         -- 上下文快照（版本控制 + 恢复校验�
 writing_fact_anchors          -- 事实锚点（P0 已实现 3 类，设计目标 9 类）
 writing_motif_instances       -- 意象实例追踪
 writing_motif_tracker         -- 意象密度追踪状态
-writing_jury_scores           -- 裁判评分记录（含 suspense_effectiveness）
+writing_jury_scores           -- 裁判评分记录（含 suspense_effectiveness / unexpected_value）
 writing_repair_audit          -- repair 审计日志
 writing_exception_events      -- 异常事件
 writing_deviation_notes       -- 偏差记录
@@ -628,6 +628,9 @@ writing_architect_gates       -- 架构师 gate 记录
 writing_outline_evaluations   -- 大纲评估记录
 writing_information_gaps      -- D-25 信息差生命周期追踪
 writing_chapter_rhythms       -- L1 章级节奏
+writing_volume_rhythms        -- L0.5 卷部节奏
+writing_style_preferences     -- 风格偏好学习
+writing_anti_contract_reviews -- 反契约沙盒裁决
 
 -- Schema v8 新增（三棵树架构 ARCH-12）
 tree_nodes                    -- 三棵树骨架（tree_type='contract'/'story'/'execution'）
@@ -664,11 +667,11 @@ execution_records             -- 执行树正文（per-run）
 - `shot_id` = `layer_key + ".s" + zfill(shot_index, 2)` = `v01.c02.s03`
 - 排序：字典序即可（零填充保证）
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v9，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v14，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v9 总计 35 张业务表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v14 总计 38 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。

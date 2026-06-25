@@ -1,9 +1,9 @@
 # InkFlow v3.12 Phase 1 实现契约 v1.2
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 部分 + ARCH-12/13 + ARCH-4）
-> 日期：2026-06-17；最近对齐：2026-06-24
-> 当前范围：DB3 DDL（35 张业务表，Schema v9）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1）
+> 日期：2026-06-17；最近对齐：2026-06-25
+> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v14）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略
 > 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline，按 shot 生成第 2 章。
 
 ---
@@ -170,8 +170,13 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（35 张表，Schema v9）
+## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v14）
 
+> v14 变更（2026-06-25，CREATIVE-1）：`writing_jury_scores.dimension` 新增 `unexpected_value`，用于奖励“意料之外、情理之中”的有效偏离。
+> v13 变更（2026-06-24，ARCH-11）：新增 `writing_anti_contract_reviews` 表，记录反契约沙盒的软约束偏离与人类裁决。
+> v12 变更（2026-06-24，ARCH-10）：新增 `writing_style_preferences` 表，`writing_drafts` 增加 `model_ref` / `temperature` / `style_direction`。
+> v11 变更（2026-06-24，D-25）：`writing_shots` 新增 `failure_signature_json`，配合重试预算和熔断器。
+> v10 变更（2026-06-24，ARCH-5）：新增 `writing_volume_rhythms` 表（L0.5 卷部节奏）。
 > v9 变更（2026-06-24，ARCH-4）：新增 `writing_book_constitutions` 表（L0 全书宪法）+ `writing_meta_contract.constitution_version_id` 指针列。
 > v8 变更（2026-06-21，ARCH-12）：新增 4 张表支持三棵树架构（`tree_nodes` / `contract_versions` / `story_content` / `execution_records`），详见 `design-3tree-architecture.md`。
 
