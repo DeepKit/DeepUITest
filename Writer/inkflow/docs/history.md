@@ -1326,3 +1326,29 @@ CREATIVE-3 从待办移入历史。后续不再继续放宽留白机制，优先
 
 - 目标测试：14 passed, 3 warnings
 - 全量测试：361 passed, 4 warnings
+
+---
+
+## B42 后续章节契约抽取 — 2026-06-25
+
+**目标**：为 VAL-1 后续章节真实运行准备可靠的 `chapter_N_events`，避免第 4 章以后缺少 must_land 事件。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 通用抽取 | 新增 `_extract_chapter_events(outline_text, chapter_number)` |
+| setup 集成 | 自动抽取第一卷第 2-8 章事件，写入 `chapter_2_events` 到 `chapter_8_events` |
+| 兼容 | `_extract_chapter_2_events()` 保留为包装函数 |
+
+### 新增测试
+
+| 测试 | 覆盖 |
+|------|------|
+| `test_extracts_arbitrary_chapter_events` | 可从同一大纲中抽取任意章节事件 |
+| `test_chapter_2_wrapper_uses_generic_extractor` | 旧第 2 章包装函数仍可用 |
+
+### 验证
+
+- 目标测试：2 passed
+- 全量测试：363 passed, 4 warnings

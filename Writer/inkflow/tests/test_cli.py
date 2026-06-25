@@ -6,7 +6,7 @@ import pytest
 from click.testing import CliRunner
 from pathlib import Path
 
-from inkflow.cli import main
+from inkflow.cli import main, _extract_chapter_2_events, _extract_chapter_events
 from inkflow.models.enums import ShotStatus
 
 
@@ -110,6 +110,55 @@ class TestSetup:
     def test_help(self, runner):
         result = runner.invoke(main, ["setup", "--help"])
         assert result.exit_code == 0
+
+
+class TestChapterEventExtraction:
+    """Chapter outline event extraction."""
+
+    def test_extracts_arbitrary_chapter_events(self):
+        outline = """\
+### 第 02 章：绕城
+
+**阿坤线**：第二章事件一。
+继续补充。
+
+**苏然线**：第二章事件二。
+
+### 第 03 章：内江
+
+**白英线**：第三章事件。
+
+### 第 04 章：清场
+
+**韩教授线**：第四章事件一。
+水痕出现。
+
+**阿坤线**：第四章事件二。
+
+### 第 05 章：茶社
+"""
+
+        chapter_4 = _extract_chapter_events(outline, 4)
+
+        assert len(chapter_4) == 2
+        assert chapter_4[0]["shot"] == 1
+        assert chapter_4[0]["pov"] == "韩教授"
+        assert "水痕出现" in chapter_4[0]["event"]
+        assert chapter_4[1]["pov"] == "阿坤"
+
+    def test_chapter_2_wrapper_uses_generic_extractor(self):
+        outline = """\
+### 第 02 章：绕城
+
+**阿坤线**：第二章事件。
+
+### 第 03 章：内江
+"""
+
+        events = _extract_chapter_2_events(outline)
+
+        assert len(events) == 1
+        assert events[0]["pov"] == "阿坤"
 
 
 class TestRun:

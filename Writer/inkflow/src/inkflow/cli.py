@@ -1662,8 +1662,13 @@ def _generate_contract_draft(
     if outline_path.exists():
         outline_text = outline_path.read_text(encoding="utf-8")
 
-    # Extract chapter 2 events
-    chapter_2_events = _extract_chapter_2_events(outline_text)
+    # Extract first-volume chapter events. confirm-contract already accepts
+    # optional chapter_N_events fields; setup should not strand validation at c02.
+    chapter_events_by_number = {
+        chapter_number: _extract_chapter_events(outline_text, chapter_number)
+        for chapter_number in range(2, 9)
+    }
+    chapter_2_events = chapter_events_by_number.get(2, [])
 
     # Detect patterns from chapter 1
     has_sensory = any(w in sample_text for w in ["膝盖", "螺丝刀", "灰", "湿", "保鲜膜", "露水", "茶", "雾"])
@@ -1790,6 +1795,11 @@ def _generate_contract_draft(
         ],
     }
 
+    for chapter_number in range(3, 9):
+        events = chapter_events_by_number.get(chapter_number) or []
+        if events:
+            draft[f"chapter_{chapter_number}_events"] = events
+
     # Write draft
     draft_path.parent.mkdir(parents=True, exist_ok=True)
     yaml_text = _yaml_dump_contract(draft)
@@ -1819,11 +1829,18 @@ def _extract_objects(text: str) -> list[str]:
 
 def _extract_chapter_2_events(outline_text: str) -> list[dict]:
     """Extract chapter 2 must-land events from the outline."""
-    if "第 02 章" not in outline_text:
+    return _extract_chapter_events(outline_text, 2)
+
+
+def _extract_chapter_events(outline_text: str, chapter_number: int) -> list[dict]:
+    """Extract must-land events for a chapter from the outline."""
+    marker = f"第 {chapter_number:02d} 章"
+    if marker not in outline_text:
         return []
 
-    idx = outline_text.find("第 02 章")
-    end = outline_text.find("第 03 章", idx)
+    idx = outline_text.find(marker)
+    next_marker = f"第 {chapter_number + 1:02d} 章"
+    end = outline_text.find(next_marker, idx)
     if end == -1:
         end = idx + 5000
     chapter_text = outline_text[idx:end]

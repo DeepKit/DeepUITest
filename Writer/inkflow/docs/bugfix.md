@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39/B40/B41；开放实现任务见 `../tasks.md`
+> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39/B40/B41/B42；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -347,3 +347,11 @@
 - **影响**: 大纲评估、全书宪法、章级节奏、卷部节奏的模型调用不会进入审计表，导致 VAL-1 的 token/调用统计不完整。
 - **修复**: Schema v16 扩展 `model_attempts.phase`，新增 v15→v16 迁移并补充回归测试，确保所有当前架构/大纲模型调用 phase 可落库。
 - **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `tests/test_db_consistency.py`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/design-evaluation-conclusion.md`
+
+### B42. `setup` 只自动抽取第 2 章事件，VAL-1 后续章节缺契约 ✅ 已修复
+- **严重性**: Important
+- **发现**: VAL-1 真实项目验证前检查
+- **根因**: `_generate_contract_draft()` 只调用 `_extract_chapter_2_events()`，即使真实大纲包含第 4 章及后续章节，`contract-draft.yaml` 也不会自动生成 `chapter_4_events` 等字段。
+- **影响**: `ink run --chapter v01.c04` 会缺少 must_land 事件，退化为默认场景 prompt，污染真实项目验证结果。
+- **修复**: 新增通用 `_extract_chapter_events(outline_text, chapter_number)`，`setup` 自动抽取第一卷第 2-8 章事件；保留 `_extract_chapter_2_events()` 兼容包装并新增测试。
+- **文件**: `src/inkflow/cli.py`, `tests/test_cli.py`
