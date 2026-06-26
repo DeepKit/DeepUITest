@@ -163,3 +163,34 @@ def test_record_model_error_writes_attempt(db):
     assert row["phase"] == "jury_score"
     assert row["model_name"] == "remote-model"
     assert row["error_message"] == "timed out"
+
+
+def test_model_attempt_idempotency_includes_prompt_hash(db):
+    db.execute("INSERT INTO projects (project_id, name) VALUES ('proj_01', '分流')")
+    db.execute(
+        "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+        "VALUES ('s1', 'proj_01', 'run_01', 'active')"
+    )
+    db.execute(
+        "INSERT INTO writing_shots "
+        "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+        "VALUES ('shot_01', 'proj_01', 'run_01', 'v01.c02', 1, 'pending')"
+    )
+    db.commit()
+
+    gen = LocalDefaultGenerator(db)
+    base = {
+        "operation": "jury_score",
+        "persona": "评委_local",
+        "shot_id": "shot_01",
+        "run_id": "run_01",
+    }
+    gen.generate(ModelRequest(prompt="【待评文本】\n文本一", **base))
+    gen.generate(ModelRequest(prompt="【待评文本】\n文本二", **base))
+    gen.generate(ModelRequest(prompt="【待评文本】\n文本二", **base))
+
+    row = db.execute(
+        "SELECT COUNT(*) AS cnt FROM model_attempts "
+        "WHERE shot_id = 'shot_01' AND phase = 'jury_score'"
+    ).fetchone()
+    assert row["cnt"] == 2

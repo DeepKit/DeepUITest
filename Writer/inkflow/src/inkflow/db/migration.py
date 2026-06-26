@@ -19,6 +19,31 @@ SCHEMA_VERSION = 17
 # 按 from_version 升序排列
 _MIGRATIONS: list[tuple[int, int, object]] = []
 
+_JURY_SCORE_DIMENSIONS = (
+    "literary_quality",
+    "narrative_pacing",
+    "voice_consistency",
+    "contract_compliance",
+    "motif_compatibility",
+    "anti_pattern_avoidance",
+    "hook_transition",
+    "character_coherence",
+    "reader_engagement",
+    "forbidden_expression",
+    "reading_fluency",
+    "suspense_effectiveness",
+    "unexpected_value",
+    "hard_rule_compliance",
+    "language_texture",
+    "scene_specificity",
+    "emotional_progression",
+    "character_believability",
+    "dialogue_subtext",
+    "pacing_control",
+    "motif_theme_fit",
+    "chapter_continuity",
+)
+
 
 def clear_migrations() -> None:
     """Clear all registered migrations. Used by tests to ensure isolation."""
@@ -82,7 +107,10 @@ def migrate_if_needed(conn: sqlite3.Connection) -> list[str]:
     """
     current = get_schema_version(conn)
     if current >= SCHEMA_VERSION:
-        return []
+        repairs = _repair_schema_health(conn)
+        if repairs:
+            conn.commit()
+        return repairs
 
     executed = []
     # 构建迁移图：from_ver → (to_ver, fn)
@@ -115,8 +143,88 @@ def migrate_if_needed(conn: sqlite3.Connection) -> list[str]:
             executed.append(f"v{current} → v{to_ver}: FAILED ({e})")
             break
 
+    if current >= SCHEMA_VERSION:
+        executed.extend(_repair_schema_health(conn))
+
     conn.commit()
     return executed
+
+
+def _repair_schema_health(conn: sqlite3.Connection) -> list[str]:
+    """Repair schema drift that version numbers alone cannot detect."""
+    repairs: list[str] = []
+    if _jury_scores_schema_needs_repair(conn):
+        try:
+            conn.execute("SAVEPOINT repair_jury_scores_schema")
+            _rebuild_writing_jury_scores(conn)
+            conn.execute("RELEASE SAVEPOINT repair_jury_scores_schema")
+            repairs.append(
+                "schema health: rebuilt writing_jury_scores for v17 jury dimensions"
+            )
+        except Exception as e:
+            conn.execute("ROLLBACK TO SAVEPOINT repair_jury_scores_schema")
+            repairs.append(f"schema health: FAILED rebuilding writing_jury_scores ({e})")
+    return repairs
+
+
+def _jury_scores_schema_needs_repair(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'writing_jury_scores'"
+    ).fetchone()
+    if not row or not row[0]:
+        return False
+    sql = row[0]
+    required = (
+        "'hard_rule_compliance'",
+        "'language_texture'",
+        "'emotional_progression'",
+        "'dialogue_subtext'",
+        "'motif_theme_fit'",
+        "'chapter_continuity'",
+    )
+    return not all(token in sql for token in required)
+
+
+def _create_writing_jury_scores_table(conn: sqlite3.Connection) -> None:
+    dimensions = ", ".join(f"'{dimension}'" for dimension in _JURY_SCORE_DIMENSIONS)
+    conn.execute(
+        "CREATE TABLE writing_jury_scores ("
+        "score_id TEXT PRIMARY KEY, "
+        "draft_id TEXT NOT NULL REFERENCES writing_drafts(draft_id), "
+        "shot_id TEXT NOT NULL REFERENCES writing_shots(shot_id), "
+        "run_id TEXT NOT NULL REFERENCES writing_sessions(run_id), "
+        "jury_persona TEXT NOT NULL, "
+        "phase TEXT NOT NULL CHECK (phase IN ("
+        "'independent', 'comparative', 'final'"
+        ")), "
+        f"dimension TEXT NOT NULL CHECK (dimension IN ({dimensions})), "
+        "score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100), "
+        "comment TEXT, "
+        "attempt_id TEXT NOT NULL, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(shot_id, draft_id, jury_persona, phase, dimension, attempt_id)"
+        ")"
+    )
+
+
+def _rebuild_writing_jury_scores(conn: sqlite3.Connection) -> None:
+    temp_table = f"writing_jury_scores_rebuild_{abs(id(conn))}"
+    conn.execute(f"ALTER TABLE writing_jury_scores RENAME TO {temp_table}")
+    _create_writing_jury_scores_table(conn)
+    conn.execute(
+        "INSERT INTO writing_jury_scores ("
+        "score_id, draft_id, shot_id, run_id, jury_persona, phase, dimension, "
+        "score, comment, attempt_id, created_at"
+        ") SELECT "
+        "score_id, draft_id, shot_id, run_id, jury_persona, phase, dimension, "
+        "score, comment, attempt_id, created_at "
+        f"FROM {temp_table}"
+    )
+    conn.execute(f"DROP TABLE {temp_table}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_jury_scores_run "
+        "ON writing_jury_scores(run_id)"
+    )
 
 
 # ═══════════════════════════════════════════════════════

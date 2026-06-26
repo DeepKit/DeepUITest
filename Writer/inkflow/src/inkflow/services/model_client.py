@@ -518,10 +518,13 @@ def _record_model_attempt(
     response: ModelResponse,
     phase: str,
 ) -> None:
-    idempotency_key = hashlib.md5(
-        f"{request.shot_id}:{request.persona}:{request.run_id}:{phase}:{response.model}".encode()
-    ).hexdigest()[:32]
     request_hash = hashlib.md5(request.prompt.encode()).hexdigest()[:16]
+    idempotency_key = hashlib.md5(
+        (
+            f"{request.shot_id}:{request.persona}:{request.run_id}:"
+            f"{phase}:{response.model}:{request_hash}"
+        ).encode()
+    ).hexdigest()[:32]
     response_hash = hashlib.md5(response.text.encode()).hexdigest()[:16]
 
     try:
@@ -551,10 +554,13 @@ def _record_model_error(
     model_name: str,
     error_message: str,
 ) -> None:
-    idempotency_key = hashlib.md5(
-        f"{request.shot_id}:{request.persona}:{request.run_id}:{request.operation}:{model_name}:error".encode()
-    ).hexdigest()[:32]
     request_hash = hashlib.md5(request.prompt.encode()).hexdigest()[:16]
+    idempotency_key = hashlib.md5(
+        (
+            f"{request.shot_id}:{request.persona}:{request.run_id}:"
+            f"{request.operation}:{model_name}:{request_hash}:error"
+        ).encode()
+    ).hexdigest()[:32]
 
     try:
         db.execute(

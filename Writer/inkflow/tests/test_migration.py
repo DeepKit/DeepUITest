@@ -56,6 +56,47 @@ class TestVersionTracking:
         # 无迁移路径时不做任何操作，版本保留为 0
         assert get_schema_version(db) == 0
 
+    def test_current_version_repairs_stale_jury_dimension_check(self, tmp_dir):
+        """版本号已是当前值时，也要修复滞后的 jury 维度 CHECK 约束。"""
+        conn = sqlite3.connect(str(tmp_dir / "stale_jury_check.db"))
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, SCHEMA_VERSION)
+            conn.execute(
+                "CREATE TABLE writing_jury_scores ("
+                "score_id TEXT PRIMARY KEY, "
+                "draft_id TEXT NOT NULL, "
+                "shot_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL, "
+                "jury_persona TEXT NOT NULL, "
+                "phase TEXT NOT NULL CHECK (phase IN ('independent', 'comparative', 'final')), "
+                "dimension TEXT NOT NULL CHECK (dimension IN ("
+                "'literary_quality', 'narrative_pacing', 'voice_consistency', "
+                "'contract_compliance', 'motif_compatibility', 'anti_pattern_avoidance', "
+                "'hook_transition', 'character_coherence', 'reader_engagement', "
+                "'forbidden_expression', 'reading_fluency', 'suspense_effectiveness', "
+                "'unexpected_value'"
+                ")), "
+                "score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100), "
+                "comment TEXT, "
+                "attempt_id TEXT NOT NULL, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+                "UNIQUE(shot_id, draft_id, jury_persona, phase, dimension, attempt_id)"
+                ")"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert any("rebuilt writing_jury_scores" in item for item in result)
+            conn.execute(
+                "INSERT INTO writing_jury_scores "
+                "(score_id, draft_id, shot_id, run_id, jury_persona, phase, dimension, score, attempt_id) "
+                "VALUES ('s1', 'd1', 'sh1', 'run1', '规则裁判', 'independent', "
+                "'hard_rule_compliance', 90, 'att1')"
+            )
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""
