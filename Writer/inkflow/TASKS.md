@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-26
-Status: v3.14；Schema v16；38 张业务表 + `_schema_meta` 元表；最近全量验证：`379 passed, 4 warnings`
+Status: v3.14；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`382 passed, 4 warnings`
 
 ---
 
@@ -13,6 +13,8 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 当前结论：工程链路已达到“受控生产试跑”标准；本地兜底可用于验证 gate、恢复和归因。正式批量生产仍需要远端 writer/jury 可用性验证与人工审稿确认，本地兜底文本不能作为最终文学质量基线。
 
+2026-06-26 的 JURY-V5 设计落地：裁判流程调整为“硬规则裁判 → 类型裁判 → 文学 9 维裁判”。硬规则不进入文学平均分；悬疑、留白、章末钩子等类型分只在 shot 具备对应职责时启用；文学 9 维按 10 分制语义配置、内部 0-100 存储，去掉最高/最低后取均分。默认要求至少 2 个候选稿超过 Y，否则触发单线返写。
+
 设计审阅结论不变：当前方向 near-optimal，不建议推倒重做。下一步应避免继续堆检查项，重点把“约束保下限 + 留白出上限 + 评审学偏好”跑成可验证闭环。
 
 ---
@@ -21,13 +23,13 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 文档 | 位置 | 状态 |
 |------|------|:---:|
-| 技术设计权威 | `docs/design.md` | ✅ v3.12 / Schema v16 |
-| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v16 / 38 业务表 |
+| 技术设计权威 | `docs/design.md` | ✅ v3.14 / Schema v17 |
+| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v17 / 38 业务表 |
 | 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | ✅ |
 | 8 层层级 | `docs/design-8layer-hierarchy.md` | ✅ |
 | 悬疑引擎 | `docs/suspense-engine.md` | ✅ 已实施核心闭环，待实战验证 |
 | 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-26 归档 |
-| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B43/B44/B45/B46/B47/B48 |
+| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B43/B44/B45/B46/B47/B48/B49 |
 
 ---
 
@@ -48,6 +50,7 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 | 文档与测试对齐 | B37/B38/B39/B40/B41/B42：Schema v16 / 表数 / 索引 / CREATIVE 测试、配置兼容、模型审计、后续章节契约抽取与权威契约口径同步 |
 | VAL-1 工程补齐 | B43/B44/B45/B46：L3 章末钩子硬 gate、session 恢复/失败归因、章节重写入口、模型错误审计与本地 jury 运行开关 |
 | QUAL-1 / VAL-2 修复 | B47/B48：本地 jury 路由修复、本地写手按 opening/POV/must_land 生成；真实《分流》v01.c02 复跑 Green 2 / Yellow 2 / Red 0，L3 通过 |
+| JURY-V5 分层裁判 | B49：硬规则先过、类型分按职责启用、文学 9 维 trimmed mean、至少 2 个过线稿、单线返写、Schema v17 维度扩展 |
 
 ---
 
@@ -57,6 +60,7 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 |--------|----|------|----------|----------|
 | 高 | REMOTE-PROD | 远端 writer/jury 生产验证 | 待执行 | 使用真实供应商模型跑通 v01.c02 单章，确认无订阅/超时会被审计并快速失败，远端输出不低于本地兜底 gate 结果 |
 | 高 | CHAPTER-2-REVIEW | 第 2 章人工审稿定稿 | 待执行 | 人工审读本轮 Green/Yellow 稿件，记录是否可作为第二章重写基线；不合格则走有目标的 rewrite，而不是继续堆 gate |
+| 高 | JURY-V5-REAL | 分层裁判真实项目验证 | 待执行 | 用《分流》v01.c02 复跑，记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
 | 中 | JURY-REMOTE | 远端 Jury 配置治理 | 待执行 | 明确 `.models` 中远端 jury 可用性；无有效订阅时不应阻塞生产链路 |
 | 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |
 | 中 | CREATIVE-3-EVAL | 留白创意评审效果评估 | 已有 `creative_review=True` 评分路径，待真实文本验证 | 比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好 |

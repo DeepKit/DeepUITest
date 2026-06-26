@@ -475,7 +475,8 @@ class TestJuryV4Config:
         """空配置 → 使用本地评委，避免生产链路默认依赖外部供应商。"""
         jury = JuryService(setup_run, "run_01", {})
         assert jury.jury_models == ["local-default"]
-        assert len(jury.dimensions) == 5  # v6: 4 dims + unexpected_value (CREATIVE-1)
+        assert len(jury.dimensions) == 10  # v5: hard-rule + literary 9 dims
+        assert len(jury.literary_dimensions) == 9
 
     def test_default_quality_threshold(self, setup_run):
         jury = JuryService(setup_run, "run_01", {})

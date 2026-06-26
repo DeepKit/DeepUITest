@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26 VAL/QUAL 修复：新增 B43/B44/B45/B46/B47/B48；开放实现任务见 `../tasks.md`
+> 2026-06-26 VAL/QUAL/JURY 修复：新增 B43/B44/B45/B46/B47/B48/B49；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -407,3 +407,11 @@
 - **影响**: 本地兜底无法验证真实章节契约，repair/resume/gate 虽然可跑完，但输出必然偏离 must_land，导致第 2 章全红。
 - **修复**: 本地写手解析 prompt opening、POV 和 beats，并按这些要点组织正文；`jury_score` operation 改为 JSON 启发式评分；最后 shot 保留未完成动作式章末钩子。
 - **文件**: `src/inkflow/services/model_client.py`, `tests/test_model_client.py`
+
+### B49. 裁判混合硬规则、类型职责和文学评分，平均分语义不清 ✅ 已修复
+- **严重性**: Important
+- **发现**: 生产线设计复盘中确认：悬疑/留白不是每个 shot 都需要；硬规则也不能和文学表现混合平均，否则可能去掉最低分时把硬事实错误一起丢掉。
+- **根因**: 旧 Jury 将契约、悬疑、意外价值、流畅度等混在同一分组中计算 winner；CREATIVE-3 通过 `creative_score` 调权，但没有明确“硬规则先过、类型职责按需启用、文学 9 维 trimmed mean”的层级。
+- **影响**: 普通 shot 可能被不需要的悬疑/留白维度误伤；硬规则问题可能被文学高分掩盖；候选稿只有一个过线时仍可能推进，存在“矮子里拔高个”风险。
+- **修复**: Schema v17 扩展 jury 维度；`JuryService` 改为硬规则 → 类型职责 → 文学 9 维；文学分只对 9 个文学维度去最高/最低取均分；默认至少 2 个候选稿过阈值；CLI 支持已有过线稿时单线返写。
+- **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/services/writer_dispatcher.py`, `src/inkflow/cli.py`, `src/inkflow/models/enums.py`, `src/inkflow/utils/config.py`, `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `tests/test_jury_scoring.py`, `tests/test_utils.py`, `tests/test_schema.py`

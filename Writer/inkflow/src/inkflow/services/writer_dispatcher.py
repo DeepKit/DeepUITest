@@ -391,6 +391,74 @@ class WriterDispatcher:
             "blank_shot": blank_shot,
         }
 
+    def dispatch_single_persona_track(
+        self,
+        shot_id: str,
+        base_prompt: str,
+        persona_name: str,
+        *,
+        attempt: int = 2,
+        deviation_budget: float | None = None,
+        temperature_cap: float = 1.2,
+        blank_shot: bool = False,
+    ) -> dict:
+        """单线返写：只重写一个 persona，用于补足第 2 个过线稿。"""
+        if persona_name not in QUAD_TRACK_PERSONAS:
+            persona_name = "结构师"
+        persona_config = QUAD_TRACK_PERSONAS[persona_name]
+        chain = resolve_model_chain("writer", self.models_config)
+        primary_ref = chain[0] if chain else "local-default"
+
+        prompt_variant = base_prompt + persona_config["style_injection"]
+        base_params = get_model_params(
+            parse_model_ref(primary_ref)[1], self.models_config,
+        )
+        base_temp = base_params.get("temperature", 0.8)
+        effective_temp = min(temperature_cap, base_temp * persona_config["temperature_multiplier"])
+        if deviation_budget is not None:
+            budget_adjustment = (deviation_budget - 0.5) * 0.1
+            effective_temp = min(temperature_cap, max(0.3, effective_temp + budget_adjustment))
+
+        draft_data = self._generate_persona_draft(
+            shot_id, persona_name, persona_config, primary_ref,
+            prompt_variant, effective_temp, attempt,
+        )
+        draft_id = generate_ulid()
+        attempt_id = generate_ulid()
+        self.db.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, "
+            "text, self_note, is_usable, attempt_id, model_ref, temperature, style_direction) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
+            (
+                draft_id, shot_id, self.run_id,
+                draft_data["persona"],
+                0,
+                draft_data["text"],
+                draft_data["self_note"],
+                attempt_id,
+                draft_data.get("model_ref", ""),
+                draft_data.get("temperature", 0.8),
+                draft_data.get("style_direction", ""),
+            ),
+        )
+        self.db.commit()
+        return {
+            "shot_id": shot_id,
+            "drafts": [{
+                "draft_id": draft_id,
+                "persona": draft_data["persona"],
+                "style_direction": draft_data["style_direction"],
+                "temperature": draft_data["temperature"],
+                "model_ref": draft_data["model_ref"],
+                "text": draft_data["text"],
+                "self_note": draft_data["self_note"],
+            }],
+            "attempt": attempt,
+            "single_line_rewrite": True,
+            "blank_shot": blank_shot,
+        }
+
     def _generate_persona_draft(
         self,
         shot_id: str,

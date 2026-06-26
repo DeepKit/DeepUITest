@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.12: 全自动文学文本生产引擎 — 技术设计
+# 墨韵 (InkFlow) v3.14: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.12（Schema v16：D-25 信息差、ARCH-12 三棵树、ARCH-13 正文真相源、ARCH-4 L0 全书宪法、ARCH-5 L0.5 卷部节奏、ARCH-10 风格偏好、ARCH-11 反契约沙盒、CREATIVE-1 意外价值、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审、B41 模型审计 phase）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25
+> 版本：v3.14（Schema v17：分层裁判 hard/type/literary 维度；保留 D-25、三棵树、正文真相源、L0/L0.5/L1 节奏、风格偏好、反契约沙盒、CREATIVE-1/2/3、模型审计 phase）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -70,6 +70,47 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 5. 红灯不留空，必须生成 best-failed-candidate 占位正文，保证后续上下文连续。
 6. 质量优先级为：文学质感 > 人物声音 > 情节契约 > 节奏 > 成本速度。
 7. Token 成本不作为当前架构约束。
+
+---
+
+## 1.1 v3.14 分层裁判生产线
+
+生产线保留原规则引擎，并把规则引擎前置为硬门槛：
+
+```text
+契约读取
+  → 悬疑蓝图 / 留白策略
+  → 大纲提示词
+  → 大纲 A/B 串行生成
+  → 大纲规则裁判 + LLM 大纲裁判
+  → Shot 提示词
+  → X 个写手串行生成正文（X=2-5，配置决定）
+  → DraftRuleGate 机械预检
+  → 硬规则裁判（规则 + 可选 LLM）
+  → 类型裁判（仅有类型职责的 shot 启用：悬疑 / 留白 / 章末钩子等）
+  → 文学 9 维裁判（去 1 个最高、1 个最低，剩余 7 个求均分）
+  → 至少 2 个候选稿达到阈值 Y
+  → 文章裁判选优，写入软封版
+  → L4 Shot Gate
+  → 章节裁判 / L3 Chapter Gate
+  → 正式封版
+```
+
+三层裁判职责：
+
+| 层 | 执行者 | 职责 | 失败动作 |
+|----|--------|------|----------|
+| 硬规则裁判 | 规则引擎 + 可选 LLM | 硬事实、must_land、POV、禁写、提前揭示、提示词残留、空文/重复 | 定向重写，不进入文学评分 |
+| 类型裁判 | LLM / 本地 cheap jury | 只对有类型职责的 shot 打分：悬疑、留白、章末钩子等 | 类型不合格则定向重写 |
+| 文学裁判 | LLM / 本地 cheap jury | 语言质感、流畅、具体度、情绪、人物、潜台词、节奏、意象、章节衔接 | 低于 Y 或过线稿少于 2 个则重写 |
+
+默认文学 9 维：
+
+`language_texture` / `reading_fluency` / `scene_specificity` / `emotional_progression` / `character_believability` / `dialogue_subtext` / `pacing_control` / `motif_theme_fit` / `chapter_continuity`
+
+类型维度不默认启用：悬疑 shot 才打 `suspense_effectiveness`，留白/创意入口才打 `unexpected_value`，章末/转折 shot 才打 `hook_transition`。普通 shot 不因“没有悬疑”或“没有留白高光”扣分。
+
+阈值内部统一为 0-100；配置允许写 10 分制（如 `8.5` 自动换算为 `85`）。默认要求至少 2 个候选稿达到 Y，避免“矮子里拔高个”。
 
 ---
 

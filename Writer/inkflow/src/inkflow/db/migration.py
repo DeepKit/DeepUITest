@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -965,42 +965,45 @@ def _migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+
+@register_migration(16, 17)
+def _migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
+    """v17: 分层裁判维度 — 扩展 writing_jury_scores.dimension CHECK 约束。"""
     try:
-        conn.execute("ALTER TABLE model_attempts RENAME TO model_attempts_v14")
+        conn.execute("ALTER TABLE writing_jury_scores RENAME TO writing_jury_scores_v16")
         conn.execute(
-            "CREATE TABLE model_attempts ("
-            "attempt_id TEXT PRIMARY KEY, "
+            "CREATE TABLE writing_jury_scores ("
+            "score_id TEXT PRIMARY KEY, "
+            "draft_id TEXT NOT NULL REFERENCES writing_drafts(draft_id), "
+            "shot_id TEXT NOT NULL REFERENCES writing_shots(shot_id), "
             "run_id TEXT NOT NULL REFERENCES writing_sessions(run_id), "
-            "shot_id TEXT REFERENCES writing_shots(shot_id), "
+            "jury_persona TEXT NOT NULL, "
             "phase TEXT NOT NULL CHECK (phase IN ("
-            "'write_generate', 'jury_score', 'fact_extract', 'repair', "
-            "'motif_task', 'contract_compile', 'prompt_compile', 'polish'"
+            "'independent', 'comparative', 'final'"
             ")), "
-            "model_name TEXT NOT NULL, "
-            "idempotency_key TEXT NOT NULL, "
-            "request_prompt_hash TEXT NOT NULL, "
-            "response_text_hash TEXT, "
-            "usage_prompt_tokens INTEGER DEFAULT 0, "
-            "usage_completion_tokens INTEGER DEFAULT 0, "
-            "usage_total_tokens INTEGER DEFAULT 0, "
-            "error_message TEXT, "
+            "dimension TEXT NOT NULL CHECK (dimension IN ("
+            "'literary_quality', 'narrative_pacing', 'voice_consistency', "
+            "'contract_compliance', 'motif_compatibility', 'anti_pattern_avoidance', "
+            "'hook_transition', 'character_coherence', 'reader_engagement', "
+            "'forbidden_expression', 'reading_fluency', 'suspense_effectiveness', "
+            "'unexpected_value', 'hard_rule_compliance', 'language_texture', "
+            "'scene_specificity', 'emotional_progression', 'character_believability', "
+            "'dialogue_subtext', 'pacing_control', 'motif_theme_fit', 'chapter_continuity'"
+            ")), "
+            "score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100), "
+            "comment TEXT, "
+            "attempt_id TEXT NOT NULL, "
             "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
-            "UNIQUE(idempotency_key)"
+            "UNIQUE(shot_id, draft_id, jury_persona, phase, dimension, attempt_id)"
             ")"
         )
         conn.execute(
-            "INSERT INTO model_attempts ("
-            "attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
-            "request_prompt_hash, response_text_hash, usage_prompt_tokens, "
-            "usage_completion_tokens, usage_total_tokens, error_message, created_at"
-            ") SELECT "
-            "attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
-            "request_prompt_hash, response_text_hash, usage_prompt_tokens, "
-            "usage_completion_tokens, usage_total_tokens, error_message, created_at "
-            "FROM model_attempts_v14"
+            "INSERT INTO writing_jury_scores SELECT * FROM writing_jury_scores_v16"
         )
-        conn.execute("DROP TABLE model_attempts_v14")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_model_attempts_run ON model_attempts(run_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_model_attempts_shot ON model_attempts(shot_id)")
+        conn.execute("DROP TABLE writing_jury_scores_v16")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jury_scores_run "
+            "ON writing_jury_scores(run_id)"
+        )
     except sqlite3.OperationalError:
         pass

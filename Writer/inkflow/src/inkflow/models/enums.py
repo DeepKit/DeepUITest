@@ -153,22 +153,56 @@ class JuryDimension(str, Enum):
     READING_FLUENCY = "reading_fluency"
 
 
-# ── v4 九评委常量 ──
+# ── v5 分层裁判常量 ──
 
-JURY_V4_DIMENSIONS = [
-    "contract_compliance",       # 契约履约
-    "forbidden_expression",      # 禁用表达 + AI味
-    "reading_fluency",           # 阅读流畅
-    "suspense_effectiveness",    # 悬疑效果 (D-25)
-    "unexpected_value",          # 意外价值 (CREATIVE-1)
+# 第一层：硬规则裁判。它决定能不能进入文学评分，不参与文学均分。
+JURY_HARD_RULE_DIMENSIONS = [
+    "hard_rule_compliance",
 ]
 
+# 第三层：文学 9 维。通过硬规则和类型职责后，按 9 个维度打分，
+# 去掉最高/最低后取平均作为 winner 主分。
+JURY_LITERARY_DIMENSIONS = [
+    "language_texture",          # 语言质感
+    "reading_fluency",           # 阅读流畅
+    "scene_specificity",         # 场景具体度
+    "emotional_progression",     # 情绪推进
+    "character_believability",   # 人物可信度
+    "dialogue_subtext",          # 对话/潜台词
+    "pacing_control",            # 节奏控制
+    "motif_theme_fit",           # 意象/主题贴合
+    "chapter_continuity",        # 章节衔接感
+]
+
+# 第二层：类型职责裁判。只有 shot_profile 启用对应职责时才打分。
+JURY_TYPE_DIMENSIONS = {
+    "suspense": ["suspense_effectiveness"],
+    "blank_space": ["unexpected_value"],
+    "creative_entry": ["unexpected_value"],
+    "hook": ["hook_transition"],
+}
+
+JURY_V5_DIMENSIONS = JURY_HARD_RULE_DIMENSIONS + JURY_LITERARY_DIMENSIONS
+
+# 向后兼容：旧代码仍引用 JURY_V4_DIMENSIONS；运行时含义已升级为 v5 默认维度。
+JURY_V4_DIMENSIONS = JURY_V5_DIMENSIONS
+
 JURY_V4_DIMENSION_DISPLAY = {
+    "hard_rule_compliance": "硬规则履约",
     "contract_compliance": "契约履约",
     "forbidden_expression": "禁用表达",
+    "language_texture": "语言质感",
     "reading_fluency": "阅读流畅",
+    "scene_specificity": "场景具体度",
+    "emotional_progression": "情绪推进",
+    "character_believability": "人物可信度",
+    "dialogue_subtext": "对话/潜台词",
+    "pacing_control": "节奏控制",
+    "motif_theme_fit": "意象/主题贴合",
+    "chapter_continuity": "章节衔接感",
     "suspense_effectiveness": "悬疑效果",
     "unexpected_value": "意外价值",
+    "hook_transition": "钩子/信息释放",
 }
 
 JURY_V4_MODELS_DEFAULT = [

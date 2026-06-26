@@ -206,18 +206,38 @@ def get_jury_config(models_config: dict) -> dict:
     P0 default is local-default for production stability. Projects that need
     external jury models must opt in via jury_config.models.
     """
-    from inkflow.models.enums import JURY_V4_DIMENSIONS
+    from inkflow.models.enums import (
+        JURY_HARD_RULE_DIMENSIONS,
+        JURY_LITERARY_DIMENSIONS,
+    )
 
     jury_cfg = models_config.get("jury_config", {})
-    dimensions = _merge_required_dimensions(
-        jury_cfg.get("dimensions"),
-        JURY_V4_DIMENSIONS,
+    hard_dimensions = _merge_required_dimensions(
+        jury_cfg.get("hard_dimensions"),
+        JURY_HARD_RULE_DIMENSIONS,
+    )
+    literary_dimensions = _merge_required_dimensions(
+        jury_cfg.get("literary_dimensions"),
+        JURY_LITERARY_DIMENSIONS,
     )
     return {
         "models": jury_cfg.get("models") or ["local-default"],
-        "dimensions": dimensions,
-        "quality_threshold": jury_cfg.get("quality_threshold", 80),
-        "outline_threshold": jury_cfg.get("outline_threshold", 70),
+        "hard_dimensions": hard_dimensions,
+        "literary_dimensions": literary_dimensions,
+        "dimensions": hard_dimensions + literary_dimensions,
+        "quality_threshold": _normalize_score_threshold(
+            jury_cfg.get("quality_threshold", 80),
+        ),
+        "outline_threshold": _normalize_score_threshold(
+            jury_cfg.get("outline_threshold", 70),
+        ),
+        "hard_rule_threshold": _normalize_score_threshold(
+            jury_cfg.get("hard_rule_threshold", 80),
+        ),
+        "type_threshold": _normalize_score_threshold(
+            jury_cfg.get("type_threshold", 80),
+        ),
+        "min_passing_drafts": int(jury_cfg.get("min_passing_drafts", 2)),
     }
 
 
@@ -244,6 +264,17 @@ def get_quality_threshold(models_config: dict) -> int:
 def get_outline_threshold(models_config: dict) -> int:
     """获取大纲阈值（默认 70）。"""
     return get_jury_config(models_config)["outline_threshold"]
+
+
+def _normalize_score_threshold(value: object, default: int = 80) -> int:
+    """Accept either 0-100 scores or user-facing 0-10 thresholds."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    if 0 < numeric <= 10:
+        numeric *= 10
+    return max(0, min(100, int(round(numeric))))
 
 
 def _infer_supplier(model_name: str, models_config: dict) -> str:

@@ -1,9 +1,9 @@
 # InkFlow 悬疑引擎 v1 — 技术设计
 
-> 版本：v1.0
+> 版本：v1.1
 > 创建：2026-06-22
 > 基于：9 位专家评估（第一轮 4 位 + 第二轮 5 位）
-> 状态：部分实施。已落地：Jury 第四维度、`suspense_blueprint` prompt 注入、`writing_information_gaps`、`information_gap_tracker.py`、`suspense_profile.py`。待完成：全局重试预算、熔断器、悬疑 benchmark。
+> 状态：已实施核心闭环。v1.1 更新：悬疑从“默认固定维度”调整为 shot 类型职责；只有悬疑/章末/信息差 shot 才启用 `suspense_effectiveness` / `hook_transition` 类型裁判。普通 shot 不因没有悬疑而扣分。
 
 ---
 
@@ -85,7 +85,7 @@
 
 ---
 
-## 2. 架构：Jury 第四维度 + 悬疑蓝图
+## 2. 架构：类型职责裁判 + 悬疑蓝图
 
 ### 2.1 不新建独立 Extractor
 
@@ -102,16 +102,17 @@
     → 不新增 pipeline 阶段
 ```
 
-### 2.2 Jury 第四维度
+### 2.2 悬疑类型维度
 
-Jury 从 3 模型 × 3 维度 = 9 分，扩展为 3 模型 × 4 维度 = 12 分：
+v17 后，悬疑不再作为每个 shot 的默认文学维度。悬疑只在 `shot_profile.types` 含 `suspense` 时启用：
 
-| 维度 | 评估内容 | 评估方式 |
-|------|---------|---------|
-| `contract_compliance` | 是否遵守契约 | LLM 评分 |
-| `forbidden_expression` | 是否避免 AI 味 | LLM 评分 |
-| `reading_fluency` | 文学质感 | LLM 评分 |
-| `suspense_effectiveness` | **悬疑效果** | **LLM 评分** |
+| 类型职责 | 维度 | 评估内容 |
+|----------|------|----------|
+| `suspense` | `suspense_effectiveness` | 信息差、时间差、后果差是否产生张力 |
+| `hook` | `hook_transition` | 章末/转折是否留下有效牵引 |
+| `blank_space` / `creative_entry` | `unexpected_value` | 留白或创意偏离是否有价值 |
+
+类型维度是通过门槛，不进入文学 9 维 trimmed mean。类型职责未启用时，不打该类型分，也不扣分。
 
 `suspense_effectiveness` 评分 prompt：
 

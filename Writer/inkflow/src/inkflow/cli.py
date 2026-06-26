@@ -1433,6 +1433,15 @@ def _run_project_inner(
                 else:
                     compiled_prompt = f"请为场景 {shot_id} 写一段小说正文。"
 
+            shot_type_roles = []
+            if active_gaps:
+                shot_type_roles.append("suspense")
+            if is_blank_shot:
+                shot_type_roles.append("blank_space")
+            if i == len(shot_ids) - 1:
+                shot_type_roles.append("hook")
+            shot_profile = {"types": shot_type_roles}
+
             # Step 3: 四线赛马 → 4 份草稿 (ARCH-8)
             click.echo(f"  ✍️ 四线赛马（意象师/节奏师/对话师/结构师）...")
             race_result = writer_dispatcher.dispatch_quad_track(
@@ -1496,6 +1505,7 @@ def _run_project_inner(
                 meta_contract=layers,
                 quality_threshold=quality_threshold,
                 creative_review=is_blank_shot,
+                shot_profile=shot_profile,
             )
 
             winner_id = jury_verdict.get("winner_draft_id")
@@ -1530,7 +1540,13 @@ def _run_project_inner(
                 pass  # Sandbox evaluation is non-blocking
 
             # Step 6: 阈值判断 → 全部低于阈值则第二轮重写
-            if not jury_verdict.get("all_passed_threshold", False) and winner_score < quality_threshold:
+            if (
+                not jury_verdict.get("all_passed_threshold", False)
+                and (
+                    winner_score < quality_threshold
+                    or jury_verdict.get("passing_count", 0) < jury_verdict.get("min_passing_drafts", 2)
+                )
+            ):
                 # D25-R1: 记录 jury 阈值失败
                 try:
                     retry_budget.record_failure(
@@ -1545,15 +1561,45 @@ def _run_project_inner(
                     break
 
                 click.echo(
-                    f"    最高分 {winner_score} < 阈值 {quality_threshold}"
+                    f"    最高分 {winner_score} / 过线稿 {jury_verdict.get('passing_count', 0)}"
+                    f"<{jury_verdict.get('min_passing_drafts', 2)} / 阈值 {quality_threshold}"
                     f" → 触发第二轮重写"
                 )
-                race_result2 = writer_dispatcher.dispatch_quad_track(
-                    shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
-                    deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
-                    temperature_cap=blank_temp_cap,
-                    blank_shot=is_blank_shot,
-                )
+                draft_score_map = jury_verdict.get("draft_scores", {})
+                passing_draft_ids = [
+                    did for did, ds in draft_score_map.items()
+                    if ds.get("eligible", True)
+                    and ds.get(jury_verdict.get("score_key", "literary_score"), 0) >= quality_threshold
+                ]
+                if passing_draft_ids:
+                    rewrite_candidates = sorted(
+                        draft_score_map.items(),
+                        key=lambda item: (
+                            item[1].get("eligible", True),
+                            item[1].get(jury_verdict.get("score_key", "literary_score"), 0),
+                        ),
+                    )
+                    rewrite_draft_id = rewrite_candidates[0][0]
+                    rewrite_persona = "结构师"
+                    for draft_meta in race_result.get("drafts", []):
+                        if draft_meta["draft_id"] == rewrite_draft_id:
+                            rewrite_persona = draft_meta.get("persona") or rewrite_persona
+                            break
+                    click.echo(f"  ✍️ 单线返写：{rewrite_persona}")
+                    race_result2 = writer_dispatcher.dispatch_single_persona_track(
+                        shot_id=shot_id, base_prompt=compiled_prompt,
+                        persona_name=rewrite_persona, attempt=2,
+                        deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
+                        temperature_cap=blank_temp_cap,
+                        blank_shot=is_blank_shot,
+                    )
+                else:
+                    race_result2 = writer_dispatcher.dispatch_quad_track(
+                        shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
+                        deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
+                        temperature_cap=blank_temp_cap,
+                        blank_shot=is_blank_shot,
+                    )
                 draft_ids2 = [d["draft_id"] for d in race_result2["drafts"]]
                 usable2 = quality_controller.gate1_check(shot_id, draft_ids2)
                 for d in race_result2["drafts"]:
@@ -1562,15 +1608,20 @@ def _run_project_inner(
 
                 if usable2:
                     click.echo(f"  ⚖️ 第二轮九评委评分...")
+                    combined_usable = list(dict.fromkeys(passing_draft_ids + usable2))
                     jury_verdict2 = jury_service.score_candidates(
                         shot_id=shot_id,
-                        draft_ids=usable2,
+                        draft_ids=combined_usable,
                         meta_contract=layers,
                         quality_threshold=quality_threshold,
                         creative_review=is_blank_shot,
+                        shot_profile=shot_profile,
                     )
                     # 选分数更高的那份
-                    if jury_verdict2.get("winner_score", 0) > winner_score:
+                    if (
+                        jury_verdict2.get("winner_score", 0) > winner_score
+                        or jury_verdict2.get("passing_count", 0) > jury_verdict.get("passing_count", 0)
+                    ):
                         jury_verdict = jury_verdict2
                         winner_id = jury_verdict.get("winner_draft_id")
                         winner_score = jury_verdict.get("winner_score", 0)

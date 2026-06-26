@@ -1448,3 +1448,27 @@ python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
 
 - 目标测试：20 passed
 - 全量测试：379 passed, 4 warnings
+
+---
+
+## JURY-V5 分层裁判与单线返写 — 2026-06-26
+
+**目标**：按生产讨论将裁判流程从“混合维度平均”升级为“硬规则先过、类型职责按需启用、文学 9 维再评分”，并降低重写成本和跑偏风险。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| Schema v17 | `writing_jury_scores.dimension` 新增 `hard_rule_compliance` 与文学 9 维 |
+| 硬规则裁判 | `JuryService` 先执行规则硬检；失败稿不进入类型/文学评分 |
+| 类型裁判 | `suspense_effectiveness` / `unexpected_value` / `hook_transition` 只在 shot_profile 启用对应职责时打分 |
+| 文学 9 维 | `language_texture`、`reading_fluency`、`scene_specificity`、`emotional_progression`、`character_believability`、`dialogue_subtext`、`pacing_control`、`motif_theme_fit`、`chapter_continuity` |
+| 打分聚合 | 对 9 个文学维度均值去最高/最低后取平均，得到 `literary_score` |
+| 过线数量 | 默认 `min_passing_drafts=2`；少于 2 个过线稿时触发重写 |
+| 单线返写 | 已有至少 1 个过线稿时，只返写一个低分/未过线 persona；完全无过线稿时才整批重写 |
+| 配置兼容 | `quality_threshold: 8.5` 自动换算为 85；旧 `jury_config.dimensions` 不再污染文学 9 维 |
+
+### 验证
+
+- 目标测试：74 passed, 4 warnings
+- 全量测试：382 passed, 4 warnings

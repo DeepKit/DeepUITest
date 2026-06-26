@@ -1,5 +1,5 @@
--- InkFlow v3.12 — Schema v16 (model audit phase 扩展)
--- SCHEMA_VERSION: 16
+-- InkFlow v3.14 — Schema v17 (layered jury dimensions)
+-- SCHEMA_VERSION: 17
 -- Generated from implementation-contract-v0.md; aligned 2026-06-25
 -- 38 business tables total (+ _schema_meta = 39 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -13,6 +13,7 @@
 -- v13→v14: writing_jury_scores.dimension 新增 unexpected_value (CREATIVE-1)
 -- v14→v15: shot_revisions.operation 新增 write_polish；model_attempts.phase 新增 polish (CREATIVE-2)
 -- v15→v16: model_attempts.phase 新增 outline/constitution/chapter/volume architect phases (B41)
+-- v16→v17: writing_jury_scores.dimension 扩展 hard/type/literary 分层裁判维度
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -395,7 +396,9 @@ CREATE TABLE writing_jury_scores (
         'literary_quality', 'narrative_pacing', 'voice_consistency', 'contract_compliance',
         'motif_compatibility', 'anti_pattern_avoidance', 'hook_transition', 'character_coherence',
         'reader_engagement', 'forbidden_expression', 'reading_fluency', 'suspense_effectiveness',
-        'unexpected_value'
+        'unexpected_value', 'hard_rule_compliance', 'language_texture', 'scene_specificity',
+        'emotional_progression', 'character_believability', 'dialogue_subtext', 'pacing_control',
+        'motif_theme_fit', 'chapter_continuity'
     )),
     score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
     comment TEXT,

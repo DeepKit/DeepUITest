@@ -260,6 +260,34 @@ class TestCheckConstraints:
             "VALUES ('s1', 'd1', 'sh1', 'run_01', '创意评审', 'independent', 'unexpected_value', 88, 'att1')"
         )
 
+    def test_jury_layered_dimensions_valid(self, db):
+        """v17: writing_jury_scores.dimension 接受 hard-rule 和文学 9 维。"""
+        pid = self._insert_project(db)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s1', ?, 'run_01', 'active')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO writing_shots (shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+            "VALUES ('sh1', ?, 'run_01', 'v01.c01', 1, 'pending')", (pid,)
+        )
+        db.execute(
+            "INSERT INTO writing_drafts (draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d1', 'sh1', 'run_01', '意象师', 0, 'test', 'att1')"
+        )
+        for index, dimension in enumerate([
+            "hard_rule_compliance",
+            "language_texture",
+            "scene_specificity",
+            "chapter_continuity",
+        ]):
+            db.execute(
+                "INSERT INTO writing_jury_scores "
+                "(score_id, draft_id, shot_id, run_id, jury_persona, phase, dimension, score, attempt_id) "
+                "VALUES (?, 'd1', 'sh1', 'run_01', '文学裁判', 'independent', ?, 88, ?)",
+                (f"layered_{index}", dimension, f"att_layered_{index}"),
+            )
+
     def test_revision_operation_invalid(self, db):
         """shot_revisions.operation 只接受已登记操作"""
         pid = self._insert_project(db)

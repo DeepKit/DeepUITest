@@ -98,8 +98,8 @@ class TestJuryScoreScale:
         result = jury.score_candidates("shot_01", ["d1"], score_override=64)
         assert result["light_status"] == LightStatus.RED
 
-    def test_unexpected_value_dimension_is_persisted(self, setup_run_with_draft):
-        """CREATIVE-1: default jury writes the unexpected_value dimension."""
+    def test_layered_literary_dimensions_are_persisted(self, setup_run_with_draft):
+        """v5: default jury writes hard-rule + literary 9 dimensions."""
         jury = JuryService(setup_run_with_draft, "run_01", {})
         jury.score_candidates("shot_01", ["d1"], score_override=80)
 
@@ -107,7 +107,10 @@ class TestJuryScoreScale:
             "SELECT DISTINCT dimension FROM writing_jury_scores WHERE shot_id = 'shot_01'"
         ).fetchall()
         dimensions = {row["dimension"] for row in rows}
-        assert "unexpected_value" in dimensions
+        assert "hard_rule_compliance" in dimensions
+        assert "language_texture" in dimensions
+        assert "chapter_continuity" in dimensions
+        assert "unexpected_value" not in dimensions
 
     def test_creative_review_can_choose_less_safe_high_value_draft(self, setup_run_with_draft):
         """CREATIVE-3: blank-shot review weights unexpected_value over safe compliance."""
@@ -120,19 +123,37 @@ class TestJuryScoreScale:
         )
         setup_run_with_draft.commit()
 
+        high_literary = {
+            "hard_rule_compliance": 100,
+            "language_texture": 92,
+            "reading_fluency": 92,
+            "scene_specificity": 90,
+            "emotional_progression": 90,
+            "character_believability": 90,
+            "dialogue_subtext": 88,
+            "pacing_control": 90,
+            "motif_theme_fit": 88,
+            "chapter_continuity": 90,
+        }
+        lower_literary = {
+            "hard_rule_compliance": 100,
+            "language_texture": 80,
+            "reading_fluency": 80,
+            "scene_specificity": 80,
+            "emotional_progression": 80,
+            "character_believability": 80,
+            "dialogue_subtext": 80,
+            "pacing_control": 80,
+            "motif_theme_fit": 80,
+            "chapter_continuity": 80,
+        }
         scores = {
             "d1": {
-                "contract_compliance": 98,
-                "forbidden_expression": 95,
-                "reading_fluency": 90,
-                "suspense_effectiveness": 85,
+                **high_literary,
                 "unexpected_value": 50,
             },
             "d2": {
-                "contract_compliance": 65,
-                "forbidden_expression": 75,
-                "reading_fluency": 80,
-                "suspense_effectiveness": 90,
+                **lower_literary,
                 "unexpected_value": 98,
             },
         }
@@ -144,7 +165,56 @@ class TestJuryScoreScale:
         )
 
         assert regular["winner_draft_id"] == "d1"
-        assert regular["review_mode"] == "standard"
+        assert regular["review_mode"] == "typed_literary"
         assert creative["winner_draft_id"] == "d2"
-        assert creative["review_mode"] == "creative_blank"
-        assert creative["score_key"] == "creative_score"
+        assert creative["review_mode"] == "typed_literary"
+        assert creative["score_key"] == "literary_score"
+        assert creative["draft_scores"]["d1"]["type_gate_passed"] is False
+
+    def test_requires_two_passing_drafts_for_production_threshold(self, setup_run_with_draft):
+        """v5: winner can exist, but production pass requires min_passing_drafts."""
+        setup_run_with_draft.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d2', 'shot_01', 'run_01', '结构师', 1, "
+            "'她把手机扣回掌心，屏幕上的外江通知还亮着。楼道里的风把塑料袋吹得一下一下响。"
+            "郑坤没有立刻走，他看着那行字，膝盖里像有一枚钝掉的螺丝慢慢转。', 'att2')"
+        )
+        setup_run_with_draft.commit()
+
+        high = {
+            "hard_rule_compliance": 100,
+            "language_texture": 90,
+            "reading_fluency": 90,
+            "scene_specificity": 90,
+            "emotional_progression": 90,
+            "character_believability": 90,
+            "dialogue_subtext": 90,
+            "pacing_control": 90,
+            "motif_theme_fit": 90,
+            "chapter_continuity": 90,
+        }
+        low = {
+            "hard_rule_compliance": 100,
+            "language_texture": 70,
+            "reading_fluency": 70,
+            "scene_specificity": 70,
+            "emotional_progression": 70,
+            "character_believability": 70,
+            "dialogue_subtext": 70,
+            "pacing_control": 70,
+            "motif_theme_fit": 70,
+            "chapter_continuity": 70,
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates(
+            "shot_01",
+            ["d1", "d2"],
+            score_overrides={"d1": high, "d2": low},
+            quality_threshold=85,
+        )
+
+        assert result["winner_draft_id"] == "d1"
+        assert result["passing_count"] == 1
+        assert result["all_passed_threshold"] is False
+        assert result["min_passing_drafts"] == 2

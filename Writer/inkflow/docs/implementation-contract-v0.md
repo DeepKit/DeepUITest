@@ -1,9 +1,9 @@
-# InkFlow v3.12 Phase 1 实现契约 v1.2
+# InkFlow v3.14 Phase 1 实现契约 v1.3
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3）
-> 日期：2026-06-17；最近对齐：2026-06-25
-> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v16）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判）
+> 日期：2026-06-17；最近对齐：2026-06-26
+> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度
 > 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline，按 shot 生成第 2 章。
 
 ---
@@ -121,7 +121,7 @@ pending → generating → gate1_check → jury_scoring → final_gate → done_
 | `pending` | 等待生成 |
 | `generating` | writer race 进行中 |
 | `gate1_check` | L0 + Contract Gate 1 |
-| `jury_scoring` | 9-jury 3-phase 评分 |
+| `jury_scoring` | 分层裁判评分（硬规则 → 类型职责 → 文学 9 维） |
 | `final_gate` | 最终门控 |
 | `done_green` | 绿灯 |
 | `done_yellow` | 黄灯 |
@@ -170,8 +170,9 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v16）
+## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）
 
+> v17 变更（2026-06-26，分层裁判）：`writing_jury_scores.dimension` 新增 `hard_rule_compliance` 与文学 9 维。Jury 流程变为硬规则 → 类型职责 → 文学 9 维 trimmed mean。类型维度仅在对应 shot_profile 启用。
 > v16 变更（2026-06-25，B41）：`model_attempts.phase` 新增 `outline_evaluate`、`constitution_generate`、`architect_chapter_rhythm(_retry)`、`architect_volume_rhythm(_retry)`，避免架构/大纲模型调用审计被 CHECK 约束静默丢弃。
 > v15 变更（2026-06-25，CREATIVE-2）：`shot_revisions.operation` 新增 `write_polish`；`model_attempts.phase` 新增 `polish`。winner 后处理精修必须通过 `parent_revision_id` 指向原 winner revision。
 > 运行时变更（2026-06-25，CREATIVE-3，无 DDL）：每 5 个 shot 的留白 shot 使用 `creative_review=True`，按 `creative_score` 选稿，提高 `unexpected_value` 权重，同时保留逐维评分审计。
@@ -608,7 +609,9 @@ CREATE TABLE writing_jury_scores (
   dimension TEXT NOT NULL CHECK (dimension IN (
     'literary_quality','narrative_pacing','voice_consistency','contract_compliance',
     'motif_compatibility','anti_pattern_avoidance','hook_transition','character_coherence','reader_engagement',
-    'forbidden_expression','reading_fluency','suspense_effectiveness','unexpected_value'
+    'forbidden_expression','reading_fluency','suspense_effectiveness','unexpected_value',
+    'hard_rule_compliance','language_texture','scene_specificity','emotional_progression',
+    'character_believability','dialogue_subtext','pacing_control','motif_theme_fit','chapter_continuity'
   )),
   score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
   comment TEXT,
@@ -890,15 +893,19 @@ repair:
 }
 ```
 
-### 4.3 Jury 评分（当前默认 3 模型 × 5 维）
+### 4.3 Jury 评分（v17 分层裁判）
 
-当前实现按候选稿、评委模型和评分维度逐项记录分数。默认维度为：
+当前实现按候选稿、评委模型和评分维度逐项记录分数，但评分流程分三层：
 
-`contract_compliance` / `forbidden_expression` / `reading_fluency` / `suspense_effectiveness` / `unexpected_value`
+1. **硬规则裁判**：`hard_rule_compliance`。规则预检失败时直接淘汰；远端 jury 可追加 LLM hard-rule check。
+2. **类型裁判**：只在 shot_profile 启用对应职责时打分。悬疑 shot 打 `suspense_effectiveness`；留白/创意入口打 `unexpected_value`；章末/转折打 `hook_transition`。
+3. **文学裁判**：固定 9 维：`language_texture` / `reading_fluency` / `scene_specificity` / `emotional_progression` / `character_believability` / `dialogue_subtext` / `pacing_control` / `motif_theme_fit` / `chapter_continuity`。
 
-标准 shot 使用 `trimmed_mean` 选 winner；CREATIVE-3 留白 shot 使用 `creative_score` 选 winner，权重为：契约履约 0.10、禁用表达 0.10、阅读流畅 0.20、悬疑效果 0.25、意外价值 0.35。
+文学分计算：先对每个文学维度求均值，再从 9 个维度均值中去掉最高 1 个和最低 1 个，对剩余 7 个取平均，得到 `literary_score`。winner 只从硬规则和类型职责都通过的稿件中选择。
 
-配置兼容规则：旧 `.models` 若显式配置了 `jury_config.dimensions`，运行时必须保留其顺序并自动补齐当前必需维度（`suspense_effectiveness`、`unexpected_value` 等），避免旧三维项目禁用 D-25/CREATIVE 评分能力。
+通过条件：默认 `quality_threshold=80`，也可用 10 分制配置（如 `8.5` 自动换算为 85）。默认 `min_passing_drafts=2`，过线候选稿少于 2 个时触发重写，避免“矮子里拔高个”。
+
+配置兼容规则：旧 `.models` 的 `jury_config.dimensions` 不再注入新文学 9 维，避免旧合规维度污染文学均分；新配置若需调整文学维度，使用 `jury_config.literary_dimensions`。
 
 ```json
 {
@@ -906,7 +913,7 @@ repair:
   "idempotency_key": "{run_id}:{snapshot_hash}:{shot_id}:jury_score:{jury_index}:0",
   "phase": "independent",
   "jury_persona": "评委_deepseek-v4-pro",
-  "dimension": "unexpected_value",
+  "dimension": "language_texture",
   "draft_text": "...",
   "contract_snapshot": {...}
 }
@@ -928,7 +935,7 @@ repair:
 }
 ```
 
-> 分数统一为 0-100。旧 9 维枚举仍被 DDL 接受以兼容历史数据；当前默认使用 5 个 v4 维度。留白创意评审不改变落库维度，只改变 winner 选择用的 `score_key`。
+> 分数统一为 0-100。旧 9 维枚举仍被 DDL 接受以兼容历史数据；当前默认使用 v17 hard-rule + 文学 9 维。类型维度只在 shot_profile 启用时写入。
 
 ### 4.5 通用错误响应
 

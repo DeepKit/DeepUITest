@@ -1,8 +1,9 @@
 """多模型 LLM 评分服务 (Jury Service)。
 
-默认配置为 3 个模型 × 5 个维度 = 15 分/草稿。
-评分维度：契约履约 / 禁用表达 / 阅读流畅 / 悬疑效果 / 意外价值。
-标准模式按 trimmed mean 选稿；留白 shot 可按 creative_score 加权选稿。
+v5 分层裁判：
+1. 硬规则裁判：规则预检 + 可选 LLM hard-rule check，失败不进入文学评分。
+2. 类型裁判：只有 shot_profile 启用悬疑/留白/章末钩子等职责时才打类型分。
+3. 文学裁判：9 个文学维度各自打分，去掉最高/最低后取平均选稿。
 """
 
 from __future__ import annotations
@@ -22,7 +23,9 @@ from inkflow.utils.config import (
 from inkflow.models.enums import (
     JuryPhase,
     LightThreshold,
-    JURY_V4_DIMENSIONS,
+    JURY_HARD_RULE_DIMENSIONS,
+    JURY_LITERARY_DIMENSIONS,
+    JURY_TYPE_DIMENSIONS,
     JURY_V4_DIMENSION_DISPLAY,
 )
 from inkflow.services.model_client import (
@@ -61,6 +64,11 @@ _SCORE_PROMPT = """\
 
 
 DIMENSION_DESCRIPTIONS = {
+    "hard_rule_compliance": (
+        "硬规则是否通过？只判断能不能进入文学评审，不评价文采。"
+        "重点检查：硬事实、must_land、POV、禁写项、提前揭示、前文冲突、"
+        "空文/重复/提示词残留。若有任一致命问题，应给 0-79 分。"
+    ),
     "contract_compliance": (
         "文本是否遵守了元契约中的硬边界、必须落地事件、风格铁律？"
         "是否存在与契约冲突的内容？"
@@ -80,6 +88,35 @@ DIMENSION_DESCRIPTIONS = {
         '这种细节必须来自角色的日常观察，不是叙述者的分析。'
         '如果没有精确细节，reading_fluency 不能超过 80 分。'
     ),
+    "language_texture": (
+        "语言是否有小说质地，句子是否具体、克制、有声音。"
+        "高分文本应避免模板化、概念化和通用抒情。"
+    ),
+    "scene_specificity": (
+        "场景是否由动作、物件、身体感和空间关系构成，而不是抽象说明。"
+        "高分文本应让读者能看见具体发生了什么。"
+    ),
+    "emotional_progression": (
+        "情绪是否有递进和转折，而不是停在同一种情绪里反复描述。"
+    ),
+    "character_believability": (
+        "人物反应是否符合其身份、处境和前文状态。"
+        "不得为了推进情节让角色突然失真。"
+    ),
+    "dialogue_subtext": (
+        "对话是否像真人说话，并具有潜台词。"
+        "没有对话的场景可评估沉默、动作和未说出口的信息。"
+    ),
+    "pacing_control": (
+        "信息释放、句长、段落、停顿是否服务场景节奏。"
+        "高分文本应知道哪里该快、哪里该慢。"
+    ),
+    "motif_theme_fit": (
+        "意象、母题和本书气质是否贴合，是否避免廉价装饰。"
+    ),
+    "chapter_continuity": (
+        "文本是否接得上前后小节：角色状态、地点、物件、信息释放和情绪节奏是否连续。"
+    ),
     "suspense_effectiveness": (
         "悬疑效果是否达标？从三个不对称维度评估：\n"
         "1. 信息不对称：读者是否比角色知道得更多？这种差距是否产生了紧张感？\n"
@@ -98,6 +135,10 @@ DIMENSION_DESCRIPTIONS = {
         "注意：意外不等于怪异。好的意外价值是'意料之外，情理之中'。"
         "纯破坏规则或不可读的高分不能超过 70 分。"
     ),
+    "hook_transition": (
+        "钩子/信息释放是否有效。该留的问题是否留住，该露出的线索是否足够具体，"
+        "结尾是否产生继续阅读动力，而不是解释性收束。"
+    ),
 }
 
 
@@ -109,12 +150,17 @@ CREATIVE_BLANK_WEIGHTS = {
     "unexpected_value": 0.35,
 }
 
+JURY_TYPE_THRESHOLDS = {
+    "suspense_effectiveness": 80,
+    "unexpected_value": 80,
+    "hook_transition": 80,
+}
+
 
 class JuryService:
-    """多模型多维度 LLM 评分服务。
+    """分层多模型评分服务。
 
-    默认 3 模型 × 5 维度 = 15 分/草稿。
-    标准模式按 trimmed mean 选稿；CREATIVE-3 留白模式按创意权重选稿。
+    默认 hard-rule + 文学 9 维；类型维度只在 shot_profile 启用时加入。
     """
 
     def __init__(self, db: sqlite3.Connection, run_id: str, models_config: dict):
@@ -124,8 +170,17 @@ class JuryService:
 
         jury_cfg = get_jury_config(models_config)
         self.jury_models: list[str] = jury_cfg["models"]
+        self.hard_dimensions: list[str] = jury_cfg.get(
+            "hard_dimensions", JURY_HARD_RULE_DIMENSIONS,
+        )
+        self.literary_dimensions: list[str] = jury_cfg.get(
+            "literary_dimensions", JURY_LITERARY_DIMENSIONS,
+        )
         self.dimensions: list[str] = jury_cfg["dimensions"]
         self.quality_threshold: int = get_quality_threshold(models_config)
+        self.hard_rule_threshold: int = jury_cfg.get("hard_rule_threshold", 80)
+        self.type_threshold: int = jury_cfg.get("type_threshold", 80)
+        self.min_passing_drafts: int = max(1, int(jury_cfg.get("min_passing_drafts", 2)))
 
     def score_candidates(
         self,
@@ -137,13 +192,15 @@ class JuryService:
         score_override: int | None = None,
         score_overrides: dict[str, dict[str, int]] | None = None,
         creative_review: bool = False,
+        shot_profile: dict | None = None,
     ) -> dict:
-        """九评委评分 + 选择 winner。
+        """分层评分 + 选择 winner。
 
         Args:
             score_override: 强制评分 (0-100)，仅用于测试/修复场景。跳过 LLM 调用。
             score_overrides: Per-draft/per-dimension score override for tests.
-            creative_review: Use blank-shot creative weighting for winner selection.
+            creative_review: Backward-compatible flag; maps to blank_space type role.
+            shot_profile: Optional type roles, e.g. {"types": ["suspense", "hook"]}.
 
         Returns:
             {
@@ -162,6 +219,10 @@ class JuryService:
         meta_summary = self._build_meta_summary(meta_contract) if meta_contract else "（无）"
         previous_ending = self._get_previous_ending(shot_id)
         attempt_id = generate_ulid()
+        bypass_gates = score_override is not None or score_overrides is not None
+        type_dimensions = self._resolve_type_dimensions(
+            shot_id, creative_review=creative_review, shot_profile=shot_profile,
+        )
 
         # 检测是否有可用的 API（空 providers / 全本地评委 → 用启发式评分）
         providers = self.models_config.get("providers", {})
@@ -184,85 +245,88 @@ class JuryService:
             draft_text = draft["text"]
             scores: list[int] = []
             dimension_scores: dict[str, list[int]] = {}
+            hard_gate = self._run_hard_rule_gate(draft_text)
 
-            if use_llm:
-                # 真实 LLM 九评委评分
-                for model_ref in self.jury_models:
-                    supplier, model_name = parse_model_ref(model_ref)
-                    for dimension in self.dimensions:
-                        result = self._score_single(
-                            shot_id=shot_id,
-                            draft_text=draft_text,
-                            jury_model_ref=model_ref,
-                            dimension=dimension,
-                            meta_contract_summary=meta_summary,
-                            previous_ending=previous_ending,
-                        )
+            hard_passed = bypass_gates or hard_gate["passed"]
+            hard_scores = self._score_dimension_group(
+                shot_id=shot_id,
+                draft_id=draft_id,
+                draft_text=draft_text,
+                dimensions=self.hard_dimensions,
+                meta_summary=meta_summary,
+                previous_ending=previous_ending,
+                attempt_id=attempt_id,
+                use_llm=use_llm and hard_gate["passed"],
+                score_override=100 if bypass_gates else None,
+                score_overrides=score_overrides,
+                deterministic_gate=hard_gate,
+            )
+            self._merge_scores(scores, dimension_scores, hard_scores)
+            hard_means = self._compute_dimension_means(hard_scores)
+            if (
+                not bypass_gates
+                and hard_means
+                and min(hard_means.values()) < self.hard_rule_threshold
+            ):
+                hard_passed = False
 
-                        score = result["score"]
-                        comment = result["comment"]
-                        scores.append(score)
-                        dimension_scores.setdefault(dimension, []).append(score)
+            if not hard_passed:
+                self.db.commit()
+                draft_scores[draft_id] = self._build_rejected_score(
+                    scores, dimension_scores, hard_gate, "hard_rule",
+                )
+                continue
 
-                        # 用模型名作为评委标识
-                        self.db.execute(
-                            "INSERT INTO writing_jury_scores "
-                            "(score_id, draft_id, shot_id, run_id, jury_persona, "
-                            "phase, dimension, score, comment, attempt_id) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (
-                                generate_ulid(), draft_id, shot_id, self.run_id,
-                                model_name,
-                                JuryPhase.INDEPENDENT,
-                                dimension,
-                                score,
-                                comment,
-                                attempt_id,
-                            ),
-                        )
-            else:
-                # 启发式评分 / score_override 模式
-                base_score = score_override if score_override is not None else _heuristic_score(draft_text)
-                for model_ref in self.jury_models:
-                    _, model_name = parse_model_ref(model_ref)
-                    for dimension in self.dimensions:
-                        override_for_draft = (score_overrides or {}).get(draft_id, {})
-                        if dimension in override_for_draft:
-                            score = override_for_draft[dimension]
-                        elif "*" in override_for_draft:
-                            score = override_for_draft["*"]
-                        elif score_override is not None:
-                            # 精确模式：不添加 variation
-                            score = base_score
-                        else:
-                            import random, hashlib
-                            seed = int(hashlib.md5(f"{draft_id}:{model_name}:{dimension}".encode()).hexdigest()[:8], 16)
-                            rng = random.Random(seed)
-                            variation = rng.randint(-3, 3)
-                            score = max(0, min(100, base_score + variation))
-                        comment = f"启发式评分: {model_name} {dimension} = {score}/100"
+            type_passed = True
+            type_means: dict[str, float] = {}
+            if type_dimensions:
+                type_scores = self._score_dimension_group(
+                    shot_id=shot_id,
+                    draft_id=draft_id,
+                    draft_text=draft_text,
+                    dimensions=type_dimensions,
+                    meta_summary=meta_summary,
+                    previous_ending=previous_ending,
+                    attempt_id=attempt_id,
+                    use_llm=use_llm,
+                    score_override=score_override,
+                    score_overrides=score_overrides,
+                )
+                self._merge_scores(scores, dimension_scores, type_scores)
+                type_means = self._compute_dimension_means(type_scores)
+                for dim, mean in type_means.items():
+                    dim_threshold = JURY_TYPE_THRESHOLDS.get(dim, self.type_threshold)
+                    if mean < dim_threshold:
+                        type_passed = False
 
-                        self.db.execute(
-                            "INSERT INTO writing_jury_scores "
-                            "(score_id, draft_id, shot_id, run_id, jury_persona, "
-                            "phase, dimension, score, comment, attempt_id) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (
-                                generate_ulid(), draft_id, shot_id, self.run_id,
-                                model_name,
-                                JuryPhase.INDEPENDENT,
-                                dimension,
-                                score,
-                                comment,
-                                attempt_id,
-                            ),
-                        )
-                        scores.append(score)
-                        dimension_scores.setdefault(dimension, []).append(score)
+            if not type_passed:
+                self.db.commit()
+                draft_scores[draft_id] = self._build_rejected_score(
+                    scores, dimension_scores, hard_gate, "type_gate",
+                    type_means=type_means,
+                )
+                continue
+
+            literary_scores = self._score_dimension_group(
+                shot_id=shot_id,
+                draft_id=draft_id,
+                draft_text=draft_text,
+                dimensions=self.literary_dimensions,
+                meta_summary=meta_summary,
+                previous_ending=previous_ending,
+                attempt_id=attempt_id,
+                use_llm=use_llm,
+                score_override=score_override,
+                score_overrides=score_overrides,
+            )
+            self._merge_scores(scores, dimension_scores, literary_scores)
 
             self.db.commit()
 
-            trimmed_mean = self._compute_trimmed_mean(scores)
+            literary_dimension_means = self._compute_dimension_means(literary_scores)
+            literary_score = self._compute_trimmed_mean(
+                list(literary_dimension_means.values()),
+            )
             dimension_means = {
                 dim: round(sum(values) / len(values), 2)
                 for dim, values in dimension_scores.items()
@@ -272,20 +336,249 @@ class JuryService:
                 dimension_means, CREATIVE_BLANK_WEIGHTS,
             )
             draft_scores[draft_id] = {
-                "trimmed_mean": trimmed_mean,
+                "trimmed_mean": literary_score,
+                "literary_score": literary_score,
                 "raw_scores": scores,
                 "dimension_means": dimension_means,
+                "literary_dimension_means": literary_dimension_means,
+                "hard_rule": hard_gate,
+                "hard_rule_passed": True,
+                "type_dimensions": type_dimensions,
+                "type_gate_passed": True,
+                "type_dimension_means": type_means,
                 "creative_score": creative_score,
+                "eligible": True,
             }
 
+        review_mode = "typed_literary"
+        return self._select_winner(
+            draft_scores,
+            threshold,
+            score_key="literary_score",
+            review_mode=review_mode,
+        )
+
+    # ── 分层评分辅助 ──
+
+    def _score_dimension_group(
+        self,
+        *,
+        shot_id: str,
+        draft_id: str,
+        draft_text: str,
+        dimensions: list[str],
+        meta_summary: str,
+        previous_ending: str,
+        attempt_id: str,
+        use_llm: bool,
+        score_override: int | None,
+        score_overrides: dict[str, dict[str, int]] | None,
+        deterministic_gate: dict | None = None,
+    ) -> dict[str, list[int]]:
+        grouped: dict[str, list[int]] = {}
+        for model_ref in self.jury_models:
+            _, model_name = parse_model_ref(model_ref)
+            for dimension in dimensions:
+                if deterministic_gate and dimension == "hard_rule_compliance":
+                    if not deterministic_gate["passed"]:
+                        score = min(60, deterministic_gate["score"])
+                        comment = "; ".join(deterministic_gate["violations"])[:200]
+                    elif score_override is not None:
+                        score = score_override
+                        comment = f"硬规则测试覆盖: {score}/100"
+                    elif not use_llm:
+                        score = deterministic_gate["score"]
+                        comment = "规则硬检通过"
+                    else:
+                        result = self._score_single(
+                            shot_id=shot_id,
+                            draft_text=draft_text,
+                            jury_model_ref=model_ref,
+                            dimension=dimension,
+                            meta_contract_summary=meta_summary,
+                            previous_ending=previous_ending,
+                        )
+                        score = result["score"]
+                        comment = result["comment"]
+                elif use_llm:
+                    result = self._score_single(
+                        shot_id=shot_id,
+                        draft_text=draft_text,
+                        jury_model_ref=model_ref,
+                        dimension=dimension,
+                        meta_contract_summary=meta_summary,
+                        previous_ending=previous_ending,
+                    )
+                    score = result["score"]
+                    comment = result["comment"]
+                else:
+                    score = self._local_dimension_score(
+                        draft_id, model_name, dimension, draft_text,
+                        score_override=score_override,
+                        score_overrides=score_overrides,
+                    )
+                    comment = f"启发式评分: {model_name} {dimension} = {score}/100"
+
+                self._record_score(
+                    draft_id=draft_id,
+                    shot_id=shot_id,
+                    jury_persona=model_name,
+                    dimension=dimension,
+                    score=score,
+                    comment=comment,
+                    attempt_id=attempt_id,
+                )
+                grouped.setdefault(dimension, []).append(score)
+        return grouped
+
+    def _record_score(
+        self,
+        *,
+        draft_id: str,
+        shot_id: str,
+        jury_persona: str,
+        dimension: str,
+        score: int,
+        comment: str,
+        attempt_id: str,
+    ) -> None:
+        self.db.execute(
+            "INSERT INTO writing_jury_scores "
+            "(score_id, draft_id, shot_id, run_id, jury_persona, "
+            "phase, dimension, score, comment, attempt_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                generate_ulid(), draft_id, shot_id, self.run_id,
+                jury_persona,
+                JuryPhase.INDEPENDENT,
+                dimension,
+                max(0, min(100, int(score))),
+                comment,
+                attempt_id,
+            ),
+        )
+
+    @staticmethod
+    def _merge_scores(
+        scores: list[int],
+        dimension_scores: dict[str, list[int]],
+        grouped: dict[str, list[int]],
+    ) -> None:
+        for dimension, values in grouped.items():
+            scores.extend(values)
+            dimension_scores.setdefault(dimension, []).extend(values)
+
+    @staticmethod
+    def _compute_dimension_means(grouped: dict[str, list[int]]) -> dict[str, float]:
+        return {
+            dim: round(sum(values) / len(values), 2)
+            for dim, values in grouped.items()
+            if values
+        }
+
+    def _local_dimension_score(
+        self,
+        draft_id: str,
+        model_name: str,
+        dimension: str,
+        draft_text: str,
+        *,
+        score_override: int | None,
+        score_overrides: dict[str, dict[str, int]] | None,
+    ) -> int:
+        override_for_draft = (score_overrides or {}).get(draft_id, {})
+        if dimension in override_for_draft:
+            return override_for_draft[dimension]
+        if "*" in override_for_draft:
+            return override_for_draft["*"]
+        if score_override is not None:
+            return score_override
+
+        import hashlib
+        import random
+
+        base_score = _heuristic_score(draft_text) + _dimension_adjustment(dimension, draft_text)
+        seed = int(
+            hashlib.md5(f"{draft_id}:{model_name}:{dimension}".encode()).hexdigest()[:8],
+            16,
+        )
+        rng = random.Random(seed)
+        variation = rng.randint(-3, 3)
+        return max(0, min(100, base_score + variation))
+
+    def _resolve_type_dimensions(
+        self,
+        shot_id: str,
+        *,
+        creative_review: bool,
+        shot_profile: dict | None,
+    ) -> list[str]:
+        roles: list[str] = []
+        if shot_profile:
+            raw_roles = shot_profile.get("types") or shot_profile.get("type_roles") or []
+            if isinstance(raw_roles, str):
+                raw_roles = [raw_roles]
+            roles.extend(str(role) for role in raw_roles)
         if creative_review:
-            return self._select_winner(
-                draft_scores,
-                threshold,
-                score_key="creative_score",
-                review_mode="creative_blank",
-            )
-        return self._select_winner(draft_scores, threshold)
+            roles.append("blank_space")
+        if shot_id.endswith(".s04"):
+            roles.append("hook")
+
+        dimensions: list[str] = []
+        for role in roles:
+            for dimension in JURY_TYPE_DIMENSIONS.get(role, []):
+                if dimension not in dimensions:
+                    dimensions.append(dimension)
+        return dimensions
+
+    @staticmethod
+    def _run_hard_rule_gate(text: str) -> dict:
+        violations: list[str] = []
+        if not text or not text.strip():
+            violations.append("empty_text")
+        if len(text.strip()) < 50:
+            violations.append("too_short")
+        bad_markers = ["以下是", "这段文字", "分析", "解读", "核心落点", "风格执行", "字数"]
+        for marker in bad_markers:
+            if marker in text[:500]:
+                violations.append(f"prompt_artifact:{marker}")
+        if _has_excessive_repetition(text):
+            violations.append("excessive_repetition")
+
+        score = 100 - min(80, len(violations) * 25)
+        return {
+            "passed": not violations,
+            "score": score,
+            "violations": violations,
+        }
+
+    @staticmethod
+    def _build_rejected_score(
+        scores: list[int],
+        dimension_scores: dict[str, list[int]],
+        hard_gate: dict,
+        stage: str,
+        *,
+        type_means: dict[str, float] | None = None,
+    ) -> dict:
+        return {
+            "trimmed_mean": 0,
+            "literary_score": 0,
+            "raw_scores": scores,
+            "dimension_means": {
+                dim: round(sum(values) / len(values), 2)
+                for dim, values in dimension_scores.items()
+                if values
+            },
+            "literary_dimension_means": {},
+            "hard_rule": hard_gate,
+            "hard_rule_passed": stage != "hard_rule",
+            "type_gate_passed": stage != "type_gate",
+            "type_dimension_means": type_means or {},
+            "creative_score": 0,
+            "eligible": False,
+            "failure_stage": stage,
+        }
 
     # ── 单次 LLM 调用 ──
 
@@ -434,15 +727,38 @@ class JuryService:
                 "draft_scores": {}, "all_passed_threshold": False,
                 "review_mode": review_mode,
                 "score_key": score_key,
+                "passing_count": 0,
+                "min_passing_drafts": self.min_passing_drafts,
+            }
+
+        eligible_scores = {
+            draft_id: score_data
+            for draft_id, score_data in draft_scores.items()
+            if score_data.get("eligible", True)
+        }
+        if not eligible_scores:
+            return {
+                "winner_draft_id": None, "winner_score": 0,
+                "winner_track": None, "light_status": "red",
+                "draft_scores": draft_scores, "all_passed_threshold": False,
+                "review_mode": review_mode,
+                "score_key": score_key,
+                "passing_count": 0,
+                "min_passing_drafts": self.min_passing_drafts,
             }
 
         ranked = sorted(
-            draft_scores.items(),
+            eligible_scores.items(),
             key=lambda x: x[1].get(score_key, x[1].get("trimmed_mean", 0)),
             reverse=True,
         )
         winner_id, winner_data = ranked[0]
         winner_score = winner_data.get(score_key, winner_data.get("trimmed_mean", 0))
+        passing_count = sum(
+            1
+            for data in eligible_scores.values()
+            if data.get(score_key, data.get("trimmed_mean", 0)) >= threshold
+        )
 
         # 获取 winner 赛道
         winner_draft = self.db.execute(
@@ -477,10 +793,9 @@ class JuryService:
             "winner_track": winner_track,
             "light_status": light_status,
             "draft_scores": draft_scores,
-            "all_passed_threshold": all(
-                d.get(score_key, d.get("trimmed_mean", 0)) >= threshold
-                for d in draft_scores.values()
-            ),
+            "all_passed_threshold": passing_count >= self.min_passing_drafts,
+            "passing_count": passing_count,
+            "min_passing_drafts": self.min_passing_drafts,
             "review_mode": review_mode,
             "score_key": score_key,
         }
@@ -568,3 +883,38 @@ def _heuristic_score(text: str) -> int:
         score += 5
 
     return max(0, min(100, score))
+
+
+def _dimension_adjustment(dimension: str, text: str) -> int:
+    """Small deterministic local bias per dimension for cheap jury mode."""
+    if dimension == "hard_rule_compliance":
+        return 15 if not any(k in text[:500] for k in ["以下是", "分析", "解读"]) else -25
+    if dimension == "scene_specificity":
+        markers = ["手机", "屏幕", "膝盖", "保鲜膜", "门", "茶", "U盘", "楼道", "雾"]
+        return min(10, sum(2 for marker in markers if marker in text))
+    if dimension == "suspense_effectiveness":
+        markers = ["突然", "正要", "还没", "不知道", "通知", "屏幕", "打断"]
+        return min(12, sum(3 for marker in markers if marker in text))
+    if dimension == "unexpected_value":
+        markers = ["没有说", "半圈", "一毫米", "停在", "像一个"]
+        return min(10, sum(2 for marker in markers if marker in text))
+    if dimension == "hook_transition":
+        markers = ["突然", "正要", "还没", "门外", "屏幕", "通知"]
+        return min(10, sum(2 for marker in markers if marker in text))
+    if dimension == "dialogue_subtext" and not any(q in text for q in ["“", "”", "「", "」"]):
+        return -3
+    return 0
+
+
+def _has_excessive_repetition(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    if len(compact) < 80:
+        return False
+    for size in range(4, 9):
+        seen: dict[str, int] = {}
+        for idx in range(0, len(compact) - size + 1):
+            token = compact[idx:idx + size]
+            seen[token] = seen.get(token, 0) + 1
+            if seen[token] >= 8:
+                return True
+    return False

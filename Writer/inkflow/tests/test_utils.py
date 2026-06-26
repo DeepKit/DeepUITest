@@ -210,7 +210,7 @@ class TestConfig:
         assert "function_models" in layers
 
     def test_jury_config_appends_required_current_dimensions(self):
-        """旧 .models 显式三维配置也必须补齐当前 v4 必需维度。"""
+        """旧 .models 显式 dimensions 不再污染 v5 文学 9 维。"""
         config = {
             "jury_config": {
                 "dimensions": [
@@ -223,14 +223,11 @@ class TestConfig:
 
         jury = get_jury_config(config)
 
-        assert jury["dimensions"][:3] == [
-            "contract_compliance",
-            "forbidden_expression",
-            "reading_fluency",
-        ]
-        assert "suspense_effectiveness" in jury["dimensions"]
-        assert "unexpected_value" in jury["dimensions"]
-        assert len(jury["dimensions"]) == 5
+        assert jury["dimensions"][0] == "hard_rule_compliance"
+        assert len(jury["literary_dimensions"]) == 9
+        assert "language_texture" in jury["literary_dimensions"]
+        assert "chapter_continuity" in jury["literary_dimensions"]
+        assert "contract_compliance" not in jury["literary_dimensions"]
 
     def test_jury_config_defaults_to_local_model(self):
         """未显式配置 jury_config.models 时，生产默认使用本地评委。"""
@@ -247,21 +244,37 @@ class TestConfig:
         assert jury["models"] == ["deepseek-v4-pro", "qwen3.7-plus"]
 
     def test_jury_config_deduplicates_dimensions(self):
-        """配置中已有必需维度时不重复追加。"""
+        """literary_dimensions 中已有必需维度时不重复追加。"""
         config = {
             "jury_config": {
-                "dimensions": [
-                    "unexpected_value",
-                    "contract_compliance",
-                    "unexpected_value",
+                "literary_dimensions": [
+                    "reading_fluency",
+                    "language_texture",
+                    "reading_fluency",
                 ],
             },
         }
 
         jury = get_jury_config(config)
 
-        assert jury["dimensions"].count("unexpected_value") == 1
-        assert jury["dimensions"][0] == "unexpected_value"
+        assert jury["literary_dimensions"].count("reading_fluency") == 1
+        assert jury["literary_dimensions"][0] == "reading_fluency"
+
+    def test_jury_config_accepts_ten_point_threshold(self):
+        """用户配置 8.5 分制时内部换算为 85/100。"""
+        jury = get_jury_config({
+            "jury_config": {
+                "quality_threshold": 8.5,
+                "hard_rule_threshold": 8,
+                "type_threshold": 9,
+                "min_passing_drafts": 3,
+            },
+        })
+
+        assert jury["quality_threshold"] == 85
+        assert jury["hard_rule_threshold"] == 80
+        assert jury["type_threshold"] == 90
+        assert jury["min_passing_drafts"] == 3
 
 
 class TestLoadEnv:
