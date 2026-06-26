@@ -32,6 +32,7 @@ import sqlite3
 
 from inkflow.utils.ulid import generate as generate_ulid
 from inkflow.models.enums import ShotStatus
+from inkflow.services.text_repository import TextRepository
 
 
 # ── Closing-sentence audit patterns ──
@@ -917,7 +918,15 @@ class ArchitectGate:
         if shot_indices != expected:
             issues.append(f"Shot sequence gap: got {shot_indices}, expected {expected}")
 
-        # Check 4 (OPT-4): Character presence — warn if a POV character has zero shots
+        # Check 4: Chapter-end hook must be an unfinished action/interruption.
+        chapter_hook = self._check_chapter_end_hook(shots)
+        if not chapter_hook["passed"]:
+            issues.append(
+                "chapter_hook_weak: final shot must end on unfinished action "
+                "or interruption, not closure/explanation"
+            )
+
+        # Check 5 (OPT-4): Character presence — warn if a POV character has zero shots
         # Get POV characters from the meta-contract
         meta_contract_row = self.db.execute(
             "SELECT layers_json FROM writing_meta_contract "
@@ -958,11 +967,44 @@ class ArchitectGate:
             "yellow_count": yellow_count,
             "red_count": red_count,
             "pov_coverage": pov_counts,
+            "chapter_hook": chapter_hook,
             "issues": issues,
         }
 
         self._record_gate("L3", chapter_key, result)
         return result
+
+    def _check_chapter_end_hook(self, shots) -> dict:
+        """Hard L3 chapter-hook check on the final shot's current text."""
+        if not shots:
+            return {
+                "passed": False,
+                "shot_id": None,
+                "shot_index": None,
+                "violation": "chapter has no shots",
+                "last_sentence": "",
+                "hook_quality": "unknown",
+                "is_unfinished": False,
+            }
+
+        last_shot = shots[-1]
+        text = TextRepository(self.db).get_shot_text(last_shot["shot_id"])
+        closing = self._check_closing_sentence(text)
+        passed = (
+            closing.get("violation") is None
+            and closing.get("hook_quality") == "excellent"
+            and closing.get("is_unfinished") is True
+        )
+        return {
+            "passed": passed,
+            "shot_id": last_shot["shot_id"],
+            "shot_index": last_shot["shot_index"],
+            "violation": closing.get("violation"),
+            "type": closing.get("type"),
+            "last_sentence": closing.get("last_sentence", ""),
+            "hook_quality": closing.get("hook_quality", "unknown"),
+            "is_unfinished": closing.get("is_unfinished", False),
+        }
 
     def _check_cross_chapter_absence(
         self, absent_characters: list[str], current_chapter: str

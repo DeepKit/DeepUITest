@@ -105,16 +105,21 @@ class OpenAIClient:
             method="POST",
         )
 
+        timeout = request.extra.get("timeout_seconds", 120)
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
+            if self.db is not None:
+                _record_model_error(self.db, request, self.model_name, f"HTTP {e.code}: {body[:500]}")
             raise ModelCallError(
                 f"OpenAI API HTTP {e.code}: {body[:500]}",
                 recoverable=e.code >= 500,
             )
         except Exception as e:
+            if self.db is not None:
+                _record_model_error(self.db, request, self.model_name, str(e))
             raise ModelCallError(f"OpenAI API error: {e}", recoverable=True)
 
         choice = result.get("choices", [{}])[0]
@@ -186,16 +191,21 @@ class AnthropicClient:
             method="POST",
         )
 
+        timeout = request.extra.get("timeout_seconds", 120)
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
+            if self.db is not None:
+                _record_model_error(self.db, request, self.model_name, f"HTTP {e.code}: {body[:500]}")
             raise ModelCallError(
                 f"Anthropic API HTTP {e.code}: {body[:500]}",
                 recoverable=e.code >= 500,
             )
         except Exception as e:
+            if self.db is not None:
+                _record_model_error(self.db, request, self.model_name, str(e))
             raise ModelCallError(f"Anthropic API error: {e}", recoverable=True)
 
         # Anthropic format: content is a list of blocks
@@ -336,6 +346,35 @@ def _record_model_attempt(
                 response.usage.get("prompt_tokens", 0),
                 response.usage.get("completion_tokens", 0),
                 response.usage.get("total", 0),
+            ),
+        )
+        db.commit()
+    except Exception:
+        pass
+
+
+def _record_model_error(
+    db: sqlite3.Connection,
+    request: ModelRequest,
+    model_name: str,
+    error_message: str,
+) -> None:
+    idempotency_key = hashlib.md5(
+        f"{request.shot_id}:{request.persona}:{request.run_id}:{request.operation}:{model_name}:error".encode()
+    ).hexdigest()[:32]
+    request_hash = hashlib.md5(request.prompt.encode()).hexdigest()[:16]
+
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO model_attempts "
+            "(attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
+            "request_prompt_hash, response_text_hash, "
+            "usage_prompt_tokens, usage_completion_tokens, usage_total_tokens, error_message) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)",
+            (
+                generate_ulid(), request.run_id, request.shot_id,
+                request.operation, model_name, idempotency_key,
+                request_hash, "", error_message[:500],
             ),
         )
         db.commit()

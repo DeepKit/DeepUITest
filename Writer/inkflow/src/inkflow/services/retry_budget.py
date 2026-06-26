@@ -4,14 +4,14 @@
 
 1. 全局重试预算：每个 run 的总 redo 次数上限（默认 = shot 数 × 2）。
 2. failure_signature：记录每次失败的类型（empty, too_short, repetition,
-   below_threshold, l4_violation）。
+   below_threshold, l4_violation, l3_violation, chapter_hook_weak）。
 3. 同类失败熔断：同一类型的失败达到 3 次 → 标记为 circuit_breaker，
    该 shot 跳过 redo，进入 placeholder。
 
 设计：
   - 轻量级，不影响 P0 happy path。
   - 所有数据存 writing_shots（redo_attempt + placeholder_type）和
-    writing_shot_contracts（failure_signature_json）中。
+    writing_shots（failure_signature_json）中。
 """
 
 from __future__ import annotations
@@ -34,6 +34,8 @@ _FAILURE_TYPES = [
     "excessive_repetition",
     "below_threshold",
     "l4_violation",
+    "l3_violation",
+    "chapter_hook_weak",
     "model_error",
     "json_parse_error",
 ]
@@ -252,6 +254,7 @@ def classify_failure_type(
     gate1_violations: list[str],
     jury_score: float | None = None,
     l4_issues: list[str] | None = None,
+    l3_issues: list[str] | None = None,
 ) -> str:
     """从失败信号中分类失败类型。"""
     if gate1_violations:
@@ -267,5 +270,10 @@ def classify_failure_type(
 
     if l4_issues:
         return "l4_violation"
+
+    if l3_issues:
+        if any("chapter_hook_weak" in issue for issue in l3_issues):
+            return "chapter_hook_weak"
+        return "l3_violation"
 
     return "model_error"

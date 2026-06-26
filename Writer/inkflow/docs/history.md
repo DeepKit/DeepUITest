@@ -1352,3 +1352,58 @@ CREATIVE-3 从待办移入历史。后续不再继续放宽留白机制，优先
 
 - 目标测试：2 passed
 - 全量测试：363 passed, 4 warnings
+
+---
+
+## VAL-1 恢复与章节 Gate 补齐 — 2026-06-26
+
+**目标**：立即补齐三项投产前缺口：第 2 章重写链路跑通一次、章末钩子/悬念强制检查落到 gate、aborted session 的恢复和失败归因再收敛一轮。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| L3 章末钩子 | `evaluate_l3()` 读取最后一个 shot 当前正文，要求章节末尾为未完成动作/打断；失败记录 `chapter_hook_weak` |
+| 失败归因 | `RetryBudgetService` 新增 `l3_violation` / `chapter_hook_weak`；L3/L4 失败写回最终 shot 的 `failure_signature_json` |
+| Session 诊断 | `SessionManager.get_session_failure_summary()` 聚合 shot 失败签名和 failed gates |
+| 显式恢复 | `ink resume <session_id>` 绑定指定 session；`sessions list` 展示 aborted/crashed 与失败摘要 |
+| 整章重写 | `repair --chapter <key> --all` 支持把整章置回 redo，清理旧 L3/L4 gate，并激活原 session |
+| 幂等恢复 | run snapshot 与 shot contract 编译可复用既有记录，支持同一 run 反复 repair/resume |
+| 模型审计 | 远端模型错误也写入 `model_attempts.error_message`；jury 调用默认 45 秒超时、0 次额外重试 |
+| 本地评审 | 无显式 jury models 时默认 `local-default`；新增 `run --local-jury` 用于不改 `.models` 的稳定验证 |
+
+### 真实《分流》第 2 章验证
+
+命令：
+
+```powershell
+python -m inkflow.cli repair "分流" --chapter v01.c02 --all
+python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
+```
+
+结果：
+
+| 指标 | 结果 |
+|------|------|
+| 链路状态 | 完整跑完 4/4 shots，session completed |
+| Scope Report | Green 0 / Yellow 0 / Red/PH 4 |
+| 主要失败 | `l4_violation: must_land events may not be fully covered` |
+| L3 状态 | 未触发；原因是 L4 未全 passed |
+| 结论 | 工程链路可恢复、可归因、可跑完；正文质量不能投产 |
+
+### 新增/更新测试
+
+| 测试 | 覆盖 |
+|------|------|
+| `test_l3_fails_when_chapter_hook_is_closed` | 最后一镜收束/解释会让 L3 失败 |
+| `test_l3_passes_when_chapter_hook_is_unfinished_action` | 未完成动作式章末钩子可通过 L3 |
+| `test_failure_summary_groups_signatures_and_failed_gates` | session 失败摘要聚合失败签名和 gate |
+| `test_chapter_hook_failure_type_is_recorded` | `chapter_hook_weak` 可进入 retry budget |
+| `test_resume_specific_aborted_session_reuses_requested_session` | 显式恢复 aborted session 不会串到其它 session |
+| `test_record_model_error_writes_attempt` | 模型错误写入 `model_attempts.error_message` |
+| `test_jury_config_defaults_to_local_model` | 未显式配置 jury models 时默认本地评委 |
+
+### 验证
+
+- 目标测试：101 passed, 1 warning
+- 全量测试：376 passed, 4 warnings

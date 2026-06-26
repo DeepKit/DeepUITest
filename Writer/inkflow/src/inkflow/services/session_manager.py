@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -116,7 +117,7 @@ class SessionManager:
         self.update_session_status(session_id, SessionStatus.CRASHED)
 
     def list_incomplete_sessions(self) -> list[dict]:
-        """List all sessions that are not completed or aborted."""
+        """List recoverable sessions that are not completed or explicitly aborted."""
         rows = self.db.execute(
             "SELECT * FROM writing_sessions "
             "WHERE project_id = ? AND status IN ('active', 'paused', 'crashed') "
@@ -124,6 +125,55 @@ class SessionManager:
             (self.project_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_session_failure_summary(self, session_id: str) -> dict | None:
+        """Summarize shot failure signatures and failed gates for a session."""
+        session = self.get_session(session_id)
+        if session is None:
+            return None
+
+        rows = self.db.execute(
+            "SELECT shot_id, shot_index, failure_signature_json "
+            "FROM writing_shots "
+            "WHERE run_id = ? AND failure_signature_json IS NOT NULL "
+            "ORDER BY shot_index",
+            (session["run_id"],),
+        ).fetchall()
+
+        by_type: Counter = Counter()
+        details = []
+        for row in rows:
+            try:
+                sig = json.loads(row["failure_signature_json"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            failure_type = sig.get("last_failure_type", "unknown")
+            by_type[failure_type] += 1
+            details.append({
+                "shot_id": row["shot_id"],
+                "shot_index": row["shot_index"],
+                "failure_type": failure_type,
+                "consecutive_count": sig.get("consecutive_count", 0),
+                "detail": sig.get("detail", ""),
+            })
+
+        gate_rows = self.db.execute(
+            "SELECT level, COUNT(*) AS cnt FROM writing_architect_gates "
+            "WHERE run_id = ? AND status = 'failed' "
+            "GROUP BY level ORDER BY level",
+            (session["run_id"],),
+        ).fetchall()
+        failed_gates = {row["level"]: row["cnt"] for row in gate_rows}
+
+        return {
+            "session_id": session_id,
+            "run_id": session["run_id"],
+            "status": session["status"],
+            "total_failures": len(details),
+            "by_type": dict(by_type),
+            "details": details,
+            "failed_gates": failed_gates,
+        }
 
     # ── Checkpoints ──
 
@@ -481,6 +531,13 @@ class SessionManager:
         snapshot_data: dict,
     ) -> str:
         """Create a run snapshot (contract snapshot at run start)."""
+        existing = self.db.execute(
+            "SELECT snapshot_id FROM writing_run_snapshots WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if existing:
+            return existing["snapshot_id"]
+
         snapshot_id = generate_ulid()
         self.db.execute(
             "INSERT INTO writing_run_snapshots "

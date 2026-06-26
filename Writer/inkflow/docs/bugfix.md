@@ -355,3 +355,39 @@
 - **影响**: `ink run --chapter v01.c04` 会缺少 must_land 事件，退化为默认场景 prompt，污染真实项目验证结果。
 - **修复**: 新增通用 `_extract_chapter_events(outline_text, chapter_number)`，`setup` 自动抽取第一卷第 2-8 章事件；保留 `_extract_chapter_2_events()` 兼容包装并新增测试。
 - **文件**: `src/inkflow/cli.py`, `tests/test_cli.py`
+
+---
+
+## 第八轮 (2026-06-26) — VAL-1 恢复、Gate 与真实链路
+
+### B43. 章末钩子只在 L4 弱检查，章节级 L3 没有硬门槛 ✅ 已修复
+- **严重性**: Important
+- **发现**: 第 2 章重写链路投产前检查
+- **根因**: `_check_closing_sentence()` 已能判断 `hook_quality` / `is_unfinished`，但 `evaluate_l3()` 未读取最后一个 shot 正文，也不会把章节末尾必须留悬念纳入章节 gate。
+- **影响**: 单个 shot 可通过 L4，但整章最后一句仍可能是解释/收束，章节钩子不明显的问题无法被 gate 拦截。
+- **修复**: L3 新增 `chapter_hook` 硬检查，读取最后一个 shot 当前正文，要求最后一句为未完成动作/打断；失败时记录 `chapter_hook_weak`。
+- **文件**: `src/inkflow/services/architect_gate.py`, `tests/test_architect_gate.py`
+
+### B44. aborted/crashed session 恢复与失败归因不收敛 ✅ 已修复
+- **严重性**: Important
+- **发现**: 真实《分流》库存在大量 aborted session
+- **根因**: `sessions list` 只展示 active/paused/crashed；`ink resume <session_id>` 会先打印指定 session，却委托给 `run --resume` 重新选择最新 session，可能恢复错对象；失败签名没有 session 级摘要。
+- **影响**: 人工无法判断 aborted session 为何失败，显式恢复也不可靠。
+- **修复**: 增加 session failure summary，`sessions list` 展示 aborted/crashed 归因；显式 resume 绑定指定 session；异常路径标记 crashed；L3/L4 失败写入 `failure_signature_json`。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/session_manager.py`, `src/inkflow/services/retry_budget.py`, `tests/test_session_manager.py`, `tests/test_cli_happy_path.py`, `tests/test_retry_budget.py`
+
+### B45. 第 2 章重写链路不能安全复跑 ✅ 已修复
+- **严重性**: Critical
+- **发现**: VAL-1 第 2 章重写
+- **根因**: shot_id 为章节复合 ID，新 run 会复用旧 shot；run snapshot 和 shot contract 插入不幂等；`repair` 只能修红/黄，不能整章重写或清掉旧 L3/L4 gate。
+- **影响**: `ink run --chapter v01.c02` 看似新跑，实际可能缺 contract、跳过旧 shot 或撞唯一约束，无法验证“重写链路”。
+- **修复**: `repair --chapter <key> --all` 支持整章重写、激活原 session、清理旧 L3/L4 gate；run snapshot 和 contract 编译改为幂等；`run --local-jury` 支持不改 `.models` 的本地评审验证。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/session_manager.py`, `src/inkflow/services/contract_compiler.py`, `tests/test_cli_happy_path.py`
+
+### B46. 模型调用失败缺少错误审计，远端 Jury 会拖住生产链路 ✅ 已修复
+- **严重性**: Important
+- **发现**: VAL-1 真实运行中 stepfun 无有效订阅、qwen 读超时
+- **根因**: 远端模型异常只抛出 `ModelCallError`，成功调用才写 `model_attempts`；真实 `.models` 显式远端 jury 时，评分阶段会逐模型逐维度串行等待。
+- **影响**: 生产链路长时间停在评分阶段，且 DB 中看不到具体供应商错误。
+- **修复**: 模型异常也写入 `model_attempts.error_message`；jury 单次调用默认 45 秒、默认不额外重试；无显式 jury models 时默认 local-default；新增 `--local-jury` 运行开关。
+- **文件**: `src/inkflow/services/model_client.py`, `src/inkflow/services/jury_service.py`, `src/inkflow/utils/config.py`, `src/inkflow/cli.py`, `tests/test_model_client.py`, `tests/test_utils.py`, `tests/test_core_services.py`

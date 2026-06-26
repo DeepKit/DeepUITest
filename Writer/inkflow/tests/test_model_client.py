@@ -8,6 +8,7 @@ from inkflow.services.model_client import (
     LocalDefaultGenerator,
     ModelRequest,
     ModelResponse,
+    _record_model_error,
     create_model_client,
 )
 
@@ -88,3 +89,37 @@ class TestCreateModelClient:
     def test_unknown_model_raises(self):
         with pytest.raises(ValueError, match="Unknown model"):
             create_model_client("gpt-nonexistent")
+
+
+def test_record_model_error_writes_attempt(db):
+    db.execute("INSERT INTO projects (project_id, name) VALUES ('proj_01', '分流')")
+    db.execute(
+        "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+        "VALUES ('s1', 'proj_01', 'run_01', 'active')"
+    )
+    db.execute(
+        "INSERT INTO writing_shots "
+        "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+        "VALUES ('shot_01', 'proj_01', 'run_01', 'v01.c02', 1, 'pending')"
+    )
+    db.commit()
+
+    req = ModelRequest(
+        operation="jury_score",
+        persona="评委_test",
+        prompt="score this",
+        model="remote-model",
+        shot_id="shot_01",
+        run_id="run_01",
+    )
+
+    _record_model_error(db, req, "remote-model", "timed out")
+
+    row = db.execute(
+        "SELECT phase, model_name, error_message FROM model_attempts "
+        "WHERE shot_id = 'shot_01'"
+    ).fetchone()
+    assert row is not None
+    assert row["phase"] == "jury_score"
+    assert row["model_name"] == "remote-model"
+    assert row["error_message"] == "timed out"

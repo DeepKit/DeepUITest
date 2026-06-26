@@ -201,8 +201,12 @@ def build_providers_for_model(model_ref: str, models_config: dict) -> dict:
 
 
 def get_jury_config(models_config: dict) -> dict:
-    """获取评委配置 (默认 3 模型 + 5 维度 + 阈值)。"""
-    from inkflow.models.enums import JURY_V4_MODELS_DEFAULT, JURY_V4_DIMENSIONS
+    """获取评委配置。
+
+    P0 default is local-default for production stability. Projects that need
+    external jury models must opt in via jury_config.models.
+    """
+    from inkflow.models.enums import JURY_V4_DIMENSIONS
 
     jury_cfg = models_config.get("jury_config", {})
     dimensions = _merge_required_dimensions(
@@ -210,7 +214,7 @@ def get_jury_config(models_config: dict) -> dict:
         JURY_V4_DIMENSIONS,
     )
     return {
-        "models": jury_cfg.get("models", JURY_V4_MODELS_DEFAULT),
+        "models": jury_cfg.get("models") or ["local-default"],
         "dimensions": dimensions,
         "quality_threshold": jury_cfg.get("quality_threshold", 80),
         "outline_threshold": jury_cfg.get("outline_threshold", 70),

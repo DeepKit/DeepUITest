@@ -86,6 +86,60 @@ class TestArchitectGateL3:
             )
         db.commit()
 
+    def _create_chapter_with_revisions(self, db, chapter_key, run_id, project_id, texts):
+        """Create a clean chapter run with current revisions for hook tests."""
+        db.execute(
+            "INSERT OR IGNORE INTO writing_sessions "
+            "(session_id, project_id, run_id, status) VALUES (?, ?, ?, 'active')",
+            (f"s_{run_id}", project_id, run_id),
+        )
+        for i, text in enumerate(texts, start=1):
+            shot_id = f"{run_id}_shot_{i}"
+            contract_id = f"{run_id}_contract_{i}"
+            revision_id = f"{run_id}_revision_{i}"
+            db.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, project_id, run_id, layer_key, shot_index, "
+                "shot_status, light_status) "
+                "VALUES (?, ?, ?, ?, ?, 'done_green', 'green')",
+                (shot_id, project_id, run_id, chapter_key, i),
+            )
+            db.execute(
+                "INSERT INTO writing_shot_contracts "
+                "(contract_id, project_id, run_id, shot_id, layer_key, "
+                "contract_status, snapshot_hash, must_land_json, anti_write_json, "
+                "pov_routing_json, contract_json) "
+                "VALUES (?, ?, ?, ?, ?, 'locked', 'h', '{}', '{}', ?, '{}')",
+                (
+                    contract_id,
+                    project_id,
+                    run_id,
+                    shot_id,
+                    chapter_key,
+                    json.dumps({"pov_character": ["阿坤", "韩教授", "苏然"][i % 3]}),
+                ),
+            )
+            db.execute(
+                "INSERT INTO shot_revisions "
+                "(revision_id, shot_id, run_id, contract_id, revision_sequence, "
+                "operation, text, text_hash_normalized, is_current, attempt_id) "
+                "VALUES (?, ?, ?, ?, 1, 'write_generate', ?, ?, 1, ?)",
+                (
+                    revision_id,
+                    shot_id,
+                    run_id,
+                    contract_id,
+                    text,
+                    f"hash_{i}",
+                    f"attempt_{i}",
+                ),
+            )
+            db.execute(
+                "UPDATE writing_shots SET current_revision_id = ? WHERE shot_id = ?",
+                (revision_id, shot_id),
+            )
+        db.commit()
+
     def test_l3_not_triggered_without_l4(self, setup_run):
         from inkflow.services.architect_gate import ArchitectGate
         db = setup_run
@@ -152,6 +206,45 @@ class TestArchitectGateL3:
         assert result["green_count"] == 2
         assert result["passed"] is False
         assert len(result["issues"]) > 0
+
+    def test_l3_fails_when_chapter_hook_is_closed(self, setup_run):
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c07"
+        run_id = "run_hook_closed"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "阿坤把湿透的票根摊在柜台上，水沿着玻璃边缘慢慢往下走。韩教授没有解释，只让他把手按住。",
+            "苏然翻过临时边界单，琉璃场三个字被红笔圈住，纸角还沾着雨水。",
+            "阿坤收起那张纸，柜台里的灯一盏盏灭下去。所以这件事终于结束了。",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+
+        result = gate.evaluate_l3(chapter)
+
+        assert result["passed"] is False
+        assert result["chapter_hook"]["passed"] is False
+        assert any("chapter_hook_weak" in issue for issue in result["issues"])
+
+    def test_l3_passes_when_chapter_hook_is_unfinished_action(self, setup_run):
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c08"
+        run_id = "run_hook_open"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "阿坤把湿透的票根摊在柜台上，水沿着玻璃边缘慢慢往下走。韩教授没有解释，只让他把手按住。",
+            "苏然翻过临时边界单，琉璃场三个字被红笔圈住，纸角还沾着雨水。",
+            "阿坤收起那张纸，柜台里的灯一盏盏灭下去。外面雨声压住了排号屏的提示音，"
+            "他听见自己袖口还在滴水。他正要把湿冷的塑料袋塞进柜台，门外的铃突然响了",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+
+        result = gate.evaluate_l3(chapter)
+
+        assert result["passed"] is True
+        assert result["chapter_hook"]["passed"] is True
+        assert result["chapter_hook"]["hook_quality"] == "excellent"
 
 
 class TestArchitectGateL2L1:

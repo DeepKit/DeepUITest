@@ -79,6 +79,46 @@ class TestSessionLifecycle:
         session = mgr.get_session(session_id)
         assert session["status"] == SessionStatus.CRASHED
 
+    def test_failure_summary_groups_signatures_and_failed_gates(self, mgr):
+        session_id = mgr.create_session(act_id="v01.c02", total_shots=2)
+        session = mgr.get_session(session_id)
+        shot_ids = mgr.create_shots(
+            session["run_id"],
+            [
+                {"layer_key": "v01.c02", "shot_index": 1},
+                {"layer_key": "v01.c02", "shot_index": 2},
+            ],
+        )
+        mgr.db.execute(
+            "UPDATE writing_shots SET failure_signature_json = ? WHERE shot_id = ?",
+            (
+                json.dumps(
+                    {
+                        "last_failure_type": "chapter_hook_weak",
+                        "consecutive_count": 1,
+                        "detail": "final shot closed",
+                    },
+                    ensure_ascii=False,
+                ),
+                shot_ids[1],
+            ),
+        )
+        mgr.db.execute(
+            "INSERT INTO writing_architect_gates "
+            "(gate_id, run_id, level, scope_key, status, check_result_json) "
+            "VALUES ('gate_failed_l3', ?, 'L3', 'v01.c02', 'failed', '{}')",
+            (session["run_id"],),
+        )
+        mgr.db.commit()
+
+        summary = mgr.get_session_failure_summary(session_id)
+
+        assert summary is not None
+        assert summary["total_failures"] == 1
+        assert summary["by_type"] == {"chapter_hook_weak": 1}
+        assert summary["failed_gates"] == {"L3": 1}
+        assert summary["details"][0]["shot_index"] == 2
+
 
 class TestCheckpoints:
     """Checkpoint write/load/verify"""

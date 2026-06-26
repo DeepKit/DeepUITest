@@ -268,6 +268,15 @@ class ContractCompiler:
         try:
             self.db.execute("SAVEPOINT compile_shot_contracts")
             for shot in shots:
+                existing = self.db.execute(
+                    "SELECT contract_id FROM writing_shot_contracts "
+                    "WHERE run_id = ? AND shot_id = ?",
+                    (run_id, shot["shot_id"]),
+                ).fetchone()
+                if existing:
+                    contract_ids.append(existing["contract_id"])
+                    continue
+
                 contract_id = generate_ulid()
 
                 must_land = shot.get("must_land", {})

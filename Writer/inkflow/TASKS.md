@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
-Date: 2026-06-25
-Status: v3.12；Schema v16；38 张业务表 + `_schema_meta` 元表；最近全量验证：`363 passed, 4 warnings`
+Date: 2026-06-26
+Status: v3.13；Schema v16；38 张业务表 + `_schema_meta` 元表；最近全量验证：`376 passed, 4 warnings`
 
 ---
 
@@ -9,7 +9,7 @@ Status: v3.12；Schema v16；38 张业务表 + `_schema_meta` 元表；最近全
 
 P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contract -> constitution -> run -> scope report` 可跑通。L0 全书宪法、L0.5 卷部节奏、L1 章级节奏、三棵树架构、正文真相源、D-25 悬疑可靠性、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修和 CREATIVE-3 留白创意评审均已落地。
 
-当前任务不再是补 P0 阻塞项，而是进入真实项目验证与效果评估阶段：用真实《分流》项目跑完整流程，收集 prompt caching / polish / 留白创意评审 / 风格学习的实际收益。
+2026-06-26 的 VAL-1 实战结果：第 2 章重写链路已用真实《分流》库跑通一次（`ink run "分流" --chapter v01.c02 --resume --local-jury`），但 4 个 shot 全部被 L4 拦为 red/placeholder，失败归因集中为 `l4_violation: must_land events may not be fully covered`。结论：工程链路可恢复、可归因、可跑完；写作质量尚未达到生产投放标准。
 
 设计审阅结论不变：当前方向 near-optimal，不建议推倒重做。下一步应避免继续堆检查项，重点把“约束保下限 + 留白出上限 + 评审学偏好”跑成可验证闭环。
 
@@ -25,7 +25,7 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 | 8 层层级 | `docs/design-8layer-hierarchy.md` | ✅ |
 | 悬疑引擎 | `docs/suspense-engine.md` | ✅ 已实施核心闭环，待实战验证 |
 | 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-25 归档 |
-| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B37/B38/B39/B40/B41/B42 |
+| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B43/B44/B45/B46 |
 
 ---
 
@@ -44,6 +44,7 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 | Prompt caching | B23-P1 上下文降级与 token budget 裁剪 |
 | 创作质量 | CREATIVE-1 `unexpected_value`；CREATIVE-2 `write_polish`；CREATIVE-3 留白创意评审 |
 | 文档与测试对齐 | B37/B38/B39/B40/B41/B42：Schema v16 / 表数 / 索引 / CREATIVE 测试、配置兼容、模型审计、后续章节契约抽取与权威契约口径同步 |
+| VAL-1 工程补齐 | B43/B44/B45/B46：L3 章末钩子硬 gate、session 恢复/失败归因、章节重写入口、模型错误审计与本地 jury 运行开关 |
 
 ---
 
@@ -51,7 +52,9 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
-| 高 | VAL-1 | 真实项目实战验证 | 待执行 | 用真实《分流》项目跑完 `ink run` 全流程，记录绿/黄/红、重试预算、prompt token、文本质量问题 |
+| 高 | QUAL-1 | 第 2 章质量修复 | 新增阻塞 | 修复 must_land 覆盖与本地/远端 writer 质量，使 v01.c02 至少达到无 red，L3 可触发 |
+| 高 | VAL-2 | 真实项目复跑验证 | 待执行 | QUAL-1 后重跑 `ink run "分流" --chapter v01.c02 --resume --local-jury`，记录绿/黄/红、L3 章末钩子结果和失败签名 |
+| 中 | JURY-REMOTE | 远端 Jury 配置治理 | 待执行 | 明确 `.models` 中远端 jury 可用性；无有效订阅时不应阻塞生产链路 |
 | 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |
 | 中 | CREATIVE-3-EVAL | 留白创意评审效果评估 | 已有 `creative_review=True` 评分路径，待真实文本验证 | 比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好 |
 | 中 | PERF-1 | Prompt caching 性能基线 | 待测量 | 在真实 prompt 上记录 B23-P1 降级前后 token 节省量与 cacheable 比例 |

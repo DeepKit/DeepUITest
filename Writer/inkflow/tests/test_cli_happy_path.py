@@ -126,3 +126,30 @@ class TestCliResumeIdempotent:
             "SELECT COUNT(*) as cnt FROM writing_shots WHERE run_id = 'run_01'"
         ).fetchone()["cnt"]
         assert count == 1
+
+    def test_resume_specific_aborted_session_reuses_requested_session(self, db):
+        """Explicit resume must bind to the requested session, even if aborted."""
+        from inkflow.cli import _resume_or_create_session
+        from inkflow.services.session_manager import SessionManager
+
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', 'test')")
+        db.commit()
+        mgr = SessionManager(db, "p1")
+        aborted_id = mgr.create_session(act_id="v01.c02", total_shots=2)
+        aborted_run = mgr.get_session(aborted_id)["run_id"]
+        mgr.abort_session(aborted_id)
+        active_id = mgr.create_session(act_id="v01.c02", total_shots=2)
+
+        session_id, run_id = _resume_or_create_session(
+            mgr,
+            db,
+            "p1",
+            "v01.c02",
+            2,
+            requested_session_id=aborted_id,
+        )
+
+        assert session_id == aborted_id
+        assert run_id == aborted_run
+        assert session_id != active_id
+        assert mgr.get_session(aborted_id)["status"] == "active"

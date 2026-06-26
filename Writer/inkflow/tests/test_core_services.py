@@ -469,12 +469,12 @@ class TestGate1ResultPersistence:
 
 
 class TestJuryV4Config:
-    """v4 评委：默认 3 模型 × 5 维度结构。"""
+    """v4 评委配置。"""
 
     def test_default_jury_models(self, setup_run):
-        """空配置 → 使用默认评委模型。"""
+        """空配置 → 使用本地评委，避免生产链路默认依赖外部供应商。"""
         jury = JuryService(setup_run, "run_01", {})
-        assert len(jury.jury_models) == 3
+        assert jury.jury_models == ["local-default"]
         assert len(jury.dimensions) == 5  # v6: 4 dims + unexpected_value (CREATIVE-1)
 
     def test_default_quality_threshold(self, setup_run):

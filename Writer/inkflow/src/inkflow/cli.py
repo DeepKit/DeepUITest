@@ -231,24 +231,129 @@ def _summarize_text(text: str, max_chars: int) -> str:
     return clean[:max_chars] + "…"
 
 
-def _resume_or_create_session(mgr, db, project_id, chapter, num_shots):
-    """Resume the latest incomplete session, or create a new one."""
-    # Find latest incomplete session for this project
-    row = db.execute(
+def _format_failure_summary(summary: dict | None) -> str:
+    """Compact one-line failure summary for CLI output."""
+    if not summary:
+        return ""
+    parts = []
+    by_type = summary.get("by_type") or {}
+    if by_type:
+        parts.extend(f"{k}={v}" for k, v in sorted(by_type.items()))
+    failed_gates = summary.get("failed_gates") or {}
+    if failed_gates:
+        parts.extend(f"gate_{k}={v}" for k, v in sorted(failed_gates.items()))
+    return ", ".join(parts)
+
+
+def _print_failure_summary(summary: dict | None) -> None:
+    """Print a readable failure summary if the session has failures."""
+    label = _format_failure_summary(summary)
+    if not label:
+        return
+    click.echo(f"失败归因: {label}")
+    for item in (summary or {}).get("details", [])[:3]:
+        detail = item.get("detail") or ""
+        suffix = f" — {detail}" if detail else ""
+        click.echo(
+            f"  Shot {item.get('shot_index', '?')}: "
+            f"{item.get('failure_type', 'unknown')}{suffix}"
+        )
+
+
+def _resume_or_create_session(
+    mgr, db, project_id, chapter, num_shots, requested_session_id=None,
+):
+    """Resume an exact session or the latest recoverable one, else create new."""
+    if requested_session_id:
+        row = db.execute(
+            "SELECT session_id, run_id, status, act_id FROM writing_sessions "
+            "WHERE project_id = ? AND session_id = ?",
+            (project_id, requested_session_id),
+        ).fetchone()
+        if row is None:
+            raise click.ClickException(f"未找到指定 session: {requested_session_id}")
+        if row["status"] == "completed":
+            raise click.ClickException(f"Session {requested_session_id[:12]}... 已完成，不能恢复。")
+
+        if row["status"] == "aborted":
+            click.echo(f"恢复已放弃 Session: {row['session_id'][:12]}...")
+        else:
+            click.echo(f"恢复指定 Session: {row['session_id'][:12]}... ({row['status']})")
+        if row["status"] != "active":
+            mgr.update_session_status(row["session_id"], "active")
+        return row["session_id"], row["run_id"]
+
+    # Find latest recoverable session for this project and chapter.
+    query = (
         "SELECT session_id, run_id FROM writing_sessions "
         "WHERE project_id = ? AND status IN ('active', 'paused', 'crashed') "
-        "ORDER BY created_at DESC LIMIT 1",
-        (project_id,),
-    ).fetchone()
+    )
+    params = [project_id]
+    if chapter:
+        query += "AND act_id = ? "
+        params.append(chapter)
+    query += "ORDER BY created_at DESC LIMIT 1"
+
+    row = db.execute(query, params).fetchone()
     if row:
         click.echo(f"恢复 Session: {row['session_id'][:12]}...")
         return row["session_id"], row["run_id"]
+
+    aborted_query = (
+        "SELECT session_id FROM writing_sessions "
+        "WHERE project_id = ? AND status = 'aborted' "
+    )
+    aborted_params = [project_id]
+    if chapter:
+        aborted_query += "AND act_id = ? "
+        aborted_params.append(chapter)
+    aborted_query += "ORDER BY updated_at DESC LIMIT 1"
+    aborted = db.execute(aborted_query, aborted_params).fetchone()
+    if aborted:
+        summary = mgr.get_session_failure_summary(aborted["session_id"])
+        label = _format_failure_summary(summary)
+        note = f"；失败归因: {label}" if label else ""
+        click.echo(
+            f"最近有已放弃 Session: {aborted['session_id'][:12]}...，"
+            f"run --resume 不自动恢复{note}。"
+        )
+        click.echo(f"如需继续它，请运行: ink resume {aborted['session_id']}")
 
     # No incomplete session → create new
     click.echo("没有未完成的 session，创建新的...")
     session_id = mgr.create_session(act_id=chapter, total_shots=num_shots)
     session = mgr.get_session(session_id)
     return session_id, session["run_id"]
+
+
+def _mark_latest_active_session_crashed(db, project: str, chapter: str | None) -> None:
+    """Mark the most recent in-progress active session as crashed after exceptions."""
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?",
+        (project,),
+    ).fetchone()
+    if row is None:
+        return
+
+    query = (
+        "SELECT session_id FROM writing_sessions "
+        "WHERE project_id = ? AND status = 'active' AND current_shot_id IS NOT NULL "
+    )
+    params = [row["project_id"]]
+    if chapter:
+        query += "AND act_id = ? "
+        params.append(chapter)
+    query += "ORDER BY updated_at DESC LIMIT 1"
+
+    session = db.execute(query, params).fetchone()
+    if session is None:
+        return
+    db.execute(
+        "UPDATE writing_sessions SET status = 'crashed', updated_at = datetime('now') "
+        "WHERE session_id = ?",
+        (session["session_id"],),
+    )
+    db.commit()
 
 
 def _resolve_project_db(title: str) -> Path:
@@ -848,7 +953,18 @@ def _print_constitution(constitution: dict) -> None:
 @click.option("--writer-count", type=click.IntRange(2, 4), default=2, help="写手数量 (2-4)")
 @click.option("--shot-count", type=int, default=None, help="每章 Shot 数 (默认从 baseline 读取)")
 @click.option("--resume", is_flag=True, help="从断点恢复")
-def run_project(project: str, chapter: str | None, shot_id: str | None, writer_count: int, shot_count: int | None, resume: bool):
+@click.option("--local-jury", is_flag=True, help="本次运行强制使用 local-default 评委")
+@click.option("--session-id", "resume_session_id", default=None, hidden=True)
+def run_project(
+    project: str,
+    chapter: str | None,
+    shot_id: str | None,
+    writer_count: int,
+    shot_count: int | None,
+    resume: bool,
+    local_jury: bool,
+    resume_session_id: str | None,
+):
     """全自动生产。
 
     P0: 按 shot 生成第 2 章。writer race → jury → gate → revision → checkpoint。
@@ -868,12 +984,22 @@ def run_project(project: str, chapter: str | None, shot_id: str | None, writer_c
     db_path = _resolve_project_db(project)
     db = init_project_db(db_path)
     try:
-        _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, shot_count, resume)
+        try:
+            _run_project_inner(
+                db, db_path, project, chapter, shot_id, writer_count,
+                shot_count, resume, resume_session_id, local_jury,
+            )
+        except Exception:
+            _mark_latest_active_session_crashed(db, project, chapter)
+            raise
     finally:
         db.close()
 
 
-def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, shot_count, resume):
+def _run_project_inner(
+    db, db_path, project, chapter, shot_id, writer_count, shot_count, resume,
+    resume_session_id=None, local_jury=False,
+):
     """Inner run logic — db is guaranteed to be closed by the caller."""
     from inkflow.services import (
         SessionManager, ContractCompiler, PromptCompiler,
@@ -916,6 +1042,12 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
     except ValueError as e:
         raise click.ClickException(str(e))
 
+    if local_jury:
+        models_config = dict(models_config)
+        jury_config = dict(models_config.get("jury_config", {}))
+        jury_config["models"] = ["local-default"]
+        models_config["jury_config"] = jury_config
+
     providers = models_config.get("providers", {})
 
     # Get meta-contract — this is the authority for shot count, not baseline
@@ -942,7 +1074,10 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
     # Create session or resume
     mgr = SessionManager(db, project_id)
     if resume:
-        session_id, run_id = _resume_or_create_session(mgr, db, project_id, chapter, num_shots)
+        session_id, run_id = _resume_or_create_session(
+            mgr, db, project_id, chapter, num_shots,
+            requested_session_id=resume_session_id,
+        )
     else:
         session_id = mgr.create_session(act_id=chapter, total_shots=num_shots)
         session = mgr.get_session(session_id)
@@ -1622,6 +1757,33 @@ def _run_project_inner(db, db_path, project, chapter, shot_id, writer_count, sho
                 if l3_result["issues"]:
                     for issue in l3_result["issues"]:
                         click.echo(f"  ⚠ {issue}")
+                if not l3_result["passed"]:
+                    failure_shot_id = (
+                        l3_result.get("chapter_hook", {}).get("shot_id")
+                    )
+                    if not failure_shot_id:
+                        last_shot = db.execute(
+                            "SELECT shot_id FROM writing_shots "
+                            "WHERE run_id = ? AND layer_key = ? "
+                            "ORDER BY shot_index DESC LIMIT 1",
+                            (run_id, chapter),
+                        ).fetchone()
+                        failure_shot_id = last_shot["shot_id"] if last_shot else None
+                    if failure_shot_id:
+                        try:
+                            failure_type = classify_failure_type(
+                                gate1_violations=[],
+                                l3_issues=l3_result.get("issues", []),
+                            )
+                            retry_budget.record_failure(
+                                failure_shot_id,
+                                failure_type,
+                                detail="; ".join(l3_result.get("issues", [])[:3]),
+                            )
+                        except CircuitBreakerTriggered:
+                            click.echo("  🔴 L3 失败重复触发熔断，已记录到最终 shot")
+                        except RetryBudgetExhausted as exc:
+                            click.echo(f"  🔴 L3 失败归因记录超出重试预算: {exc}")
 
         # P0-7: Generate minimal scope report
         _print_scope_report(db, project_id, session_id, run_id, chapter)
@@ -1969,7 +2131,15 @@ def _print_scope_report(
 @click.argument("project")
 @click.option("--red", "target_red", is_flag=True, help="修复红灯 shot")
 @click.option("--yellow", "target_yellow", is_flag=True, help="修复黄灯 shot")
-def repair_project(project: str, target_red: bool, target_yellow: bool):
+@click.option("--chapter", default=None, help="仅修复指定章节，如 v01.c02")
+@click.option("--all", "target_all", is_flag=True, help="重写指定章节全部 shot（必须配合 --chapter）")
+def repair_project(
+    project: str,
+    target_red: bool,
+    target_yellow: bool,
+    chapter: str | None,
+    target_all: bool,
+):
     """AI 修复红灯/黄灯 shot。
 
     \b
@@ -1992,22 +2162,36 @@ def repair_project(project: str, target_red: bool, target_yellow: bool):
     project_id = row["project_id"]
 
     target_status = []
-    if target_red:
-        target_status.append("done_red_permanent")
-    if target_yellow:
-        target_status.append("done_yellow")
+    if target_all:
+        if not chapter:
+            db.close()
+            raise click.ClickException("--all 必须配合 --chapter，避免误重写全书。")
+        target_status.extend([
+            "pending", "generating", "gate1_check", "jury_scoring", "final_gate",
+            "redo", "done_green", "done_yellow", "done_red_permanent", "placeholder",
+        ])
+    else:
+        if target_red:
+            target_status.append("done_red_permanent")
+        if target_yellow:
+            target_status.append("done_yellow")
 
     if not target_status:
         db.close()
-        raise click.ClickException("请指定 --red 或 --yellow。")
+        raise click.ClickException("请指定 --red、--yellow，或 --chapter <key> --all。")
 
     placeholders = ",".join("?" for _ in target_status)
+    chapter_filter = "AND layer_key = ? " if chapter else ""
+    params = [project_id] + target_status
+    if chapter:
+        params.append(chapter)
     shots = db.execute(
-        f"SELECT shot_id, shot_index, layer_key, light_status, redo_attempt "
+        f"SELECT shot_id, run_id, shot_index, layer_key, light_status, redo_attempt "
         f"FROM writing_shots "
         f"WHERE project_id = ? AND shot_status IN ({placeholders}) "
+        f"{chapter_filter}"
         f"ORDER BY shot_index",
-        [project_id] + target_status,
+        params,
     ).fetchall()
 
     if not shots:
@@ -2016,18 +2200,41 @@ def repair_project(project: str, target_red: bool, target_yellow: bool):
         return
 
     from inkflow.services import QualityController
-    # Get the run_id from the shot's run
-    shot_run = db.execute(
-        "SELECT run_id FROM writing_shots WHERE shot_id = ?",
-        (shots[0]["shot_id"],),
-    ).fetchone()
-    run_id = shot_run["run_id"] if shot_run else ""
+    run_ids = {shot["run_id"] for shot in shots}
+    if len(run_ids) != 1:
+        db.close()
+        raise click.ClickException(
+            f"命中多个 run，无法安全修复: {', '.join(sorted(run_ids))}"
+        )
+    run_id = shots[0]["run_id"]
     qc = QualityController(db, run_id)
 
     click.echo(f"待修复 Shot: {len(shots)}")
+    shot_ids = [shot["shot_id"] for shot in shots]
+    shot_placeholders = ",".join("?" for _ in shot_ids)
+    db.execute(
+        f"DELETE FROM writing_architect_gates "
+        f"WHERE run_id = ? AND level = 'L4' AND scope_key IN ({shot_placeholders})",
+        [run_id] + shot_ids,
+    )
+    if chapter:
+        db.execute(
+            "DELETE FROM writing_architect_gates "
+            "WHERE run_id = ? AND level = 'L3' AND scope_key = ?",
+            (run_id, chapter),
+        )
+    db.commit()
+
     for shot in shots:
-        icon = "🔴" if shot["light_status"] == "red" else "🟡"
+        icon = "🔴" if shot["light_status"] == "red" else "🟡" if shot["light_status"] == "yellow" else "🟢"
         current_attempt = shot["redo_attempt"]
+        if target_all:
+            db.execute(
+                "UPDATE writing_shots SET redo_attempt = 0 WHERE shot_id = ?",
+                (shot["shot_id"],),
+            )
+            db.commit()
+            current_attempt = 0
         if current_attempt >= 3:
             click.echo(f"  {icon} Shot {shot['shot_index']}: 已达最大重试次数，跳过")
             continue
@@ -2038,7 +2245,25 @@ def repair_project(project: str, target_red: bool, target_yellow: bool):
             f"redo → {result['action']} (level={result['level']})"
         )
 
-    click.echo(f"\n已触发修复，请运行 ink run \"{project}\" --resume 继���生成。")
+    total_row = db.execute(
+        "SELECT COUNT(*) AS cnt FROM writing_shots WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    completed_row = db.execute(
+        "SELECT COUNT(*) AS cnt FROM writing_shots "
+        "WHERE run_id = ? AND shot_status IN ('done_green', 'done_yellow')",
+        (run_id,),
+    ).fetchone()
+    db.execute(
+        "UPDATE writing_sessions SET status = 'active', completed_shots = ?, "
+        "total_shots = ?, current_shot_id = NULL, updated_at = datetime('now') "
+        "WHERE run_id = ?",
+        (completed_row["cnt"], total_row["cnt"], run_id),
+    )
+    db.commit()
+
+    chapter_part = f" --chapter {chapter}" if chapter else ""
+    click.echo(f"\n已触发修复，请运行 ink run \"{project}\"{chapter_part} --resume 继续生成。")
     db.close()
 
 
@@ -2054,6 +2279,7 @@ def resume_session(session_id: str):
       ink resume <session_id>
     """
     from inkflow.db import init_project_db
+    from inkflow.services import SessionManager
 
     # Find the project for this session
     story_base = Path(r"D:\_Progs\.Story")
@@ -2089,6 +2315,13 @@ def resume_session(session_id: str):
                 cp_data = json.loads(checkpoint["checkpoint_json"])
                 click.echo(f"最新检查点: shot {cp_data.get('shot_index', '?')}")
 
+            mgr = SessionManager(db, row["project_id"])
+            _print_failure_summary(mgr.get_session_failure_summary(session_id))
+
+            if row["status"] == "completed":
+                db.close()
+                raise click.ClickException("该 session 已完成，不能恢复。")
+
             db.close()
 
             # Delegate to run --resume
@@ -2102,12 +2335,17 @@ def resume_session(session_id: str):
                 writer_count=2,
                 shot_count=row["total_shots"],
                 resume=True,
+                local_jury=False,
+                resume_session_id=session_id,
             )
             return
 
         db.close()
 
-    # ── sessions ──
+    raise click.ClickException(f"未找到 session: {session_id}")
+
+
+# ── sessions ──
 
 @main.group("sessions")
 def sessions_group():
@@ -2118,7 +2356,7 @@ def sessions_group():
 @sessions_group.command("list")
 @click.argument("project", required=False)
 def sessions_list(project: str | None):
-    """列出未完成的 session。可指定项目名缩小范围。
+    """列出可恢复和已放弃的 session。可指定项目名缩小范围。
 
     \b
     示例:
@@ -2126,6 +2364,7 @@ def sessions_list(project: str | None):
       ink sessions list "分流"    # 仅指定项目
     """
     from inkflow.db import init_project_db
+    from inkflow.services import SessionManager
 
     story_base = Path(r"D:\_Progs\.Story")
     found_any = False
@@ -2148,26 +2387,39 @@ def sessions_list(project: str | None):
         db = init_project_db(db_path)
         rows = db.execute(
             "SELECT * FROM writing_sessions "
-            "WHERE status IN ('active', 'paused', 'crashed') "
+            "WHERE status IN ('active', 'paused', 'crashed', 'aborted') "
             "ORDER BY created_at DESC"
         ).fetchall()
 
         if rows:
             if not found_any:
-                click.echo("未完成 Session:")
+                click.echo("Session:")
                 found_any = True
 
             project_name = story_dir.name
+            mgr = SessionManager(db, rows[0]["project_id"])
             for row in rows:
-                status_icon = {"active": "▶", "paused": "⏸", "crashed": "💥"}.get(row["status"], "?")
-                click.echo(f"  {status_icon} {row['session_id'][:12]}... "
-                          f"| {project_name} | {row['status']} "
-                          f"| {row['completed_shots']}/{row['total_shots']} shots")
+                status_icon = {
+                    "active": "▶",
+                    "paused": "⏸",
+                    "crashed": "💥",
+                    "aborted": "✖",
+                }.get(row["status"], "?")
+                label = _format_failure_summary(
+                    mgr.get_session_failure_summary(row["session_id"])
+                )
+                failure = f" | failures: {label}" if label else ""
+                click.echo(
+                    f"  {status_icon} {row['session_id'][:12]}... "
+                    f"| {project_name} | {row['status']} "
+                    f"| {row['completed_shots']}/{row['total_shots']} shots"
+                    f"{failure}"
+                )
 
         db.close()
 
     if not found_any:
-        click.echo("没有未完成的 session。")
+        click.echo("没有可恢复或已放弃的 session。")
 
 
 @sessions_group.command("abort")

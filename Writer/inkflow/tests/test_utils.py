@@ -232,6 +232,20 @@ class TestConfig:
         assert "unexpected_value" in jury["dimensions"]
         assert len(jury["dimensions"]) == 5
 
+    def test_jury_config_defaults_to_local_model(self):
+        """未显式配置 jury_config.models 时，生产默认使用本地评委。"""
+        jury = get_jury_config({})
+
+        assert jury["models"] == ["local-default"]
+
+    def test_jury_config_keeps_explicit_models(self):
+        """显式配置远端评委时保留项目选择。"""
+        jury = get_jury_config({
+            "jury_config": {"models": ["deepseek-v4-pro", "qwen3.7-plus"]},
+        })
+
+        assert jury["models"] == ["deepseek-v4-pro", "qwen3.7-plus"]
+
     def test_jury_config_deduplicates_dimensions(self):
         """配置中已有必需维度时不重复追加。"""
         config = {

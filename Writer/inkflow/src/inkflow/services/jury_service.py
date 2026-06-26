@@ -309,7 +309,8 @@ class JuryService:
         providers_for_model = build_providers_for_model(jury_model_ref, self.models_config)
         params = get_model_params(model_name, self.models_config)
 
-        max_retries = 2
+        max_retries = int(params.get("jury_max_retries", params.get("max_retries", 0)))
+        timeout_seconds = float(params.get("jury_timeout_seconds", params.get("timeout_seconds", 45)))
         last_error = None
 
         for attempt in range(max_retries + 1):
@@ -326,6 +327,7 @@ class JuryService:
                     max_tokens=min(params.get("max_tokens", 1024), 1024),
                     shot_id=shot_id,
                     run_id=self.run_id,
+                    extra={"timeout_seconds": timeout_seconds},
                 )
                 response = client.generate(request)
                 result = self._parse_score_response(response.text)
