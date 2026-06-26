@@ -38,6 +38,27 @@ class TestJuryScoreScale:
         result = jury.score_candidates("shot_01", ["d1"])
         assert result["light_status"] == LightStatus.YELLOW
 
+    def test_local_jury_uses_heuristic_even_with_providers(self, setup_run_with_draft):
+        """local-default jury should not call remote providers when providers exist."""
+        config = {
+            "providers": {
+                "stepfun": {
+                    "api_key": "sk-test",
+                    "base_url": "https://invalid.example.test",
+                    "protocol": "openai",
+                },
+            },
+            "jury_config": {"models": ["local-default"]},
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+        result = jury.score_candidates("shot_01", ["d1"])
+
+        assert result["winner_score"] >= 65
+        attempts = setup_run_with_draft.execute(
+            "SELECT COUNT(*) AS cnt FROM model_attempts WHERE phase = 'jury_score'"
+        ).fetchone()["cnt"]
+        assert attempts == 0
+
     def test_score_override_green(self, setup_run_with_draft):
         """score_override=90 → GREEN verdict."""
         jury = JuryService(setup_run_with_draft, "run_01", {})

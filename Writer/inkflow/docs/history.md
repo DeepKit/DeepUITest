@@ -1407,3 +1407,44 @@ python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
 
 - 目标测试：101 passed, 1 warning
 - 全量测试：376 passed, 4 warnings
+
+---
+
+## QUAL-1 本地兜底质量修复与 VAL-2 复跑 — 2026-06-26
+
+**目标**：修复第 2 章真实复跑中 4 个 shot 全部 red/placeholder 的根因，使本地兜底链路能按 prompt 落地 must_land，并让 L3 章末钩子 gate 实际触发。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 本地 jury 路由 | 当 jury models 全部为 `local-default` 时，即使 `.models` 存在 providers，也强制使用本地启发式评分，避免误走远端 LLM 路径 |
+| 本地 jury 输出 | `LocalDefaultGenerator` 对 `jury_score` 返回 JSON：`score` + `comment`，不再返回散文化正文导致解析成默认 50 分 |
+| prompt-bound 生成 | 本地写手从 prompt 中提取第一句 opening、POV 约束和场景要点/must_land beats，用这些信息生成正文 |
+| 章末钩子 | 对 `.s04` 兜底生成保留未完成动作式尾钩，确保 L3 章末悬念有可验证文本基础 |
+| 回归测试 | 增加本地写手使用 prompt beats、本地 jury JSON 输出、providers 存在时 local-default jury 仍走启发式评分的测试 |
+
+### 真实《分流》第 2 章复跑
+
+命令：
+
+```powershell
+python -m inkflow.cli repair "分流" --chapter v01.c02 --all
+python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
+```
+
+结果：
+
+| 指标 | 结果 |
+|------|------|
+| 链路状态 | 完整跑完 4/4 shots，session completed |
+| Shot 结果 | s01 yellow 70.0；s02 green 90.33；s03 yellow 77.0；s04 green 88.67 |
+| Scope Report | Green 2 / Yellow 2 / Red/PH 0 |
+| L3 状态 | 已触发并通过 |
+| POV coverage | `郑坤` / `韩教授` / `白英` / `苏然` 各 1 |
+| 结论 | 工程链路、恢复、归因、章节 gate 已可用于受控生产试跑；本地兜底不代表最终文学质量 |
+
+### 验证
+
+- 目标测试：20 passed
+- 全量测试：379 passed, 4 warnings

@@ -163,9 +163,14 @@ class JuryService:
         previous_ending = self._get_previous_ending(shot_id)
         attempt_id = generate_ulid()
 
-        # 检测是否有可用的 API（空 providers → 用启发式评分）
+        # 检测是否有可用的 API（空 providers / 全本地评委 → 用启发式评分）
         providers = self.models_config.get("providers", {})
-        use_llm = bool(providers) and score_override is None and score_overrides is None
+        use_llm = (
+            bool(providers)
+            and score_override is None
+            and score_overrides is None
+            and any(parse_model_ref(model_ref)[1] != "local-default" for model_ref in self.jury_models)
+        )
 
         draft_scores: dict[str, dict] = {}
 

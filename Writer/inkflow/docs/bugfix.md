@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-25 文档与 CREATIVE 对齐：新增 B37/B38/B39/B40/B41/B42；开放实现任务见 `../tasks.md`
+> 2026-06-26 VAL/QUAL 修复：新增 B43/B44/B45/B46/B47/B48；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -391,3 +391,19 @@
 - **影响**: 生产链路长时间停在评分阶段，且 DB 中看不到具体供应商错误。
 - **修复**: 模型异常也写入 `model_attempts.error_message`；jury 单次调用默认 45 秒、默认不额外重试；无显式 jury models 时默认 local-default；新增 `--local-jury` 运行开关。
 - **文件**: `src/inkflow/services/model_client.py`, `src/inkflow/services/jury_service.py`, `src/inkflow/utils/config.py`, `src/inkflow/cli.py`, `tests/test_model_client.py`, `tests/test_utils.py`, `tests/test_core_services.py`
+
+### B47. `--local-jury` 在存在 providers 时仍误走远端/LLM 评分路径 ✅ 已修复
+- **严重性**: Critical
+- **发现**: QUAL-1 第 2 章复跑后，local-default 评委输出非 JSON 散文化文本，分数被解析为默认 50，导致可用稿件被低估。
+- **根因**: `JuryService.score_candidates()` 只检查 `.models.providers` 是否存在；即使 jury models 全部是 `local-default`，也会进入 LLM scoring 分支。
+- **影响**: `run --local-jury` 不能真正隔离远端配置；真实项目有 providers 时，本地验证结果不稳定，且可能把工程链路误判为质量失败。
+- **修复**: `use_llm` 增加模型检查：只有存在非 `local-default` jury model 时才调用 LLM；全本地评委走启发式评分且不写远端 `model_attempts`。
+- **文件**: `src/inkflow/services/jury_service.py`, `tests/test_jury_scoring.py`
+
+### B48. 本地兜底写手忽略 prompt 的 opening/POV/must_land ✅ 已修复
+- **严重性**: Critical
+- **发现**: QUAL-1 第 2 章复跑中，生成文本反复出现与《分流》无关的“那封信/窗棂”等 filler，L4 失败集中为 `must_land events may not be fully covered`。
+- **根因**: `LocalDefaultGenerator.generate()` 只按 persona 模板生成通用段落，没有读取 prompt 中的第一句、视角人物、场景要点和必须落地事件。
+- **影响**: 本地兜底无法验证真实章节契约，repair/resume/gate 虽然可跑完，但输出必然偏离 must_land，导致第 2 章全红。
+- **修复**: 本地写手解析 prompt opening、POV 和 beats，并按这些要点组织正文；`jury_score` operation 改为 JSON 启发式评分；最后 shot 保留未完成动作式章末钩子。
+- **文件**: `src/inkflow/services/model_client.py`, `tests/test_model_client.py`

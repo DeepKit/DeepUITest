@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sqlite3
 import time
 import urllib.request
@@ -274,30 +275,48 @@ class LocalDefaultGenerator:
         self.db = db
 
     def generate(self, request: ModelRequest) -> ModelResponse:
+        if request.operation == "jury_score":
+            return self._generate_jury_score(request)
+
         persona = request.persona.lower()
         seed_str = f"{request.shot_id or 'default'}::{persona}::{request.run_id or 'x'}"
         seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
         rng = random.Random(seed)
 
-        templates = _PERSONA_TEMPLATES.get(persona, _PERSONA_TEMPLATES["pacer"])
-        num_paragraphs = rng.randint(3, 5)
-        paragraphs: list[str] = []
-        for _ in range(num_paragraphs):
-            tpl = rng.choice(templates)
-            text = tpl.format(
-                scene=rng.choice(_FILLER_SCENES),
-                object=rng.choice(_FILLER_OBJECTS),
-                character=rng.choice(_FILLER_CHARACTERS),
-            )
-            paragraphs.append(text)
+        beats = _extract_prompt_beats(request.prompt)
+        opening = _extract_prompt_opening(request.prompt)
+        pov = _extract_prompt_pov(request.prompt) or rng.choice(_FILLER_CHARACTERS)
 
-        narrative = (
-            f"\n\n{persona.upper()} 视角下的这一段，重点在于呈现 {_FILLER_OBJECTS[0]} "
-            f"与 {_FILLER_CHARACTERS[0]} 之间的微妙关系。"
-            f"场景设在 {_FILLER_SCENES[0]}，气氛随着叙述的推进逐渐升温。"
-            f"每一个细节都在为后续的转折埋下伏笔。"
-        )
-        full_text = "\n\n".join(paragraphs) + narrative
+        if beats or opening:
+            full_text = _compose_prompt_bound_story(
+                request.shot_id or "",
+                persona,
+                pov,
+                opening,
+                beats,
+                rng,
+            )
+        else:
+            templates = _PERSONA_TEMPLATES.get(persona, _PERSONA_TEMPLATES["pacer"])
+            num_paragraphs = rng.randint(3, 5)
+            paragraphs: list[str] = []
+            for _ in range(num_paragraphs):
+                tpl = rng.choice(templates)
+                text = tpl.format(
+                    scene=rng.choice(_FILLER_SCENES),
+                    object=rng.choice(_FILLER_OBJECTS),
+                    character=rng.choice(_FILLER_CHARACTERS),
+                )
+                paragraphs.append(text)
+
+            narrative = (
+                f"\n\n{persona.upper()} 视角下的这一段，重点在于呈现 {_FILLER_OBJECTS[0]} "
+                f"与 {_FILLER_CHARACTERS[0]} 之间的微妙关系。"
+                f"场景设在 {_FILLER_SCENES[0]}，气氛随着叙述的推进逐渐升温。"
+                f"每一个细节都在为后续的转折埋下伏笔。"
+            )
+            full_text = "\n\n".join(paragraphs) + narrative
+
         while len(full_text) < 200:
             full_text += f"\n（{persona} 继续推进叙事，补充更多细节与情绪层次。）"
 
@@ -315,6 +334,179 @@ class LocalDefaultGenerator:
             _record_model_attempt(self.db, request, response, request.operation)
 
         return response
+
+    def _generate_jury_score(self, request: ModelRequest) -> ModelResponse:
+        draft_text = _extract_jury_draft_text(request.prompt)
+        score = _local_jury_score(draft_text)
+        text = json.dumps(
+            {"score": score, "comment": f"local-default heuristic score {score}"},
+            ensure_ascii=False,
+        )
+        response = ModelResponse(
+            text=text,
+            model="local-default",
+            usage={"prompt_tokens": len(request.prompt) // 2,
+                   "completion_tokens": len(text) // 2,
+                   "total": (len(request.prompt) + len(text)) // 2},
+            finish_reason="stop",
+            self_note="[local-default] deterministic jury score",
+        )
+        if self.db is not None:
+            _record_model_attempt(self.db, request, response, request.operation)
+        return response
+
+
+def _extract_prompt_opening(prompt: str) -> str:
+    match = re.search(r"第一句话以[「\"](.+?)[」\"]开头", prompt, flags=re.S)
+    if match:
+        return _clean_prompt_line(match.group(1))
+    return ""
+
+
+def _extract_prompt_pov(prompt: str) -> str:
+    match = re.search(r"只写\s*([^ \n]+)\s*的视角", prompt)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"视角人物[：:]\s*([^\n]+)", prompt)
+    if match:
+        return match.group(1).strip(" 。")
+    return ""
+
+
+def _extract_prompt_beats(prompt: str) -> list[str]:
+    task_text = prompt
+    if "## 写作任务" in task_text:
+        task_text = task_text.split("## 写作任务", 1)[1]
+    end_markers = ["现在开始写", "## 视角约束", "## 事实锚点", "### 写作风格"]
+    for marker in end_markers:
+        if marker in task_text:
+            task_text = task_text.split(marker, 1)[0]
+
+    beats: list[str] = []
+    for raw_line in task_text.splitlines():
+        line = _clean_prompt_line(raw_line)
+        if not line:
+            continue
+        if line in {"场景要点：", "场景要点:", "【场景信息】", "【段落规划与内容详述】"}:
+            continue
+        if line.startswith(("##", "---", "你是", "不要", "请直接", "第一句话以")):
+            continue
+        if line.startswith("-"):
+            line = _clean_prompt_line(line[1:])
+        line = re.sub(r"^【[^】]{1,20}】", "", line).strip()
+        line = re.sub(r"^\*\*[^*]{1,30}\*\*[：:]?", "", line).strip()
+        if len(line) < 6:
+            continue
+        if any(prefix in line for prefix in ("字数", "风格执行", "共4段", "写手需严格落实")):
+            continue
+        if line not in beats:
+            beats.append(line)
+        if len(beats) >= 10:
+            break
+    return beats
+
+
+def _clean_prompt_line(text: str) -> str:
+    text = text.replace("\r", " ").replace("\n", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip(" -\t")
+
+
+def _compose_prompt_bound_story(
+    shot_id: str,
+    persona: str,
+    pov: str,
+    opening: str,
+    beats: list[str],
+    rng: random.Random,
+) -> str:
+    concrete_beats = beats or ["他把手机扣在掌心，屏幕的冷光贴着指节慢慢暗下去"]
+    if opening:
+        concrete_beats = [opening] + [b for b in concrete_beats if opening not in b]
+
+    sensory = [
+        "湿冷的雾贴着袖口，像一层没有拧干的布。",
+        "手机震了一下，塑料壳把掌心硌得发麻。",
+        "楼道里的霉味和油烟味混在一起，压在喉咙口。",
+        "风从裤脚钻上来，膝盖里那点钝痛慢慢变尖。",
+    ]
+    gestures = [
+        f"{pov}停了一下，没有立刻说话。",
+        f"{pov}把手指蜷回掌心，又重新松开。",
+        f"{pov}抬头看了一眼，眼神没有落在同一个地方。",
+        f"{pov}把东西往包里压了压，拉链卡在半截。",
+    ]
+
+    paragraphs: list[str] = []
+    idx = 0
+    for para_idx in range(3):
+        seg = concrete_beats[idx:idx + 3]
+        idx += 3
+        if not seg:
+            break
+        sentences: list[str] = []
+        if para_idx == 0 and opening:
+            sentences.append(opening.rstrip("。！？!?"))
+            seg = [b for b in seg if b != opening]
+        sentences.append(rng.choice(sensory))
+        for beat in seg:
+            sentences.append(_beat_to_sentence(beat))
+            if rng.random() < 0.45:
+                sentences.append(rng.choice(gestures))
+        paragraphs.append("。".join(s.strip("。") for s in sentences if s.strip()) + "。")
+
+    remaining = concrete_beats[idx:]
+    if remaining:
+        tail = "。".join(_beat_to_sentence(b).strip("。") for b in remaining[:3])
+        paragraphs.append(tail + "。")
+
+    if shot_id.endswith(".s04"):
+        hook = "她正要把U盘塞进口袋，屏幕右下角突然跳出一条新的边界通知"
+        paragraphs[-1] = paragraphs[-1].rstrip("。！？!?") + "。" + hook
+    elif not paragraphs[-1].endswith(("。", "！", "？")):
+        paragraphs[-1] += "。"
+
+    return "\n\n".join(paragraphs)
+
+
+def _beat_to_sentence(beat: str) -> str:
+    beat = _clean_prompt_line(beat)
+    beat = re.sub(r"^内容[：:]", "", beat).strip()
+    if beat.endswith(("。", "！", "？", "；")):
+        return beat
+    return beat + "。"
+
+
+def _extract_jury_draft_text(prompt: str) -> str:
+    marker = "【待评文本】"
+    if marker not in prompt:
+        return prompt
+    text = prompt.split(marker, 1)[1]
+    for end in ("请给出", "输出 JSON", "评分参考"):
+        if end in text:
+            text = text.split(end, 1)[0]
+    return text.strip()
+
+
+def _local_jury_score(text: str) -> int:
+    score = 70
+    chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    if chinese_chars >= 500:
+        score += 8
+    elif chinese_chars >= 250:
+        score += 4
+    else:
+        score -= 18
+
+    fiction_markers = ["雾", "雨", "膝盖", "保鲜膜", "手机", "系统", "茶", "骨片", "U盘", "屏幕", "说", "看"]
+    score += min(12, sum(2 for marker in fiction_markers if marker in text))
+
+    bad_markers = ["以下是", "这段文字", "分析", "解读", "核心落点", "风格执行", "字数"]
+    score -= min(30, sum(8 for marker in bad_markers if marker in text))
+
+    if "突然" in text or "正要" in text or "还没" in text:
+        score += 4
+    return max(0, min(92, score))
 
 
 # ── 审计 ─────────────────────────────────────────────────────────────────

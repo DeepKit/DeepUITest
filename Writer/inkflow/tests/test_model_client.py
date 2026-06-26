@@ -78,6 +78,46 @@ class TestLocalDefaultGenerator:
         )
         assert gen.generate(req1).text != gen.generate(req2).text
 
+    def test_prompt_beats_are_used_in_output(self):
+        gen = LocalDefaultGenerator()
+        prompt = """第一句话以「雾还没有散」开头，然后继续写。
+
+场景要点：
+- 郑坤的第二单在石板滩，外江
+- 内江同时有 37 单，系统给他的建议全是外江
+- 他从包里拿出新的保鲜膜
+
+现在开始写。
+## 视角约束（严格遵守）
+⚠️ 只写 郑坤 的视角。不要切换到其他角色的场景。
+"""
+        resp = gen.generate(ModelRequest(
+            operation="write_generate",
+            persona="意象师",
+            prompt=prompt,
+            shot_id="v01.c02.s01",
+            run_id="run_01",
+        ))
+
+        assert resp.text.startswith("雾还没有散")
+        assert "郑坤" in resp.text
+        assert "37 单" in resp.text
+        assert "保鲜膜" in resp.text
+
+    def test_local_jury_score_returns_json(self):
+        gen = LocalDefaultGenerator()
+        prompt = "【待评文本】\n郑坤把保鲜膜压在膝盖上，手机屏幕跳出 37 单。\n\n请给出 0-100 分。"
+        resp = gen.generate(ModelRequest(
+            operation="jury_score",
+            persona="评委_local",
+            prompt=prompt,
+            shot_id="shot_01",
+            run_id="run_01",
+        ))
+
+        assert '"score"' in resp.text
+        assert "local-default heuristic score" in resp.text
+
 
 class TestCreateModelClient:
     """Factory tests."""
