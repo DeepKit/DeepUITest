@@ -1,7 +1,7 @@
 # 墨韵 (InkFlow) v3.6: 人机交互流程
 
 > 版本：v3.6（用户交互流程）
-> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15
+> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26
 > 技术设计：`inkflow/docs/design.md`、`inkflow/docs/implementation-contract-v0.md`
 > 角色体系：`inkflow/docs/role-system.md`
 > 设计决策：`docs/decisions/README.md`
@@ -10,7 +10,7 @@
 
 ---
 
-## 0. 当前 P0 目标：《分流》第 2 章生成闭环
+## 0. 当前 P0 目标：《分流》按章受控生产闭环
 
 P0 以《分流》作为唯一验收样本：
 
@@ -19,9 +19,10 @@ P0 以《分流》作为唯一验收样本：
   → 锁定为 human_baseline
   → 审核 shot 边界
   → 提取风格/事实/人物声音基线
-  → setup 多轮互动形成 confirmed 契约
-  → 按第 2 章大纲逐 shot 生成
-  → 章后报告
+  → init 形成人类确认后的章以上层级契约
+  → setup --chapter 进行单章生产前校准
+  → run --chapter 按该章大纲逐 shot 生成并自动导出
+  → review --chapter 记录人工验收结论
   → 推敲系统 read-only 读取墨韵 DB 导入
 ```
 
@@ -38,14 +39,14 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
 ## 1. 核心流程
 
 ```text
-阶段 1: 人类与 AI 架构师沟通 (write setup)
+阶段 1: 人类与 AI 架构师沟通 (ink init)
   混合式交互：高创造力字段访谈 + 低创造力字段 AI 推断一次性呈现 (D-7)
   两阶段编译：human_confirm_layer 以上人类确认 + 以下 AI 自动展开 (D-7)
   AI 架构师识别项目结构 → 提取元契约 → 编译全链契约
   人类审核树状继承摘要，在任意节点注入修正
   契约落库，进入 confirmed 状态
 
-阶段 2: AI 全自动生产 (write run)
+阶段 2: AI 全自动生产 (ink run)
   创建不可变契约快照
   赛车场经理加载预编译提示词
   不打断人类，不修改契约
@@ -72,33 +73,35 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
 
 DB3 是唯一真相源。终端摘要、Markdown 报告、导出文件都只是 DB 投影。
 
-P0 中第 1 章人工样章是 locked baseline；墨韵只能读取它作为风格、事实、上下文来源，不得自动改写。第 2 章生成中，用户按 chapter 发起，系统内部按 shot 执行。
+P0 中第 1 章人工样章是 locked baseline；墨韵只能读取它作为风格、事实、上下文来源，不得自动改写。第 2 章链路已通过真实项目试跑并获得人工“内容基本合格”反馈；第 3 章起按 `setup --chapter → run --chapter → review --chapter` 逐章推进。
 
 ---
 
 ## 2. CLI
 
 ```bash
-# 前置沟通与契约落库
-ink setup "分流"
+# 全书初始化：建库、导入样章、生成章以上层级契约草稿
+ink init "分流"
+ink confirm-contract "分流"
 
 # 导入人工样章并确认 shot 边界（P0）
 ink import-baseline "分流" --chapter v01.c01 --file "D:\_Progs\.Story\《分流》\正文\V01_第01章_膝盖与螺丝刀·茶与水.md"
 ink review-shots "分流" --chapter v01.c01
 
-# 系列化模板复用
-ink setup "背锅侠_001" --template "背锅侠_发动机_现代本土卷"
+# 章前校准：只准备本章，不初始化全书
+ink setup "分流" --chapter v01.c03
 
 # 跨项目 clone
 ink clone "分流" --as "分流_英文版"
 
-# 全自动生产
+# 全自动生产并导出到 正文/
 ink run "分流" --chapter v01.c02
-ink run "分流" --chapter v01.c01
-ink run "分流" --volume 1
-ink run "分流" --from v01.c01 --to v01.c32
 ink run "分流" --writer-count 4     # 覆盖默认写手数
 ink run "分流" --config jury.thresholds.green=8
+
+# 生产后人工验收记录
+ink review "分流" --chapter v01.c02 --accept
+ink review "分流" --chapter v01.c03 --revise "章末钩子不足"
 
 # 恢复中断
 ink run "分流" --resume
@@ -136,13 +139,15 @@ chisel export "分流" -o "分流_终版.md"
 
 ---
 
-## 3. Setup 阶段
+## 3. Init / Setup 阶段
 
-### 3.1 对话目标
+### 3.1 Init 对话目标
 
-`ink setup` 的目标是**把人类创作意图转为可执行的全链契约**。
+`ink init` 的目标是**把全书与章以上层级的人类创作意图转为可执行契约草稿**。人类编辑 `contract-draft.yaml` 后，通过 `ink confirm-contract` 确认入库。
 
 关键创作字段不得由 AI 擅自补完。主题、硬边界、人物命运、不解之谜、结尾策略、叙事声音必须经人类明确确认后才能进入 confirmed 契约。AI 可以提出候选，但不能静默写入。
+
+`ink setup <project> --chapter <key>` 的目标是**某一章生产前校准**：读取已确认契约、抽出本章 shot、生成 `.inkflow/chapter-setups/<chapter>.yaml`，供人类确认本章 shot 事件、类型职责（悬疑/留白/钩子）和禁止议论规则。它不初始化全书，也不改写正文。
 
 ### 3.2 交互模式：混合式（D-7）
 
@@ -153,7 +158,7 @@ chisel export "分流" -o "分流_终版.md"
 
 ### 3.3 提取深度：渐进式（D-7）
 
-**Setup 阶段**：只提取核心字段（主题、体裁、硬边界、核心意象种子、不解之谜）。
+**Init 阶段**：只提取核心字段（主题、体裁、硬边界、核心意象种子、不解之谜）。
 
 **第一卷完成后**：
 - Chisel scan 分析实际文本中的意象密度、人物声音模式、反例触发频率、节奏曲线
@@ -205,8 +210,7 @@ Step 8: 确认落库
 ### 3.6 模板复用与跨项目 Clone
 
 ```bash
-# 模板复用
-ink setup "背锅侠_001" --template "背锅侠_发动机_现代本土卷"
+# 模板复用为后续能力，当前公开入口仍从 init 开始
 
 # 跨项目 Clone
 ink clone "分流" --as "分流_英文版"
@@ -233,7 +237,7 @@ ink clone "分流" --as "分流_英文版"
 ### 4.2 Shot 流程
 
 ```text
-load compiled prompt from writing_shot_prompts  -- setup 已预编译
+load compiled prompt from writing_shot_prompts  -- init/setup 已预编译
 assemble context:
   1. 前文窗口：N-1/N-2 全文 + N-3~N-5 摘要 + Scene Start 全文
   2. 人物状态快照（事实约束，来自 fact_anchors）
@@ -454,7 +458,7 @@ repair 仍不要求人类逐 Shot 介入。repair 完成后，人类集中审阅
 
 ## 7. 与 Chisel 二次校准衔接
 
-全书生产和 AI repair 完成后，或 P0 第 2 章生成完成后：
+全书生产和 AI repair 完成后，或单章 `review --accept` 后：
 
 ```bash
 chisel import-inkflow "D:\_Progs\.Story\《分流》\.inkflow\inkflow.db" --title "分流"
@@ -471,12 +475,11 @@ Chisel 的职责是二次校准和优化，不是生产期拦截器。Chisel 只
 ## 8. 完整工作流
 
 ```bash
-# Step 1: 初始化墨韵项目，并导入第 1 章人工样章
-ink import-baseline "分流" --chapter v01.c01 --file "D:\_Progs\.Story\《分流》\正文\V01_第01章_膝盖与螺丝刀·茶与水.md"
-ink review-shots "分流" --chapter v01.c01
+# Step 1: 全书初始化，并生成 contract-draft.yaml
+ink init "分流"
 
-# Step 2: 前置沟通，混合式交互 + 两阶段编译
-ink setup "分流"
+# Step 2: 人类编辑 contract-draft.yaml 后确认
+ink confirm-contract "分流"
   # 高创造力字段：10-12 轮访谈对话
   # 低创造力字段：AI 推断 + 一次性呈现，约 2-3 分钟扫视
   # 阶段 1a 编译到 human_confirm_layer
@@ -484,30 +487,35 @@ ink setup "分流"
   # 阶段 1b AI 自动展开至 Shot 级
   # 确认后契约落库
 
-# Step 2b: 声音校准（可选）
-ink voice-calibrate "分流"
+# Step 3: 章前校准
+ink setup "分流" --chapter v01.c03
+  # 人类确认本章 shot、POV、类型职责、章末钩子、禁止议论规则
 
-# Step 3: P0 生成第 2 章
-ink run "分流" --chapter v01.c02
+# Step 4: 生成本章并自动导出到 D:\_Progs\.Story\《分流》\正文\
+ink run "分流" --chapter v01.c03 --resume
   # 2-4 写手按人格差异化 prompt
-  # 9-jury 3-phase 评分（独立→比较→输出）
+  # 硬规则 → 类型职责 → 文学 9 维评分
   # 绿/黄入正文，9 类事实锚点自动提取
   # 红灯 best-failed-candidate + smart-redo 3 级升级
   # 每 Shot 检查点，Scene Composition Check + Intent Drift Detection
   # Scope 完成后生成交互式三层投影报告
 
-# Step 4: AI 自动修补（四层修复金字塔）
+# Step 5: 人工验收
+ink review "分流" --chapter v01.c03 --accept
+  # 或：ink review "分流" --chapter v01.c03 --revise "具体问题"
+
+# Step 6: AI 自动修补（四层修复金字塔，如需要）
 ink repair "分流" --red
   # AI 诊断红灯原因 → L1～L4 逐级修复 → 重跑
 ink repair "分流" --yellow
 
-# Step 4b: 硬边界修订（如需要，per run ≤ 1）(Phase 2)
+# Step 6b: 硬边界修订（如需要，per run ≤ 1）(Phase 2)
 ink revise-boundary "分流" --layer meta
 
-# Step 4c: 查看契约仪表盘
+# Step 6c: 查看契约仪表盘
 ink contracts "分流"
 
-# Step 5: Chisel 二次校准
+# Step 7: Chisel 二次校准
 chisel import-inkflow "D:\_Progs\.Story\《分流》\.inkflow\inkflow.db" --title "分流"
 chisel scan "分流" --depth standard
 chisel report "分流"

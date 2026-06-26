@@ -4,7 +4,7 @@
 > 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判）
 > 日期：2026-06-17；最近对齐：2026-06-26
 > 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline，按 shot 生成第 2 章。
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2 章链路已验证，后续按 `setup --chapter → run --chapter → review --chapter` 逐章生产。
 
 ---
 
@@ -18,9 +18,9 @@ D:\_Progs\.Story\《分流》
   → 导入第 1 章正文为 locked human_baseline
   → 确认第 1 章 shot 边界
   → 提取风格指纹 / 事实锚点 / 人物声音基线
-  → setup 多轮交互形成 confirmed 元契约
-  → 编译第 2 章 shot 级契约
-  → 逐 shot 生成第 2 章
+  → init 多轮交互形成 contract-draft.yaml 并确认元契约
+  → setup --chapter 编译单章生产前校准包
+  → run --chapter 逐 shot 生成目标章节并自动导出
   → writer race + jury + gate + revision + checkpoint
   → 章完成报告
   → Chesil read-only 导入 InkFlow DB 到自己的 story.db
@@ -33,8 +33,8 @@ P0 固定边界：
 | 项目范围 | 单书闭环，只服务《分流》 |
 | run 粒度 | 用户按 chapter 运行，内部按 shot 执行 |
 | baseline | 第 1 章作为 `human_baseline` 导入并锁定，墨韵不得自动改写 |
-| 生成目标 | 第 2 章，严格执行章级事件，只允许补充细节 |
-| 人类介入 | setup / contract / shot plan 阶段确认；run 阶段不中断 |
+| 生成目标 | 按章生成，严格执行该章 chapter_N_events，只允许补充细节 |
+| 人类介入 | init / contract / chapter setup 阶段确认；run 阶段不中断；review 阶段记录判断 |
 | 红灯 | best-failed placeholder 不断流 |
 | 成本 | 不作为开发和运行约束；记录 usage，但不设成本确认门 |
 | 模型 | 每书 `.inkflow/.models` 配置功能与模型候选/兜底关系 |
@@ -46,10 +46,13 @@ P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-ca
 
 | 命令 | 语义 |
 |------|------|
-| `ink setup <project> [flags]` | Setup 对话 + 两阶段契约编译 |
+| `ink init <project> [--chapter-file path]` | 全书初始化、导入样章、生成章以上层级契约草稿 |
+| `ink setup <project> --chapter <key>` | 单章生产前校准，生成 `.inkflow/chapter-setups/<chapter>.yaml` |
+| `ink confirm-contract <project>` | 兼容/内部命令：确认 `contract-draft.yaml` 并写入 confirmed 元契约 |
 | `ink import-baseline <project> --chapter <key> --file <path>` | 导入人工样章为 locked baseline |
 | `ink review-shots <project> --chapter <key>` | 审核/确认 baseline shot 边界 |
-| `ink run <project> [flags]` | 全自动生产 |
+| `ink run <project> --chapter <key> [flags]` | 全自动生产并自动导出 |
+| `ink review <project> --chapter <key> --accept/--revise/--reject` | 记录生产后人工验收 |
 | `ink repair <project> --red / --yellow` | AI 修红/修黄 |
 | `ink resume <session_id>` | 崩溃恢复 |
 | `ink sessions list` | 查看所有未完成 Session |
@@ -79,8 +82,11 @@ P0 固定用法：
 ```bash
 ink import-baseline "分流" --chapter v01.c01 --file "D:\_Progs\.Story\《分流》\正文\V01_第01章_膝盖与螺丝刀·茶与水.md"
 ink review-shots "分流" --chapter v01.c01
-ink setup "分流"
-ink run "分流" --chapter v01.c02
+ink init "分流"
+ink confirm-contract "分流"
+ink setup "分流" --chapter v01.c03
+ink run "分流" --chapter v01.c03 --resume
+ink review "分流" --chapter v01.c03 --accept
 ```
 
 ---
@@ -95,7 +101,7 @@ draft → human_review → confirmed → locked → repairing → evolving
 
 | 状态 | 含义 |
 |------|------|
-| `draft` | Setup 阶段编辑中 |
+| `draft` | Init 契约草稿编辑中 |
 | `human_review` | 等待人类审核 |
 | `confirmed` | 人类已确认，尚未 run |
 | `locked` | `ink run` 快照已创建 |
@@ -472,7 +478,7 @@ CREATE TABLE writing_shot_prompts (
 );
 ```
 
-> `static_prefix` 在 setup 阶段预编译；`dynamic_assembly_json` 运行时装配；`static_prefix_length` 用于 Prompt Caching 长度探测。
+> `static_prefix` 在 init/setup 阶段预编译；`dynamic_assembly_json` 运行时装配；`static_prefix_length` 用于 Prompt Caching 长度探测。
 
 #### `writing_context_snaps`
 
@@ -997,7 +1003,7 @@ SQLite 写操作串行化。赛车场经理主循环使用单线程 + `asyncio.Q
 
 ## 7. Prompt Caching 降级策略
 
-setup 阶段测量 `static_prefix_length`：
+init/setup 阶段测量 `static_prefix_length`：
 - `<= 4096`：正常使用 Anthropic Prompt Caching（3 breakpoint）
 - `> 4096`：拆分缓存段，仍超限时压缩为摘要模式
 - 动态部分（Previous Shots / Fact Anchors / Motif Tracker）不缓存
@@ -1019,7 +1025,7 @@ setup 阶段测量 `static_prefix_length`：
 | redo L2 模型 | 从 redo_model 配置读取 |
 | pov_dependent | 改为 pov_scope TEXT |
 | 精彩/坏味状态 | 废止旧状态机，正交字段 |
-| P0 范围 | 以《分流》第 1 章导入、第 2 章生成闭环为准，不以完整 13 服务一次实现为准 |
+| P0 范围 | 以《分流》第 1 章导入、第 2 章链路验证、后续章节按章生产闭环为准，不以完整 13 服务一次实现为准 |
 | 成本策略 | 不设置成本确认门；只记录 usage |
 | 模型配置 | 项目级 `.inkflow/.models` 优先于 DB 内默认模型字段 |
 | Chesil 衔接 | Chesil read-only 读取 InkFlow DB 导入；不得回写 InkFlow DB |

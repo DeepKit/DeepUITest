@@ -1,6 +1,6 @@
-# InkFlow 交互式 Setup 协议 v1.2
+# InkFlow 交互式 Init / Setup 协议 v1.3
 
-> 记录于 2026-06-19。v1.2：2026-06-25 增加叙事分析师审查角色
+> 记录于 2026-06-19。v1.2：2026-06-25 增加叙事分析师审查角色；v1.3：2026-06-26 将 `init` 定义为全书启动，将 `setup --chapter` 定义为单章生产前校准。
 
 ## 核心规则
 
@@ -44,13 +44,26 @@
 | L3 | 章节结构架构师 | 单卷 | 本章在卷中的位置、核心情绪、各线配比 |
 | L4 | Shot+风格架构师 | 单章 | 每个 Shot 的 must_land 事件、POV 分配、风格执行 |
 
-## Setup 阶段流程
+## Init 阶段流程
 
 ```
 L1 世界观 → 确认(8) → L2 角色弧线 → 确认(8) → L3 章节结构 → 确认(8) → L4 Shot事件 → 确认(8) → 生成 contract-draft.yaml
 ```
 
-每级只问一个问题，给 1-7 个选项。人类选 8 进入下一级，选 9 换一批选项，选 0 回到上一级，直接输入文字覆盖 AI 的所有选项。
+`ink init <project>` 用于全书启动和章以上层级交互初始化。每级只问一个问题，给 1-7 个选项。人类选 8 进入下一级，选 9 换一批选项，选 0 回到上一级，直接输入文字覆盖 AI 的所有选项。Init 完成后生成 `contract-draft.yaml`，人类编辑后运行 `ink confirm-contract <project>` 入库。
+
+## Chapter Setup 阶段流程
+
+```
+读取 confirmed/locked 元契约
+  → 抽取本章 chapter_N_events
+  → 读取前一章 review 结论
+  → 生成 .inkflow/chapter-setups/<chapter>.yaml
+  → 人类确认本章 shot、POV、类型职责、章末钩子、禁止议论规则
+  → run --chapter 执行生产
+```
+
+`ink setup <project> --chapter <key>` 只校准某一章，不创建全书项目、不改写元契约、不生成正文。人类只在生产前编辑/确认 setup 包；生产中不插手；生产后用 `ink review --chapter` 记录验收结论。
 
 ## 叙事分析师（审查角色）
 
@@ -137,4 +150,4 @@ Shot N → L4 → 封版
 
 ### P0 实现范围
 
-P0 只实现 L4 和 L3（第 2 章单章运行）。L2 和 L1 是 P1 多章/多卷运行时的功能。
+P0 已实现 L4 和 L3 单章运行。第 2 章已完成真实链路验证；后续章节按 `setup --chapter → run --chapter → review --chapter` 推进。L2 和 L1 是 P1 多章/多卷运行时的功能。

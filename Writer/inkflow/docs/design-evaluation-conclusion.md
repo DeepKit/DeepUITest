@@ -50,7 +50,7 @@
 
 ## 最终状态
 
-- **implementation-contract-v0.md**：当前实现对齐版，DDL（38 张业务表 + `_schema_meta` 元表，Schema v16）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审和模型审计 phase 已记录；P0 以《分流》第 1 章导入、第 2 章生成为验收闭环
+- **implementation-contract-v0.md**：当前实现对齐版，DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审、模型审计 phase 和分层裁判已记录；P0 以《分流》第 1 章导入、第 2 章链路验证、后续章节按章生产为验收闭环
 - **tasks.md**：10 条验收标准，7 个待编码时细化的议题（非阻塞）
 - **文档卫生**：CLI 统一为 `ink`、L2 Opus 移除、编码修复、日期修正、旧表述替换全部完成
 - **Phase 1 编码可以开工**
@@ -75,7 +75,7 @@
 
 ### 结论
 
-P0 链路 `import-baseline → setup → confirm-contract → run → scope report → Chesil 导入` 全链路打通。
+P0 链路已收敛为公开入口 `init → setup --chapter → run --chapter → review --chapter`；兼容命令 `confirm-contract` 保留用于 init 后确认契约。第 2 章链路已验证，后续章节按章推进。
 进入 P1 阶段：数据一致性（DB-1~7）、LLM 质量控制（LLM-1~6）、CLI E2E（CLI-1~5）、文档同步（DOC-2~4）。
 
 ---

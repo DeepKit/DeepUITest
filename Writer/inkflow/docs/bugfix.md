@@ -415,3 +415,11 @@
 - **影响**: 普通 shot 可能被不需要的悬疑/留白维度误伤；硬规则问题可能被文学高分掩盖；候选稿只有一个过线时仍可能推进，存在“矮子里拔高个”风险。
 - **修复**: Schema v17 扩展 jury 维度；`JuryService` 改为硬规则 → 类型职责 → 文学 9 维；文学分只对 9 个文学维度去最高/最低取均分；默认至少 2 个候选稿过阈值；CLI 支持已有过线稿时单线返写。
 - **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/services/writer_dispatcher.py`, `src/inkflow/cli.py`, `src/inkflow/models/enums.py`, `src/inkflow/utils/config.py`, `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `tests/test_jury_scoring.py`, `tests/test_utils.py`, `tests/test_schema.py`
+
+### B50. `setup` 同时表示全书初始化和章前校准，生产入口语义冲突 ✅ 已修复
+- **严重性**: Important
+- **发现**: 第 3 章生产前流程复盘
+- **根因**: 早期 CLI 中 `ink setup` 负责全书契约草稿生成；后续讨论又需要 `setup` 表示某章继写前校准。两个含义共用同一命令，导致新会话 AI 可能跳过章前校准，或把全书初始化误当成单章生产准备。
+- **影响**: 第 3 章及后续章节可能直接 `run`，没有人工确认本章 shot、类型职责、章末钩子和禁止议论规则；也会让 `confirm-contract`、文档和 next steps 指向错误命令。
+- **修复**: 新增 `ink init` 承接全书初始化；`ink setup <project> --chapter <key>` 只生成单章生产前校准包；`run --chapter` 强制读取 setup 包，并把禁止议论/类型职责注入 prompt 与裁判 profile；新增 `ink review` 记录生产后人工验收。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/prompt_compiler.py`, `tests/test_cli.py`, `tests/test_prompt_compiler.py`, `TASKS.md`, `docs/flow.md`, `docs/setup-protocol.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/history.md`

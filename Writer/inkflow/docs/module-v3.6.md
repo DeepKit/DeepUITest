@@ -3,6 +3,7 @@
 > 创建：2026-06-14 / 更新：2026-06-15
 > 状态：v3.6 权威决策
 > 本文已融入 design.md / implementation-contract-v0.md。本文件仅保留作为决策历史参考。
+> 注意：CLI 名称以 2026-06-26 后的 `init → setup --chapter → run --chapter → review --chapter` 为准；本文中早期 `write setup`/`ink setup` 全书启动语义已被 `ink init` 取代。
 > v3.5→v3.6 变更：D-1 字段扩展 / D-2 精彩坏味正交+暂准入池 / D-3 四层 repair 框架 / D-4 硬边界逃生舱 / D-5 POV 路由 / D-6 意象密度上限
 > 相关文档：`inkflow/docs/design.md`, `inkflow/docs/flow.md`, `inkflow/docs/role-system.md`
 
@@ -27,7 +28,7 @@ Chisel Write 是全自动文学文本生产引擎。
 ### D0. 架构总览
 
 ```
-人类与 AI 架构师前置沟通 (write setup)
+人类与 AI 架构师前置沟通（当前公开入口：ink init）
   → AI 架构师编译全链契约并落库
   → 人类审核继承摘要，确认
   → write run 按契约快照全自动生产正文
@@ -282,13 +283,7 @@ draft → human_review → confirmed → locked → [repairing] → [evolving]
 
 #### D3.4 模板复用
 
-系列化项目创建模板，填槽即可实例化：
-
-```bash
-ink setup "背锅侠_001" --template "背锅侠_发动机_现代本土卷"
-```
-
-AI 架构师加载模板，填充 task/location/protagonist/life_echo 等槽位，编译全链契约。人类只需确认填槽是否正确。
+系列化项目模板复用是后续能力；当前公开入口仍从 `ink init` 开始。AI 架构师加载模板，填充 task/location/protagonist/life_echo 等槽位，编译全链契约。人类只需确认填槽是否正确。
 
 ---
 
@@ -563,16 +558,18 @@ Chisel scan/report/fix
 ### D15. CLI
 
 ```bash
-# 前置沟通与契约落库
-ink setup "分流"
+# 全书初始化与契约落库
+ink init "分流"
+ink confirm-contract "分流"
 
-# 系列化模板复用
-ink setup "背锅侠_001" --template "背锅侠_发动机_现代本土卷"
+# 单章生产前校准
+ink setup "分流" --chapter v01.c03
 
-# 全自动生产
-ink run "分流" --chapter v01.c01
-ink run "分流" --volume 1
-ink run "分流" --from v01.c01 --to v01.c32
+# 全自动生产并导出
+ink run "分流" --chapter v01.c03 --resume
+
+# 生产后人工验收
+ink review "分流" --chapter v01.c03 --accept
 
 # 恢复中断
 ink run "分流" --resume

@@ -1472,3 +1472,25 @@ python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
 
 - 目标测试：74 passed, 4 warnings
 - 全量测试：382 passed, 4 warnings
+
+---
+
+## WORKFLOW-1 公开生产流简化 — 2026-06-26
+
+**目标**：将人类可见工作流固定为 `init → setup --chapter → run --chapter → review --chapter`，避免 `setup` 同时承担全书启动和单章校准两种含义。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| `ink init` | 承接原全书初始化：建库、导入第 1 章样章、加载 `.models`、生成 `contract-draft.yaml` |
+| `ink setup --chapter` | 改为单章生产前校准：生成 `.inkflow/chapter-setups/<chapter>.yaml`，包含 shot 列表、类型职责、章末钩子、禁止议论 gate |
+| `ink run --chapter` | 强制要求存在 chapter setup 包；读取 setup 包进入 run snapshot，并把禁止议论/类型职责写入实际 prompt 与裁判 profile |
+| `ink review --chapter` | 记录人工验收结论到 `.inkflow/chapter-reviews/<chapter>.yaml`，作为下一章 setup 的前文人工判断 |
+| 自动导出 | `run --chapter` 完成后自动导出到 `D:\_Progs\.Story\《项目》\正文\项目_章节_导出.md` |
+| 兼容命令 | `confirm-contract` 保留为 init 后确认契约的兼容/内部命令 |
+
+### 验证
+
+- 目标测试：43 passed
+- 全量测试：390 passed, 4 warnings

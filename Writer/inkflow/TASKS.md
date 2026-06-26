@@ -1,17 +1,17 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-26
-Status: v3.14；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`382 passed, 4 warnings`
+Status: v3.14；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`390 passed, 4 warnings`
 
 ---
 
 ## 1. 当前结论
 
-P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contract -> constitution -> run -> scope report` 可跑通。L0 全书宪法、L0.5 卷部节奏、L1 章级节奏、三棵树架构、正文真相源、D-25 悬疑可靠性、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修和 CREATIVE-3 留白创意评审均已落地。
+P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`ink init` 全书初始化与章以上层级契约草稿、`ink setup --chapter` 章前人工校准、`ink run --chapter` 生产并自动导出、`ink review --chapter` 记录人工验收。`confirm-contract` 保留为 init 后确认契约的兼容/内部命令，不再承担 setup 语义。L0 全书宪法、L0.5 卷部节奏、L1 章级节奏、三棵树架构、正文真相源、D-25 悬疑可靠性、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修和 CREATIVE-3 留白创意评审均已落地。
 
 2026-06-26 的 QUAL-1/VAL-2 修复结果：第 2 章重写链路已用真实《分流》库复跑通过（`ink run "分流" --chapter v01.c02 --resume --local-jury`），4 个 shot 结果为 Green 2 / Yellow 2 / Red 0，L3 章末钩子已触发并通过。根因是本地 jury 在存在 providers 时仍误走远端评分路径，以及 `LocalDefaultGenerator` 未按 prompt 的 opening/POV/must_land 生成正文。
 
-当前结论：工程链路已达到“受控生产试跑”标准；本地兜底可用于验证 gate、恢复和归因。正式批量生产仍需要远端 writer/jury 可用性验证与人工审稿确认，本地兜底文本不能作为最终文学质量基线。
+当前结论：工程链路已达到“受控生产试跑”标准；本地兜底可用于验证 gate、恢复和归因。第 2 章真实链路输出已得到人工“内容基本合格”反馈，可作为第 3 章前文上下文。正式批量生产仍需要远端 writer/jury 可用性验证，本地兜底文本不能作为最终文学质量基线。
 
 2026-06-26 的 JURY-V5 设计落地：裁判流程调整为“硬规则裁判 → 类型裁判 → 文学 9 维裁判”。硬规则不进入文学平均分；悬疑、留白、章末钩子等类型分只在 shot 具备对应职责时启用；文学 9 维按 10 分制语义配置、内部 0-100 存储，去掉最高/最低后取均分。默认要求至少 2 个候选稿超过 Y，否则触发单线返写。
 
@@ -51,6 +51,8 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 | VAL-1 工程补齐 | B43/B44/B45/B46：L3 章末钩子硬 gate、session 恢复/失败归因、章节重写入口、模型错误审计与本地 jury 运行开关 |
 | QUAL-1 / VAL-2 修复 | B47/B48：本地 jury 路由修复、本地写手按 opening/POV/must_land 生成；真实《分流》v01.c02 复跑 Green 2 / Yellow 2 / Red 0，L3 通过 |
 | JURY-V5 分层裁判 | B49：硬规则先过、类型分按职责启用、文学 9 维 trimmed mean、至少 2 个过线稿、单线返写、Schema v17 维度扩展 |
+| WORKFLOW-1 公开流程收敛 | `init -> setup --chapter -> run --chapter -> review`；`setup` 改为章前校准；run 强制读取 setup 包并自动导出 |
+| CHAPTER-2-REVIEW | 第 2 章输出已获人工“内容基本合格”反馈，允许作为后续章节生产上下文 |
 
 ---
 
@@ -58,8 +60,8 @@ P0 单书纵向闭环已经完成：`import-baseline -> setup -> confirm-contrac
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
+| 高 | CHAPTER-3-PROD | 第 3 章按新流程生产 | 待执行 | 运行 `ink setup "分流" --chapter v01.c03`，人工确认 setup 包后运行 `ink run "分流" --chapter v01.c03 --resume`，导出到 `D:\_Progs\.Story\《分流》\正文\` 并用 `ink review` 记录结论 |
 | 高 | REMOTE-PROD | 远端 writer/jury 生产验证 | 待执行 | 使用真实供应商模型跑通 v01.c02 单章，确认无订阅/超时会被审计并快速失败，远端输出不低于本地兜底 gate 结果 |
-| 高 | CHAPTER-2-REVIEW | 第 2 章人工审稿定稿 | 待执行 | 人工审读本轮 Green/Yellow 稿件，记录是否可作为第二章重写基线；不合格则走有目标的 rewrite，而不是继续堆 gate |
 | 高 | JURY-V5-REAL | 分层裁判真实项目验证 | 待执行 | 用《分流》v01.c02 复跑，记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
 | 中 | JURY-REMOTE | 远端 Jury 配置治理 | 待执行 | 明确 `.models` 中远端 jury 可用性；无有效订阅时不应阻塞生产链路 |
 | 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |

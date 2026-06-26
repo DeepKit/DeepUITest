@@ -2,7 +2,7 @@
 
 > Status: 设计文档 v3.6，非代码实现
 > Date: 2026-06-15
-> Last updated: 2026-06-15 (D-1~D-24 全部决策落地)
+> Last updated: 2026-06-26 (公开生产流简化为 init/setup/run/review)
 > 本文是 Chisel Write 写作角色与权限边界的权威口径。
 > 决策来源：`docs/decisions/` 下 D-01 至 D-24 全部 24 个 ADR。
 
@@ -14,10 +14,11 @@ P0 只验证《分流》单书闭环：
 
 ```text
 第 1 章人工样章导入并锁定
-  → AI 架构师与人类多轮 setup
+  → AI 架构师与人类通过 init 完成章以上层级契约
   → confirmed 契约
-  → 按 shot 生成第 2 章
-  → 章后报告
+  → setup --chapter 做单章生产前校准
+  → run --chapter 按 shot 生成并自动导出
+  → review --chapter 记录人工验收
   → 推敲 read-only 导入墨韵 DB
 ```
 
@@ -45,13 +46,13 @@ Chisel Write 是全自动文学文本生产引擎。
 | 赛车场经理 | Python | 锁定契约快照、调度生产、状态机、恢复/检查点、落库、提取事实锚点、Motif 密度追踪 | 改写契约语义 |
 | 写手池 | AI | 按编译好的差异化提示词（按人格加权）生成候选正文；附带自评注释 | 改事实、改人物状态、输出正文外附注 |
 | 多模型裁判团 | AI | 默认 3 模型 × 5 维评分；标准 shot 按 `trimmed_mean`，留白 shot 按 `creative_score` | 中断生产请求人类决策 |
-| 叙事分析师 | AI | Setup 阶段审查契约的结构合理性；输出诊断报告 | 不修改契约、不参与生产 |
+| 叙事分析师 | AI | Init/Setup 阶段审查契约的结构合理性；输出诊断报告 | 不修改契约、不参与生产 |
 
 ## 2.5 叙事分析师
 
 > 规范文档：`narrative-analyst.md`
 
-叙事分析师是 Setup 阶段的**诊断角色**，在架构师每完成一个级别的编译后，人类可选触发审查。
+叙事分析师是 Init/Setup 阶段的**诊断角色**，在架构师每完成一个级别的编译后，人类可选触发审查。
 
 ### 2.5.1 职责
 
@@ -123,13 +124,15 @@ Chisel Write 是全自动文学文本生产引擎。
 
 ## 3. 人类边界
 
-人类只在两个阶段介入：
+人类只在生产前和生产后介入：
 
-1. `ink setup`：与 AI 架构师沟通目标 → AI 架构师编译全链契约 → 人类审核继承摘要 → 确认落库。
+1. `ink init`：与 AI 架构师沟通全书目标 → AI 架构师编译章以上层级契约草稿 → 人类审核继承摘要 → `ink confirm-contract` 确认落库。
    - 交互采用**混合式**（D-7）：高创造力字段（主题、硬边界、核心意象等 7 项）用访谈对话；低创造力字段（反例集合、节奏曲线、ASTO 坐标等 8 项）由 AI 推断+一次性呈现。
-   - 提取采用**渐进式**（D-7）：Setup 只提取核心字段 → 第一卷完成后 Chisel scan 反向提取隐含契约 → 人类确认/修正 → 后续 Act 获得更精准约束。
+   - 提取采用**渐进式**（D-7）：Init 只提取核心字段 → 第一卷完成后 Chisel scan 反向提取隐含契约 → 人类确认/修正 → 后续 Act 获得更精准约束。
 
-2. 全书生产与 AI repair 完成后：集中处理红灯、黄灯和 Chisel findings。
+2. `ink setup --chapter`：生产前确认某一章的 shot、POV、类型职责、章末钩子、禁止议论规则。
+
+3. `ink review --chapter`：生产后记录人工验收、返修或拒绝结论。
 
 生产期不打断人类。章末报告、close_call、黄灯、红灯都只进入报告和修补队列，不触发即时人工确认。
 
@@ -151,9 +154,9 @@ AI 架构师是契约编译核心。职责不是"生成创意"——而是"把�
 
 | # | 职责 | 触发时机 | 模型 | 自治级别 | 人类确认 |
 |---|------|---------|------|:---:|---------|
-| 1 | Setup 对话（核心理念提取） | `ink setup` | Opus | L3 人类触发 | ✓ |
-| 2 | 元契约草案生成 | Setup | Opus | L3 人类触发 | ✓ 逐条 |
-| 3 | Voice Calibration | Setup / 人类请求 | Sonnet | L2 建议+确认 | ✓ |
+| 1 | Init 对话（核心理念提取） | `ink init` | Opus | L3 人类触发 | ✓ |
+| 2 | 元契约草案生成 | Init | Opus | L3 人类触发 | ✓ 逐条 |
+| 3 | Voice Calibration | Init / 人类请求 | Sonnet | L2 建议+确认 | ✓ |
 | 4 | Chapter Planning | `ink plan` | Opus | L2 建议+确认 | ✓ |
 | 5 | Motif Task 生成（每 Shot） | Prompt 编译 | 规则引擎 | L0 全自动 | ✗ |
 | 6 | Prompt 编译与缓存管理 | 每 Shot | 引擎 | L0 全自动 | ✗ |
@@ -195,7 +198,7 @@ AI 架构师自动从人类对话和已有 md 文件中提取结构化要素。�
 
 ### 4.4 类型自适应约束矩阵
 
-六种类型的约束强度分布——决定 AI 架构师在 setup 阶段追问优先级：
+六种类型的约束强度分布——决定 AI 架构师在 init/setup 阶段追问优先级：
 
 | 维度 | 文学 | 悬疑 | 历史 | 科幻 | 职场 | 系列 |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -386,7 +389,7 @@ parent_id / child_range / genre / created_by / human_approved / timestamps
 ```text
 lock contract snapshot
 for each shot:
-  load compiled prompt from writing_shot_prompts    -- setup 阶段已预编译
+  load compiled prompt from writing_shot_prompts    -- init/setup 阶段已预编译
   assemble context (预编译提示词 + 前文正文 + 事实锚点 + Motif Tracker 状态)
   run writer race (≥2 写手，精彩片段 ≥4，按 Shot 特征自动选写手数)
   run L0 mechanical checks
@@ -510,7 +513,7 @@ Layer 3: Shot 特定 (Shot-Specific)
 - temperature_range
 
 voice samples 来源：
-1. 人在 setup 阶段提供的样章（最可靠）
+1. 人在 init/setup 阶段提供的样章（最可靠）
 2. 裁判评分 ≥ 90 的 Shot 自动入池（Phase 2）
 3. AI 架构师从元契约反推生成初版
 
@@ -520,7 +523,7 @@ voice samples 来源：
 
 | # | 来源 | 触发条件 |
 |---|------|---------|
-| 1 | 手动输入 | Setup 阶段人类明确指定 |
+| 1 | 手动输入 | Init/Setup 阶段人类明确指定 |
 | 2 | 声音校准生成 | Voice calibration 后自动生成 |
 | 3 | 红灯反向推导 | Gate 红灯时自动提取 → 成为下个 Shot 反例 |
 | 4 | Project 通用反例 | 项目建立时从模板加载 |
@@ -936,7 +939,7 @@ Universe 级事实锚点修改 → 所有 Project 收到"事实变更通知" →
 
 ### 13.1 编译流水线
 
-4 阶段编译，Setup 阶段预编译入库：
+4 阶段编译，Init/Setup 阶段预编译入库：
 
 ```
 Stage 1: Context Assembler

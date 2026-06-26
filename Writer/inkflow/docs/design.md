@@ -1,7 +1,7 @@
 # 墨韵 (InkFlow) v3.14: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.14（Schema v17：分层裁判 hard/type/literary 维度；保留 D-25、三棵树、正文真相源、L0/L0.5/L1 节奏、风格偏好、反契约沙盒、CREATIVE-1/2/3、模型审计 phase）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26
+> 版本：v3.14（Schema v17：分层裁判 hard/type/literary 维度；保留 D-25、三棵树、正文真相源、L0/L0.5/L1 节奏、风格偏好、反契约沙盒、CREATIVE-1/2/3、模型审计 phase；公开生产流 `init/setup/run/review`）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -9,19 +9,20 @@
 
 ---
 
-## 0. 当前 P0 目标（2026-06-17）
+## 0. 当前 P0 目标（2026-06-26）
 
-墨韵当前开发目标已经收敛为《分流》单书纵向闭环：
+墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环：
 
 ```text
 导入《分流》第 1 章人工样章
   → 锁定为 human_baseline
   → 确认 shot 边界
   → 提取风格指纹、事实锚点、人物声音基线
-  → setup 多轮互动形成 confirmed 契约
-  → 按第 2 章大纲逐 shot 生成第 2 章
+  → init 生成章以上层级契约草稿并由人类确认
+  → setup --chapter 生成单章生产前校准包
+  → run --chapter 按该章大纲逐 shot 生成并自动导出
   → writer race + jury + gate + revision + checkpoint
-  → 章后报告
+  → review --chapter 记录人工验收
   → 推敲系统 read-only 读取墨韵 DB 导入并独立校准
 ```
 
@@ -30,7 +31,7 @@
 1. P0 只做单书闭环，不做 Universe / 多项目同步。
 2. 用户按 chapter 发起 run，系统内部按 shot 执行。
 3. 第 1 章是 locked baseline，墨韵不得自动改写。
-4. 第 2 章必须严格遵守章级事件，AI 只补充细节、动作、感官和过渡。
+4. 每个生产章节必须严格遵守该章 chapter_N_events，AI 只补充细节、动作、感官和过渡。
 5. 关键创作字段必须经人类确认，AI 不得静默补完主题、硬边界、不解之谜和结尾策略。
 6. 成本不作为开发和运行约束，只记录 usage。
 7. 模型选择来自项目级 `.inkflow/.models`。
@@ -43,13 +44,14 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 核心工作方式：
 
 ```text
-人类与 AI 架构师前置沟通 (write setup)
+人类与 AI 架构师前置沟通 (ink init)
   → 混合式交互：高创造力字段访谈 + 低创造力字段 AI 推断一次性呈现 (D-7)
   → 两阶段编译：human_confirm_layer 以上人类确认 + 以下 AI 自动展开 (D-7)
   → AI 架构师编译全链契约并落库
   → 人类审核树状继承摘要，在任意节点注入修正
   → 确认后契约进入 confirmed 状态
-  → write run 创建不可变契约快照，全自动生产正文
+  → ink setup --chapter 做单章生产前校准
+  → ink run --chapter 创建不可变契约快照，全自动生产正文并自动导出
   → 每个 Shot 完成后写入检查点 (D-14)
   → 绿灯/黄灯 Shot 直接进入正文版本链，绿灯自动提取 9 类事实锚点 (D-19)
   → 红灯 Shot 写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
@@ -57,7 +59,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
   → 全书生产完成
   → AI 先诊断红灯原因（四层 repair 框架），修约后重跑
   → AI 优化黄灯
-  → 人类在 Scope 投影中集中处理 (D-8)
+  → 人类用 ink review --chapter 记录生产后判断
   → Chisel scan/report/fix 做全书校准
 ```
 
@@ -133,7 +135,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 
 ### 3.1 项目结构自适应
 
-Chisel Write 不预设固定的四级契约结构。每个项目的叙事层级由 AI 架构师在 setup 阶段识别。
+Chisel Write 不预设固定的四级契约结构。每个项目的叙事层级由 AI 架构师在 `ink init` 阶段识别。
 
 系统内部统一使用 **MNU（最小叙事单元）** 作为赛车场经理循环的基本单位。
 
@@ -178,7 +180,7 @@ v3.6 D-1 字段扩展摘要：`identity.thematic_core` / `anti_reveal[].confiden
 
 ### 3.3 契约编译链
 
-AI 架构师在 setup 阶段走完以下流程：
+AI 架构师在 `ink init` 阶段走完以下流程：
 
 ```
 Step 1: 识别项目结构 → 确定 MNU + human_confirm_layer
@@ -345,7 +347,7 @@ draft → human_review → confirmed → locked → [repairing] → [evolving]
 
 ```text
 for shot in run_scope:
-  load compiled prompt from writing_shot_prompts     -- setup 已预编译
+  load compiled prompt from writing_shot_prompts     -- init/setup 已预编译
   assemble context:
     1. 前文窗口：N-1/N-2 全文 + N-3~N-5 摘要 + Scene Start 全文
     2. 人物状态快照 (来自 fact_anchors)
@@ -456,7 +458,7 @@ Layer 3: Shot 特定 (Shot-Specific)
 
 | # | 来源 | 触发条件 |
 |---|------|---------|
-| 1 | 手动输入 | Setup 阶段人类明确指定 |
+| 1 | 手动输入 | Init/Setup 阶段人类明确指定 |
 | 2 | 声音校准生成 | Voice calibration 自动生成 |
 | 3 | 红灯反向推导 | Gate 红灯 → 自动提取为下个 Shot 反例 |
 | 4 | Project 通用反例 | 项目建立时从模板加载 |
@@ -1107,7 +1109,7 @@ Act Config (仅节奏曲线和 jury 权重)
 
 | # | 职责 | 触发时机 | 模型 | 自治级别 |
 |---|------|---------|------|:---:|
-| 1 | Setup 对话 | `ink setup` | Opus | L3 人类触发 |
+| 1 | Init 对话 | `ink init` | Opus | L3 人类触发 |
 | 2 | 元契约草案生成 | Setup | Opus | L3 人类触发 |
 | 3 | Voice Calibration | Setup / 人类请求 | Sonnet | L2 建议+确认 |
 | 4 | Chapter Planning | `ink plan` | Opus | L2 建议+确认 |
@@ -1135,11 +1137,7 @@ Act Config (仅节奏曲线和 jury 权重)
 
 系列化项目创建模板，填槽实例化：
 
-```bash
-ink setup "背锅侠_001" --template "背锅侠_发动机_现代本土卷"
-```
-
-AI 架构师加载模板 → 填充 slot → 编译全链契约。人类只需确认填槽是否正确。
+模板复用是后续能力。当前公开入口仍从 `ink init` 开始，AI 架构师加载模板 → 填充 slot → 编译全链契约的能力不作为本轮生产必需路径。
 
 跨项目 clone：
 ```bash
@@ -1151,17 +1149,22 @@ ink clone "分流" --as "分流_英文版"   # 复制元契约 → interactive o
 ## 20. CLI
 
 ```bash
-# 前置沟通与契约落库
-ink setup "分流"
+# 全书初始化与契约确认
+ink init "分流"
+ink confirm-contract "分流"
 
-# 系列化模板复用 / 跨项目 clone
-ink setup "背锅侠_001" --template "背锅侠_发动机_现代本土卷"
+# 单章生产前校准
+ink setup "分流" --chapter v01.c03
+
+# 跨项目 clone
 ink clone "分流" --as "分流_英文版"
 
-# 全自动生产
-ink run "分流" --chapter v01.c01
-ink run "分流" --volume 1
-ink run "分流" --from v01.c01 --to v01.c32
+# 全自动生产并导出
+ink run "分流" --chapter v01.c03 --resume
+
+# 生产后人工验收记录
+ink review "分流" --chapter v01.c03 --accept
+ink review "分流" --chapter v01.c03 --revise "具体问题"
 
 # 恢复中断
 ink run "分流" --resume
@@ -1219,9 +1222,11 @@ chisel export "分流" -o "分流_终版.md"
 
 ```text
 import finalized book
-→ write setup creates meta_contract + compiles full contract chain
-→ human reviews inheritance tree, confirms
-→ write run full chapter
+→ ink init creates contract draft and chapter-above contract chain
+→ human reviews inheritance tree, confirms via confirm-contract
+→ ink setup --chapter creates chapter preflight package
+→ ink run --chapter produces full chapter and exports markdown
+→ ink review --chapter records human judgment
 → 2-4 writer race with persona-differentiated prompts
 → 3-phase jury scoring (independent → compare → output)
 → green/yellow revisions become current, 9-type fact anchors auto-extracted

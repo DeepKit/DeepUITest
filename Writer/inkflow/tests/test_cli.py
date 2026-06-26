@@ -60,8 +60,10 @@ class TestCLIBasics:
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
         assert "import-baseline" in result.output
+        assert "init" in result.output
         assert "setup" in result.output
         assert "run" in result.output
+        assert "review" in result.output
 
     def test_version(self, runner):
         result = runner.invoke(main, ["--version"])
@@ -110,6 +112,27 @@ class TestSetup:
     def test_help(self, runner):
         result = runner.invoke(main, ["setup", "--help"])
         assert result.exit_code == 0
+        assert "--chapter" in result.output
+
+
+class TestInit:
+    """init command"""
+
+    def test_help(self, runner):
+        result = runner.invoke(main, ["init", "--help"])
+        assert result.exit_code == 0
+        assert "--chapter-file" in result.output
+
+
+class TestReview:
+    """review command"""
+
+    def test_help(self, runner):
+        result = runner.invoke(main, ["review", "--help"])
+        assert result.exit_code == 0
+        assert "--accept" in result.output
+        assert "--revise" in result.output
+        assert "--reject" in result.output
 
 
 class TestChapterEventExtraction:
@@ -212,11 +235,11 @@ class TestResume:
 # ═══════════════════════════════════════════════════════
 
 
-class TestSetupSmoke:
-    """M5: setup command smoke test"""
+class TestInitSmoke:
+    """init command smoke test"""
 
-    def test_setup_creates_contract_draft(self, runner, sample_project, tmp_dir):
-        """setup should create contract-draft.yaml"""
+    def test_init_creates_contract_draft(self, runner, sample_project, tmp_dir):
+        """init should create contract-draft.yaml"""
         import unittest.mock as mock
         import inkflow.cli as cli
 
@@ -225,9 +248,100 @@ class TestSetupSmoke:
         draft_path = story_dir / ".inkflow" / "contract-draft.yaml"
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
-            result = runner.invoke(main, ["setup", "测试"])
+            result = runner.invoke(main, ["init", "测试"])
             assert result.exit_code == 0, result.output
             assert draft_path.exists(), "contract-draft.yaml should be created"
+
+
+class TestChapterSetupSmoke:
+    """Chapter setup command smoke tests."""
+
+    def _confirm_chapter_contract(self, db_path):
+        from inkflow.db import open_db
+        from inkflow.services import ContractCompiler
+
+        db = open_db(db_path)
+        compiler = ContractCompiler(db, "p1")
+        mc_id = compiler.create_meta_contract({
+            "identity": {"title": "测试"},
+            "narrative_voice": {},
+            "hard_boundaries": {},
+            "anti_reveal": {},
+            "world_knowledge": {},
+            "structure_rules": {
+                "chapter_3_events": [
+                    {"shot": 1, "title": "第一镜", "pov": "角色A", "event": "事件一"},
+                    {"shot": 2, "title": "第二镜", "pov": "角色B", "event": "事件二"},
+                ],
+            },
+            "anti_patterns": {},
+            "style_locks": {},
+            "motif_system": {},
+            "creative_zones": {},
+            "suspense_config": {"chapter_hooks": ["最后一句必须未完成"]},
+        })
+        compiler.update_contract_status(mc_id, "human_review")
+        compiler.update_contract_status(mc_id, "confirmed")
+        db.close()
+
+    def test_setup_chapter_creates_production_package(self, runner, sample_project, tmp_dir):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        setup_path = story_dir / ".inkflow" / "chapter-setups" / "v01.c03.yaml"
+
+        self._confirm_chapter_contract(db_path)
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(main, ["setup", "测试", "--chapter", "v01.c03"])
+
+        assert result.exit_code == 0, result.output
+        assert setup_path.exists()
+        content = setup_path.read_text(encoding="utf-8")
+        assert "inkflow.chapter_setup.v1" in content
+        assert "exposition_gate" in content
+
+    def test_run_requires_chapter_setup(self, runner, sample_project, tmp_dir):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        self._confirm_chapter_contract(db_path)
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(
+                main,
+                ["run", "测试", "--chapter", "v01.c03", "--local-jury"],
+            )
+
+        assert result.exit_code != 0
+        assert "ink setup" in result.output
+
+    def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        review_path = story_dir / ".inkflow" / "chapter-reviews" / "v01.c03.yaml"
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(
+                main,
+                ["review", "测试", "--chapter", "v01.c03", "--accept"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert review_path.exists()
+        content = review_path.read_text(encoding="utf-8")
+        assert "inkflow.chapter_review.v1" in content
+        assert "accepted" in content
 
 
 class TestConstitutionCommand:
@@ -361,8 +475,8 @@ suspense_config:
         db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
-            # Run setup first
-            result = runner.invoke(main, ["setup", "测试"])
+            # Run init first
+            result = runner.invoke(main, ["init", "测试"])
             assert result.exit_code == 0
 
             # Create valid draft YAML
@@ -403,7 +517,7 @@ suspense_config:
         db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
-            runner.invoke(main, ["setup", "测试"])
+            runner.invoke(main, ["init", "测试"])
 
             self._create_draft_yaml(sample_project)
             # Corrupt the draft: remove character_arcs

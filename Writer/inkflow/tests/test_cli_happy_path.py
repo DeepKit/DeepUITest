@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 class TestCliHappyPath:
-    """CLI-1: Test full import-baseline → review-shots → setup → confirm → run → status."""
+    """CLI-1: Test import-baseline → review-shots → init → confirm → setup → status."""
 
     @pytest.fixture
     def happy_project(self, tmp_path):
@@ -36,7 +36,7 @@ class TestCliHappyPath:
         return story_dir, chapter_file
 
     def test_full_happy_path(self, happy_project):
-        """CLI-1: import-baseline → review-shots → setup → confirm → status."""
+        """CLI-1: import-baseline → review-shots → init → confirm → setup → status."""
         import unittest.mock as mock
         import inkflow.cli as cli
         from inkflow.cli import main
@@ -56,8 +56,8 @@ class TestCliHappyPath:
             result = runner.invoke(main, ["review-shots", "分流", "--chapter", "v01.c01"])
             assert result.exit_code == 0, f"review-shots: {result.output}"
 
-            result = runner.invoke(main, ["setup", "分流"])
-            assert result.exit_code == 0, f"setup: {result.output}"
+            result = runner.invoke(main, ["init", "分流"])
+            assert result.exit_code == 0, f"init: {result.output}"
 
             # Fill in required high-creativity fields
             draft_path = story_dir / ".inkflow" / "contract-draft.yaml"
@@ -70,6 +70,9 @@ class TestCliHappyPath:
 
             result = runner.invoke(main, ["confirm-contract", "分流"])
             assert result.exit_code == 0, f"confirm-contract: {result.output}"
+
+            result = runner.invoke(main, ["setup", "分流", "--chapter", "v01.c02"])
+            assert result.exit_code == 0, f"chapter setup: {result.output}"
 
             result = runner.invoke(main, ["status", "分流"])
             assert result.exit_code == 0, f"status: {result.output}"

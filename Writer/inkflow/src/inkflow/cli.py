@@ -1,10 +1,12 @@
 """InkFlow CLI — `ink` command entry point.
 
 P0 commands:
-  ink setup <project>
+  ink init <project>
+  ink setup <project> --chapter <key>
+  ink run <project> --chapter <key>
+  ink review <project> --chapter <key> --accept/--revise/--reject
   ink import-baseline <project> --chapter <key> --file <path>
   ink review-shots <project> --chapter <key>
-  ink run <project> [flags]
   ink repair <project> --red/--yellow
   ink resume <session_id>
   ink sessions list
@@ -38,7 +40,7 @@ _STORY_BASE = Path(os.environ.get("INKFLOW_STORY_DIR", r"D:\_Progs\.Story"))
 def main():
     """ink — 墨韵 (InkFlow) v3.6 文学文本生产引擎
 
-    全自动文学创作系统。P0: 导入人工样章 → setup 契约 → 逐 Shot 生成。
+    主流程: init 全书初始化 → setup 章前校准 → run 生产并导出 → review 人工验收。
     """
 
 
@@ -379,6 +381,117 @@ def _next_steps(*lines: str) -> None:
         click.echo(f"  {line}")
 
 
+def _chapter_setup_path(project: str, chapter: str) -> Path:
+    return (
+        _STORY_BASE / f"《{project}》" / ".inkflow" /
+        "chapter-setups" / f"{chapter}.yaml"
+    )
+
+
+def _chapter_review_path(project: str, chapter: str) -> Path:
+    return (
+        _STORY_BASE / f"《{project}》" / ".inkflow" /
+        "chapter-reviews" / f"{chapter}.yaml"
+    )
+
+
+def _write_yaml_file(path: Path, data: dict) -> None:
+    import yaml
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
+
+
+def _read_yaml_file(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    import yaml
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def _load_chapter_setup(project: str, chapter: str | None) -> dict:
+    """Load and validate the chapter preflight package."""
+    if not chapter:
+        return {}
+
+    setup_path = _chapter_setup_path(project, chapter)
+    if not setup_path.exists():
+        raise click.ClickException(
+            f"章节 {chapter} 尚未完成生产前 setup。请先运行: "
+            f"ink setup \"{project}\" --chapter {chapter}"
+        )
+
+    setup_data = _read_yaml_file(setup_path)
+    if setup_data.get("schema") != "inkflow.chapter_setup.v1":
+        raise click.ClickException(f"章节 setup 文件格式不正确: {setup_path}")
+    if setup_data.get("chapter") != chapter:
+        raise click.ClickException(
+            f"章节 setup 文件不匹配: 期望 {chapter}, 实际 {setup_data.get('chapter')}"
+        )
+    if setup_data.get("status") not in ("ready", "approved"):
+        raise click.ClickException(
+            f"章节 setup 状态不是 ready/approved: {setup_data.get('status')}"
+        )
+    return setup_data
+
+
+def _chapter_setup_shot(setup_data: dict, shot_index: int) -> dict:
+    """Return setup metadata for a one-based shot index."""
+    for shot in setup_data.get("shots") or []:
+        if not isinstance(shot, dict):
+            continue
+        try:
+            declared_index = int(shot.get("shot"))
+        except (TypeError, ValueError):
+            declared_index = None
+        if declared_index == shot_index:
+            return shot
+    shots = setup_data.get("shots") or []
+    if 0 <= shot_index - 1 < len(shots):
+        shot = shots[shot_index - 1]
+        return shot if isinstance(shot, dict) else {}
+    return {}
+
+
+def _normalize_type_roles(roles: list | tuple | set | None) -> list[str]:
+    if not roles:
+        return []
+
+    aliases = {
+        "blank": "blank_space",
+        "blankspace": "blank_space",
+        "blank_space": "blank_space",
+        "creative": "blank_space",
+        "creative_entry": "blank_space",
+        "suspense": "suspense",
+        "hook": "hook",
+        "chapter_hook": "hook",
+    }
+    result: list[str] = []
+    for role in roles:
+        key = str(role).strip().lower().replace("-", "_")
+        normalized = aliases.get(key, key)
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def _auto_export_chapter(db, project: str, chapter: str | None) -> Path | None:
+    """Export completed run output to the canonical story 正文 directory."""
+    if not chapter:
+        return None
+    from inkflow.export import export_markdown
+
+    story_dir = _STORY_BASE / f"《{project}》"
+    out_path = story_dir / "正文" / f"{project}_{chapter}_导出.md"
+    return export_markdown(db, out_path, chapters=[chapter])
+
+
 # ── import-baseline ──
 
 @main.command("import-baseline")
@@ -435,7 +548,7 @@ def import_baseline(project: str, chapter: str, file_path: str):
 
     _next_steps(
         f"ink review-shots \"{project}\" --chapter {chapter}",
-        f"ink setup \"{project}\"",
+        f"ink init \"{project}\"",
     )
 
     db.close()
@@ -486,41 +599,47 @@ def review_shots(project: str, chapter: str):
     if importer.is_baseline_locked(chapter):
         click.echo("状态: locked (human_baseline)")
 
-    _next_steps(f"ink setup \"{project}\"")
+    _next_steps(f"ink init \"{project}\"")
     db.close()
 
 
-# ── setup ──
+# ── init / setup ──
 
-@main.command("setup")
+@main.command("init")
 @click.argument("project")
 @click.option(
     "--chapter-file",
     default=None,
     help="第 1 章 Markdown 文件路径 (相对于项目目录)",
 )
-def setup_project(project: str, chapter_file: str | None):
-    """Setup 对话 + 契约编译 — 人类与 AI 架构师沟通阶段。
+def init_project(project: str, chapter_file: str | None):
+    """全书初始化 — 建库、导入样章、生成章以上层级契约草稿。
 
     \b
     流程:
       1. 初始化项目 + 导入第 1 章为 locked baseline
-      2. AI 架构师分析第 1 章 + 大纲
+      2. AI 架构师分析第 1 章 + 全书资料
       3. 生成 contract-draft.yaml (高创造力字段留空等人类填写)
       4. 人类编辑 contract-draft.yaml → ink confirm-contract 确认
 
     \b
     示例:
-      ink setup "分流"
+      ink init "分流" --chapter-file "正文/V01_第01章.md"
     """
+    _run_init_project(project, chapter_file)
+
+
+def _run_init_project(project: str, chapter_file: str | None) -> None:
     from inkflow.db import init_project_db
     from inkflow.importers.baseline_importer import BaselineImporter
     from inkflow.services import SessionManager
     from pathlib import Path
 
-    db_path = _resolve_project_db(project)
     story_dir = _STORY_BASE / f"《{project}》"
     inkflow_dir = story_dir / ".inkflow"
+    story_dir.mkdir(parents=True, exist_ok=True)
+    inkflow_dir.mkdir(parents=True, exist_ok=True)
+    db_path = inkflow_dir / "inkflow.db"
     draft_path = inkflow_dir / "contract-draft.yaml"
 
     # ── Step 1: Init project if needed ──
@@ -605,14 +724,154 @@ def setup_project(project: str, chapter_file: str | None):
     click.echo("    world_knowledge: 世界观 (地点/物件/季节)")
     click.echo("    motif_system: 意象系统 (主意象/视觉符号)")
     click.echo()
-    click.echo("  【第 2 章 must_land 事件 — AI 从大纲提取，请审核】")
-    click.echo("    chapter_2_events: 逐 shot 必须落地的事件")
+    click.echo("  【chapter_N_events — AI 从大纲提取，请审核】")
+    click.echo("    chapter_N_events: 逐章逐 shot 必须落地的事件")
     click.echo()
     click.echo("  下一步:")
     click.echo(f"    1. 编辑 {draft_path}")
     click.echo(f"    2. 填写高创造力字段，审核 AI 推断")
     click.echo(f"    3. ink confirm-contract \"{project}\"")
     click.echo("═" * 60)
+
+
+@main.command("setup")
+@click.argument("project")
+@click.option("--chapter", required=True, help="要生产前校准的章节 key，如 v01.c03")
+@click.option("--force", is_flag=True, help="覆盖已存在的章节生产包")
+def setup_project(project: str, chapter: str, force: bool):
+    """章前校准 — 针对某一章生成生产前准备包。
+
+    \b
+    只校准本章，不初始化全书、不改写正文。
+    示例:
+      ink setup "分流" --chapter v01.c03
+    """
+    from datetime import datetime, timezone
+    from inkflow.db import init_project_db
+    from inkflow.services import ContractCompiler
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+
+    row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。请先运行: ink init \"{project}\"")
+
+    project_id = row["project_id"]
+    compiler = ContractCompiler(db, project_id)
+    meta_contract = compiler.get_meta_contract()
+    if meta_contract is None or meta_contract["status"] not in ("confirmed", "locked"):
+        db.close()
+        raise click.ClickException("元契约尚未确认。请先运行 init 并确认契约。")
+
+    chapter_events = compiler.get_chapter_events(chapter)
+    if not chapter_events:
+        db.close()
+        raise click.ClickException(f"锁定契约中没有 {chapter} 的 chapter_events。请先更新契约。")
+
+    setup_path = _chapter_setup_path(project, chapter)
+    if setup_path.exists() and not force:
+        db.close()
+        click.echo(f"章节生产包已存在: {setup_path}")
+        click.echo("如需覆盖，请加 --force。")
+        return
+
+    previous_chapter = _derive_baseline_chapter(chapter)
+    previous_review = _read_yaml_file(_chapter_review_path(project, previous_chapter))
+    layers = meta_contract.get("layers_json", {})
+    suspense = layers.get("suspense_config", {})
+
+    existing_rows = db.execute(
+        "SELECT shot_status, light_status, COUNT(*) AS cnt "
+        "FROM writing_shots WHERE project_id = ? AND layer_key = ? "
+        "GROUP BY shot_status, light_status",
+        (project_id, chapter),
+    ).fetchall()
+    existing_state = [
+        {
+            "shot_status": r["shot_status"],
+            "light_status": r["light_status"],
+            "count": r["cnt"],
+        }
+        for r in existing_rows
+    ]
+
+    default_exposition_gate = {
+        "enabled": True,
+        "rule": "概念只能通过后果显影，不能由叙述者或角色解释成主题。",
+        "forbidden_phrases": [
+            "系统并不恶意",
+            "它只是",
+            "本质上",
+            "逻辑结构",
+            "资源分配",
+            "低效率",
+            "直接回报",
+            "闭环",
+        ],
+        "repair_instruction": "把概念句改成动作、物件、沉默、对话或身体反应；保留事件，不保留解释。",
+    }
+
+    shots = []
+    total = len(chapter_events)
+    for index, event in enumerate(chapter_events, start=1):
+        roles = []
+        if index == total:
+            roles.append("hook")
+        shots.append({
+            "shot": event.get("shot", index),
+            "title": event.get("title", f"Shot {index}"),
+            "pov": event.get("pov", "unknown"),
+            "must_land": event.get("event", ""),
+            "type_roles": roles,
+            "anti_patterns": [
+                "禁止把意象解释成主题",
+                "禁止长段系统/模型/资源/效率议论",
+                "禁止用总结句替代动作和身体反应",
+            ],
+        })
+
+    data = {
+        "schema": "inkflow.chapter_setup.v1",
+        "project": project,
+        "chapter": chapter,
+        "status": "ready",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "source_contract": {
+            "meta_contract_id": meta_contract["meta_contract_id"],
+            "status": meta_contract["status"],
+        },
+        "previous_chapter": previous_chapter,
+        "previous_review": previous_review or None,
+        "existing_chapter_state": existing_state,
+        "shots": shots,
+        "chapter_hook": {
+            "required": True,
+            "requirements": suspense.get("chapter_hooks") or [
+                "最后一句必须是未完成动作，不能是感官收束或解释",
+            ],
+        },
+        "exposition_gate": default_exposition_gate,
+        "human_checklist": [
+            "确认本章 shot 事件和 POV 顺序正确",
+            "确认章末钩子不是收束句",
+            "确认哪些 shot 才需要悬疑、留白或创意入口",
+            "确认不得出现长段概念解释",
+        ],
+    }
+
+    _write_yaml_file(setup_path, data)
+    db.close()
+
+    click.echo(f"章节生产包已生成: {setup_path}")
+    click.echo(f"章节: {chapter} / {len(shots)} shots")
+    if existing_state:
+        click.echo("检测到旧稿状态，若要重写请先运行:")
+        click.echo(f"  ink repair \"{project}\" --chapter {chapter} --all")
+    _next_steps(f"ink run \"{project}\" --chapter {chapter} --resume")
 
 
 # ── confirm-contract ──
@@ -624,7 +883,7 @@ def confirm_contract(project: str):
     """确认契约: 读取 contract-draft.yaml → 验证 → 写入 DB → confirmed。
 
     \b
-    前置条件: 已运行 ink setup 并编辑过 contract-draft.yaml。
+    前置条件: 已运行 ink init 并编辑过 contract-draft.yaml。
     """
     from inkflow.db import init_project_db
     from inkflow.services import ContractCompiler
@@ -636,7 +895,7 @@ def confirm_contract(project: str):
 
     if not draft_path.exists():
         raise click.ClickException(
-            f"契约草稿不存在: {draft_path}\n请先运行: ink setup \"{project}\""
+            f"契约草稿不存在: {draft_path}\n请先运行: ink init \"{project}\""
         )
 
     # Read and validate
@@ -682,7 +941,7 @@ def confirm_contract(project: str):
     ).fetchone()
     if row is None:
         db.close()
-        raise click.ClickException(f"项目 '{project}' 尚未初始化。请先运行 setup。")
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。请先运行 init。")
     project_id = row["project_id"]
 
     compiler = ContractCompiler(db, project_id)
@@ -967,7 +1226,7 @@ def run_project(
 ):
     """全自动生产。
 
-    P0: 按 shot 生成第 2 章。writer race → jury → gate → revision → checkpoint。
+    按目标章节逐 shot 生成。writer → jury → gate → revision → checkpoint → export。
 
     \b
     示例:
@@ -1025,7 +1284,7 @@ def _run_project_inner(
     compiler = ContractCompiler(db, project_id)
     if not compiler.is_contract_confirmed():
         raise click.ClickException(
-            "元契约尚未确认。请先运行 setup 并确认契约。"
+            "元契约尚未确认。请先运行 init 并确认契约。"
         )
 
     # Load models config
@@ -1069,6 +1328,7 @@ def _run_project_inner(
     # Determine shot count from contract, not baseline
     # Contract is the authority — the chapter outline defines how many shots exist.
     chapter_events = compiler.get_chapter_events(chapter)
+    chapter_setup = _load_chapter_setup(project, chapter)
     num_shots = shot_count or compiler.get_shot_count(chapter) or 8
 
     # Create session or resume
@@ -1099,7 +1359,17 @@ def _run_project_inner(
         meta_contract_id=meta_contract["meta_contract_id"],
         config_hash_str=config_hash(models_config),
         contract_snapshot_hash=snapshot_hash(layers),
-        snapshot_data={"chapter": chapter, "writer_count": writer_count},
+        snapshot_data={
+            "chapter": chapter,
+            "writer_count": writer_count,
+            "chapter_setup": {
+                "schema": chapter_setup.get("schema"),
+                "chapter": chapter_setup.get("chapter"),
+                "status": chapter_setup.get("status"),
+                "created_at": chapter_setup.get("created_at"),
+                "path": str(_chapter_setup_path(project, chapter)) if chapter else None,
+            } if chapter_setup else None,
+        },
     )
 
     # Create shots for chapter 2
@@ -1314,6 +1584,15 @@ def _run_project_inner(
             if is_blank_shot:
                 click.echo(f"  🪨 留白 shot：释放创造自由度（budget×2, temp≤{blank_temp_cap}）")
 
+            setup_shot = _chapter_setup_shot(chapter_setup, i + 1)
+            setup_roles = _normalize_type_roles(setup_shot.get("type_roles"))
+            if "blank_space" in setup_roles:
+                is_blank_shot = True
+                blank_budget_multiplier = 2.0
+                blank_temp_cap = 1.4
+            if setup_roles:
+                click.echo(f"  章前校准类型职责: {', '.join(setup_roles)}")
+
             # Get shot contract
             sc = compiler.get_shot_contract(shot_id, run_id)
             if sc is None:
@@ -1401,6 +1680,11 @@ def _run_project_inner(
                     "sensory_pressure": rhythm_sensory or cj.get("sensory_pressure"),
                     "dominant_sense": cj.get("dominant_sense"),
                     "entry_mood": cj.get("entry_mood"),
+                    "chapter_setup": {
+                        "shot": setup_shot,
+                        "exposition_gate": chapter_setup.get("exposition_gate"),
+                        "chapter_hook": chapter_setup.get("chapter_hook"),
+                    } if chapter_setup else None,
                 },
                 previous_shots=previous_shots,
                 fact_anchors=active_anchors,
@@ -1440,6 +1724,9 @@ def _run_project_inner(
                 shot_type_roles.append("blank_space")
             if i == len(shot_ids) - 1:
                 shot_type_roles.append("hook")
+            for role in setup_roles:
+                if role not in shot_type_roles:
+                    shot_type_roles.append(role)
             shot_profile = {"types": shot_type_roles}
 
             # Step 3: 四线赛马 → 4 份草稿 (ARCH-8)
@@ -1839,10 +2126,14 @@ def _run_project_inner(
         # P0-7: Generate minimal scope report
         _print_scope_report(db, project_id, session_id, run_id, chapter)
 
-    _next_steps(
-        f"ink status \"{project}\"",
-        f"chisel import-inkflow \"{db_path}\" --title \"{project}\"",
-    )
+        exported = _auto_export_chapter(db, project, chapter)
+        if exported:
+            click.echo(f"\n📤 已自动导出: {exported}")
+
+    next_steps = [f"ink status \"{project}\""]
+    if chapter:
+        next_steps.insert(0, f"ink review \"{project}\" --chapter {chapter} --accept")
+    _next_steps(*next_steps)
 
 
 # ── contract draft generator ─────────────────────────────────────────────
@@ -2538,6 +2829,95 @@ def sessions_abort(session_id: str, project: str | None):
     raise click.ClickException(f"未找到 session: {session_id}")
 
 
+# ── review ──
+
+@main.command("review")
+@click.argument("project")
+@click.option("--chapter", required=True, help="章节 key，如 v01.c03")
+@click.option("--accept", is_flag=True, help="人工接受本章，允许作为后续上下文")
+@click.option("--revise", default=None, help="人工要求修订，填写具体意见")
+@click.option("--reject", is_flag=True, help="人工否决本章，下轮必须重写")
+@click.option("--notes", default=None, help="补充备注")
+def review_project(
+    project: str,
+    chapter: str,
+    accept: bool,
+    revise: str | None,
+    reject: bool,
+    notes: str | None,
+):
+    """记录生产后人工审稿结论。
+
+    \b
+    示例:
+      ink review "分流" --chapter v01.c03 --accept
+      ink review "分流" --chapter v01.c03 --revise "章末钩子不够"
+      ink review "分流" --chapter v01.c03 --reject --notes "整体重写"
+    """
+    from datetime import datetime, timezone
+    from inkflow.db import init_project_db
+
+    selected = sum(1 for value in (accept, bool(revise), reject) if value)
+    if selected != 1:
+        raise click.ClickException("请且只请指定 --accept、--revise 或 --reject。")
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+    project_row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if project_row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+
+    shot_stats = [
+        {
+            "shot_status": row["shot_status"],
+            "light_status": row["light_status"],
+            "count": row["cnt"],
+        }
+        for row in db.execute(
+            "SELECT shot_status, light_status, COUNT(*) AS cnt "
+            "FROM writing_shots WHERE project_id = ? AND layer_key = ? "
+            "GROUP BY shot_status, light_status",
+            (project_row["project_id"], chapter),
+        ).fetchall()
+    ]
+
+    exported_path = (
+        _STORY_BASE / f"《{project}》" / "正文" / f"{project}_{chapter}_导出.md"
+    )
+    status = "accepted" if accept else "needs_revision" if revise else "rejected"
+    review_data = {
+        "schema": "inkflow.chapter_review.v1",
+        "project": project,
+        "chapter": chapter,
+        "status": status,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "review": revise or notes or "",
+        "notes": notes,
+        "exported_path": str(exported_path) if exported_path.exists() else None,
+        "shot_stats": shot_stats,
+        "next_action": (
+            "setup_next_chapter" if accept else
+            "rerun_setup_and_run_for_this_chapter"
+        ),
+    }
+    review_path = _chapter_review_path(project, chapter)
+    _write_yaml_file(review_path, review_data)
+    db.close()
+
+    click.echo(f"人工审稿结论已记录: {review_path}")
+    click.echo(f"状态: {status}")
+    if status == "accepted":
+        _next_steps(f"ink setup \"{project}\" --chapter <下一章>")
+    else:
+        _next_steps(
+            f"ink setup \"{project}\" --chapter {chapter} --force",
+            f"ink run \"{project}\" --chapter {chapter} --resume",
+        )
+
+
 # ── status ──
 
 @main.command("status")
@@ -2600,6 +2980,32 @@ def status_project(project: str):
         click.echo("\nSession:")
         for s in sessions:
             click.echo(f"  {s['status']}: {s['cnt']}")
+
+    story_dir = _STORY_BASE / f"《{project}》"
+    setup_dir = story_dir / ".inkflow" / "chapter-setups"
+    review_dir = story_dir / ".inkflow" / "chapter-reviews"
+
+    if setup_dir.exists():
+        setup_files = sorted(setup_dir.glob("*.yaml"))
+        if setup_files:
+            click.echo("\n章节 Setup:")
+            for path in setup_files[-8:]:
+                data = _read_yaml_file(path)
+                click.echo(
+                    f"  {data.get('chapter', path.stem)}: "
+                    f"{data.get('status', 'unknown')}"
+                )
+
+    if review_dir.exists():
+        review_files = sorted(review_dir.glob("*.yaml"))
+        if review_files:
+            click.echo("\n人工 Review:")
+            for path in review_files[-8:]:
+                data = _read_yaml_file(path)
+                click.echo(
+                    f"  {data.get('chapter', path.stem)}: "
+                    f"{data.get('status', 'unknown')}"
+                )
 
     db.close()
 

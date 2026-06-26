@@ -117,6 +117,52 @@ class TestPromptCompiler:
         assert prompt is not None
         assert prompt["writer_persona"] == "意象师"
 
+    def test_chapter_setup_directives_enter_prompt(self, compiler, setup_run):
+        static_prefix = compiler.compile_static_prefix(
+            {"identity": {"title": "分流"}, "narrative_voice": {},
+             "hard_boundaries": {}, "anti_reveal": {}, "world_knowledge": {},
+             "structure_rules": {}, "anti_patterns": {}, "style_locks": {},
+             "motif_system": {}, "creative_zones": {}},
+            "意象师",
+        )
+        pid = compiler.compile_shot_prompt(
+            "shot_01", "run_01", "意象师",
+            static_prefix,
+            {
+                "must_land": {"event": "阿坤出门"},
+                "anti_write": {},
+                "exit_to": None,
+                "chapter_setup": {
+                    "shot": {
+                        "type_roles": ["hook"],
+                        "anti_patterns": ["禁止长段系统议论"],
+                    },
+                    "exposition_gate": {
+                        "enabled": True,
+                        "rule": "概念只能通过后果显影。",
+                        "forbidden_phrases": ["系统并不恶意"],
+                        "repair_instruction": "改成动作、物件或沉默。",
+                    },
+                    "chapter_hook": {
+                        "required": True,
+                        "requirements": ["最后一句必须是未完成动作"],
+                    },
+                },
+            },
+            previous_shots=[],
+            motif_tasks={"required": [], "suggested": [], "forbidden": [], "allowed": []},
+        )
+
+        row = setup_run.execute(
+            "SELECT assembled_prompt FROM writing_shot_prompts WHERE prompt_id = ?",
+            (pid,),
+        ).fetchone()
+        prompt = row["assembled_prompt"]
+        assert "章前校准" in prompt
+        assert "系统并不恶意" in prompt
+        assert "禁止长段系统议论" in prompt
+        assert "最后一句必须是未完成动作" in prompt
+
     def test_different_personas(self, compiler, setup_run):
         static_prefix = compiler.compile_static_prefix(
             {"identity": {"title": "分流"}, "narrative_voice": {},

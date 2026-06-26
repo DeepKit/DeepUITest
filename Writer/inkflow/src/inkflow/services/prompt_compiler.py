@@ -402,10 +402,57 @@ def _build_shot_context(shot_context: dict) -> str:
     if narrative_phase:
         parts.append(_build_phase_directive(narrative_phase))
 
+    chapter_setup = shot_context.get("chapter_setup")
+    if isinstance(chapter_setup, dict) and chapter_setup:
+        parts.extend(_build_chapter_setup_context(chapter_setup))
+
     # ARCH-7: Non-interference declaration
     parts.append(_build_non_interference_declaration())
 
     return chr(10).join(parts)
+
+
+def _build_chapter_setup_context(chapter_setup: dict) -> list[str]:
+    """Build chapter preflight directives captured by `ink setup --chapter`."""
+    parts = ["## 章前校准（必须执行）"]
+
+    shot_setup = chapter_setup.get("shot") or {}
+    if isinstance(shot_setup, dict):
+        roles = shot_setup.get("type_roles") or []
+        if roles:
+            parts.append("本 shot 的类型职责: " + ", ".join(str(r) for r in roles))
+
+        anti_patterns = shot_setup.get("anti_patterns") or []
+        if anti_patterns:
+            parts.append("本 shot 禁止写法:")
+            for item in anti_patterns:
+                parts.append(f"- {item}")
+
+    exposition_gate = chapter_setup.get("exposition_gate") or {}
+    if isinstance(exposition_gate, dict) and exposition_gate.get("enabled", True):
+        rule = exposition_gate.get("rule")
+        if rule:
+            parts.append(f"概念显影规则: {rule}")
+
+        forbidden = exposition_gate.get("forbidden_phrases") or []
+        if forbidden:
+            parts.append("禁止由叙述者直接说出的议论词/句:")
+            for item in forbidden:
+                parts.append(f"- {item}")
+
+        repair_instruction = exposition_gate.get("repair_instruction")
+        if repair_instruction:
+            parts.append(f"替代写法: {repair_instruction}")
+
+    chapter_hook = chapter_setup.get("chapter_hook") or {}
+    if isinstance(chapter_hook, dict) and chapter_hook.get("required"):
+        requirements = chapter_hook.get("requirements") or []
+        if requirements:
+            parts.append("章末钩子要求:")
+            for item in requirements:
+                parts.append(f"- {item}")
+
+    return parts
 
 
 def _build_three_layer_context(
