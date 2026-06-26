@@ -1494,3 +1494,25 @@ python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
 
 - 目标测试：43 passed
 - 全量测试：390 passed, 4 warnings
+
+---
+
+## EXPORT-2 第 3 章导出小标题清理 — 2026-06-26
+
+**目标**：第 3 章真实导出时，移除模型正文里重复生成的 Markdown 标题，只保留导出器根据契约生成的编辑稿小节标题。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 标题清理 | `_format_prose_for_export()` 跳过正文中的 Markdown heading block |
+| 版式边界 | 保留导出器生成的 `### shot title`，继续隐藏灯色、POV、评分等管线元数据 |
+| 回归测试 | 新增导出测试覆盖 `# 玻璃里的保鲜膜` 不进入审稿稿 |
+
+### 真实《分流》第 3 章导出
+
+`run --local-jury` 完成 5/5 shots：Green 4 / Yellow 1 / Red 0，L3 章节 Gate 通过；导出路径为 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`。
+
+### 验证
+
+- 全量测试：391 passed, 4 warnings

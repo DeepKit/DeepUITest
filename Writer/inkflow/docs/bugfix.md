@@ -423,3 +423,11 @@
 - **影响**: 第 3 章及后续章节可能直接 `run`，没有人工确认本章 shot、类型职责、章末钩子和禁止议论规则；也会让 `confirm-contract`、文档和 next steps 指向错误命令。
 - **修复**: 新增 `ink init` 承接全书初始化；`ink setup <project> --chapter <key>` 只生成单章生产前校准包；`run --chapter` 强制读取 setup 包，并把禁止议论/类型职责注入 prompt 与裁判 profile；新增 `ink review` 记录生产后人工验收。
 - **文件**: `src/inkflow/cli.py`, `src/inkflow/services/prompt_compiler.py`, `tests/test_cli.py`, `tests/test_prompt_compiler.py`, `TASKS.md`, `docs/flow.md`, `docs/setup-protocol.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `docs/history.md`
+
+### B51. 导出稿保留模型重复生成的 Markdown 小标题 ✅ 已修复
+- **严重性**: Minor
+- **发现**: 第 3 章真实导出审稿前检查
+- **根因**: `export_markdown()` 已按契约输出 `### shot title`，但 `_format_prose_for_export()` 又保留模型正文里开头生成的 `# 标题` 块，导致审稿稿出现重复标题。
+- **影响**: 编辑稿版式不干净，容易把模型提示痕迹误认为正文结构。
+- **修复**: 导出层剥离正文中的 Markdown heading block，只保留导出器生成的契约标题；新增回归测试。
+- **文件**: `src/inkflow/export/exporter.py`, `tests/test_cli.py`

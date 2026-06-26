@@ -177,6 +177,9 @@ def _format_prose_for_export(text: str) -> str:
         if not block:
             continue
 
+        if _is_generated_heading_block(block):
+            continue
+
         if _is_structural_markdown_block(block):
             output_blocks.append(block)
             continue
@@ -191,10 +194,16 @@ def _format_prose_for_export(text: str) -> str:
     return "\n\n".join(output_blocks)
 
 
-def _is_structural_markdown_block(block: str) -> bool:
-    """Leave headings, lists, quotes, tables, and code blocks untouched."""
+def _is_generated_heading_block(block: str) -> bool:
+    """Drop Markdown headings generated inside prose; exporter supplies titles."""
     stripped = block.lstrip()
-    if stripped.startswith(("```", "#", "- ", "* ", "> ", "|")):
+    return bool(re.match(r"^#{1,6}\s+\S+", stripped))
+
+
+def _is_structural_markdown_block(block: str) -> bool:
+    """Leave lists, quotes, tables, and code blocks untouched."""
+    stripped = block.lstrip()
+    if stripped.startswith(("```", "- ", "* ", "> ", "|")):
         return True
     return False
 

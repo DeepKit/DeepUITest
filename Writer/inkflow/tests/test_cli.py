@@ -680,6 +680,62 @@ class TestExportSmoke:
         assert "badsmell=" not in content
         assert "POV=" not in content
 
+    def test_markdown_export_strips_generated_headings(self, runner, sample_project, tmp_dir):
+        """模型正文里重复生成的 Markdown 标题不应进入审稿导出。"""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        out_path = story_dir / "正文" / "测试_v01.c02_导出.md"
+
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_heading', 'p1', 'run_heading', 'active')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots ("
+            "shot_id, project_id, run_id, layer_key, shot_index, shot_status"
+            ") VALUES ('shot_heading', 'p1', 'run_heading', 'v01.c02', 1, 'done_green')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts ("
+            "contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json"
+            ") VALUES ("
+            "'contract_heading', 'p1', 'run_heading', 'shot_heading', 'v01.c02', 'locked', "
+            "'hash_heading', '{\"title\":\"玻璃里的保鲜膜\"}', '{}', '{}'"
+            ")"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions ("
+            "revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, is_current, attempt_id"
+            ") VALUES ("
+            "'rev_heading', 'shot_heading', 'run_heading', 'contract_heading', 1, "
+            "'write_generate', '# 玻璃里的保鲜膜\n\n雨落在玻璃上。', "
+            "'text_hash_heading', 1, 'attempt_heading'"
+            ")"
+        )
+        db.execute(
+            "UPDATE writing_shots SET current_revision_id = 'rev_heading' "
+            "WHERE shot_id = 'shot_heading'"
+        )
+        db.commit()
+        db.close()
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+
+        assert result.exit_code == 0, result.output
+        content = out_path.read_text(encoding="utf-8")
+        assert "### 玻璃里的保鲜膜" in content
+        assert "\n# 玻璃里的保鲜膜\n" not in content
+        assert "雨落在玻璃上。" in content
+
     def test_markdown_export_formats_paragraphs_and_scene_breaks(self, runner, sample_project, tmp_dir):
         """编辑稿导出应拆分过长自然段，并在镜头之间加入分隔线。"""
         import unittest.mock as mock

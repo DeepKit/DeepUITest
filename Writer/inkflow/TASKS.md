@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-26
-Status: v3.14；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`390 passed, 4 warnings`
+Status: v3.14；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`391 passed, 4 warnings`
 
 ---
 
