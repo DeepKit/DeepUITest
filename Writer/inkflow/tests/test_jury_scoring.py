@@ -218,3 +218,88 @@ class TestJuryScoreScale:
         assert result["passing_count"] == 1
         assert result["all_passed_threshold"] is False
         assert result["min_passing_drafts"] == 2
+
+    def test_remote_hard_rule_style_complaint_does_not_zero_eligibility(
+        self, setup_run_with_draft, monkeypatch,
+    ):
+        """Remote hard-rule style complaints are advisory, not fatal gates."""
+        def fake_score_single(self, **kwargs):
+            dimension = kwargs["dimension"]
+            if dimension == "hard_rule_compliance":
+                return {
+                    "score": 50,
+                    "comment": "段落长度远未达500-800字，缺少成都话点缀。",
+                }
+            return {"score": 90, "comment": "通过"}
+
+        monkeypatch.setattr(JuryService, "_score_single", fake_score_single)
+        config = {
+            "providers": {"test": {"api_key": "sk-test", "base_url": "https://x.test/v1"}},
+            "jury_config": {"models": ["test/fake-jury"], "min_passing_drafts": 1},
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        result = jury.score_candidates("shot_01", ["d1"])
+
+        assert result["winner_draft_id"] == "d1"
+        assert result["draft_scores"]["d1"]["eligible"] is True
+        assert result["draft_scores"]["d1"]["hard_rule"]["llm_advisory_ignored"] is True
+        assert result["winner_score"] == 90
+
+    def test_remote_hard_rule_fatal_complaint_still_rejects(
+        self, setup_run_with_draft, monkeypatch,
+    ):
+        """Actual hard-rule failures still make the draft ineligible."""
+        def fake_score_single(self, **kwargs):
+            dimension = kwargs["dimension"]
+            if dimension == "hard_rule_compliance":
+                return {
+                    "score": 50,
+                    "comment": "提示词残留，且出现提前揭示。",
+                }
+            return {"score": 90, "comment": "通过"}
+
+        monkeypatch.setattr(JuryService, "_score_single", fake_score_single)
+        config = {
+            "providers": {"test": {"api_key": "sk-test", "base_url": "https://x.test/v1"}},
+            "jury_config": {"models": ["test/fake-jury"], "min_passing_drafts": 1},
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        result = jury.score_candidates("shot_01", ["d1"])
+
+        assert result["winner_draft_id"] is None
+        assert result["draft_scores"]["d1"]["eligible"] is False
+        assert result["draft_scores"]["d1"]["failure_stage"] == "hard_rule"
+
+    def test_remote_hard_rule_timeout_does_not_zero_eligibility(
+        self, setup_run_with_draft, monkeypatch,
+    ):
+        """A transient hard-rule model timeout should not reject a draft."""
+        def fake_score_single(self, **kwargs):
+            dimension = kwargs["dimension"]
+            model_ref = kwargs["jury_model_ref"]
+            if dimension == "hard_rule_compliance" and "timeout" in model_ref:
+                return {
+                    "score": 50,
+                    "comment": "API调用失败 (attempt 1): OpenAI API error: The read operation timed out",
+                }
+            if dimension == "hard_rule_compliance":
+                return {"score": 98, "comment": "硬规则完全通过"}
+            return {"score": 90, "comment": "通过"}
+
+        monkeypatch.setattr(JuryService, "_score_single", fake_score_single)
+        config = {
+            "providers": {"test": {"api_key": "sk-test", "base_url": "https://x.test/v1"}},
+            "jury_config": {
+                "models": ["test/pass-jury", "test/timeout-jury"],
+                "min_passing_drafts": 1,
+            },
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        result = jury.score_candidates("shot_01", ["d1"])
+
+        assert result["winner_draft_id"] == "d1"
+        assert result["draft_scores"]["d1"]["eligible"] is True
+        assert result["draft_scores"]["d1"]["hard_rule"]["llm_advisory_ignored"] is True

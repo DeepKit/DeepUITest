@@ -1516,3 +1516,30 @@ python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
 ### 验证
 
 - 全量测试：391 passed, 4 warnings
+
+---
+
+## JURY-B52 章节契约准入与 hard-rule 误杀收敛 — 2026-06-27
+
+**目标**：把第 3 章远端 jury “全 0 / 无 winner”拆清为契约失效与软件规则误杀两类问题，并在软件层防止再次拖到评分阶段才暴露。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 契约准入 | `setup --chapter` / `run --chapter` 检查当前契约是否仍含“只生成第 N 章”旧范围限制 |
+| Setup 新鲜度 | `run` 校验 setup 包的 `source_contract.meta_contract_id` 必须等于当前元契约 |
+| Shot 对齐 | `run` 校验 setup shots 数量与当前 `chapter_N_events` 数量一致 |
+| 旧段落锁拦截 | 生产前拒绝 `500-800 字/段落，3-4 段/shot` 旧锁，要求改为导出层短段策略 |
+| Hard-rule 边界 | 远端 hard-rule jury 只清零硬事实、POV、must_land、禁写、提前揭示、提示词残留、空文/重复 |
+| 风格/瞬时失败误杀保护 | 段落长度、方言、感官密度、身体时刻开场、远端 timeout/解析失败、`characters_alive` 排他误读只作为 advisory，不再 `eligible=False` |
+| 默认模板 | `init` 生成的 contract-draft 移除第 2 章 P0 限定，并写入内江/外江当前方向设定 |
+
+### 结论
+
+第 3 章远端全 0 的直接触发是锁定契约未按章节校准；软件缺陷是 run 缺少章节契约准入，且 hard-rule jury 把风格项和远端瞬时失败提升为资格清零项。本轮修复后，契约问题会在 setup/run 前失败，规则问题由 hard-rule 边界和 advisory 保护收敛。
+
+### 验证
+
+- 目标测试：49 passed
+- 全量测试：396 passed, 4 warnings

@@ -440,6 +440,107 @@ def _load_chapter_setup(project: str, chapter: str | None) -> dict:
     return setup_data
 
 
+def _validate_contract_scope_for_chapter(
+    chapter: str | None,
+    layers: dict,
+    project: str | None = None,
+) -> None:
+    """Reject stale chapter-scoped contract rules before setup/run."""
+    if not chapter:
+        return
+
+    chapter_number = _chapter_number_from_key(chapter)
+    issues: list[str] = []
+
+    hard_text = _flatten_contract_text(layers.get("hard_boundaries", {}))
+    for matched in _find_only_generate_chapter_numbers(hard_text):
+        if chapter_number is not None and matched != chapter_number:
+            issues.append(
+                f"hard_boundaries 仍限定只生成第 {matched} 章，当前目标是 {chapter}"
+            )
+
+    style = layers.get("style_locks", {})
+    paragraph = str(style.get("paragraph_length", ""))
+    if "500-800" in paragraph and "3-4" in paragraph:
+        issues.append(
+            "style_locks.paragraph_length 仍是旧规则 "
+            "'500-800 字/段落，3-4 段/shot'"
+        )
+
+    if issues:
+        detail = "\n  - ".join(issues)
+        project_arg = f"\"{project}\"" if project else "\"<项目>\""
+        raise click.ClickException(
+            "章节契约未完成当前章校准，不能进入生产。\n"
+            f"  - {detail}\n"
+            "请先更新契约草稿并 confirm-contract，然后重新运行: "
+            f"ink setup {project_arg} --chapter {chapter} --force"
+        )
+
+
+def _validate_chapter_run_preflight(
+    project: str,
+    chapter: str | None,
+    setup_data: dict,
+    meta_contract: dict,
+    layers: dict,
+    chapter_events: list[dict],
+) -> None:
+    """Validate that run uses the current chapter setup and current contract."""
+    if not chapter:
+        return
+
+    _validate_contract_scope_for_chapter(chapter, layers, project)
+
+    source = setup_data.get("source_contract") or {}
+    source_id = source.get("meta_contract_id")
+    current_id = meta_contract.get("meta_contract_id")
+    if source_id and current_id and source_id != current_id:
+        raise click.ClickException(
+            "章节 setup 包基于旧元契约，不能用于当前生产。\n"
+            f"  setup: {source_id}\n"
+            f"  current: {current_id}\n"
+            f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
+        )
+
+    setup_shots = setup_data.get("shots") or []
+    if chapter_events and len(setup_shots) != len(chapter_events):
+        raise click.ClickException(
+            "章节 setup 包与当前契约的 shot 数不一致。\n"
+            f"  setup shots: {len(setup_shots)}\n"
+            f"  contract events: {len(chapter_events)}\n"
+            f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
+        )
+
+
+def _chapter_number_from_key(chapter: str | None) -> int | None:
+    import re
+
+    if not chapter:
+        return None
+    match = re.match(r"v\d+\.c(\d+)$", chapter)
+    return int(match.group(1)) if match else None
+
+
+def _find_only_generate_chapter_numbers(text: str) -> list[int]:
+    import re
+
+    numbers: list[int] = []
+    for match in re.finditer(r"只生成第\s*(\d{1,3})\s*章", text):
+        numbers.append(int(match.group(1)))
+    return numbers
+
+
+def _flatten_contract_text(value: object) -> str:
+    if isinstance(value, dict):
+        return "\n".join(_flatten_contract_text(v) for v in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return "\n".join(_flatten_contract_text(v) for v in value)
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _chapter_setup_shot(setup_data: dict, shot_index: int) -> dict:
     """Return setup metadata for a one-based shot index."""
     for shot in setup_data.get("shots") or []:
@@ -767,6 +868,13 @@ def setup_project(project: str, chapter: str, force: bool):
         db.close()
         raise click.ClickException("元契约尚未确认。请先运行 init 并确认契约。")
 
+    layers = meta_contract.get("layers_json", {})
+    try:
+        _validate_contract_scope_for_chapter(chapter, layers, project)
+    except click.ClickException:
+        db.close()
+        raise
+
     chapter_events = compiler.get_chapter_events(chapter)
     if not chapter_events:
         db.close()
@@ -781,7 +889,6 @@ def setup_project(project: str, chapter: str, force: bool):
 
     previous_chapter = _derive_baseline_chapter(chapter)
     previous_review = _read_yaml_file(_chapter_review_path(project, previous_chapter))
-    layers = meta_contract.get("layers_json", {})
     suspense = layers.get("suspense_config", {})
 
     existing_rows = db.execute(
@@ -1329,6 +1436,9 @@ def _run_project_inner(
     # Contract is the authority — the chapter outline defines how many shots exist.
     chapter_events = compiler.get_chapter_events(chapter)
     chapter_setup = _load_chapter_setup(project, chapter)
+    _validate_chapter_run_preflight(
+        project, chapter, chapter_setup, meta_contract, layers, chapter_events,
+    )
     num_shots = shot_count or compiler.get_shot_count(chapter) or 8
 
     # Create session or resume
@@ -2211,9 +2321,8 @@ def _generate_contract_draft(
             "characters_alive": pov_chars,
             "world_rules": [
                 "鱼嘴系统分流外卖/教育/医疗/住房/信用五领域",
-                "内江=核心城区，外江=三环外",
+                "内江=三环以内核心服务圈；外江=三环以外低优先级分流圈；运行期外江口径向三环内侧侵蚀，吞入内江边缘街区，内江变小",
                 "系统不恶意，但代价在积累",
-                "P0 只生成第 2 章，不引入第 3 章及以后的新角色/新事件",
             ],
             "fixed_events": "<<请填写: 第 2 章中不可改变的事件, 如: 阿坤遇到拖行李箱的年轻人>>",
         },
@@ -2223,7 +2332,7 @@ def _generate_contract_draft(
             "ending": "动作/物件/沉默结尾，不总结",
             "sensory": "每段至少一处气味/声音/温度/湿度描写",
             "dialect": "成都话点缀，不是普通话翻译",
-            "paragraph_length": "500-800 字/段落，3-4 段/shot",
+            "paragraph_length": "正文按镜头节奏自然分段；导出层负责短段排版，单个自然段宜控制在约 420 字以内，镜头转换可加分隔符",
         },
 
         "anti_patterns": {

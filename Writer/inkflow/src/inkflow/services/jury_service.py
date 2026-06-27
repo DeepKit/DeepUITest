@@ -68,6 +68,9 @@ DIMENSION_DESCRIPTIONS = {
         "硬规则是否通过？只判断能不能进入文学评审，不评价文采。"
         "重点检查：硬事实、must_land、POV、禁写项、提前揭示、前文冲突、"
         "空文/重复/提示词残留。若有任一致命问题，应给 0-79 分。"
+        "段落长度、方言点缀、感官密度、身体时刻开场属于风格/文学问题，"
+        "不得作为硬规则清零依据。characters_alive 只表示角色存活状态，"
+        "不是唯一允许出场名单。"
     ),
     "contract_compliance": (
         "文本是否遵守了元契约中的硬边界、必须落地事件、风格铁律？"
@@ -217,6 +220,10 @@ class JuryService:
         """
         threshold = quality_threshold or self.quality_threshold
         meta_summary = self._build_meta_summary(meta_contract) if meta_contract else "（无）"
+        hard_meta_summary = (
+            self._build_meta_summary(meta_contract, hard_rule_only=True)
+            if meta_contract else "（无）"
+        )
         previous_ending = self._get_previous_ending(shot_id)
         attempt_id = generate_ulid()
         bypass_gates = score_override is not None or score_overrides is not None
@@ -253,7 +260,7 @@ class JuryService:
                 draft_id=draft_id,
                 draft_text=draft_text,
                 dimensions=self.hard_dimensions,
-                meta_summary=meta_summary,
+                meta_summary=hard_meta_summary,
                 previous_ending=previous_ending,
                 attempt_id=attempt_id,
                 use_llm=use_llm and hard_gate["passed"],
@@ -268,7 +275,11 @@ class JuryService:
                 and hard_means
                 and min(hard_means.values()) < self.hard_rule_threshold
             ):
-                hard_passed = False
+                hard_passed = self._low_hard_rule_scores_are_advisory(
+                    draft_id, attempt_id,
+                )
+                if hard_passed:
+                    hard_gate["llm_advisory_ignored"] = True
 
             if not hard_passed:
                 self.db.commit()
@@ -580,6 +591,31 @@ class JuryService:
             "failure_stage": stage,
         }
 
+    def _low_hard_rule_scores_are_advisory(
+        self,
+        draft_id: str,
+        attempt_id: str,
+    ) -> bool:
+        """Return True when low remote hard-rule scores are non-fatal advice.
+
+        Remote hard-rule jury can still reject drafts, but only for actual hard
+        failures. Style-density complaints, transient model failures, and the
+        common misread that characters_alive is an exclusive cast list are
+        routed to later scoring instead of making the draft ineligible.
+        """
+        rows = self.db.execute(
+            "SELECT score, comment FROM writing_jury_scores "
+            "WHERE draft_id = ? AND run_id = ? AND attempt_id = ? "
+            "AND dimension = 'hard_rule_compliance' AND score < ?",
+            (draft_id, self.run_id, attempt_id, self.hard_rule_threshold),
+        ).fetchall()
+        if not rows:
+            return False
+        return all(
+            _is_nonfatal_hard_rule_comment(row["comment"] or "")
+            for row in rows
+        )
+
     # ── 单次 LLM 调用 ──
 
     def _score_single(
@@ -803,7 +839,7 @@ class JuryService:
     # ── 辅助 ──
 
     @staticmethod
-    def _build_meta_summary(meta_contract: dict) -> str:
+    def _build_meta_summary(meta_contract: dict, *, hard_rule_only: bool = False) -> str:
         identity = meta_contract.get("identity", {})
         hard = meta_contract.get("hard_boundaries", {})
         style = meta_contract.get("style_locks", {})
@@ -812,7 +848,14 @@ class JuryService:
             parts.append(f"作品：{identity.get('title', '未知')}")
         if hard:
             parts.append(f"硬边界：{json.dumps(hard, ensure_ascii=False)[:200]}")
-        if style:
+        if hard_rule_only:
+            parts.append(
+                "硬规则裁判边界：只检查硬事实、must_land、POV、禁写项、"
+                "提前揭示、前文冲突、空文、重复和提示词残留。"
+                "段落长度、方言、感官密度、身体时刻开场不作清零依据；"
+                "characters_alive 不是唯一允许出场名单。"
+            )
+        elif style:
             parts.append(f"风格要求：{json.dumps(style, ensure_ascii=False)[:200]}")
         return "\n".join(parts) if parts else "（无元契约信息）"
 
@@ -904,6 +947,36 @@ def _dimension_adjustment(dimension: str, text: str) -> int:
     if dimension == "dialogue_subtext" and not any(q in text for q in ["“", "”", "「", "」"]):
         return -3
     return 0
+
+
+def _is_nonfatal_hard_rule_comment(comment: str) -> bool:
+    """Classify low hard-rule comments that should not zero eligibility."""
+    if not comment:
+        return False
+
+    compact = comment.replace(" ", "")
+    transient_markers = [
+        "API调用失败", "调用失败", "readoperationtimedout", "timedout",
+        "timeout", "评分响应无法解析", "解析失败",
+    ]
+    if any(marker.lower() in compact.lower() for marker in transient_markers):
+        return True
+
+    fatal_markers = [
+        "空文", "过短", "重复", "提示词残留", "提前揭示", "前文冲突",
+        "禁写", "POV切换", "视角切换", "必须落地", "must_land",
+        "硬事实错误", "事实冲突",
+    ]
+    if any(marker in compact for marker in fatal_markers):
+        return False
+
+    nonfatal_markers = [
+        "段落", "500-800", "500", "800", "3-4", "方言", "成都话",
+        "感官", "气味", "声音", "温度", "湿度", "身体时刻", "开场",
+        "characters_alive", "存活角色名单", "角色名单", "不在元契约",
+        "未使用元契约规定的角色名",
+    ]
+    return any(marker in compact for marker in nonfatal_markers)
 
 
 def _has_excessive_repetition(text: str) -> bool:

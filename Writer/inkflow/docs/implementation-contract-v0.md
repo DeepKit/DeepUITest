@@ -903,7 +903,7 @@ repair:
 
 当前实现按候选稿、评委模型和评分维度逐项记录分数，但评分流程分三层：
 
-1. **硬规则裁判**：`hard_rule_compliance`。规则预检失败时直接淘汰；远端 jury 可追加 LLM hard-rule check。
+1. **硬规则裁判**：`hard_rule_compliance`。规则预检失败时直接淘汰；远端 jury 可追加 LLM hard-rule check，但只能清零硬事实、must_land、POV、禁写、提前揭示、前文冲突、空文/重复、提示词残留等致命问题。段落长度、方言点缀、感官密度、身体时刻开场和 `characters_alive` 被误读为唯一角色名单，均不得作为硬规则清零依据。
 2. **类型裁判**：只在 shot_profile 启用对应职责时打分。悬疑 shot 打 `suspense_effectiveness`；留白/创意入口打 `unexpected_value`；章末/转折打 `hook_transition`。
 3. **文学裁判**：固定 9 维：`language_texture` / `reading_fluency` / `scene_specificity` / `emotional_progression` / `character_believability` / `dialogue_subtext` / `pacing_control` / `motif_theme_fit` / `chapter_continuity`。
 
@@ -912,6 +912,8 @@ repair:
 通过条件：默认 `quality_threshold=80`，也可用 10 分制配置（如 `8.5` 自动换算为 85）。默认 `min_passing_drafts=2`，过线候选稿少于 2 个时触发重写，避免“矮子里拔高个”。
 
 配置兼容规则：旧 `.models` 的 `jury_config.dimensions` 不再注入新文学 9 维，避免旧合规维度污染文学均分；新配置若需调整文学维度，使用 `jury_config.literary_dimensions`。
+
+章节生产准入规则：`ink setup --chapter` 生成的 setup 包必须匹配当前目标章节和当前元契约；`ink run --chapter` 在创建 session 前检查 setup 包的 `source_contract.meta_contract_id`、shot 数和当前 `chapter_N_events`。若元契约还含“只生成第 N 章”这类旧章节限定，或保留旧段落锁 `500-800 字/段落，3-4 段/shot`，生产必须在 setup/run 前失败，不能拖到远端 jury 阶段表现为全 0。
 
 ```json
 {

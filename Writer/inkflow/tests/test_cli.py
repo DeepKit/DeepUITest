@@ -6,7 +6,13 @@ import pytest
 from click.testing import CliRunner
 from pathlib import Path
 
-from inkflow.cli import main, _extract_chapter_2_events, _extract_chapter_events
+from inkflow.cli import (
+    main,
+    _extract_chapter_2_events,
+    _extract_chapter_events,
+    _validate_chapter_run_preflight,
+    _validate_contract_scope_for_chapter,
+)
 from inkflow.models.enums import ShotStatus
 
 
@@ -251,6 +257,9 @@ class TestInitSmoke:
             result = runner.invoke(main, ["init", "测试"])
             assert result.exit_code == 0, result.output
             assert draft_path.exists(), "contract-draft.yaml should be created"
+            content = draft_path.read_text(encoding="utf-8")
+            assert "P0 只生成第 2 章" not in content
+            assert "500-800 字/段落" not in content
 
 
 class TestChapterSetupSmoke:
@@ -321,6 +330,38 @@ class TestChapterSetupSmoke:
 
         assert result.exit_code != 0
         assert "ink setup" in result.output
+
+    def test_contract_scope_rejects_stale_chapter_only_rule(self):
+        with pytest.raises(Exception) as exc:
+            _validate_contract_scope_for_chapter(
+                "v01.c03",
+                {
+                    "hard_boundaries": {
+                        "world_rules": [
+                            "P0 只生成第 2 章，不引入第 3 章及以后的新角色/新事件",
+                        ],
+                    },
+                    "style_locks": {},
+                },
+            )
+
+        assert "只生成第 2 章" in str(exc.value)
+
+    def test_run_preflight_rejects_setup_from_old_contract(self):
+        with pytest.raises(Exception) as exc:
+            _validate_chapter_run_preflight(
+                "测试",
+                "v01.c03",
+                {
+                    "source_contract": {"meta_contract_id": "old"},
+                    "shots": [{"shot": 1}],
+                },
+                {"meta_contract_id": "new"},
+                {"hard_boundaries": {}, "style_locks": {}},
+                [{"shot": 1, "event": "事件"}],
+            )
+
+        assert "旧元契约" in str(exc.value)
 
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock

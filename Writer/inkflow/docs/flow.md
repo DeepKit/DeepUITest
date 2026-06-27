@@ -46,12 +46,13 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
   人类审核树状继承摘要，在任意节点注入修正
   契约落库，进入 confirmed 状态
 
-阶段 2: AI 全自动生产 (ink run)
+阶段 2: 章前校准与 AI 全自动生产 (ink setup → ink run)
+  setup 检查契约是否适用于当前章节；run 检查 setup 包是否来自当前元契约
   创建不可变契约快照
   赛车场经理加载预编译提示词
   不打断人类，不修改契约
   2-4 写手赛马（按人格差异化 prompt）(D-17)
-  9-jury 3-phase 评分：独立→比较→输出 (D-21)
+  分层裁判：硬规则 → 类型职责 → 文学 9 维
   绿/黄进入正文，绿灯自动提取 9 类事实锚点 (D-19)
   红灯写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
   每个 Shot 完成后写入检查点 (D-14)
@@ -148,6 +149,11 @@ chisel export "分流" -o "分流_终版.md"
 关键创作字段不得由 AI 擅自补完。主题、硬边界、人物命运、不解之谜、结尾策略、叙事声音必须经人类明确确认后才能进入 confirmed 契约。AI 可以提出候选，但不能静默写入。
 
 `ink setup <project> --chapter <key>` 的目标是**某一章生产前校准**：读取已确认契约、抽出本章 shot、生成 `.inkflow/chapter-setups/<chapter>.yaml`，供人类确认本章 shot 事件、类型职责（悬疑/留白/钩子）和禁止议论规则。它不初始化全书，也不改写正文。
+
+契约问题和软件规则问题必须分开处理：
+
+- 契约问题：本章生产前的 world_rules、chapter_N_events、style_locks 等内容不适用于目标章节，应通过更新契约草稿、`confirm-contract` 和重新 `setup --chapter --force` 解决。
+- 软件规则问题：`run` 必须拒绝缺失、过期或章节不匹配的 setup 包；硬规则裁判不能把段落长度、方言、感官密度等风格项当成清零项。
 
 ### 3.2 交互模式：混合式（D-7）
 

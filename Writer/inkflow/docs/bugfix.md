@@ -431,3 +431,11 @@
 - **影响**: 编辑稿版式不干净，容易把模型提示痕迹误认为正文结构。
 - **修复**: 导出层剥离正文中的 Markdown heading block，只保留导出器生成的契约标题；新增回归测试。
 - **文件**: `src/inkflow/export/exporter.py`, `tests/test_cli.py`
+
+### B52. 远端 hard-rule jury 把契约旧风格项误判为硬规则，导致全 0 / 无 winner ✅ 已修复
+- **严重性**: Critical
+- **发现**: 第 3 章远端 jury 链路中，模型调用成功且返回了原始分，但 `JuryService` 因 `hard_rule_compliance` 低于阈值把 `trimmed_mean` 清零，最终显示全 0 / 无 winner。
+- **根因**: 锁定契约仍含旧章节限定（`P0 只生成第 2 章...`）和旧段落锁（`500-800 字/段落，3-4 段/shot`）；同时硬规则裁判摘要包含 `style_locks`，远端 LLM 将段落长度、方言、感官密度、身体时刻开场以及 `characters_alive` 名单误读为硬规则。
+- **影响**: API 可用但候选稿被资格层误杀；本地 jury 可过，远端 jury 连续无 winner，真实生产验证失真。
+- **修复**: `setup/run` 增加章节契约准入，拒绝旧章节限定、旧段落锁、过期 setup 包和 setup/contract shot 数不一致；hard-rule prompt 收窄为硬事实/POV/must_land/禁写/提示词残留等；风格类低分、远端 timeout/解析失败和 `characters_alive` 排他误读只作为 advisory，不再清零候选稿；`init` 默认契约模板移除第 2 章 P0 限定并改用导出层短段策略。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/jury_service.py`, `tests/test_cli.py`, `tests/test_jury_scoring.py`, `docs/flow.md`, `docs/setup-protocol.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `tasks.md`, `docs/history.md`
