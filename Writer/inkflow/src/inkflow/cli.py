@@ -289,8 +289,32 @@ def _jury_failure_stage_label(stage: str | None) -> str:
     labels = {
         "hard_rule": "硬规则未通过",
         "type_gate": "类型职责未通过",
+        "jury_unavailable": "评审不可用",
     }
     return labels.get(stage or "", "未入选")
+
+
+def _jury_verdict_all_unavailable(verdict: dict) -> bool:
+    """Return True when no draft was judged because required jury calls failed."""
+    draft_scores = verdict.get("draft_scores") or {}
+    if not draft_scores or verdict.get("winner_draft_id"):
+        return False
+    return all(
+        not score_data.get("eligible", True)
+        and score_data.get("failure_stage") == "jury_unavailable"
+        for score_data in draft_scores.values()
+    )
+
+
+def _jury_unavailable_detail(verdict: dict) -> str:
+    dimensions: list[str] = []
+    for score_data in (verdict.get("draft_scores") or {}).values():
+        for dimension in score_data.get("missing_dimensions") or []:
+            if dimension not in dimensions:
+                dimensions.append(str(dimension))
+    if not dimensions:
+        return "required jury dimension unavailable"
+    return "missing_dimensions=" + ",".join(dimensions[:5])
 
 
 def _resume_or_create_session(
@@ -1939,6 +1963,29 @@ def _run_project_inner(
             winner_id = jury_verdict.get("winner_draft_id")
             winner_score = jury_verdict.get("winner_score", 0)
             winner_track = jury_verdict.get("winner_track")
+
+            if _jury_verdict_all_unavailable(jury_verdict):
+                score_key = jury_verdict.get("score_key", "literary_score")
+                for did, ds in jury_verdict.get("draft_scores", {}).items():
+                    click.echo(
+                        _format_jury_draft_score(did, ds, score_key=score_key)
+                    )
+                detail = _jury_unavailable_detail(jury_verdict)
+                try:
+                    retry_budget.record_failure(
+                        shot_id, "jury_unavailable", detail=detail,
+                    )
+                except CircuitBreakerTriggered:
+                    click.echo(
+                        f"  🔴 熔断：此 shot 远端评审连续不可用 "
+                        f"{retry_budget.circuit_breaker_threshold} 次"
+                    )
+                except RetryBudgetExhausted as exc:
+                    raise click.ClickException(f"重试预算耗尽: {exc}") from exc
+                raise click.ClickException(
+                    "远端评审不可用，已停止本章生产；"
+                    f"{detail}。请检查 model_attempts.error_message 后再 resume。"
+                )
 
             # ARCH-11: 反契约沙盒评估 — 如果 deviation 赛道胜出，记录人类裁决需求
             try:

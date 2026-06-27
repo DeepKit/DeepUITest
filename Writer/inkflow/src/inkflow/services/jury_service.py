@@ -255,7 +255,9 @@ class JuryService:
             hard_gate = self._run_hard_rule_gate(draft_text)
 
             hard_passed = bypass_gates or hard_gate["passed"]
-            hard_scores = self._score_dimension_group(
+            jury_failures: list[dict] = []
+
+            hard_scores, hard_failures = self._score_dimension_group(
                 shot_id=shot_id,
                 draft_id=draft_id,
                 draft_text=draft_text,
@@ -268,6 +270,7 @@ class JuryService:
                 score_overrides=score_overrides,
                 deterministic_gate=hard_gate,
             )
+            jury_failures.extend(hard_failures)
             self._merge_scores(scores, dimension_scores, hard_scores)
             hard_means = self._compute_dimension_means(hard_scores)
             if (
@@ -291,7 +294,7 @@ class JuryService:
             type_passed = True
             type_means: dict[str, float] = {}
             if type_dimensions:
-                type_scores = self._score_dimension_group(
+                type_scores, type_failures = self._score_dimension_group(
                     shot_id=shot_id,
                     draft_id=draft_id,
                     draft_text=draft_text,
@@ -303,8 +306,21 @@ class JuryService:
                     score_override=score_override,
                     score_overrides=score_overrides,
                 )
+                jury_failures.extend(type_failures)
                 self._merge_scores(scores, dimension_scores, type_scores)
                 type_means = self._compute_dimension_means(type_scores)
+                missing_type_dimensions = [
+                    dim for dim in type_dimensions if dim not in type_scores
+                ]
+                if missing_type_dimensions:
+                    self.db.commit()
+                    draft_scores[draft_id] = self._build_rejected_score(
+                        scores, dimension_scores, hard_gate, "jury_unavailable",
+                        type_means=type_means,
+                        jury_failures=jury_failures,
+                        missing_dimensions=missing_type_dimensions,
+                    )
+                    continue
                 for dim, mean in type_means.items():
                     dim_threshold = JURY_TYPE_THRESHOLDS.get(dim, self.type_threshold)
                     if mean < dim_threshold:
@@ -315,10 +331,11 @@ class JuryService:
                 draft_scores[draft_id] = self._build_rejected_score(
                     scores, dimension_scores, hard_gate, "type_gate",
                     type_means=type_means,
+                    jury_failures=jury_failures,
                 )
                 continue
 
-            literary_scores = self._score_dimension_group(
+            literary_scores, literary_failures = self._score_dimension_group(
                 shot_id=shot_id,
                 draft_id=draft_id,
                 draft_text=draft_text,
@@ -330,7 +347,21 @@ class JuryService:
                 score_override=score_override,
                 score_overrides=score_overrides,
             )
+            jury_failures.extend(literary_failures)
             self._merge_scores(scores, dimension_scores, literary_scores)
+
+            missing_literary_dimensions = [
+                dim for dim in self.literary_dimensions if dim not in literary_scores
+            ]
+            if missing_literary_dimensions:
+                self.db.commit()
+                draft_scores[draft_id] = self._build_rejected_score(
+                    scores, dimension_scores, hard_gate, "jury_unavailable",
+                    type_means=type_means,
+                    jury_failures=jury_failures,
+                    missing_dimensions=missing_literary_dimensions,
+                )
+                continue
 
             self.db.commit()
 
@@ -359,6 +390,7 @@ class JuryService:
                 "type_dimension_means": type_means,
                 "creative_score": creative_score,
                 "eligible": True,
+                "jury_failures": jury_failures,
             }
 
         review_mode = "typed_literary"
@@ -385,8 +417,9 @@ class JuryService:
         score_override: int | None,
         score_overrides: dict[str, dict[str, int]] | None,
         deterministic_gate: dict | None = None,
-    ) -> dict[str, list[int]]:
+    ) -> tuple[dict[str, list[int]], list[dict]]:
         grouped: dict[str, list[int]] = {}
+        failures: list[dict] = []
         for model_ref in self.jury_models:
             _, model_name = parse_model_ref(model_ref)
             for dimension in dimensions:
@@ -411,6 +444,14 @@ class JuryService:
                         )
                         score = result["score"]
                         comment = result["comment"]
+                        if result.get("failed") and dimension != "hard_rule_compliance":
+                            failures.append({
+                                "model": model_name,
+                                "model_ref": model_ref,
+                                "dimension": dimension,
+                                "comment": comment,
+                            })
+                            continue
                 elif use_llm:
                     result = self._score_single(
                         shot_id=shot_id,
@@ -422,6 +463,14 @@ class JuryService:
                     )
                     score = result["score"]
                     comment = result["comment"]
+                    if result.get("failed") and dimension != "hard_rule_compliance":
+                        failures.append({
+                            "model": model_name,
+                            "model_ref": model_ref,
+                            "dimension": dimension,
+                            "comment": comment,
+                        })
+                        continue
                 else:
                     score = self._local_dimension_score(
                         draft_id, model_name, dimension, draft_text,
@@ -440,7 +489,7 @@ class JuryService:
                     attempt_id=attempt_id,
                 )
                 grouped.setdefault(dimension, []).append(score)
-        return grouped
+        return grouped, failures
 
     def _record_score(
         self,
@@ -571,6 +620,8 @@ class JuryService:
         stage: str,
         *,
         type_means: dict[str, float] | None = None,
+        jury_failures: list[dict] | None = None,
+        missing_dimensions: list[str] | None = None,
     ) -> dict:
         dimension_means = {
             dim: round(sum(values) / len(values), 2)
@@ -590,8 +641,11 @@ class JuryService:
             "creative_score": 0,
             "eligible": False,
             "failure_stage": stage,
+            "jury_failures": jury_failures or [],
+            "missing_dimensions": missing_dimensions or [],
             "failure_summary": self._build_rejection_summary(
                 stage, hard_gate, dimension_means, type_means or {},
+                missing_dimensions or [],
             ),
         }
 
@@ -601,6 +655,7 @@ class JuryService:
         hard_gate: dict,
         dimension_means: dict[str, float],
         type_means: dict[str, float],
+        missing_dimensions: list[str],
     ) -> dict:
         """Return a human-readable reason for an ineligible draft."""
         if stage == "hard_rule":
@@ -633,6 +688,19 @@ class JuryService:
             return {
                 "stage": stage,
                 "label": "类型职责未通过",
+                "reasons": reasons,
+            }
+
+        if stage == "jury_unavailable":
+            reasons = []
+            for dimension in missing_dimensions[:3]:
+                label = JURY_V4_DIMENSION_DISPLAY.get(dimension, dimension)
+                reasons.append(f"{label} 无有效远端评分")
+            if not reasons:
+                reasons.append("必需评分维度无有效远端评分")
+            return {
+                "stage": stage,
+                "label": "评审不可用",
                 "reasons": reasons,
             }
 
@@ -727,8 +795,13 @@ class JuryService:
             except ModelCallError as e:
                 last_error = f"API调用失败 (attempt {attempt+1}): {e}"
 
-        # 所有重试��失败
-        return {"score": 50, "comment": last_error or f"模型 {model_name} 调用失败", "model_used": jury_model_ref}
+        # 所有重试失败。硬规则层会记录为 advisory 候选；类型/文学层会跳过该分数。
+        return {
+            "score": 50,
+            "comment": last_error or f"模型 {model_name} 调用失败",
+            "model_used": jury_model_ref,
+            "failed": True,
+        }
 
     @staticmethod
     def _parse_score_response(text: str) -> dict:

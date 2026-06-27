@@ -11,6 +11,8 @@ from inkflow.cli import (
     _extract_chapter_2_events,
     _extract_chapter_events,
     _format_jury_draft_score,
+    _jury_unavailable_detail,
+    _jury_verdict_all_unavailable,
     _validate_chapter_run_preflight,
     _validate_contract_scope_for_chapter,
 )
@@ -95,6 +97,26 @@ class TestCLIBasics:
         assert "未入选" in line
         assert "类型职责未通过" in line
         assert "均分: 0" not in line
+
+    def test_jury_verdict_all_unavailable_is_infrastructure_failure(self):
+        verdict = {
+            "winner_draft_id": None,
+            "draft_scores": {
+                "d1": {
+                    "eligible": False,
+                    "failure_stage": "jury_unavailable",
+                    "missing_dimensions": ["reading_fluency"],
+                },
+                "d2": {
+                    "eligible": False,
+                    "failure_stage": "jury_unavailable",
+                    "missing_dimensions": ["reading_fluency"],
+                },
+            },
+        }
+
+        assert _jury_verdict_all_unavailable(verdict) is True
+        assert _jury_unavailable_detail(verdict) == "missing_dimensions=reading_fluency"
 
 
 class TestImportBaseline:

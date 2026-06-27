@@ -35,6 +35,36 @@ def test_chapter_hook_failure_type_is_recorded(db):
     assert signature["last_failure_type"] == "chapter_hook_weak"
 
 
+def test_jury_unavailable_failure_type_is_recorded(db):
+    from inkflow.services.retry_budget import RetryBudgetService
+
+    db.execute("INSERT INTO projects (project_id, name) VALUES ('proj_01', '分流')")
+    db.execute(
+        "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+        "VALUES ('s1', 'proj_01', 'run_01', 'active')"
+    )
+    db.execute(
+        "INSERT INTO writing_shots "
+        "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+        "VALUES ('shot_01', 'proj_01', 'run_01', 'v01.c02', 1, 'pending')"
+    )
+    db.commit()
+
+    budget = RetryBudgetService(db, "run_01")
+    result = budget.record_failure(
+        "shot_01",
+        "jury_unavailable",
+        detail="missing_dimensions=reading_fluency",
+    )
+
+    row = db.execute(
+        "SELECT failure_signature_json FROM writing_shots WHERE shot_id = 'shot_01'"
+    ).fetchone()
+    signature = json.loads(row["failure_signature_json"])
+    assert result["failure_type"] == "jury_unavailable"
+    assert signature["last_failure_type"] == "jury_unavailable"
+
+
 def test_l3_chapter_hook_issue_classifies_specifically():
     from inkflow.services.retry_budget import classify_failure_type
 

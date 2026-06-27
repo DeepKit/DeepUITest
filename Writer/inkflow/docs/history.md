@@ -1587,3 +1587,25 @@ python -m inkflow.cli run "分流" --chapter v01.c03 --resume
 
 - 目标测试：51 passed
 - 全量测试：397 passed, 4 warnings
+
+---
+
+## JURY-B54 远端 Jury Timeout 归因与均分隔离 — 2026-06-27
+
+**目标**：将远端供应商 timeout/解析失败从作品质量评分中剥离，避免把基础设施失败当成类型/文学低分，并在全维度不可评时停止生产而不是重写正文。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 失败标记 | `_score_single()` 在最终 API/解析失败时返回 `failed=True` |
+| 分数隔离 | 类型/文学评分跳过 `failed=True` 的远端结果，不写入 `writing_jury_scores`，不混入 `raw_scores` / `literary_score` |
+| 硬规则兼容 | hard-rule 层仍记录失败 50，用于现有 advisory 误杀保护 |
+| 缺维处理 | 若类型/文学必评维度没有任何有效远端评分，草稿标记为 `jury_unavailable`，并记录缺失维度 |
+| run 中止 | 若所有候选均因 `jury_unavailable` 不可评，`run` 记录 retry 归因、抛出 `ClickException`，让 session 标记为 crashed |
+| 恢复归因 | `RetryBudgetService` 新增 `jury_unavailable` failure type，session 列表可汇总该失败 |
+
+### 验证
+
+- 目标测试：57 passed
+- 全量测试：401 passed, 4 warnings

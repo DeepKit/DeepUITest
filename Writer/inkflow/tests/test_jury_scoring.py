@@ -307,3 +307,72 @@ class TestJuryScoreScale:
         assert result["winner_draft_id"] == "d1"
         assert result["draft_scores"]["d1"]["eligible"] is True
         assert result["draft_scores"]["d1"]["hard_rule"]["llm_advisory_ignored"] is True
+
+    def test_remote_literary_timeout_is_skipped_not_scored_as_50(
+        self, setup_run_with_draft, monkeypatch,
+    ):
+        """Transient literary jury failures are infrastructure failures, not low scores."""
+        def fake_score_single(self, **kwargs):
+            dimension = kwargs["dimension"]
+            model_ref = kwargs["jury_model_ref"]
+            if dimension == "hard_rule_compliance":
+                return {"score": 100, "comment": "硬规则通过"}
+            if "timeout" in model_ref:
+                return {
+                    "score": 50,
+                    "comment": "API调用失败 (attempt 1): OpenAI API error: The read operation timed out",
+                    "failed": True,
+                }
+            return {"score": 90, "comment": "通过"}
+
+        monkeypatch.setattr(JuryService, "_score_single", fake_score_single)
+        config = {
+            "providers": {"test": {"api_key": "sk-test", "base_url": "https://x.test/v1"}},
+            "jury_config": {
+                "models": ["test/pass-jury", "test/timeout-jury"],
+                "min_passing_drafts": 1,
+            },
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        result = jury.score_candidates("shot_01", ["d1"])
+
+        assert result["winner_draft_id"] == "d1"
+        assert result["winner_score"] == 90
+        assert 50 not in result["draft_scores"]["d1"]["raw_scores"]
+        assert result["draft_scores"]["d1"]["jury_failures"]
+
+    def test_all_remote_failures_for_literary_dimension_make_jury_unavailable(
+        self, setup_run_with_draft, monkeypatch,
+    ):
+        """A required dimension with no valid jury score should not become fake quality 50."""
+        def fake_score_single(self, **kwargs):
+            dimension = kwargs["dimension"]
+            if dimension == "hard_rule_compliance":
+                return {"score": 100, "comment": "硬规则通过"}
+            if dimension == "reading_fluency":
+                return {
+                    "score": 50,
+                    "comment": "API调用失败 (attempt 1): OpenAI API error: The read operation timed out",
+                    "failed": True,
+                }
+            return {"score": 90, "comment": "通过"}
+
+        monkeypatch.setattr(JuryService, "_score_single", fake_score_single)
+        config = {
+            "providers": {"test": {"api_key": "sk-test", "base_url": "https://x.test/v1"}},
+            "jury_config": {
+                "models": ["test/jury-a", "test/jury-b"],
+                "min_passing_drafts": 1,
+            },
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        result = jury.score_candidates("shot_01", ["d1"])
+        draft_score = result["draft_scores"]["d1"]
+
+        assert result["winner_draft_id"] is None
+        assert draft_score["eligible"] is False
+        assert draft_score["failure_stage"] == "jury_unavailable"
+        assert "reading_fluency" in draft_score["missing_dimensions"]
+        assert any("阅读流畅" in reason for reason in draft_score["failure_summary"]["reasons"])

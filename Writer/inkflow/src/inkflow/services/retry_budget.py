@@ -36,6 +36,7 @@ _FAILURE_TYPES = [
     "l4_violation",
     "l3_violation",
     "chapter_hook_weak",
+    "jury_unavailable",
     "model_error",
     "json_parse_error",
 ]

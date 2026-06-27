@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-27
-Status: v3.15；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`397 passed, 4 warnings`
+Status: v3.15；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`401 passed, 4 warnings`
 
 ---
 
@@ -18,6 +18,8 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 2026-06-27 的 B52 修复结论：第 3 章远端 jury “全 0 / 无 winner”不是 API 失败，而是契约失效与软件规则误杀叠加。契约层面，锁定元契约仍含“只生成第 2 章”和旧段落锁；每章生产前必须重新 `setup --chapter` 并确保当前元契约适配目标章。规则层面，`run` 已增加章节契约准入，hard-rule jury 不再把段落长度、方言、感官密度、身体时刻开场、远端 timeout/解析失败或 `characters_alive` 排他误读作为资格清零项。
 
 2026-06-27 第 3 章远端链路已按新契约重新 `setup --chapter v01.c03` 并完成真实 writer/jury 生产：5/5 shots 全绿，Scope Report 平均分 88.3，L3 章节 Gate 通过，自动导出到 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`。本轮同时修复 gate 失败日志误写为 `均分: 0` 的排障问题；以后硬规则/类型职责失败会明确显示为“未入选: 硬规则未通过/类型职责未通过”。
+
+2026-06-27 的 B54 修复结论：远端 jury 的 timeout/解析失败属于基础设施失败，不是作品质量低分。类型/文学评分中单个供应商失败会跳过该分数并保留 `jury_failures`；若某个必评维度没有任何有效远端评分，候选稿标记为 `jury_unavailable`，`run` 停止本章生产并把 session 标为 crashed，避免把基础设施问题触发成正文重写。
 
 设计审阅结论不变：当前方向 near-optimal，不建议推倒重做。下一步应避免继续堆检查项，重点把“约束保下限 + 留白出上限 + 评审学偏好”跑成可验证闭环。
 
@@ -60,6 +62,7 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 | JURY-B52 | 章节契约准入与 hard-rule 误杀收敛；远端风格类/瞬时失败低分只作 advisory，过期/错章 setup 生产前失败 |
 | CHAPTER-3-REMOTE | 第 3 章真实远端 writer/jury 链路跑通；5/5 shots green，L3 通过并导出到统一正文目录 |
 | JURY-B53 | gate 失败归因显示修复：不可用稿不再显示为文学均分 0，而是显示硬规则/类型职责失败原因 |
+| JURY-B54 | 远端 jury timeout 不再作为类型/文学 50 分混入均分；全维度不可评时中止生产并归因为 `jury_unavailable` |
 
 ---
 
@@ -69,7 +72,6 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 |--------|----|------|----------|----------|
 | 高 | CHAPTER-3-REVIEW | 第 3 章人工审阅 | 待人工 | 审阅 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`，用 `ink review "分流" --chapter v01.c03 --accept/--revise/--reject` 记录结论 |
 | 高 | CHAPTER-4-SETUP | 第 4 章生产前校准 | 待第 3 章审阅后执行 | 先吸收第 3 章人工审阅结论，再运行 `ink setup "分流" --chapter v01.c04 --force`，确认 shot、类型职责、钩子和禁止议论项 |
-| 中 | JURY-REMOTE-ROBUST | 远端 Jury 超时鲁棒性 | 待优化 | 文学/类型评分中的供应商 timeout 应独立归因为模型失败，避免被误当作品低分；保留 `model_attempts.error_message` 审计 |
 | 中 | JURY-V5-REAL | 分层裁判真实项目持续观测 | 已跑通第 3 章，继续积累样本 | 每章记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
 | 中 | JURY-REMOTE | 远端 Jury 配置治理 | 待执行 | 明确 `.models` 中远端 jury 可用性；无有效订阅时不应阻塞生产链路 |
 | 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |

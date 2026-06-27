@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B53；开放实现任务见 `../TASKS.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；开放实现任务见 `../TASKS.md`
 
 ---
 
@@ -447,3 +447,11 @@
 - **影响**: 生产排障会把正常 gate 淘汰误判为 API 失败、契约错误或文学评分异常，干扰契约/规则归因。
 - **修复**: gate 失败稿增加 `failure_summary`，包含 `stage`、显示标签和低于阈值的维度；CLI 打印改为 `未入选: 硬规则未通过/类型职责未通过`，不再把不可用稿显示成文学均分 0。
 - **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/cli.py`, `tests/test_jury_scoring.py`, `tests/test_cli.py`, `TASKS.md`, `docs/history.md`
+
+### B54. 远端 jury timeout 被当作类型/文学 50 分，污染作品均分 ✅ 已修复
+- **严重性**: Important
+- **发现**: 第 3 章真实远端运行中，`qwen3.7-plus` 偶发 read timeout，旧逻辑把失败响应解析为 `score=50` 并混入 `raw_scores`，降低候选稿的类型/文学均分。
+- **根因**: `_score_single()` 对所有失败统一返回 50；`_score_dimension_group()` 无法区分“模型失败”和“评委给了低分”。硬规则层需要保留 advisory 低分判断，但类型/文学层不应把基础设施失败当作品缺陷。
+- **影响**: 单个供应商抖动会不公平压低文本质量分；如果某个维度全部远端失败，旧流程可能触发正文重写，浪费预算且掩盖真实故障。
+- **修复**: `_score_single()` 为最终失败返回 `failed=True`；类型/文学层跳过失败分并记录 `jury_failures`；必评维度没有任何有效评分时标记 `jury_unavailable`；`run` 遇到所有候选均为 `jury_unavailable` 时停止本章生产、记录 retry 归因并标记 session crashed。
+- **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/cli.py`, `src/inkflow/services/retry_budget.py`, `tests/test_jury_scoring.py`, `tests/test_cli.py`, `tests/test_retry_budget.py`, `TASKS.md`, `docs/history.md`
