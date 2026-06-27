@@ -897,6 +897,93 @@ class TestExportSmoke:
         assert any(sentence in block for block in prose_blocks)
         assert all(len(block) <= 420 for block in prose_blocks)
 
+    def test_markdown_export_filters_to_requested_run_id(self, db, tmp_dir):
+        """自动导出当前 run 时不应混入同章节旧 run 的正文。"""
+        from inkflow.export import export_markdown
+
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        for run_id, session_id, shot_id, contract_id, revision_id, title, text in [
+            ("run_old", "sess_old", "shot_old", "contract_old", "rev_old", "旧镜", "旧 run 正文。"),
+            ("run_new", "sess_new", "shot_new", "contract_new", "rev_new", "新镜", "当前 run 正文。"),
+        ]:
+            db.execute(
+                "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+                "VALUES (?, 'p1', ?, 'active')",
+                (session_id, run_id),
+            )
+            db.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+                "VALUES (?, 'p1', ?, 'v01.c02', 1, 'done_green', ?)",
+                (shot_id, run_id, revision_id),
+            )
+            db.execute(
+                "INSERT INTO writing_shot_contracts "
+                "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+                "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+                "VALUES (?, 'p1', ?, ?, 'v01.c02', 'locked', ?, ?, '{}', '{}')",
+                (contract_id, run_id, shot_id, f"hash_{run_id}", f'{{"title":"{title}"}}'),
+            )
+            db.execute(
+                "INSERT INTO shot_revisions "
+                "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+                "text, text_hash_normalized, is_current, attempt_id) "
+                "VALUES (?, ?, ?, ?, 1, 'write_generate', ?, ?, 1, ?)",
+                (revision_id, shot_id, run_id, contract_id, text, f"text_hash_{run_id}", f"attempt_{run_id}"),
+            )
+        db.commit()
+
+        out_path = export_markdown(
+            db, tmp_dir / "out.md", chapters=["v01.c02"], run_id="run_new",
+        )
+        content = out_path.read_text(encoding="utf-8")
+
+        assert "当前 run 正文。" in content
+        assert "### 新镜" in content
+        assert "旧 run 正文。" not in content
+        assert "### 旧镜" not in content
+
+    def test_plain_text_export_strips_generated_heading_lines(self, db, tmp_dir):
+        """纯文本导出也应清掉模型生成标题，并保留同块正文。"""
+        from inkflow.export import export_plain_text
+
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_plain', 'p1', 'run_plain', 'active')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+            "VALUES ('shot_plain', 'p1', 'run_plain', 'v01.c02', 1, 'done_green', 'rev_plain')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('contract_plain', 'p1', 'run_plain', 'shot_plain', 'v01.c02', "
+            "'locked', 'hash_plain', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, is_current, attempt_id) "
+            "VALUES ('rev_plain', 'shot_plain', 'run_plain', 'contract_plain', 1, "
+            "'write_generate', '# 内部标题\n同一段正文保留。\n\n## 第二标题\n下一段正文。', "
+            "'text_hash_plain', 1, 'attempt_plain')"
+        )
+        db.commit()
+
+        out_path = export_plain_text(
+            db, tmp_dir / "plain.txt", chapters=["v01.c02"], run_id="run_plain",
+        )
+        content = out_path.read_text(encoding="utf-8")
+
+        assert "内部标题" not in content
+        assert "第二标题" not in content
+        assert "同一段正文保留。" in content
+        assert "下一段正文。" in content
+
 
 class TestImportBaselineSmoke:
     """T3: import-baseline idempotent re-import"""

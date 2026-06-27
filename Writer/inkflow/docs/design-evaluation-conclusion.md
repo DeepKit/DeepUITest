@@ -1,15 +1,17 @@
 # InkFlow 设计评估结论
 
 > 评估日期：2026-06-16
-> 最近复核：2026-06-25
+> 最近复核：2026-06-27
 > 评估范围：inkflow/docs/design.md、flow.md、role-system.md、module-v3.6.md、implementation-contract-v0.md
 > 评估方法：四轮专家审阅（本地审计 + 4 + 3 + 3 + 3 位专家，共 13 人次）
 
 ## 核心结论
 
-**经过四轮评估，InkFlow v3.6 的完整架构达到 near-optimal；2026-06-17 开发目标已收敛为 P0 单书纵向闭环。**
+**经过四轮评估，InkFlow v3.6 的完整架构曾达到 near-optimal；2026-06-27 生产管线复核后，当前判断调整为：架构方向保留，但工程实现尚未达到正式批量生产标准。**
 
 2026-06-25 复核结论：P0 纵向闭环、三棵树、正文真相源、D-25 能力、L0 全书宪法、L0.5 卷部节奏、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审已经落地，当前实现为 Schema v16 / 38 张业务表 + `_schema_meta` 元表。设计仍不需要推倒重做；后续最优路径是实战验证、留白/polish 效果评估和非阻塞议题评估。
+
+2026-06-27 复核结论：第 2/3 章真实链路证明方向成立，但专家审阅发现 production kernel 仍有未固化不变量：run/shot identity 复用、review/reject/abort canonical 语义不足、旧 run 导出风险、L3/L4 曾经只告警不硬停、远端 jury 配置失败可能假回落。当前策略为“推倒 40%，保留 60%”：保留现有 CLI/模型/Prompt/Jury 资产，重做 canonical truth source、run identity、export selector 和 gate 状态机。正式生产前必须完成 CORE-1/CORE-2/EXPORT-4。
 
 第一轮（4 专家）：needs fix — 方向正确，工程规格未冻结。
 第二轮（3 专家）：发现 30 跨文档不一致，确立 9 条人类决策。

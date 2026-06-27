@@ -1609,3 +1609,38 @@ python -m inkflow.cli run "分流" --chapter v01.c03 --resume
 
 - 目标测试：57 passed
 - 全量测试：401 passed, 4 warnings
+
+---
+
+## PROD-CORE-HARDENING 第一批生产内核硬化 — 2026-06-27
+
+**目标**：落实专家审阅后的“推倒 40%，保留 60%”策略，先把容易造成假封板、假导出、假评分的生产内核问题收紧。当前结论调整为：方向成立，但只能受控试跑，不能正式批量无人值守生产。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 远端 jury 路由 | 显式配置远端 jury 时，即使 providers 为空也不静默回落本地评分；缺 provider/key 会归因为 `jury_unavailable` |
+| 留白 winner | `creative_review=True` 改用 `creative_score` 和 `creative_blank` 选优语义 |
+| 大纲重写 | outline regeneration 后重新读取 shot contract，避免继续使用 stale contract |
+| must_land 保留 | `_update_contract()` 只更新 beats，保留 title/event 等既有字段 |
+| 四轨 prompt | 意象师/节奏师/对话师/结构师分别编译 persona prompt，避免身份指令冲突 |
+| L4 硬 gate | L4 在 finalize 前执行；closing/explanation/narrator/system voice 等严重问题会阻止封板、completed 计数和导出 |
+| L3 硬 gate | L3 在 session complete 和自动导出前执行；未通过则停止封板/导出 |
+| 导出边界 | 自动导出传入当前 `run_id`，导出器只取 `done_green/done_yellow + current_revision_id` |
+| 导出版式 | Markdown/纯文本导出都剥离模型生成标题，保留正文并拆分长段，shot 间保留分隔线 |
+| RetryBudget | 同类失败第 N 次立即熔断；切换 failure type 重置连续计数 |
+
+### 仍未解决的 P0
+
+| ID | 原因 |
+|----|------|
+| CORE-1 | review/reject/abort 还没有成为 DB canonical 状态机；当前只先收紧 run/export 过滤 |
+| CORE-2 | stable `shot_id=layer_key.sNN` 的跨 run 复用问题需要 schema/迁移级改造 |
+| EXPORT-4 | 默认导出最终应只取人工 accepted canonical；当前自动导出先限定 current run |
+
+### 验证
+
+- 语法检查：`py_compile` 通过
+- 目标测试：76 passed
+- 全量测试：407 passed, 4 warnings

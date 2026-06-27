@@ -1,123 +1,95 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-27
-Status: v3.15；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`401 passed, 4 warnings`
+Status: v3.16；Schema v17；38 张业务表 + `_schema_meta` 元表；当前阶段：生产内核硬化中；最近全量验证：`407 passed, 4 warnings`
 
 ---
 
 ## 1. 当前结论
 
-P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`ink init` 全书初始化与章以上层级契约草稿、`ink setup --chapter` 章前人工校准、`ink run --chapter` 生产并自动导出、`ink review --chapter` 记录人工验收。`confirm-contract` 保留为 init 后确认契约的兼容/内部命令，不再承担 setup 语义。L0 全书宪法、L0.5 卷部节奏、L1 章级节奏、三棵树架构、正文真相源、D-25 悬疑可靠性、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修和 CREATIVE-3 留白创意评审均已落地。
+InkFlow 不能按“已经正式投产”判断。第 2 章本地兜底链路和第 3 章远端 writer/jury 链路已经跑通，证明 `init -> setup --chapter -> run --chapter -> review` 方向成立；但专家审阅确认，现有工程实现仍有若干生产级不变量没有完全固化，当前只能进入“受控试跑”，不能批量无人值守生产。
 
-2026-06-26 的 QUAL-1/VAL-2 修复结果：第 2 章重写链路已用真实《分流》库复跑通过（`ink run "分流" --chapter v01.c02 --resume --local-jury`），4 个 shot 结果为 Green 2 / Yellow 2 / Red 0，L3 章末钩子已触发并通过。根因是本地 jury 在存在 providers 时仍误走远端评分路径，以及 `LocalDefaultGenerator` 未按 prompt 的 opening/POV/must_land 生成正文。
+当前策略不是推倒重来，也不是继续零散打补丁，而是“推倒 40%，保留 60%”：
 
-当前结论：工程链路已达到“受控生产试跑”标准；本地兜底可用于验证 gate、恢复和归因。第 2 章真实链路输出已得到人工“内容基本合格”反馈，可作为第 3 章前文上下文。正式批量生产仍需要远端 writer/jury 可用性验证，本地兜底文本不能作为最终文学质量基线。
+- 保留：CLI 入口、`.models` 模型配置、writer/jury 服务、Prompt/契约资产、分层裁判维度、setup 包、导出排版、现有测试框架。
+- 硬化：正文真相源、run/shot 身份、review/reject/abort 语义、export selector、L3/L4 gate 状态机、远端评审失败归因。
+- 暂缓：跨 schema 的 shot_id 主键改造。这是 P0，但需要单独迁移与数据兼容测试，不混入本轮小步修复。
 
-2026-06-26 的 JURY-V5 设计落地：裁判流程调整为“硬规则裁判 → 类型裁判 → 文学 9 维裁判”。硬规则不进入文学平均分；悬疑、留白、章末钩子等类型分只在 shot 具备对应职责时启用；文学 9 维按 10 分制语义配置、内部 0-100 存储，去掉最高/最低后取均分。默认要求至少 2 个候选稿超过 Y，否则触发单线返写。
+本轮已完成第一批生产内核硬化：
 
-2026-06-27 的 B52 修复结论：第 3 章远端 jury “全 0 / 无 winner”不是 API 失败，而是契约失效与软件规则误杀叠加。契约层面，锁定元契约仍含“只生成第 2 章”和旧段落锁；每章生产前必须重新 `setup --chapter` 并确保当前元契约适配目标章。规则层面，`run` 已增加章节契约准入，hard-rule jury 不再把段落长度、方言、感官密度、身体时刻开场、远端 timeout/解析失败或 `characters_alive` 排他误读作为资格清零项。
-
-2026-06-27 第 3 章远端链路已按新契约重新 `setup --chapter v01.c03` 并完成真实 writer/jury 生产：5/5 shots 全绿，Scope Report 平均分 88.3，L3 章节 Gate 通过，自动导出到 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`。本轮同时修复 gate 失败日志误写为 `均分: 0` 的排障问题；以后硬规则/类型职责失败会明确显示为“未入选: 硬规则未通过/类型职责未通过”。
-
-2026-06-27 的 B54 修复结论：远端 jury 的 timeout/解析失败属于基础设施失败，不是作品质量低分。类型/文学评分中单个供应商失败会跳过该分数并保留 `jury_failures`；若某个必评维度没有任何有效远端评分，候选稿标记为 `jury_unavailable`，`run` 停止本章生产并把 session 标为 crashed，避免把基础设施问题触发成正文重写。
-
-设计审阅结论不变：当前方向 near-optimal，不建议推倒重做。下一步应避免继续堆检查项，重点把“约束保下限 + 留白出上限 + 评审学偏好”跑成可验证闭环。
+- 显式远端 jury 配置不再因为 providers 为空而静默回落本地评分。
+- 留白创意评审使用 `creative_score` 和 `creative_blank` winner 语义。
+- 大纲重写后重新读取最新 shot contract，避免继续用 stale contract。
+- `_update_contract()` 更新 beats 时保留 `must_land_json.title/event`。
+- 四轨写手按 persona 分别编译 prompt，避免“意象师”身份污染节奏师/对话师/结构师。
+- L4 从审计提示升级为封板前硬 gate；L4 未过不 finalize、不计 completed、不导出。
+- L3 在 session complete 和自动导出前执行；L3 未过即停止封板/导出。
+- 自动导出限定当前 `run_id`，并只导出 `done_green/done_yellow + current_revision_id`。
+- 导出层保留正文并剥离模型生成的 Markdown 标题；纯文本导出也走相同正文排版清理。
+- RetryBudget 同类熔断改为第 N 次立即触发，切换 failure type 重置连续计数。
 
 ---
 
 ## 2. 权威文档
 
-| 文档 | 位置 | 状态 |
+| 文档 | 位置 | 当前状态 |
 |------|------|:---:|
-| 技术设计权威 | `docs/design.md` | ✅ v3.14 / Schema v17 |
-| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | ✅ Schema v17 / 38 业务表 |
-| 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | ✅ |
-| 8 层层级 | `docs/design-8layer-hierarchy.md` | ✅ |
-| 悬疑引擎 | `docs/suspense-engine.md` | ✅ 已实施核心闭环，待实战验证 |
-| 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-27 归档 |
-| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B43-B53 |
+| 技术设计权威 | `docs/design.md` | 需标注 v3.16 / 受控试跑 / gate 硬停 |
+| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | Schema v17，需记录 canonical truth source 下一阶段 |
+| 人机流程 | `docs/flow.md` | 需明确 init/setup/run/review 与 L3/L4 封板边界 |
+| 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | 已补充 accepted canonical 待硬化边界 |
+| 悬疑引擎 | `docs/suspense-engine.md` | 已实施核心闭环，待更多真实章节验证 |
+| 开发历史 | `docs/history.md` | 本轮追加 PROD-CORE-HARDENING |
+| Bug 记录 | `docs/bugfix.md` | 本轮追加 B55-B59 |
 
 ---
 
 ## 3. 已完成任务归档
 
-已完成项不再放在待办区，详细实现记录见 `docs/history.md`。
+详细实现记录见 `docs/history.md`。
 
 | 阶段 | 已完成 |
 |------|--------|
 | P0 纵向闭环 | 导入第 1 章、确认契约、逐 shot 生成第 2 章、scope report |
-| 数据/LLM/CLI 修复 | DB-1~7、LLM-1~6、CLI-1~5、DOC-1~4 |
-| 管线质量优化 | OPT-1~7 |
-| AI 架构师治理 | ARCH-1/2/3/4/5/6/7R/8/9/10/11/12/13 |
-| D-25 悬疑引擎 | Jury 悬疑维度、悬疑蓝图、信息差表与服务、重试预算/熔断、benchmark 样本 |
-| 正文读取治理 | TS-1 `TextRepository` 统一正文读取入口 |
-| Prompt caching | B23-P1 上下文降级与 token budget 裁剪 |
-| 创作质量 | CREATIVE-1 `unexpected_value`；CREATIVE-2 `write_polish`；CREATIVE-3 留白创意评审 |
-| 文档与测试对齐 | B37/B38/B39/B40/B41/B42：Schema v16 / 表数 / 索引 / CREATIVE 测试、配置兼容、模型审计、后续章节契约抽取与权威契约口径同步 |
-| VAL-1 工程补齐 | B43/B44/B45/B46：L3 章末钩子硬 gate、session 恢复/失败归因、章节重写入口、模型错误审计与本地 jury 运行开关 |
-| QUAL-1 / VAL-2 修复 | B47/B48：本地 jury 路由修复、本地写手按 opening/POV/must_land 生成；真实《分流》v01.c02 复跑 Green 2 / Yellow 2 / Red 0，L3 通过 |
-| JURY-V5 分层裁判 | B49：硬规则先过、类型分按职责启用、文学 9 维 trimmed mean、至少 2 个过线稿、单线返写、Schema v17 维度扩展 |
-| WORKFLOW-1 公开流程收敛 | `init -> setup --chapter -> run --chapter -> review`；`setup` 改为章前校准；run 强制读取 setup 包并自动导出 |
-| CHAPTER-2-REVIEW | 第 2 章输出已获人工“内容基本合格”反馈，允许作为后续章节生产上下文 |
-| JURY-B52 | 章节契约准入与 hard-rule 误杀收敛；远端风格类/瞬时失败低分只作 advisory，过期/错章 setup 生产前失败 |
-| CHAPTER-3-REMOTE | 第 3 章真实远端 writer/jury 链路跑通；5/5 shots green，L3 通过并导出到统一正文目录 |
-| JURY-B53 | gate 失败归因显示修复：不可用稿不再显示为文学均分 0，而是显示硬规则/类型职责失败原因 |
-| JURY-B54 | 远端 jury timeout 不再作为类型/文学 50 分混入均分；全维度不可评时中止生产并归因为 `jury_unavailable` |
+| 真实章节验证 | 第 2 章本地兜底链路内容基本合格；第 3 章远端 writer/jury 链路 5/5 green 并导出 |
+| 工作流收敛 | `init -> setup --chapter -> run --chapter -> review` |
+| JURY-V5 | 硬规则 → 类型职责 → 文学 9 维；至少 2 个过线稿；单线返写 |
+| 章节契约准入 | B52：旧章节限定、旧段落锁、过期 setup 包、setup/contract shot 数不一致提前失败 |
+| 远端评审归因 | B53/B54：gate 淘汰不再显示均分 0；timeout/解析失败不混入文学分；全维度不可评为 `jury_unavailable` |
+| PROD-HARDEN-1 | 本轮已修复 persona prompt、creative_score winner、L4/L3 硬停、当前 run 导出过滤、retry 熔断 |
 
 ---
 
-## 4. 当前待办
+## 4. 当前 P0 待办
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
-| 高 | CHAPTER-3-REVIEW | 第 3 章人工审阅 | 待人工 | 审阅 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`，用 `ink review "分流" --chapter v01.c03 --accept/--revise/--reject` 记录结论 |
-| 高 | CHAPTER-4-SETUP | 第 4 章生产前校准 | 待第 3 章审阅后执行 | 先吸收第 3 章人工审阅结论，再运行 `ink setup "分流" --chapter v01.c04 --force`，确认 shot、类型职责、钩子和禁止议论项 |
-| 中 | JURY-V5-REAL | 分层裁判真实项目持续观测 | 已跑通第 3 章，继续积累样本 | 每章记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
-| 中 | JURY-REMOTE | 远端 Jury 配置治理 | 待执行 | 明确 `.models` 中远端 jury 可用性；无有效订阅时不应阻塞生产链路 |
-| 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |
-| 中 | CREATIVE-3-EVAL | 留白创意评审效果评估 | 已有 `creative_review=True` 评分路径，待真实文本验证 | 比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好 |
-| 中 | PERF-1 | Prompt caching 性能基线 | 待测量 | 在真实 prompt 上记录 B23-P1 降级前后 token 节省量与 cacheable 比例 |
-| 中 | ARCH-10-EVAL | 风格偏好反馈效果评估 | 待样本积累 | 验证 `get_effective_temperature()` 是否提高 winner 稳定性或降低红灯率 |
-| 中 | TS-2 | 正文读取调用点审计 | 待复核 | 新增代码不得绕过 `TextRepository` 读取正文真相源 |
-| 低 | X-17 | 已有作品章节识别 | 非阻塞 | 导入已有作品时自动识别章/节边界并给出人工确认界面 |
+| P0 | CORE-1 | 正文 canonical truth source 改造 | 待开发 | review `--accept` 才产生 accepted/sealed canonical；`--reject/--revise/abort` 必须使对应章节不可被后续上下文和导出当作正式正文 |
+| P0 | CORE-2 | run/shot identity 重构 | 待开发 | 同一章节多次重写不能复用旧 `shot_id` 跳过旧正文；shot identity 必须区分 logical shot 与 run attempt |
+| P0 | EXPORT-4 | 导出 selector 升级为 accepted canonical | 待 CORE-1 | 默认导出只取人工接受的正式版本；调试导出必须显式指定 run |
+| P0 | REVIEW-1 | 人工审稿状态机落库 | 待开发 | `review --accept/--revise/--reject` 不只写 YAML，还写 DB 审稿状态并影响后续上下文选择 |
+| P0 | ABORT-1 | aborted/crashed session 失败归因收敛 | 部分完成 | abort/crash 后的非正式 revision 不进入事实锚点、previous context、默认导出 |
+| P0 | VALID-1 | 真实章节小样验证 | 单元/集成回归已通过 | 用当前代码跑一个小章节/单 shot 远端 writer+jury 验证 L3/L4 硬停与导出过滤 |
 
 ---
 
-## 5. 创作质量方法论
+## 5. 当前 P1 待办
 
-| 问题 | 已落地 | 剩余任务 |
-|------|--------|----------|
-| Jury 偏重合规 | CREATIVE-3 已对留白 shot 使用独立创意评审，提高 `unexpected_value` 权重 | 评估真实文本中创意 winner 是否更受人类偏好 |
-| 重写是修复不是升华 | CREATIVE-2 已新增 polish：基于 winner 写 `write_polish` 子 revision | 评估 polish 对真实文本质量的收益 |
-| deviation_budget 被层层压缩 | L0.5 -> L1 -> L2 已传递；每 5 shot 留白一次 | 评估真实文本中留白 shot 是否提高高光率 |
-| 四轨赛马选“最安全” | CREATIVE-3 已在留白 shot 降低常规合规权重并改用创意评审 | 跟踪合规风险，不让硬事实被破坏 |
-
-**留白节奏：每 5 个 shot 留白 1 次。**
-
-- 留白 shot 的 `deviation_budget = 常规 × 2`。
-- 留白 shot 的 temperature 上限放宽到 `1.4`。
-- 硬事实仍强制；软约束是建议，不是命令。
-- 下一步重点不是继续放宽，而是评估留白 shot 是否真的产出更好的文本。
+| 优先级 | ID | 任务 | 当前状态 | 验收标准 |
+|--------|----|------|----------|----------|
+| P1 | CHAPTER-3-REVIEW | 第 3 章人工审阅 | 待人工 | 审阅 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`，用 `ink review "分流" --chapter v01.c03 --accept/--revise/--reject` 记录结论 |
+| P1 | CHAPTER-4-SETUP | 第 4 章生产前校准 | 待第 3 章审阅后执行 | 先吸收第 3 章审阅结论，再 `ink setup "分流" --chapter v01.c04 --force` |
+| P1 | JURY-V5-REAL | 分层裁判真实项目持续观测 | 已有第 3 章样本 | 每章记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
+| P1 | CREATIVE-3-EVAL | 留白创意评审效果评估 | 已修正 score_key | 比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好 |
+| P1 | STYLE-1 | 议论性/系统解释文本抑制评估 | L4 已硬化 | 统计 narrator intrusion、system voice、explanation 触发率，验证不再出现大段机制议论 |
 
 ---
 
-## 6. 非阻塞议题
-
-| ID | 议题 |
-|----|------|
-| X-11 | Voice Calibration 样本要求 |
-| X-12 | 契约升级三级填充 |
-| X-13 | 多 Project 事实锚点同步 |
-| X-14 | Prompt Caching 实战验证 |
-| X-15 | 反例降温机制参数 |
-| X-16 | Voice Drift 告警阈值 |
-| X-17 | 导入已有作品章节识别 |
-
----
-
-## 7. 当前验证命令
+## 6. 当前验证命令
 
 ```powershell
 cd D:\_Progs\02Business\Writer\inkflow
+python -m py_compile src\inkflow\cli.py src\inkflow\services\jury_service.py src\inkflow\services\outline_evaluator.py src\inkflow\services\writer_dispatcher.py src\inkflow\services\architect_gate.py src\inkflow\services\retry_budget.py src\inkflow\export\exporter.py
+python -m pytest tests\test_jury_scoring.py tests\test_retry_budget.py tests\test_cli.py tests\test_architect_gate.py -q
 python -m pytest -q
 ```

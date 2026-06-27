@@ -282,6 +282,7 @@ class WriterDispatcher:
         shot_id: str,
         base_prompt: str,
         *,
+        persona_prompts: dict[str, str] | None = None,
         attempt: int = 1,
         deviation_budget: float | None = None,
         temperature_cap: float = 1.2,
@@ -321,7 +322,8 @@ class WriterDispatcher:
 
         for persona_name, persona_config in QUAD_TRACK_PERSONAS.items():
             # Build persona-specific prompt
-            prompt_variant = base_prompt + persona_config["style_injection"]
+            persona_base_prompt = (persona_prompts or {}).get(persona_name) or base_prompt
+            prompt_variant = persona_base_prompt + persona_config["style_injection"]
 
             # Calculate effective temperature
             base_params = get_model_params(
@@ -397,6 +399,7 @@ class WriterDispatcher:
         base_prompt: str,
         persona_name: str,
         *,
+        persona_prompts: dict[str, str] | None = None,
         attempt: int = 2,
         deviation_budget: float | None = None,
         temperature_cap: float = 1.2,
@@ -409,7 +412,8 @@ class WriterDispatcher:
         chain = resolve_model_chain("writer", self.models_config)
         primary_ref = chain[0] if chain else "local-default"
 
-        prompt_variant = base_prompt + persona_config["style_injection"]
+        persona_base_prompt = (persona_prompts or {}).get(persona_name) or base_prompt
+        prompt_variant = persona_base_prompt + persona_config["style_injection"]
         base_params = get_model_params(
             parse_model_ref(primary_ref)[1], self.models_config,
         )

@@ -1,10 +1,10 @@
-# InkFlow v3.14 Phase 1 实现契约 v1.3
+# InkFlow v3.16 Phase 1 实现契约 v1.4
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判）
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + 生产内核硬化第一批）
 > 日期：2026-06-17；最近对齐：2026-06-26
 > 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2 章链路已验证，后续按 `setup --chapter → run --chapter → review --chapter` 逐章生产。
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证，当前只能受控试跑。正式生产阻塞项是 canonical accepted truth source、run/shot identity 重构和 accepted-only export。
 
 ---
 
@@ -20,7 +20,7 @@ D:\_Progs\.Story\《分流》
   → 提取风格指纹 / 事实锚点 / 人物声音基线
   → init 多轮交互形成 contract-draft.yaml 并确认元契约
   → setup --chapter 编译单章生产前校准包
-  → run --chapter 逐 shot 生成目标章节并自动导出
+  → run --chapter 逐 shot 生成目标章节，通过 L3/L4 后自动导出
   → writer race + jury + gate + revision + checkpoint
   → 章完成报告
   → Chesil read-only 导入 InkFlow DB 到自己的 story.db
@@ -35,12 +35,23 @@ P0 固定边界：
 | baseline | 第 1 章作为 `human_baseline` 导入并锁定，墨韵不得自动改写 |
 | 生成目标 | 按章生成，严格执行该章 chapter_N_events，只允许补充细节 |
 | 人类介入 | init / contract / chapter setup 阶段确认；run 阶段不中断；review 阶段记录判断 |
+| Gate 硬停 | L4 必须在 shot finalize 前通过；L3 必须在 session complete / auto export 前通过 |
+| 导出边界 | 自动导出只取当前 run 的 done_green/done_yellow 且有 current_revision_id 的正文 |
 | 红灯 | best-failed placeholder 不断流 |
 | 成本 | 不作为开发和运行约束；记录 usage，但不设成本确认门 |
 | 模型 | 每书 `.inkflow/.models` 配置功能与模型候选/兜底关系 |
 | Chesil | 只读读取 InkFlow DB 并复制导入；不得回写 InkFlow DB |
 
 P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-calibrate、完整 contract dashboard、Chesil 反向提取契约、成本估算确认门。
+
+### 0.1 下一阶段必须固化的 canonical 规则
+
+当前实现已收紧当前 run 的封板/导出边界，但尚未完成 DB canonical 状态机。下一阶段 v18/schema 迁移必须满足：
+
+1. `review --accept` 产生章节级 accepted/sealed canonical 状态。
+2. `review --revise/--reject` 必须使对应章节不可被默认 previous context、事实锚点和导出 selector 当作正式正文。
+3. `sessions abort/crash` 后的非正式 revision 只能用于排障，不进入后续章节上下文。
+4. stable logical shot 与 run attempt identity 必须分离，同一章节重写不能复用旧 shot 导致跳过旧正文。
 
 ## 1. CLI 命令面（冻结为 `ink <verb>`）
 
@@ -51,7 +62,7 @@ P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-ca
 | `ink confirm-contract <project>` | 兼容/内部命令：确认 `contract-draft.yaml` 并写入 confirmed 元契约 |
 | `ink import-baseline <project> --chapter <key> --file <path>` | 导入人工样章为 locked baseline |
 | `ink review-shots <project> --chapter <key>` | 审核/确认 baseline shot 边界 |
-| `ink run <project> --chapter <key> [flags]` | 全自动生产并自动导出 |
+| `ink run <project> --chapter <key> [flags]` | 全自动生产；L3/L4 通过后自动导出 |
 | `ink review <project> --chapter <key> --accept/--revise/--reject` | 记录生产后人工验收 |
 | `ink repair <project> --red / --yellow` | AI 修红/修黄 |
 | `ink resume <session_id>` | 崩溃恢复 |

@@ -233,11 +233,14 @@ class JuryService:
 
         # 检测是否有可用的 API（空 providers / 全本地评委 → 用启发式评分）
         providers = self.models_config.get("providers", {})
+        remote_jury_requested = any(
+            parse_model_ref(model_ref)[1] != "local-default"
+            for model_ref in self.jury_models
+        )
         use_llm = (
-            bool(providers)
+            remote_jury_requested
             and score_override is None
             and score_overrides is None
-            and any(parse_model_ref(model_ref)[1] != "local-default" for model_ref in self.jury_models)
         )
 
         draft_scores: dict[str, dict] = {}
@@ -393,11 +396,12 @@ class JuryService:
                 "jury_failures": jury_failures,
             }
 
-        review_mode = "typed_literary"
+        score_key = "creative_score" if creative_review else "literary_score"
+        review_mode = "creative_blank" if creative_review else "typed_literary"
         return self._select_winner(
             draft_scores,
             threshold,
-            score_key="literary_score",
+            score_key=score_key,
             review_mode=review_mode,
         )
 
@@ -792,7 +796,7 @@ class JuryService:
                 # 解析失败，记录原始响应并重试
                 last_error = f"解析失败 (attempt {attempt+1}): {response.text[:200]}"
 
-            except ModelCallError as e:
+            except (ModelCallError, ValueError) as e:
                 last_error = f"API调用失败 (attempt {attempt+1}): {e}"
 
         # 所有重试失败。硬规则层会记录为 advisory 候选；类型/文学层会跳过该分数。

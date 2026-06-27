@@ -1,6 +1,6 @@
-# 墨韵 (InkFlow) v3.14: 全自动文学文本生产引擎 — 技术设计
+# 墨韵 (InkFlow) v3.16: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.14（Schema v17：分层裁判 hard/type/literary 维度；保留 D-25、三棵树、正文真相源、L0/L0.5/L1 节奏、风格偏好、反契约沙盒、CREATIVE-1/2/3、模型审计 phase；公开生产流 `init/setup/run/review`）
+> 版本：v3.16（Schema v17：分层裁判 hard/type/literary 维度；生产内核硬化第一批：persona prompt、L3/L4 硬停、当前 run 导出过滤、jury unavailable 归因、retry 熔断）
 > 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
@@ -9,9 +9,9 @@
 
 ---
 
-## 0. 当前 P0 目标（2026-06-26）
+## 0. 当前 P0 目标（2026-06-27）
 
-墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环：
+墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。当前状态是“受控试跑”，不是正式批量生产：第 2 章和第 3 章已证明方向成立，但 review/reject/abort 的 canonical 真相源、run/shot identity 重构、accepted-only export 仍是 P0 阻塞项。
 
 ```text
 导入《分流》第 1 章人工样章
@@ -20,7 +20,7 @@
   → 提取风格指纹、事实锚点、人物声音基线
   → init 生成章以上层级契约草稿并由人类确认
   → setup --chapter 生成单章生产前校准包
-  → run --chapter 按该章大纲逐 shot 生成并自动导出
+  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出
   → writer race + jury + gate + revision + checkpoint
   → review --chapter 记录人工验收
   → 推敲系统 read-only 读取墨韵 DB 导入并独立校准
@@ -51,7 +51,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
   → 人类审核树状继承摘要，在任意节点注入修正
   → 确认后契约进入 confirmed 状态
   → ink setup --chapter 做单章生产前校准
-  → ink run --chapter 创建不可变契约快照，全自动生产正文并自动导出
+  → ink run --chapter 创建不可变契约快照，全自动生产正文，通过 L3/L4 后自动导出
   → 每个 Shot 完成后写入检查点 (D-14)
   → 绿灯/黄灯 Shot 直接进入正文版本链，绿灯自动提取 9 类事实锚点 (D-19)
   → 红灯 Shot 写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
@@ -75,7 +75,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 
 ---
 
-## 1.1 v3.14 分层裁判生产线
+## 1.1 v3.16 分层裁判生产线
 
 生产线保留原规则引擎，并把规则引擎前置为硬门槛：
 
@@ -92,10 +92,11 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
   → 类型裁判（仅有类型职责的 shot 启用：悬疑 / 留白 / 章末钩子等）
   → 文学 9 维裁判（去 1 个最高、1 个最低，剩余 7 个求均分）
   → 至少 2 个候选稿达到阈值 Y
-  → 文章裁判选优，写入软封版
-  → L4 Shot Gate
-  → 章节裁判 / L3 Chapter Gate
-  → 正式封版
+  → 文章裁判选优，写入候选 revision
+  → L4 Shot Gate（封板前硬停）
+  → 绿/黄 shot finalize
+  → 章节裁判 / L3 Chapter Gate（session complete / auto export 前硬停）
+  → 当前 run 导出
 ```
 
 三层裁判职责：

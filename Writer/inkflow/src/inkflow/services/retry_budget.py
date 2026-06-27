@@ -100,30 +100,27 @@ class RetryBudgetService:
                 f"({self._used_budget}/{self.max_budget})"
             )
 
-        # 3. 检查同类失败熔断
-        sig = self._failure_signatures.get(shot_id, "")
+        # 3. 记录 failure_signature，再按“本次之后”的连续次数判断熔断。
         count = self._count_consecutive_failures(shot_id, failure_type)
+        next_count = count + 1
+        self._record_failure_signature(shot_id, failure_type, detail)
 
-        if count >= self.circuit_breaker_threshold:
-            # 熔断：标记 shot 为 permanent_red
-            self._mark_circuit_breaker(shot_id, failure_type, count)
+        if next_count >= self.circuit_breaker_threshold:
+            self._mark_circuit_breaker(shot_id, failure_type, next_count)
             raise CircuitBreakerTriggered(
-                f"Shot {shot_id}: {failure_type} failed {count} times "
+                f"Shot {shot_id}: {failure_type} failed {next_count} times "
                 f"(threshold={self.circuit_breaker_threshold}). "
                 f"Circuit breaker triggered."
             )
 
-        # 4. 记录 failure_signature
-        self._record_failure_signature(shot_id, failure_type, detail)
-
-        # 5. 更新 shot 的 redo_attempt（委托给 quality_controller 的逻辑）
+        # 4. 更新 shot 的 redo_attempt（委托给 quality_controller 的逻辑）
         #    这里只记录预算消耗，不触发 smart_redo（由调用方决定）
         return {
             "can_retry": budget_remaining > 0,
             "circuit_breaker": False,
             "budget_remaining": budget_remaining,
             "failure_type": failure_type,
-            "consecutive_count": count + 1,
+            "consecutive_count": next_count,
         }
 
     def record_success(self, shot_id: str) -> None:
@@ -193,6 +190,8 @@ class RetryBudgetService:
             return 0
         try:
             sig = json.loads(rows["failure_signature_json"])
+            if sig.get("last_failure_type") != failure_type:
+                return 0
             return sig.get("consecutive_count", 0)
         except (json.JSONDecodeError, TypeError):
             return 0

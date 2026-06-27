@@ -400,8 +400,19 @@ class OutlineEvaluator:
 
     def _update_contract(self, shot_id: str, new_outline_text: str) -> None:
         """更新合约中的大纲。"""
-        # 将新大纲写回 must_land_json
-        new_must_land = {"beats": new_outline_text}
+        # 将新大纲写回 must_land_json，同时保留 title/event 等结构化字段。
+        row = self.db.execute(
+            "SELECT must_land_json FROM writing_shot_contracts "
+            "WHERE shot_id = ? AND run_id = ?",
+            (shot_id, self.run_id),
+        ).fetchone()
+        try:
+            new_must_land = json.loads(row["must_land_json"] or "{}") if row else {}
+        except (json.JSONDecodeError, TypeError):
+            new_must_land = {}
+        if not isinstance(new_must_land, dict):
+            new_must_land = {}
+        new_must_land["beats"] = new_outline_text
         self.db.execute(
             "UPDATE writing_shot_contracts SET must_land_json = ? "
             "WHERE shot_id = ? AND run_id = ?",

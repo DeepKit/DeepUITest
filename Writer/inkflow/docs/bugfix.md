@@ -455,3 +455,55 @@
 - **影响**: 单个供应商抖动会不公平压低文本质量分；如果某个维度全部远端失败，旧流程可能触发正文重写，浪费预算且掩盖真实故障。
 - **修复**: `_score_single()` 为最终失败返回 `failed=True`；类型/文学层跳过失败分并记录 `jury_failures`；必评维度没有任何有效评分时标记 `jury_unavailable`；`run` 遇到所有候选均为 `jury_unavailable` 时停止本章生产、记录 retry 归因并标记 session crashed。
 - **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/cli.py`, `src/inkflow/services/retry_budget.py`, `tests/test_jury_scoring.py`, `tests/test_cli.py`, `tests/test_retry_budget.py`, `TASKS.md`, `docs/history.md`
+
+---
+
+## 第九轮 (2026-06-27) — 生产内核硬化
+
+### B55. 显式远端 jury 在 providers 为空时静默回落本地评分 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产管线专家审阅
+- **根因**: `JuryService.score_candidates()` 同时用“是否有远端模型”和“providers 是否非空”判断是否调用 LLM。显式配置远端 jury 但 provider/key 缺失时，会走本地启发式评分，掩盖真实配置错误。
+- **影响**: 远端评审验证可能是假通过；生产质量基线与 `.models` 配置不一致。
+- **修复**: 显式远端 jury 一律进入远端评分路径；缺 provider/key 被 `_score_single()` 捕获为失败，类型/文学全维度不可评时归因为 `jury_unavailable`。
+- **文件**: `src/inkflow/services/jury_service.py`, `tests/test_jury_scoring.py`
+
+### B56. 留白创意评审计算了 `creative_score`，但 winner 仍按文学均分选择 ✅ 已修复
+- **严重性**: Important
+- **发现**: 生产管线专家审阅
+- **根因**: `creative_review=True` 会计算 `creative_score`，但 `_select_winner()` 仍使用 `literary_score` 和 `typed_literary` 语义。
+- **影响**: 留白 shot 仍偏向安全稿，`unexpected_value` 无法真正提高选优权重。
+- **修复**: 留白创意评审使用 `score_key=creative_score` 和 `review_mode=creative_blank`。
+- **文件**: `src/inkflow/services/jury_service.py`, `tests/test_jury_scoring.py`
+
+### B57. 四轨写手共用“意象师”完整 prompt，persona 指令互相污染 ✅ 已修复
+- **严重性**: Important
+- **发现**: 生产管线专家审阅
+- **根因**: CLI 只用“意象师”编译一份 assembled prompt，`WriterDispatcher` 再给节奏师/对话师/结构师追加风格尾巴。完整身份层仍是意象师。
+- **影响**: 四轨赛马不是真正的四种写作策略，可能降低候选稿差异和 jury 选优价值。
+- **修复**: CLI 为四个 persona 分别编译 prompt；`dispatch_quad_track()` / `dispatch_single_persona_track()` 支持 `persona_prompts`。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/writer_dispatcher.py`
+
+### B58. L4/L3 失败后仍可能 complete session 并自动导出 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产管线专家审阅
+- **根因**: L4 在 `finalize_shot()` 和 completed 计数之后才执行，L3 在 `complete_session()` 之后才执行；失败只打印告警，不阻止封板/导出。
+- **影响**: 含解释性结尾、叙述者越界、章节钩子失败的文本可能被标为完成并进入导出稿。
+- **修复**: L4 前移到 shot finalize 之前并成为硬 gate；L3 前移到 session complete 和自动导出之前；章节未完成或 L3 未通过时抛出 `ClickException`，停止封板/导出。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/architect_gate.py`, `tests/test_architect_gate.py`
+
+### B59. RetryBudget 熔断第 4 次才触发，且换失败类型不重置连续计数 ✅ 已修复
+- **严重性**: Important
+- **发现**: 生产管线专家审阅
+- **根因**: `record_failure()` 在写入本次失败前用旧 count 判断阈值；`_count_consecutive_failures()` 没检查 `last_failure_type` 是否等于本次类型。
+- **影响**: 同类失败多跑一次才熔断；不同原因的失败可能误触发同类熔断。
+- **修复**: 先计算 `next_count=count+1` 并记录本次 signature，再按 `next_count >= threshold` 熔断；failure type 切换时连续计数归零。
+- **文件**: `src/inkflow/services/retry_budget.py`, `tests/test_retry_budget.py`
+
+### B60. 自动导出可能混入旧 run 正文，纯文本导出保留模型标题 ✅ 已修复
+- **严重性**: Important
+- **发现**: 生产管线专家审阅
+- **根因**: 导出按 `layer_key` 查询，不限定当前 run/gate 状态；纯文本导出没有走 `_format_prose_for_export()`，模型生成的 Markdown 标题可能泄漏。
+- **影响**: 多次重写同章节时，审稿导出可能不是当前 run 的正文；给后续工具的纯文本仍带模型标题痕迹。
+- **修复**: 自动导出传入 `run_id`；Markdown/纯文本导出都过滤 `done_green/done_yellow + current_revision_id`，并清理模型标题、拆分长段。
+- **文件**: `src/inkflow/export/exporter.py`, `src/inkflow/cli.py`, `tests/test_cli.py`

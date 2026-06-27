@@ -1,9 +1,9 @@
 # InkFlow 三棵树架构（3-Tree Architecture）
 
-> 版本：v1.0（2026-06-21）
+> 版本：v1.1（2026-06-27）
 > 决策编号：ARCH-12
 > 依赖：8 层层级设计（`design-8layer-hierarchy.md`）
-> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针）
+> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.1 补充 accepted canonical 待硬化边界）
 
 ---
 
@@ -406,6 +406,10 @@ CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
 | 已封版 | `shot_revisions` 中 `is_current=1` 的行 | 封版时锁定的版本，不再更新 |
 
 `shot_revisions.is_current` 是**封版标记**——只在封版时设置一次，之后不再随新生成而更新。`writing_shots.current_revision_id` 指向最新 revision（始终随新生成而更新），当封版后也指向封版版本（两者一致）。
+
+**生产硬化补充（2026-06-27）**：
+
+`shot_revisions.text` 仍是正文文本的存储真相源，但“哪一版可被后续章节当作正式正文”还必须由 accepted canonical selector 决定。当前实现已先收紧为当前 run 的 `done_green/done_yellow + current_revision_id` 才可自动导出；下一阶段 CORE-1 必须把 `review --accept/--revise/--reject` 写入 DB canonical 状态，使 reject/abort/crash 产物不进入默认上下文、事实锚点和正式导出。
 
 ---
 

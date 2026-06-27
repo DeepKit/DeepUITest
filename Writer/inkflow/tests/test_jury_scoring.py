@@ -167,8 +167,8 @@ class TestJuryScoreScale:
         assert regular["winner_draft_id"] == "d1"
         assert regular["review_mode"] == "typed_literary"
         assert creative["winner_draft_id"] == "d2"
-        assert creative["review_mode"] == "typed_literary"
-        assert creative["score_key"] == "literary_score"
+        assert creative["review_mode"] == "creative_blank"
+        assert creative["score_key"] == "creative_score"
         assert creative["draft_scores"]["d1"]["type_gate_passed"] is False
         summary = creative["draft_scores"]["d1"]["failure_summary"]
         assert summary["stage"] == "type_gate"
@@ -376,3 +376,29 @@ class TestJuryScoreScale:
         assert draft_score["failure_stage"] == "jury_unavailable"
         assert "reading_fluency" in draft_score["missing_dimensions"]
         assert any("阅读流畅" in reason for reason in draft_score["failure_summary"]["reasons"])
+
+    def test_explicit_remote_jury_without_provider_does_not_fallback_to_local(
+        self, setup_run_with_draft,
+    ):
+        """Explicit remote jury config must fail as jury_unavailable, not silently local-score."""
+        config = {
+            "providers": {},
+            "jury_config": {
+                "models": ["deepseek/deepseek-v4-flash"],
+                "min_passing_drafts": 1,
+            },
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        result = jury.score_candidates("shot_01", ["d1"])
+        draft_score = result["draft_scores"]["d1"]
+
+        assert result["winner_draft_id"] is None
+        assert draft_score["eligible"] is False
+        assert draft_score["failure_stage"] == "jury_unavailable"
+        assert draft_score["missing_dimensions"]
+        attempts = setup_run_with_draft.execute(
+            "SELECT COUNT(*) AS cnt FROM writing_jury_scores "
+            "WHERE run_id = 'run_01' AND jury_persona = 'deepseek-v4-flash'"
+        ).fetchone()["cnt"]
+        assert attempts > 0

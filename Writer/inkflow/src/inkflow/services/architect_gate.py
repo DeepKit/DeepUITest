@@ -180,6 +180,7 @@ class ArchitectGate:
         light_status = gate2_result.get("light_status", "red")
 
         issues = []
+        hard_issues = []
 
         # Check shot-level contract compliance
         contract = self.db.execute(
@@ -206,7 +207,9 @@ class ArchitectGate:
         closing_audit = self._check_closing_sentence(text)
 
         if closing_audit.get("violation"):
-            issues.append(f"closing: {closing_audit['violation']}")
+            issue = f"closing: {closing_audit['violation']}"
+            issues.append(issue)
+            hard_issues.append(issue)
 
         # D-25: Number temperature check
         number_temp = self._check_number_temperature(text)
@@ -218,14 +221,18 @@ class ArchitectGate:
         # D-25: Explanation sentence detection
         explanation_check = self._check_explanation_sentences(text)
         if explanation_check.get("violations"):
-            issues.append(
+            issue = (
                 f"explanation: {len(explanation_check['violations'])} violation(s)"
             )
+            issues.append(issue)
+            hard_issues.append(issue)
 
         # D-25: Harm preview detection
         harm_preview = self._check_harm_preview(text)
         if harm_preview.get("missing_preview"):
-            issues.append("harm_preview: sensory preview missing before impact info")
+            issue = "harm_preview: sensory preview missing before impact info"
+            issues.append(issue)
+            hard_issues.append(issue)
 
         # OPT-1: Paragraph length check (phase-aware)
         # Look up narrative_phase to adjust max_chars threshold
@@ -273,26 +280,36 @@ class ArchitectGate:
 
         para_length = self._check_paragraph_length(text, max_chars=max_chars)
         if para_length.get("violations"):
-            issues.append(
+            issue = (
                 f"paragraph_length: {len(para_length['violations'])} paragraph(s) "
                 f"exceed {max_chars} chars"
                 f" (phase={narrative_phase or 'default'})"
             )
+            issues.append(issue)
+            if (
+                len(para_length.get("violations", [])) > 2
+                or para_length.get("max_length", 0) > max_chars * 1.5
+            ):
+                hard_issues.append(issue)
 
         # OPT-3: Narrator intrusion detection
         narrator_intrusion = self._check_narrator_intrusion(text)
         if narrator_intrusion.get("violations"):
-            issues.append(
+            issue = (
                 f"narrator_intrusion: {len(narrator_intrusion['violations'])} narrator over-reach(es)"
             )
+            issues.append(issue)
+            hard_issues.append(issue)
 
         # OPT-7: System voice separation
         system_voice = self._check_system_voice(text)
         if system_voice.get("warning"):
-            issues.append(
+            issue = (
                 f"system_voice: interpretive({system_voice['interpretive']}) > "
                 f"direct({system_voice['direct']}) — system is being explained, not shown"
             )
+            issues.append(issue)
+            hard_issues.append(issue)
 
         # D-25: Suspense summary
         suspense_summary = self._build_suspense_summary(
@@ -303,10 +320,11 @@ class ArchitectGate:
         )
 
         result = {
-            "passed": passed,
+            "passed": bool(passed and not hard_issues),
             "score": score,
             "light_status": light_status,
             "issues": issues,
+            "hard_issues": hard_issues,
             "dual_helix": dual_helix,
             "closing_audit": closing_audit,
             "number_temperature": number_temp,       # D-25
@@ -843,12 +861,14 @@ class ArchitectGate:
 
         # Already triggered?
         existing = self.db.execute(
-            "SELECT 1 FROM writing_architect_gates "
+            "SELECT status FROM writing_architect_gates "
             "WHERE run_id = ? AND level = 'L3' AND scope_key = ?",
             (self.run_id, chapter_key),
         ).fetchone()
 
-        return not existing and passed >= total
+        if existing and existing["status"] == "passed":
+            return False
+        return passed >= total
 
     def evaluate_l3(self, chapter_key: str) -> dict:
         """L3 gate: Chapter-level structure check.

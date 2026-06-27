@@ -1,6 +1,6 @@
-# 墨韵 (InkFlow) v3.6: 人机交互流程
+# 墨韵 (InkFlow) v3.7: 人机交互流程
 
-> 版本：v3.6（用户交互流程）
+> 版本：v3.7（用户交互流程；补充生产内核硬化与 gate/export 边界）
 > 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26
 > 技术设计：`inkflow/docs/design.md`、`inkflow/docs/implementation-contract-v0.md`
 > 角色体系：`inkflow/docs/role-system.md`
@@ -21,7 +21,7 @@ P0 以《分流》作为唯一验收样本：
   → 提取风格/事实/人物声音基线
   → init 形成人类确认后的章以上层级契约
   → setup --chapter 进行单章生产前校准
-  → run --chapter 按该章大纲逐 shot 生成并自动导出
+  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出
   → review --chapter 记录人工验收结论
   → 推敲系统 read-only 读取墨韵 DB 导入
 ```
@@ -35,6 +35,8 @@ P0 以《分流》作为唯一验收样本：
 ```
 
 P0 不做全书一次生成，不做多项目/Universe，不做成本确认门，不让推敲回写墨韵数据库。
+
+当前状态是受控试跑，不是正式批量生产。人类只在生产前契约/章前校准和生产后审稿阶段介入；但在 CORE-1/CORE-2 完成前，人工 `review --accept` 还没有成为唯一 accepted canonical 真相源，后续生产必须谨慎使用上一章上下文。
 
 ## 1. 核心流程
 
@@ -53,9 +55,10 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
   不打断人类，不修改契约
   2-4 写手赛马（按人格差异化 prompt）(D-17)
   分层裁判：硬规则 → 类型职责 → 文学 9 维
-  绿/黄进入正文，绿灯自动提取 9 类事实锚点 (D-19)
+  L4 Shot Gate 通过后，绿/黄进入正文，绿灯自动提取 9 类事实锚点 (D-19)
   红灯写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
   每个 Shot 完成后写入检查点 (D-14)
+  L3 Chapter Gate 通过后，session 才 complete 并自动导出当前 run
   Scope 完成后生成三层交互式投影报告 (D-12)
 
 阶段 3: AI 自动修补 (write repair)

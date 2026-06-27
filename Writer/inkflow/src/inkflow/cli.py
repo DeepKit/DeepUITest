@@ -317,6 +317,50 @@ def _jury_unavailable_detail(verdict: dict) -> str:
     return "missing_dimensions=" + ",".join(dimensions[:5])
 
 
+def _raise_if_jury_unavailable(
+    jury_verdict: dict,
+    *,
+    shot_id: str,
+    retry_budget,
+) -> None:
+    if not _jury_verdict_all_unavailable(jury_verdict):
+        return
+    detail = _jury_unavailable_detail(jury_verdict)
+    try:
+        retry_budget.record_failure(
+            shot_id, "jury_unavailable", detail=detail,
+        )
+    except Exception:
+        # Preserve the infrastructure failure as the primary user-facing error.
+        pass
+    raise click.ClickException(
+        "远端评审不可用，已停止本章生产；"
+        f"{detail}。请检查 model_attempts.error_message 后再 resume。"
+    )
+
+
+def _chapter_completion_issues(db, run_id: str, chapter: str | None) -> list[str]:
+    if not chapter:
+        return []
+    rows = db.execute(
+        "SELECT shot_id, shot_index, shot_status, light_status, current_revision_id "
+        "FROM writing_shots WHERE run_id = ? AND layer_key = ? "
+        "ORDER BY shot_index",
+        (run_id, chapter),
+    ).fetchall()
+    issues: list[str] = []
+    if not rows:
+        return ["no_shots"]
+    for row in rows:
+        if row["shot_status"] not in ("done_green", "done_yellow"):
+            issues.append(
+                f"s{row['shot_index']:02d}:{row['shot_status']}"
+            )
+        elif not row["current_revision_id"]:
+            issues.append(f"s{row['shot_index']:02d}:missing_revision")
+    return issues
+
+
 def _resume_or_create_session(
     mgr, db, project_id, chapter, num_shots, requested_session_id=None,
 ):
@@ -637,7 +681,13 @@ def _normalize_type_roles(roles: list | tuple | set | None) -> list[str]:
     return result
 
 
-def _auto_export_chapter(db, project: str, chapter: str | None) -> Path | None:
+def _auto_export_chapter(
+    db,
+    project: str,
+    chapter: str | None,
+    *,
+    run_id: str | None = None,
+) -> Path | None:
     """Export completed run output to the canonical story 正文 directory."""
     if not chapter:
         return None
@@ -645,7 +695,7 @@ def _auto_export_chapter(db, project: str, chapter: str | None) -> Path | None:
 
     story_dir = _STORY_BASE / f"《{project}》"
     out_path = story_dir / "正文" / f"{project}_{chapter}_导出.md"
-    return export_markdown(db, out_path, chapters=[chapter])
+    return export_markdown(db, out_path, chapters=[chapter], run_id=run_id)
 
 
 # ── import-baseline ──
@@ -1711,7 +1761,7 @@ def _run_project_inner(
         # Compile static prefix for each writer persona (from compiler, not raw JSON)
         # D-25: Inject suspense blueprint into static prefix
         static_prefixes = {}
-        for persona in ["意象师", "节奏师", "对话师"]:
+        for persona in ["意象师", "节奏师", "对话师", "结构师"]:
             static_prefixes[persona] = prompt_compiler.compile_static_prefix(
                 layers,
                 persona,
@@ -1779,6 +1829,10 @@ def _run_project_inner(
                     f"    大纲评分: {outline_score}"
                     f"{' → 已重新生成' if was_regenerated else ' → 通过'}"
                 )
+                if was_regenerated:
+                    refreshed_sc = compiler.get_shot_contract(shot_id, run_id)
+                    if refreshed_sc is not None:
+                        sc = refreshed_sc
             except (ModelCallError, ValueError, KeyError) as exc:
                 click.echo(f"    ⚠ 大纲评估失败: {exc}，使用原大纲")
 
@@ -1802,7 +1856,6 @@ def _run_project_inner(
             # D-25: 获取当前活跃的信息差
             active_gaps = info_gap_tracker.get_active_gaps()
 
-            # 用"意象师" persona 编译一份共用的 prompt
             # ARCH-1/2/3: Extract rhythm + three-layer fields from contract_json
             cj = sc.get("contract_json", "{}")
             if isinstance(cj, str):
@@ -1827,45 +1880,48 @@ def _run_project_inner(
                     if not rhythm_sensory:
                         rhythm_sensory = this_rhythm.get("sensory_pressure")
 
-            pid = prompt_compiler.compile_shot_prompt(
-                shot_id, run_id, "意象师",
-                static_prefixes.get("意象师", ""),
-                {
-                    "must_land": sc.get("must_land_json", {}),
-                    "anti_write": sc.get("anti_write_json", {}),
-                    "exit_to": sc.get("exit_to_json"),
-                    # ARCH-1: Three-layer deviation taxonomy
-                    "hard_facts": cj.get("hard_facts"),
-                    "soft_constraints": cj.get("soft_constraints"),
-                    "reference": cj.get("reference"),
-                    # ARCH-2/3: Rhythm parameters (from L1 architect or contract)
-                    "deviation_budget": rhythm_budget,
-                    "narrative_phase": rhythm_phase,
-                    # OPT-2/6: Sensory + mood (still pass through)
-                    "sensory_pressure": rhythm_sensory or cj.get("sensory_pressure"),
-                    "dominant_sense": cj.get("dominant_sense"),
-                    "entry_mood": cj.get("entry_mood"),
-                    "chapter_setup": {
-                        "shot": setup_shot,
-                        "exposition_gate": chapter_setup.get("exposition_gate"),
-                        "chapter_hook": chapter_setup.get("chapter_hook"),
-                    } if chapter_setup else None,
-                },
-                previous_shots=previous_shots,
-                fact_anchors=active_anchors,
-                motif_tasks=motif_task,
-            )
-            prompt_row = db.execute(
-                "SELECT assembled_prompt FROM writing_shot_prompts WHERE prompt_id = ?",
-                (pid,),
-            ).fetchone()
-            compiled_prompt = (prompt_row["assembled_prompt"] if prompt_row else "") or ""
+            shot_context_payload = {
+                "must_land": sc.get("must_land_json", {}),
+                "anti_write": sc.get("anti_write_json", {}),
+                "exit_to": sc.get("exit_to_json"),
+                # ARCH-1: Three-layer deviation taxonomy
+                "hard_facts": cj.get("hard_facts"),
+                "soft_constraints": cj.get("soft_constraints"),
+                "reference": cj.get("reference"),
+                # ARCH-2/3: Rhythm parameters (from L1 architect or contract)
+                "deviation_budget": rhythm_budget,
+                "narrative_phase": rhythm_phase,
+                # OPT-2/6: Sensory + mood (still pass through)
+                "sensory_pressure": rhythm_sensory or cj.get("sensory_pressure"),
+                "dominant_sense": cj.get("dominant_sense"),
+                "entry_mood": cj.get("entry_mood"),
+                "chapter_setup": {
+                    "shot": setup_shot,
+                    "exposition_gate": chapter_setup.get("exposition_gate"),
+                    "chapter_hook": chapter_setup.get("chapter_hook"),
+                } if chapter_setup else None,
+            }
+            gaps_text = info_gap_tracker.build_active_gaps_prompt() if active_gaps else ""
+            persona_prompts: dict[str, str] = {}
+            for persona in ["意象师", "节奏师", "对话师", "结构师"]:
+                pid = prompt_compiler.compile_shot_prompt(
+                    shot_id, run_id, persona,
+                    static_prefixes[persona],
+                    shot_context_payload,
+                    previous_shots=previous_shots,
+                    fact_anchors=active_anchors,
+                    motif_tasks=motif_task,
+                )
+                prompt_row = db.execute(
+                    "SELECT assembled_prompt FROM writing_shot_prompts WHERE prompt_id = ?",
+                    (pid,),
+                ).fetchone()
+                persona_prompt = (prompt_row["assembled_prompt"] if prompt_row else "") or ""
+                if persona_prompt and gaps_text:
+                    persona_prompt += "\n\n" + gaps_text
+                persona_prompts[persona] = persona_prompt
 
-            # D-25: Append active information gaps to the prompt
-            if active_gaps:
-                gaps_text = info_gap_tracker.build_active_gaps_prompt()
-                if gaps_text:
-                    compiled_prompt += "\n\n" + gaps_text
+            compiled_prompt = persona_prompts.get("意象师", "")
 
             if not compiled_prompt:
                 # 兜底：从合约构建简单 prompt
@@ -1881,6 +1937,9 @@ def _run_project_inner(
                     compiled_prompt = f"请直接写出以下场景的小说正文。\n\n{beats}"
                 else:
                     compiled_prompt = f"请为场景 {shot_id} 写一段小说正文。"
+            for persona in ["意象师", "节奏师", "对话师", "结构师"]:
+                if not persona_prompts.get(persona):
+                    persona_prompts[persona] = compiled_prompt
 
             shot_type_roles = []
             if active_gaps:
@@ -1899,6 +1958,7 @@ def _run_project_inner(
             race_result = writer_dispatcher.dispatch_quad_track(
                 shot_id=shot_id,
                 base_prompt=compiled_prompt,
+                persona_prompts=persona_prompts,
                 attempt=1,
                 deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
                 temperature_cap=blank_temp_cap,
@@ -1930,6 +1990,7 @@ def _run_project_inner(
                 # 第二轮写作
                 race_result2 = writer_dispatcher.dispatch_quad_track(
                     shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
+                    persona_prompts=persona_prompts,
                     deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
                     temperature_cap=blank_temp_cap,
                     blank_shot=is_blank_shot,
@@ -1970,21 +2031,8 @@ def _run_project_inner(
                     click.echo(
                         _format_jury_draft_score(did, ds, score_key=score_key)
                     )
-                detail = _jury_unavailable_detail(jury_verdict)
-                try:
-                    retry_budget.record_failure(
-                        shot_id, "jury_unavailable", detail=detail,
-                    )
-                except CircuitBreakerTriggered:
-                    click.echo(
-                        f"  🔴 熔断：此 shot 远端评审连续不可用 "
-                        f"{retry_budget.circuit_breaker_threshold} 次"
-                    )
-                except RetryBudgetExhausted as exc:
-                    raise click.ClickException(f"重试预算耗尽: {exc}") from exc
-                raise click.ClickException(
-                    "远端评审不可用，已停止本章生产；"
-                    f"{detail}。请检查 model_attempts.error_message 后再 resume。"
+                _raise_if_jury_unavailable(
+                    jury_verdict, shot_id=shot_id, retry_budget=retry_budget,
                 )
 
             # ARCH-11: 反契约沙盒评估 — 如果 deviation 赛道胜出，记录人类裁决需求
@@ -2063,6 +2111,7 @@ def _run_project_inner(
                     click.echo(f"  ✍️ 单线返写：{rewrite_persona}")
                     race_result2 = writer_dispatcher.dispatch_single_persona_track(
                         shot_id=shot_id, base_prompt=compiled_prompt,
+                        persona_prompts=persona_prompts,
                         persona_name=rewrite_persona, attempt=2,
                         deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
                         temperature_cap=blank_temp_cap,
@@ -2071,6 +2120,7 @@ def _run_project_inner(
                 else:
                     race_result2 = writer_dispatcher.dispatch_quad_track(
                         shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
+                        persona_prompts=persona_prompts,
                         deviation_budget=(rhythm_budget or 0.5) * blank_budget_multiplier,
                         temperature_cap=blank_temp_cap,
                         blank_shot=is_blank_shot,
@@ -2092,6 +2142,9 @@ def _run_project_inner(
                         creative_review=is_blank_shot,
                         shot_profile=shot_profile,
                     )
+                    _raise_if_jury_unavailable(
+                        jury_verdict2, shot_id=shot_id, retry_budget=retry_budget,
+                    )
                     # 选分数更高的那份
                     if (
                         jury_verdict2.get("winner_score", 0) > winner_score
@@ -2101,6 +2154,15 @@ def _run_project_inner(
                         winner_id = jury_verdict.get("winner_draft_id")
                         winner_score = jury_verdict.get("winner_score", 0)
                         winner_track = jury_verdict.get("winner_track")
+
+            if not jury_verdict.get("all_passed_threshold", False):
+                click.echo(
+                    f"  🔴 仍未满足过线稿数量："
+                    f"{jury_verdict.get('passing_count', 0)}"
+                    f"<{jury_verdict.get('min_passing_drafts', 2)}，不封版"
+                )
+                quality_controller.smart_redo(shot_id, 0)
+                continue
 
             # 打印评分详情
             score_key = jury_verdict.get("score_key", "literary_score")
@@ -2156,6 +2218,25 @@ def _run_project_inner(
                     except Exception as exc:
                         click.echo(f"  ⚠ 二次精修失败: {exc}")
 
+                # L4 Gate: Shot-level architect check before sealing the shot.
+                architect_gate = ArchitectGate(db, run_id, project_id, models_config, providers)
+                l4_result = architect_gate.evaluate_l4(shot_id, winner_id, gate2)
+                if not l4_result["passed"]:
+                    click.echo(f"  🔴 L4 Gate 未通过: {l4_result['issues']}")
+                    try:
+                        retry_budget.record_failure(
+                            shot_id, "l4_violation",
+                            detail="; ".join(l4_result.get("issues", [])[:3]),
+                        )
+                    except CircuitBreakerTriggered:
+                        click.echo(f"  🔴 熔断：此 shot 同类失败 {retry_budget.circuit_breaker_threshold} 次，跳过")
+                        continue
+                    except RetryBudgetExhausted as exc:
+                        click.echo(f"  🔴 重试预算耗尽: {exc}，跳过后续 shots")
+                        break
+                    quality_controller.smart_redo(shot_id, 0)
+                    continue
+
                 # Finalize — compute brilliance/badsmell from jury scores
                 brilliance_level = _compute_brilliance_level(winner_score)
                 badsmell_level = _compute_badsmell_level(winner_score)
@@ -2198,23 +2279,6 @@ def _run_project_inner(
                 # D25-R1: 记录成功
                 retry_budget.record_success(shot_id)
 
-                # L4 Gate: Shot-level architect check
-                architect_gate = ArchitectGate(db, run_id, project_id, models_config, providers)
-                l4_result = architect_gate.evaluate_l4(shot_id, winner_id, gate2)
-                if not l4_result["passed"]:
-                    click.echo(f"  ⚠ L4 Gate: {l4_result['issues']}")
-                    # D25-R1: 记录 L4 失败
-                    try:
-                        retry_budget.record_failure(
-                            shot_id, "l4_violation",
-                            detail="; ".join(l4_result.get("issues", [])[:3]),
-                        )
-                    except CircuitBreakerTriggered:
-                        click.echo(f"  🔴 熔断：此 shot 同类失败 {retry_budget.circuit_breaker_threshold} 次，跳过")
-                        continue
-                    except RetryBudgetExhausted as exc:
-                        click.echo(f"  🔴 重试预算耗尽: {exc}，跳过后续 shots")
-                        break
                 dh = l4_result.get("dual_helix", {})
                 ca = l4_result.get("closing_audit", {})
                 if dh.get("碎裂") and dh["碎裂"] != ["no_loss_detected"]:
@@ -2268,56 +2332,78 @@ def _run_project_inner(
                 click.echo(f"  🔴 无 winner，创建 placeholder")
                 quality_controller.smart_redo(shot_id, 0)
 
-        # Complete session
-        mgr.complete_session(session_id)
-        click.echo(f"\n✅ 章节 {chapter} 生成完成。")
+        completion_issues = _chapter_completion_issues(db, run_id, chapter)
+        if completion_issues:
+            raise click.ClickException(
+                "章节未达到封板/导出条件，已停止自动导出；"
+                f"未完成项: {', '.join(completion_issues)}"
+            )
 
-        # L3 Gate: Chapter-level architect check
+        # L3 Gate: Chapter-level architect check before completing/exporting.
         if chapter:
             architect_gate = ArchitectGate(db, run_id, project_id, models_config, providers)
             if architect_gate.should_trigger_l3(chapter):
                 l3_result = architect_gate.evaluate_l3(chapter)
-                status_icon = "✅" if l3_result["passed"] else "⚠️"
-                click.echo(
-                    f"\n{status_icon} L3 章节 Gate: {chapter} — "
-                    f"POV: {l3_result['pov_coverage']}, "
-                    f"绿{l3_result['green_count']}/黄{l3_result['yellow_count']}/红{l3_result['red_count']}"
-                )
-                if l3_result["issues"]:
-                    for issue in l3_result["issues"]:
-                        click.echo(f"  ⚠ {issue}")
-                if not l3_result["passed"]:
-                    failure_shot_id = (
-                        l3_result.get("chapter_hook", {}).get("shot_id")
+            else:
+                existing_l3 = architect_gate.get_gate_result("L3", chapter)
+                if existing_l3 and existing_l3.get("status") == "passed":
+                    l3_result = existing_l3.get("check_result_json", {})
+                elif existing_l3:
+                    l3_result = architect_gate.evaluate_l3(chapter)
+                else:
+                    raise click.ClickException(
+                        "L3 章节 Gate 尚未触发，已停止封板/导出；"
+                        "请检查 L4 gate 是否完整通过。"
                     )
-                    if not failure_shot_id:
-                        last_shot = db.execute(
-                            "SELECT shot_id FROM writing_shots "
-                            "WHERE run_id = ? AND layer_key = ? "
-                            "ORDER BY shot_index DESC LIMIT 1",
-                            (run_id, chapter),
-                        ).fetchone()
-                        failure_shot_id = last_shot["shot_id"] if last_shot else None
-                    if failure_shot_id:
-                        try:
-                            failure_type = classify_failure_type(
-                                gate1_violations=[],
-                                l3_issues=l3_result.get("issues", []),
-                            )
-                            retry_budget.record_failure(
-                                failure_shot_id,
-                                failure_type,
-                                detail="; ".join(l3_result.get("issues", [])[:3]),
-                            )
-                        except CircuitBreakerTriggered:
-                            click.echo("  🔴 L3 失败重复触发熔断，已记录到最终 shot")
-                        except RetryBudgetExhausted as exc:
-                            click.echo(f"  🔴 L3 失败归因记录超出重试预算: {exc}")
+            status_icon = "✅" if l3_result["passed"] else "🔴"
+            click.echo(
+                f"\n{status_icon} L3 章节 Gate: {chapter} — "
+                f"POV: {l3_result['pov_coverage']}, "
+                f"绿{l3_result['green_count']}/黄{l3_result['yellow_count']}/红{l3_result['red_count']}"
+            )
+            if l3_result["issues"]:
+                for issue in l3_result["issues"]:
+                    click.echo(f"  ⚠ {issue}")
+            if not l3_result["passed"]:
+                failure_shot_id = (
+                    l3_result.get("chapter_hook", {}).get("shot_id")
+                )
+                if not failure_shot_id:
+                    last_shot = db.execute(
+                        "SELECT shot_id FROM writing_shots "
+                        "WHERE run_id = ? AND layer_key = ? "
+                        "ORDER BY shot_index DESC LIMIT 1",
+                        (run_id, chapter),
+                    ).fetchone()
+                    failure_shot_id = last_shot["shot_id"] if last_shot else None
+                if failure_shot_id:
+                    try:
+                        failure_type = classify_failure_type(
+                            gate1_violations=[],
+                            l3_issues=l3_result.get("issues", []),
+                        )
+                        retry_budget.record_failure(
+                            failure_shot_id,
+                            failure_type,
+                            detail="; ".join(l3_result.get("issues", [])[:3]),
+                        )
+                    except CircuitBreakerTriggered:
+                        click.echo("  🔴 L3 失败重复触发熔断，已记录到最终 shot")
+                    except RetryBudgetExhausted as exc:
+                        click.echo(f"  🔴 L3 失败归因记录超出重试预算: {exc}")
+                raise click.ClickException(
+                    "L3 章节 Gate 未通过，已停止封板/导出；"
+                    f"问题: {'; '.join(l3_result.get('issues', [])[:5])}"
+                )
+
+        # Complete session only after shot completion and L3 gate pass.
+        mgr.complete_session(session_id)
+        click.echo(f"\n✅ 章节 {chapter} 生成完成。")
 
         # P0-7: Generate minimal scope report
         _print_scope_report(db, project_id, session_id, run_id, chapter)
 
-        exported = _auto_export_chapter(db, project, chapter)
+        exported = _auto_export_chapter(db, project, chapter, run_id=run_id)
         if exported:
             click.echo(f"\n📤 已自动导出: {exported}")
 

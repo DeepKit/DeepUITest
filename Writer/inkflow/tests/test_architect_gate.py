@@ -6,6 +6,15 @@ import json
 import pytest
 
 
+GOOD_L4_TEXT = (
+    "雨水从窗缝挤进来，沿着柜台边缘慢慢聚成一滴。"
+    "韩教授把旧纸袋压在灯下，纸角还在发潮。"
+    "阿坤没有问，他听见走廊尽头的门轴响了一下。"
+    "灯管闪了两次，白光落在他膝盖上。"
+    "他伸手去够那张票根，指尖还没碰到纸面，门外的铃突然响了"
+)
+
+
 class TestArchitectGateL4:
     """L4: Shot-level gate tests."""
 
@@ -16,6 +25,13 @@ class TestArchitectGateL4:
         db = setup_run
         run_id = "run_01"
         project_id = "proj_01"
+        db.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d_01', 'shot_01', 'run_01', '结构师', 0, ?, 'att_l4')",
+            (GOOD_L4_TEXT,),
+        )
+        db.commit()
 
         gate = ArchitectGate(db, run_id, project_id)
         return db, gate, run_id
@@ -84,6 +100,12 @@ class TestArchitectGateL3:
                 (contract_id, project_id, run_id, shot_id, chapter_key,
                  json.dumps({"pov_character": pov_char})),
             )
+        db.execute(
+            "INSERT OR IGNORE INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d_01', 'shot_l3_10', ?, '结构师', 0, ?, 'att_l3')",
+            (run_id, GOOD_L4_TEXT),
+        )
         db.commit()
 
     def _create_chapter_with_revisions(self, db, chapter_key, run_id, project_id, texts):
@@ -162,14 +184,49 @@ class TestArchitectGateL3:
         from inkflow.services.architect_gate import ArchitectGate
         db = setup_run
         chapter = "v01.c04"
+        run_id = "run_l3_twice"
+        gate = ArchitectGate(db, run_id, "proj_01")
+
+        texts = [
+            "阿坤把湿透的票根摊在柜台上，水沿着玻璃边缘慢慢往下走。韩教授没有解释，只让他把手按住。",
+            "苏然翻过临时边界单，琉璃场三个字被红笔圈住，纸角还沾着雨水。",
+            "阿坤收起那张纸，柜台里的灯一盏盏灭下去。外面雨声压住了排号屏的提示音，"
+            "他听见自己袖口还在滴水。他正要把湿冷的塑料袋塞进柜台，门外的铃突然响了",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+        db.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d_l3_twice', ?, ?, '结构师', 0, ?, 'att_l3_twice')",
+            (f"{run_id}_shot_1", run_id, GOOD_L4_TEXT),
+        )
+        db.commit()
+        for i in range(1, 4):
+            gate.evaluate_l4(
+                f"{run_id}_shot_{i}", "d_l3_twice",
+                {"passed": True, "score": 88, "light_status": "green"},
+            )
+
+        result = gate.evaluate_l3(chapter)
+        assert result["passed"] is True
+        assert gate.should_trigger_l3(chapter) is False
+
+    def test_failed_l3_can_be_retriggered_after_repair(self, setup_run):
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c14"
         gate = ArchitectGate(db, "run_01", "proj_01")
 
         self._create_chapter_shots(db, chapter, "run_01", "proj_01", ["green"] * 4)
         for i in range(10, 14):
-            gate.evaluate_l4(f"shot_l3_{i}", "d_01", {"passed": True, "score": 88, "light_status": "green"})
+            gate.evaluate_l4(
+                f"shot_l3_{i}", "d_01",
+                {"passed": True, "score": 88, "light_status": "green"},
+            )
 
-        gate.evaluate_l3(chapter)
-        assert gate.should_trigger_l3(chapter) is False
+        failed = gate.evaluate_l3(chapter)
+        assert failed["passed"] is False
+        assert gate.should_trigger_l3(chapter) is True
 
     def test_l3_evaluates_pov_balance(self, setup_run):
         from inkflow.services.architect_gate import ArchitectGate

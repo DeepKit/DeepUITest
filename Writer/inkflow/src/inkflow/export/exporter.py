@@ -27,6 +27,7 @@ def export_markdown(
     *,
     title: str | None = None,
     chapters: list[str] | None = None,
+    run_id: str | None = None,
 ) -> Path:
     """Export current revisions to Markdown.
 
@@ -56,15 +57,21 @@ def export_markdown(
     for chapter_key in chapters:
         lines.append(f"\n## 第 {_chapter_label(chapter_key)} 章\n")
 
-        shots = db.execute(
+        query = (
             "SELECT ws.shot_id, ws.shot_index, wsc.must_land_json "
             "FROM writing_shots ws "
             "LEFT JOIN writing_shot_contracts wsc "
             "  ON ws.shot_id = wsc.shot_id AND ws.run_id = wsc.run_id "
             "WHERE ws.layer_key = ? "
-            "ORDER BY ws.shot_index",
-            (chapter_key,),
-        ).fetchall()
+            "  AND ws.shot_status IN ('done_green', 'done_yellow') "
+            "  AND ws.current_revision_id IS NOT NULL "
+        )
+        params: list[object] = [chapter_key]
+        if run_id:
+            query += "  AND ws.run_id = ? "
+            params.append(run_id)
+        query += "ORDER BY ws.shot_index"
+        shots = db.execute(query, params).fetchall()
 
         if not shots:
             lines.append("\n（无内容）\n")
@@ -97,6 +104,7 @@ def export_plain_text(
     output_path: str | Path,
     *,
     chapters: list[str] | None = None,
+    run_id: str | None = None,
 ) -> Path:
     """Export current revisions as plain text (no annotations, no headers).
 
@@ -111,17 +119,23 @@ def export_plain_text(
     repo = TextRepository(db)
     blocks: list[str] = []
     for chapter_key in chapters:
-        shot_rows = db.execute(
+        query = (
             "SELECT ws.shot_id "
             "FROM writing_shots ws "
             "WHERE ws.layer_key = ? "
-            "ORDER BY ws.shot_index",
-            (chapter_key,),
-        ).fetchall()
+            "  AND ws.shot_status IN ('done_green', 'done_yellow') "
+            "  AND ws.current_revision_id IS NOT NULL "
+        )
+        params: list[object] = [chapter_key]
+        if run_id:
+            query += "  AND ws.run_id = ? "
+            params.append(run_id)
+        query += "ORDER BY ws.shot_index"
+        shot_rows = db.execute(query, params).fetchall()
         for row in shot_rows:
             text = repo.get_shot_text(row["shot_id"])
             if text and text.strip():
-                blocks.append(text.strip())
+                blocks.append(_format_prose_for_export(text))
 
     output_path.write_text("\n\n".join(blocks), encoding="utf-8")
     return output_path
@@ -177,7 +191,8 @@ def _format_prose_for_export(text: str) -> str:
         if not block:
             continue
 
-        if _is_generated_heading_block(block):
+        block = _strip_generated_heading_lines(block)
+        if not block:
             continue
 
         if _is_structural_markdown_block(block):
@@ -198,6 +213,14 @@ def _is_generated_heading_block(block: str) -> bool:
     """Drop Markdown headings generated inside prose; exporter supplies titles."""
     stripped = block.lstrip()
     return bool(re.match(r"^#{1,6}\s+\S+", stripped))
+
+
+def _strip_generated_heading_lines(block: str) -> str:
+    """Remove generated Markdown heading lines but keep prose in the same block."""
+    lines = block.split("\n")
+    while lines and re.match(r"^\s*#{1,6}\s+\S+", lines[0]):
+        lines.pop(0)
+    return "\n".join(lines).strip()
 
 
 def _is_structural_markdown_block(block: str) -> bool:
