@@ -10,6 +10,7 @@ from inkflow.cli import (
     main,
     _extract_chapter_2_events,
     _extract_chapter_events,
+    _format_jury_draft_score,
     _validate_chapter_run_preflight,
     _validate_contract_scope_for_chapter,
 )
@@ -75,6 +76,25 @@ class TestCLIBasics:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
         assert "3.6.0" in result.output
+
+    def test_format_jury_draft_score_labels_gate_failure(self):
+        line = _format_jury_draft_score(
+            "01KW3Q5NCBPZWRG254EXAH2PK1",
+            {
+                "eligible": False,
+                "trimmed_mean": 0,
+                "raw_scores": [95, 70, 75],
+                "failure_stage": "type_gate",
+                "failure_summary": {
+                    "label": "类型职责未通过",
+                    "reasons": ["钩子/信息释放 72<80"],
+                },
+            },
+        )
+
+        assert "未入选" in line
+        assert "类型职责未通过" in line
+        assert "均分: 0" not in line
 
 
 class TestImportBaseline:

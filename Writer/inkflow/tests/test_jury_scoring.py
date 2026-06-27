@@ -170,6 +170,10 @@ class TestJuryScoreScale:
         assert creative["review_mode"] == "typed_literary"
         assert creative["score_key"] == "literary_score"
         assert creative["draft_scores"]["d1"]["type_gate_passed"] is False
+        summary = creative["draft_scores"]["d1"]["failure_summary"]
+        assert summary["stage"] == "type_gate"
+        assert summary["label"] == "类型职责未通过"
+        assert any("意外价值" in reason for reason in summary["reasons"])
 
     def test_requires_two_passing_drafts_for_production_threshold(self, setup_run_with_draft):
         """v5: winner can exist, but production pass requires min_passing_drafts."""

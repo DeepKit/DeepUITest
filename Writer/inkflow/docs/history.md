@@ -1543,3 +1543,47 @@ python -m inkflow.cli run "分流" --chapter v01.c02 --resume --local-jury
 
 - 目标测试：49 passed
 - 全量测试：396 passed, 4 warnings
+
+---
+
+## CHAPTER-3-REMOTE / JURY-B53 远端第 3 章验证与 Gate 归因修复 — 2026-06-27
+
+**目标**：在 B52 修复后用真实远端 writer/jury 跑通《分流》第 3 章，并把剩余的 `均分: 0` 显示问题拆清为 gate 淘汰而非远端评分失败。
+
+### 真实《分流》第 3 章远端结果
+
+命令：
+
+```powershell
+python -m inkflow.cli setup "分流" --chapter v01.c03 --force
+python -m inkflow.cli repair "分流" --chapter v01.c03 --all
+python -m inkflow.cli run "分流" --chapter v01.c03 --resume
+```
+
+结果：
+
+| 指标 | 结果 |
+|------|------|
+| 链路状态 | 完整跑完 5/5 shots，session completed |
+| Scope Report | Green 5 / Yellow 0 / Red/PH 0 |
+| 平均得分 | 88.3 |
+| L3 状态 | 已触发并通过 |
+| POV coverage | `郑坤` 1 / `白英` 1 / `苏然` 2 / `韩教授` 1 |
+| 导出路径 | `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md` |
+
+### 归因结论
+
+第 5 个 shot 第二轮中出现的局部 `均分: 0` 不是远端 jury 全 0，也不是契约错章；对应草稿已有远端原始分，但因 `unexpected_value` / `hook_transition` 等类型职责低于阈值，被判定为 `eligible=False`，未进入文学 9 维 winner 竞争。旧 CLI 把这种 gate 淘汰显示为 `均分: 0`，排障语义错误。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 失败摘要 | `JuryService` 为 hard-rule/type gate 失败稿写入 `failure_summary`，包含 stage、标签和低于阈值的维度 |
+| CLI 显示 | `run` 输出改为 `未入选: 硬规则未通过/类型职责未通过`，不再把不可用稿显示成文学均分 0 |
+| 回归测试 | 增加类型 gate 失败摘要测试，以及 CLI 不输出 `均分: 0` 的格式测试 |
+
+### 验证
+
+- 目标测试：51 passed
+- 全量测试：397 passed, 4 warnings

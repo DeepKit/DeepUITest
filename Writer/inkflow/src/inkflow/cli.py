@@ -262,6 +262,37 @@ def _print_failure_summary(summary: dict | None) -> None:
         )
 
 
+def _format_jury_draft_score(
+    draft_id: str,
+    score_data: dict,
+    *,
+    score_key: str = "literary_score",
+) -> str:
+    """Format one draft's jury result without hiding gate failures as score 0."""
+    raw_scores = score_data.get("raw_scores", [])
+    if not score_data.get("eligible", True):
+        summary = score_data.get("failure_summary") or {}
+        label = summary.get("label") or _jury_failure_stage_label(
+            score_data.get("failure_stage"),
+        )
+        reasons = summary.get("reasons") or []
+        detail = f"{label}: {', '.join(str(r) for r in reasons[:3])}" if reasons else label
+        return f"    草稿 {draft_id[:8]}…  未入选: {detail}  原始: {raw_scores}"
+
+    display_key = score_key or "literary_score"
+    score = score_data.get(display_key, score_data.get("trimmed_mean", 0))
+    score_label = "文学均分" if display_key == "literary_score" else "均分"
+    return f"    草稿 {draft_id[:8]}…  {score_label}: {score}  原始: {raw_scores}"
+
+
+def _jury_failure_stage_label(stage: str | None) -> str:
+    labels = {
+        "hard_rule": "硬规则未通过",
+        "type_gate": "类型职责未通过",
+    }
+    return labels.get(stage or "", "未入选")
+
+
 def _resume_or_create_session(
     mgr, db, project_id, chapter, num_shots, requested_session_id=None,
 ):
@@ -2025,8 +2056,11 @@ def _run_project_inner(
                         winner_track = jury_verdict.get("winner_track")
 
             # 打印评分详情
+            score_key = jury_verdict.get("score_key", "literary_score")
             for did, ds in jury_verdict.get("draft_scores", {}).items():
-                click.echo(f"    草稿 {did[:8]}…  均分: {ds['trimmed_mean']}  原始: {ds['raw_scores']}")
+                click.echo(
+                    _format_jury_draft_score(did, ds, score_key=score_key)
+                )
 
             # Step 7: 写入修订记录
             if winner_id:

@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26 VAL/QUAL/JURY 修复：新增 B43/B44/B45/B46/B47/B48/B49；开放实现任务见 `../tasks.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B53；开放实现任务见 `../TASKS.md`
 
 ---
 
@@ -438,4 +438,12 @@
 - **根因**: 锁定契约仍含旧章节限定（`P0 只生成第 2 章...`）和旧段落锁（`500-800 字/段落，3-4 段/shot`）；同时硬规则裁判摘要包含 `style_locks`，远端 LLM 将段落长度、方言、感官密度、身体时刻开场以及 `characters_alive` 名单误读为硬规则。
 - **影响**: API 可用但候选稿被资格层误杀；本地 jury 可过，远端 jury 连续无 winner，真实生产验证失真。
 - **修复**: `setup/run` 增加章节契约准入，拒绝旧章节限定、旧段落锁、过期 setup 包和 setup/contract shot 数不一致；hard-rule prompt 收窄为硬事实/POV/must_land/禁写/提示词残留等；风格类低分、远端 timeout/解析失败和 `characters_alive` 排他误读只作为 advisory，不再清零候选稿；`init` 默认契约模板移除第 2 章 P0 限定并改用导出层短段策略。
-- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/jury_service.py`, `tests/test_cli.py`, `tests/test_jury_scoring.py`, `docs/flow.md`, `docs/setup-protocol.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `tasks.md`, `docs/history.md`
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/jury_service.py`, `tests/test_cli.py`, `tests/test_jury_scoring.py`, `docs/flow.md`, `docs/setup-protocol.md`, `docs/design.md`, `docs/implementation-contract-v0.md`, `TASKS.md`, `docs/history.md`
+
+### B53. Gate 失败稿在 CLI 中显示为 `均分: 0`，误导远端 jury 排障 ✅ 已修复
+- **严重性**: Important
+- **发现**: 第 3 章远端链路完成后，第 5 个 shot 的部分草稿因类型职责未过被置为 `eligible=False`，但 CLI 仍打印 `均分: 0`，看起来像远端评分全 0。
+- **根因**: `JuryService` 对硬规则/类型 gate 失败稿只返回 `trimmed_mean=0`，缺少结构化 `failure_summary`；`run` 打印评分时不区分“未进入文学评分”和“文学均分为 0”。
+- **影响**: 生产排障会把正常 gate 淘汰误判为 API 失败、契约错误或文学评分异常，干扰契约/规则归因。
+- **修复**: gate 失败稿增加 `failure_summary`，包含 `stage`、显示标签和低于阈值的维度；CLI 打印改为 `未入选: 硬规则未通过/类型职责未通过`，不再把不可用稿显示成文学均分 0。
+- **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/cli.py`, `tests/test_jury_scoring.py`, `tests/test_cli.py`, `TASKS.md`, `docs/history.md`

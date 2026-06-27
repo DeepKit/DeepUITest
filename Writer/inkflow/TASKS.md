@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-27
-Status: v3.15；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`396 passed, 4 warnings`
+Status: v3.15；Schema v17；38 张业务表 + `_schema_meta` 元表；最近全量验证：`397 passed, 4 warnings`
 
 ---
 
@@ -17,6 +17,8 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 
 2026-06-27 的 B52 修复结论：第 3 章远端 jury “全 0 / 无 winner”不是 API 失败，而是契约失效与软件规则误杀叠加。契约层面，锁定元契约仍含“只生成第 2 章”和旧段落锁；每章生产前必须重新 `setup --chapter` 并确保当前元契约适配目标章。规则层面，`run` 已增加章节契约准入，hard-rule jury 不再把段落长度、方言、感官密度、身体时刻开场、远端 timeout/解析失败或 `characters_alive` 排他误读作为资格清零项。
 
+2026-06-27 第 3 章远端链路已按新契约重新 `setup --chapter v01.c03` 并完成真实 writer/jury 生产：5/5 shots 全绿，Scope Report 平均分 88.3，L3 章节 Gate 通过，自动导出到 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`。本轮同时修复 gate 失败日志误写为 `均分: 0` 的排障问题；以后硬规则/类型职责失败会明确显示为“未入选: 硬规则未通过/类型职责未通过”。
+
 设计审阅结论不变：当前方向 near-optimal，不建议推倒重做。下一步应避免继续堆检查项，重点把“约束保下限 + 留白出上限 + 评审学偏好”跑成可验证闭环。
 
 ---
@@ -30,8 +32,8 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 | 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | ✅ |
 | 8 层层级 | `docs/design-8layer-hierarchy.md` | ✅ |
 | 悬疑引擎 | `docs/suspense-engine.md` | ✅ 已实施核心闭环，待实战验证 |
-| 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-26 归档 |
-| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B43/B44/B45/B46/B47/B48/B49 |
+| 开发历史 | `docs/history.md` | ✅ 本轮新增 2026-06-27 归档 |
+| Bug 记录 | `docs/bugfix.md` | ✅ 本轮新增 B43-B53 |
 
 ---
 
@@ -56,6 +58,8 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 | WORKFLOW-1 公开流程收敛 | `init -> setup --chapter -> run --chapter -> review`；`setup` 改为章前校准；run 强制读取 setup 包并自动导出 |
 | CHAPTER-2-REVIEW | 第 2 章输出已获人工“内容基本合格”反馈，允许作为后续章节生产上下文 |
 | JURY-B52 | 章节契约准入与 hard-rule 误杀收敛；远端风格类/瞬时失败低分只作 advisory，过期/错章 setup 生产前失败 |
+| CHAPTER-3-REMOTE | 第 3 章真实远端 writer/jury 链路跑通；5/5 shots green，L3 通过并导出到统一正文目录 |
+| JURY-B53 | gate 失败归因显示修复：不可用稿不再显示为文学均分 0，而是显示硬规则/类型职责失败原因 |
 
 ---
 
@@ -63,10 +67,10 @@ P0 单书纵向闭环已经完成，公开生产入口收敛为四个命令：`i
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
-| 高 | CHAPTER-3-CONTRACT | 第 3 章契约重新校准 | 待执行 | 更新《分流》锁定契约，移除“只生成第 2 章”和旧段落锁，确认 `chapter_3_events`、POV、内江/外江方向和章末钩子后重新 `confirm-contract` |
-| 高 | CHAPTER-3-PROD | 第 3 章按新流程生产 | 等待契约校准 | 运行 `ink setup "分流" --chapter v01.c03 --force`，人工确认 setup 包后运行 `ink run "分流" --chapter v01.c03 --resume`，导出到 `D:\_Progs\.Story\《分流》\正文\` 并用 `ink review` 记录结论 |
-| 高 | REMOTE-PROD | 远端 writer/jury 生产验证 | 待执行 | 使用真实供应商模型跑通 v01.c02 单章，确认无订阅/超时会被审计并快速失败，远端输出不低于本地兜底 gate 结果 |
-| 高 | JURY-V5-REAL | 分层裁判真实项目验证 | 待执行 | 用《分流》v01.c02 复跑，记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
+| 高 | CHAPTER-3-REVIEW | 第 3 章人工审阅 | 待人工 | 审阅 `D:\_Progs\.Story\《分流》\正文\分流_v01.c03_导出.md`，用 `ink review "分流" --chapter v01.c03 --accept/--revise/--reject` 记录结论 |
+| 高 | CHAPTER-4-SETUP | 第 4 章生产前校准 | 待第 3 章审阅后执行 | 先吸收第 3 章人工审阅结论，再运行 `ink setup "分流" --chapter v01.c04 --force`，确认 shot、类型职责、钩子和禁止议论项 |
+| 中 | JURY-REMOTE-ROBUST | 远端 Jury 超时鲁棒性 | 待优化 | 文学/类型评分中的供应商 timeout 应独立归因为模型失败，避免被误当作品低分；保留 `model_attempts.error_message` 审计 |
+| 中 | JURY-V5-REAL | 分层裁判真实项目持续观测 | 已跑通第 3 章，继续积累样本 | 每章记录硬规则失败数、类型 gate 触发数、文学 9 维分布、过线稿数量和单线返写次数 |
 | 中 | JURY-REMOTE | 远端 Jury 配置治理 | 待执行 | 明确 `.models` 中远端 jury 可用性；无有效订阅时不应阻塞生产链路 |
 | 中 | CREATIVE-2-EVAL | polish 效果评估 | 已有保守精修链路，待真实文本验证 | 统计 polish 应用率、段落重排率、失败率，确认没有改变硬事实 |
 | 中 | CREATIVE-3-EVAL | 留白创意评审效果评估 | 已有 `creative_review=True` 评分路径，待真实文本验证 | 比较标准 winner 与 creative winner 的高光率、合规风险和人工偏好 |

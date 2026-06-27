@@ -563,8 +563,8 @@ class JuryService:
             "violations": violations,
         }
 
-    @staticmethod
     def _build_rejected_score(
+        self,
         scores: list[int],
         dimension_scores: dict[str, list[int]],
         hard_gate: dict,
@@ -572,15 +572,16 @@ class JuryService:
         *,
         type_means: dict[str, float] | None = None,
     ) -> dict:
+        dimension_means = {
+            dim: round(sum(values) / len(values), 2)
+            for dim, values in dimension_scores.items()
+            if values
+        }
         return {
             "trimmed_mean": 0,
             "literary_score": 0,
             "raw_scores": scores,
-            "dimension_means": {
-                dim: round(sum(values) / len(values), 2)
-                for dim, values in dimension_scores.items()
-                if values
-            },
+            "dimension_means": dimension_means,
             "literary_dimension_means": {},
             "hard_rule": hard_gate,
             "hard_rule_passed": stage != "hard_rule",
@@ -589,6 +590,56 @@ class JuryService:
             "creative_score": 0,
             "eligible": False,
             "failure_stage": stage,
+            "failure_summary": self._build_rejection_summary(
+                stage, hard_gate, dimension_means, type_means or {},
+            ),
+        }
+
+    def _build_rejection_summary(
+        self,
+        stage: str,
+        hard_gate: dict,
+        dimension_means: dict[str, float],
+        type_means: dict[str, float],
+    ) -> dict:
+        """Return a human-readable reason for an ineligible draft."""
+        if stage == "hard_rule":
+            reasons: list[str] = []
+            violations = hard_gate.get("violations") or []
+            reasons.extend(str(v) for v in violations[:3])
+            hard_score = dimension_means.get("hard_rule_compliance")
+            if hard_score is not None and hard_score < self.hard_rule_threshold:
+                label = JURY_V4_DIMENSION_DISPLAY.get(
+                    "hard_rule_compliance", "hard_rule_compliance",
+                )
+                reasons.append(f"{label} {hard_score}<{self.hard_rule_threshold}")
+            if not reasons:
+                reasons.append("硬规则裁判判定不可进入文学评审")
+            return {
+                "stage": stage,
+                "label": "硬规则未通过",
+                "reasons": reasons,
+            }
+
+        if stage == "type_gate":
+            reasons = []
+            for dimension, mean in type_means.items():
+                threshold = JURY_TYPE_THRESHOLDS.get(dimension, self.type_threshold)
+                if mean < threshold:
+                    label = JURY_V4_DIMENSION_DISPLAY.get(dimension, dimension)
+                    reasons.append(f"{label} {mean}<{threshold}")
+            if not reasons:
+                reasons.append("类型职责未达标")
+            return {
+                "stage": stage,
+                "label": "类型职责未通过",
+                "reasons": reasons,
+            }
+
+        return {
+            "stage": stage,
+            "label": "未入选",
+            "reasons": [stage],
         }
 
     def _low_hard_rule_scores_are_advisory(
