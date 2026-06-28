@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.7: 人机交互流程
+# 墨韵 (InkFlow) v3.8: 人机交互流程
 
-> 版本：v3.7（用户交互流程；补充生产内核硬化与 gate/export 边界）
-> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26
+> 版本：v3.8（用户交互流程；补充 accepted canonical 与正式/审稿导出边界）
+> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26 / accepted canonical：2026-06-27
 > 技术设计：`inkflow/docs/design.md`、`inkflow/docs/implementation-contract-v0.md`
 > 角色体系：`inkflow/docs/role-system.md`
 > 设计决策：`docs/decisions/README.md`
@@ -21,8 +21,9 @@ P0 以《分流》作为唯一验收样本：
   → 提取风格/事实/人物声音基线
   → init 形成人类确认后的章以上层级契约
   → setup --chapter 进行单章生产前校准
-  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出
-  → review --chapter 记录人工验收结论
+  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出审稿稿
+  → review --chapter 记录人工验收结论并写入 DB canonical 状态
+  → accepted 后进入正式导出和后续历史上下文
   → 推敲系统 read-only 读取墨韵 DB 导入
 ```
 
@@ -36,7 +37,7 @@ P0 以《分流》作为唯一验收样本：
 
 P0 不做全书一次生成，不做多项目/Universe，不做成本确认门，不让推敲回写墨韵数据库。
 
-当前状态是受控试跑，不是正式批量生产。人类只在生产前契约/章前校准和生产后审稿阶段介入；但在 CORE-1/CORE-2 完成前，人工 `review --accept` 还没有成为唯一 accepted canonical 真相源，后续生产必须谨慎使用上一章上下文。
+当前状态是受控试跑，不是正式批量生产。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。剩余主要风险是 CORE-2：run/shot attempt 身份还未和 logical shot 完全拆开。
 
 ## 1. 核心流程
 
@@ -58,7 +59,7 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
   L4 Shot Gate 通过后，绿/黄进入正文，绿灯自动提取 9 类事实锚点 (D-19)
   红灯写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
   每个 Shot 完成后写入检查点 (D-14)
-  L3 Chapter Gate 通过后，session 才 complete 并自动导出当前 run
+  L3 Chapter Gate 通过后，session 才 complete 并自动导出当前 run 审稿稿
   Scope 完成后生成三层交互式投影报告 (D-12)
 
 阶段 3: AI 自动修补 (write repair)
@@ -69,10 +70,10 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
   优化黄灯
 
 阶段 4: 人类集中二次处理
-  在 Scope 投影中操作（approve / fix / redo / flag / edit context / lock）(D-12)
-  通过 AI 架构师中介修改文本（不直接编辑）(D-8)
+  审阅 run 自动导出的审稿稿
+  用 ink review --accept/--revise/--reject 记录最终判断
+  accepted 章节进入正式导出；revise/reject 章节进入重写准备
   查看契约仪表盘 (D-23)
-  做最终判断
 ```
 
 DB3 是唯一真相源。终端摘要、Markdown 报告、导出文件都只是 DB 投影。
@@ -98,7 +99,7 @@ ink setup "分流" --chapter v01.c03
 # 跨项目 clone
 ink clone "分流" --as "分流_英文版"
 
-# 全自动生产并导出到 正文/
+# 全自动生产并导出审稿稿到 正文/
 ink run "分流" --chapter v01.c02
 ink run "分流" --writer-count 4     # 覆盖默认写手数
 ink run "分流" --config jury.thresholds.green=8
@@ -106,6 +107,10 @@ ink run "分流" --config jury.thresholds.green=8
 # 生产后人工验收记录
 ink review "分流" --chapter v01.c02 --accept
 ink review "分流" --chapter v01.c03 --revise "章末钩子不足"
+
+# 正式导出默认只取 accepted；审稿/排障稿需显式 --draft
+ink export "分流" --chapter v01.c02
+ink export "分流" --chapter v01.c03 --draft
 
 # 恢复中断
 ink run "分流" --resume
@@ -500,7 +505,7 @@ ink confirm-contract "分流"
 ink setup "分流" --chapter v01.c03
   # 人类确认本章 shot、POV、类型职责、章末钩子、禁止议论规则
 
-# Step 4: 生成本章并自动导出到 D:\_Progs\.Story\《分流》\正文\
+# Step 4: 生成本章并自动导出审稿稿到 D:\_Progs\.Story\《分流》\正文\
 ink run "分流" --chapter v01.c03 --resume
   # 2-4 写手按人格差异化 prompt
   # 硬规则 → 类型职责 → 文学 9 维评分
@@ -509,7 +514,7 @@ ink run "分流" --chapter v01.c03 --resume
   # 每 Shot 检查点，Scene Composition Check + Intent Drift Detection
   # Scope 完成后生成交互式三层投影报告
 
-# Step 5: 人工验收
+# Step 5: 人工验收；accepted 后进入正式导出和后续上下文
 ink review "分流" --chapter v01.c03 --accept
   # 或：ink review "分流" --chapter v01.c03 --revise "具体问题"
 

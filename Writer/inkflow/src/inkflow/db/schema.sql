@@ -1,7 +1,7 @@
--- InkFlow v3.14 — Schema v17 (layered jury dimensions)
--- SCHEMA_VERSION: 17
--- Generated from implementation-contract-v0.md; aligned 2026-06-25
--- 38 business tables total (+ _schema_meta = 39 SQLite user tables), ordered by FK dependency
+-- InkFlow v3.17 — Schema v18 (chapter review canonical state)
+-- SCHEMA_VERSION: 18
+-- Generated from implementation-contract-v0.md; aligned 2026-06-28
+-- 39 business tables total (+ _schema_meta = 40 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
 -- v6→v7: 新增 writing_chapter_rhythms 表 (AI 架构师 L1 章级节奏)
 -- v7→v8: 新增 tree_nodes / contract_versions / story_content / execution_records (ARCH-12 三棵树架构)
@@ -14,6 +14,7 @@
 -- v14→v15: shot_revisions.operation 新增 write_polish；model_attempts.phase 新增 polish (CREATIVE-2)
 -- v15→v16: model_attempts.phase 新增 outline/constitution/chapter/volume architect phases (B41)
 -- v16→v17: writing_jury_scores.dimension 扩展 hard/type/literary 分层裁判维度
+-- v17→v18: 新增 writing_chapter_reviews 表，记录 accepted canonical 章节审稿状态
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -466,6 +467,31 @@ CREATE TABLE writing_reference_pool (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- =============================================================================
+-- Layer 9b: Chapter review canonical state (v18)
+-- =============================================================================
+
+CREATE TABLE writing_chapter_reviews (
+    review_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(project_id),
+    chapter_key TEXT NOT NULL,
+    run_id TEXT REFERENCES writing_sessions(run_id),
+    status TEXT NOT NULL CHECK (status IN ('accepted', 'needs_revision', 'rejected', 'superseded')),
+    review_text TEXT,
+    notes TEXT,
+    exported_path TEXT,
+    shot_stats_json JSON NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(project_id, chapter_key, run_id)
+);
+CREATE INDEX idx_chapter_reviews_project_chapter
+    ON writing_chapter_reviews(project_id, chapter_key);
+CREATE INDEX idx_chapter_reviews_status ON writing_chapter_reviews(status);
+CREATE UNIQUE INDEX idx_chapter_reviews_one_accepted
+    ON writing_chapter_reviews(project_id, chapter_key)
+    WHERE status = 'accepted';
 
 -- =============================================================================
 -- Layer 10a: Information Gap Tracking (D-25 悬疑引擎)

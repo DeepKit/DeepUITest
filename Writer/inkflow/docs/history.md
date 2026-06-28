@@ -1631,16 +1631,47 @@ python -m inkflow.cli run "分流" --chapter v01.c03 --resume
 | 导出版式 | Markdown/纯文本导出都剥离模型生成标题，保留正文并拆分长段，shot 间保留分隔线 |
 | RetryBudget | 同类失败第 N 次立即熔断；切换 failure type 重置连续计数 |
 
-### 仍未解决的 P0
+### 当时仍未解决的 P0（已由后续章节更新）
 
 | ID | 原因 |
 |----|------|
-| CORE-1 | review/reject/abort 还没有成为 DB canonical 状态机；当前只先收紧 run/export 过滤 |
+| CORE-1 | 当时 review/reject/abort 还没有成为 DB canonical 状态机；已在 CORE-1-V18 完成 |
 | CORE-2 | stable `shot_id=layer_key.sNN` 的跨 run 复用问题需要 schema/迁移级改造 |
-| EXPORT-4 | 默认导出最终应只取人工 accepted canonical；当前自动导出先限定 current run |
+| EXPORT-4 | 当时默认导出还未 accepted-only；已在 CORE-1-V18 完成 |
 
 ### 验证
 
 - 语法检查：`py_compile` 通过
 - 目标测试：76 passed
 - 全量测试：407 passed, 4 warnings
+
+---
+
+## CORE-1-V18 accepted canonical 状态机 — 2026-06-28
+
+**目标**：把人工审稿从 YAML 记录提升为 DB canonical 状态，使未人工 accepted 的章节不能进入正式导出、跨章 previous context 和历史 fact anchors。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| Schema v18 | 新增 `writing_chapter_reviews` 表，记录 `accepted/needs_revision/rejected/superseded`；同一项目/章节只允许一个 accepted run |
+| `ink review` | `--accept/--revise/--reject` 写 YAML 同时写 DB；`--accept` 要求 latest run completed、所有 shot 封板且 L3 通过 |
+| revise/reject | 对应 run 本章 `done_green/done_yellow` shot 退回 `redo`，防止误当正式正文 |
+| 默认导出 | `ink export` 默认 `accepted_only=True`；`--draft` 才导出未 accepted 的审稿稿 |
+| 自动导出 | `run --chapter` 仍导出当前 run 审稿稿，供人工 review，不代表正式正文 |
+| previous context | 只读取当前 run 前序 shot 或人工 accepted 历史章节 |
+| fact anchors | 只读取当前 run、accepted 章节或 locked baseline，避免 rejected/aborted/unaccepted 历史 run 污染 |
+
+### 剩余 P0
+
+| ID | 原因 |
+|----|------|
+| CORE-2 | stable `shot_id=layer_key.sNN` 的跨 run 复用问题仍需 schema/迁移级改造 |
+| VALID-1 | 需要对真实《分流》库做 Schema v18 迁移和 accepted-only 导出小样验证 |
+
+### 验证
+
+- 语法检查：`py_compile` 通过
+- 目标测试：92 passed, 3 warnings
+- 全量测试：414 passed, 4 warnings

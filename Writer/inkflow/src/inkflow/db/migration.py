@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -1115,3 +1115,39 @@ def _migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+
+
+@register_migration(17, 18)
+def _migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
+    """v18: 章节人工审稿 canonical 状态 — 新增 writing_chapter_reviews 表。"""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_chapter_reviews ("
+        "review_id TEXT PRIMARY KEY, "
+        "project_id TEXT NOT NULL REFERENCES projects(project_id), "
+        "chapter_key TEXT NOT NULL, "
+        "run_id TEXT REFERENCES writing_sessions(run_id), "
+        "status TEXT NOT NULL CHECK (status IN ("
+        "'accepted', 'needs_revision', 'rejected', 'superseded'"
+        ")), "
+        "review_text TEXT, "
+        "notes TEXT, "
+        "exported_path TEXT, "
+        "shot_stats_json JSON NOT NULL DEFAULT '[]', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(project_id, chapter_key, run_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chapter_reviews_project_chapter "
+        "ON writing_chapter_reviews(project_id, chapter_key)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chapter_reviews_status "
+        "ON writing_chapter_reviews(status)"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_chapter_reviews_one_accepted "
+        "ON writing_chapter_reviews(project_id, chapter_key) "
+        "WHERE status = 'accepted'"
+    )

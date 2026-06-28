@@ -507,3 +507,11 @@
 - **影响**: 多次重写同章节时，审稿导出可能不是当前 run 的正文；给后续工具的纯文本仍带模型标题痕迹。
 - **修复**: 自动导出传入 `run_id`；Markdown/纯文本导出都过滤 `done_green/done_yellow + current_revision_id`，并清理模型标题、拆分长段。
 - **文件**: `src/inkflow/export/exporter.py`, `src/inkflow/cli.py`, `tests/test_cli.py`
+
+### B61. 人工 review 只写 YAML，rejected/unaccepted 正文仍可能污染正式导出和后续上下文 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产内核 CORE-1 审阅
+- **根因**: `ink review --accept/--revise/--reject` 只写 `.inkflow/chapter-reviews/*.yaml`，DB 中没有章节级 canonical 状态；默认导出、previous context 和 fact anchors 无法区分 accepted、rejected、aborted 或未审稿 run。
+- **影响**: 人工退稿/返修的正文仍可能被默认导出当作正式稿，或作为前文事实进入下一章 prompt，造成连续污染。
+- **修复**: Schema v18 新增 `writing_chapter_reviews`；`review` 写 DB canonical 状态，`--accept` 必须 latest run completed、shot 全封板且 L3 passed；`--revise/--reject` 将该 run 本章绿/黄 shot 退回 `redo`；默认 `ink export` 改为 accepted-only，`--draft` 才导出审稿稿；previous context 和 fact anchors 只读取当前 run、accepted 章节或 locked baseline。
+- **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `src/inkflow/cli.py`, `src/inkflow/export/exporter.py`, `src/inkflow/services/fact_anchor_extractor.py`, `tests/test_schema.py`, `tests/test_cli.py`, `tests/test_fact_anchor.py`

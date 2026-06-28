@@ -1,4 +1,4 @@
-"""Verify all 38 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
+"""Verify all 39 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 
-# ── 38 张业务表名（按 implementation-contract-v0.md §3.3 + §3.4 + ARCH-4/5/8/10/11/12 + CREATIVE-1/2） ──
+# ── 39 张业务表名（按 implementation-contract-v0.md + v18 chapter review canonical） ──
 
 ALL_TABLES = [
     "projects",
@@ -44,6 +44,7 @@ ALL_TABLES = [
     "writing_volume_rhythms",   # v10: L0.5 卷部节奏 (ARCH-5)
     "writing_style_preferences", # v12: 风格偏好学习 (ARCH-10)
     "writing_anti_contract_reviews", # v13: 反契约沙盒 (ARCH-11)
+    "writing_chapter_reviews", # v18: 章节 accepted canonical 状态
     # v8: 三棵树架构 (ARCH-12)
     "tree_nodes",
     "contract_versions",
@@ -85,6 +86,10 @@ EXPECTED_INDEXES = [
     "idx_style_prefs_persona",
     # v13: 反契约沙盒 (ARCH-11)
     "idx_anti_contract_reviews_run",
+    # v18: 章节审稿 canonical 状态
+    "idx_chapter_reviews_project_chapter",
+    "idx_chapter_reviews_status",
+    "idx_chapter_reviews_one_accepted",
     # v8: 三棵树架构 (ARCH-12)
     "idx_tree_nodes_parent",
     "idx_tree_nodes_lookup",
@@ -99,10 +104,10 @@ EXPECTED_INDEXES = [
 
 
 class TestSchemaTables:
-    """验证所有 38 张业务表存在"""
+    """验证所有 39 张业务表存在"""
 
     def test_all_tables_exist(self, db):
-        """init_project_db() 应创建全部 38 张业务表"""
+        """init_project_db() 应创建全部 39 张业务表"""
         rows = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_schema_%' ORDER BY name"
         ).fetchall()
@@ -207,6 +212,35 @@ class TestCheckConstraints:
             db.execute(
                 "INSERT INTO writing_fact_anchors (anchor_id, project_id, anchor_type, anchor_key, anchor_value, confidence) "
                 "VALUES ('a1', ?, 'character_state', 'key', 'val', 1.5)", (pid,)
+            )
+
+    def test_chapter_review_status_invalid(self, db):
+        """writing_chapter_reviews.status 只接受 canonical 审稿状态。"""
+        pid = self._insert_project(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_chapter_reviews "
+                "(review_id, project_id, chapter_key, status) "
+                "VALUES ('rv1', ?, 'v01.c02', 'draft')",
+                (pid,),
+            )
+
+    def test_chapter_review_status_valid(self, db):
+        """v18: 章节审稿表接受 accepted/needs_revision/rejected/superseded。"""
+        pid = self._insert_project(db)
+        for idx, status in enumerate([
+            "accepted", "needs_revision", "rejected", "superseded",
+        ]):
+            db.execute(
+                "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+                "VALUES (?, ?, ?, 'completed')",
+                (f"srv_{idx}", pid, f"run_{idx}"),
+            )
+            db.execute(
+                "INSERT INTO writing_chapter_reviews "
+                "(review_id, project_id, chapter_key, run_id, status) "
+                "VALUES (?, ?, 'v01.c02', ?, ?)",
+                (f"rv_{idx}", pid, f"run_{idx}", status),
             )
         with pytest.raises(sqlite3.IntegrityError):
             db.execute(
@@ -431,6 +465,32 @@ class TestUniqueConstraints:
                 "INSERT INTO writing_shots (shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
                 "VALUES ('sh2', ?, 'run_01', 'v01.c01', 1, 'pending')", (pid,)
             )
+
+    def test_chapter_reviews_only_one_accepted_per_chapter(self, db):
+        """v18: 每个项目章节只能有一个 accepted canonical。"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', 'test')")
+        for idx in range(1, 4):
+            db.execute(
+                "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+                "VALUES (?, 'p1', ?, 'completed')",
+                (f"s{idx}", f"run_0{idx}"),
+            )
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status) "
+            "VALUES ('rv1', 'p1', 'v01.c02', 'run_01', 'accepted')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_chapter_reviews "
+                "(review_id, project_id, chapter_key, run_id, status) "
+                "VALUES ('rv2', 'p1', 'v01.c02', 'run_02', 'accepted')"
+            )
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status) "
+            "VALUES ('rv3', 'p1', 'v01.c02', 'run_03', 'rejected')"
+        )
 
 
 class TestForeignKeys:

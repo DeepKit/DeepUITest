@@ -3,7 +3,7 @@
 > 版本：v1.1（2026-06-27）
 > 决策编号：ARCH-12
 > 依赖：8 层层级设计（`design-8layer-hierarchy.md`）
-> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.1 补充 accepted canonical 待硬化边界）
+> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.2 补充 accepted canonical selector）
 
 ---
 
@@ -407,9 +407,15 @@ CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
 
 `shot_revisions.is_current` 是**封版标记**——只在封版时设置一次，之后不再随新生成而更新。`writing_shots.current_revision_id` 指向最新 revision（始终随新生成而更新），当封版后也指向封版版本（两者一致）。
 
-**生产硬化补充（2026-06-27）**：
+**accepted canonical 补充（2026-06-28，Schema v18）**：
 
-`shot_revisions.text` 仍是正文文本的存储真相源，但“哪一版可被后续章节当作正式正文”还必须由 accepted canonical selector 决定。当前实现已先收紧为当前 run 的 `done_green/done_yellow + current_revision_id` 才可自动导出；下一阶段 CORE-1 必须把 `review --accept/--revise/--reject` 写入 DB canonical 状态，使 reject/abort/crash 产物不进入默认上下文、事实锚点和正式导出。
+`shot_revisions.text` 仍是正文文本的存储真相源，但“哪一版可被后续章节当作正式正文”由 `writing_chapter_reviews` 的 accepted canonical selector 决定。
+
+- `run --chapter` 完成后的自动导出是当前 run 审稿稿，只证明该 run 通过 L3/L4，不等于正式正文。
+- `review --accept` 写入 `writing_chapter_reviews(status='accepted')`；同一项目/章节只允许一个 accepted run。
+- `review --revise/--reject` 写入 `needs_revision/rejected`，并把该 run 本章绿/黄 shot 退回 `redo`。
+- 默认 `ink export`、跨章 previous context、历史 fact anchors 只读取 accepted 章节或 locked baseline；`--draft` 才导出未 accepted 审稿稿。
+- 尚未完成的是 CORE-2：logical shot 与 run attempt shot 身份拆分，避免同章多次重写复用旧 `shot_id`。
 
 ---
 

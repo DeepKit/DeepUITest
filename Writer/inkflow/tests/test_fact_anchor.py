@@ -82,8 +82,74 @@ class TestFactAnchorExtraction:
         """get_active_anchors should return anchors from any shot."""
         text = "阿坤醒了。他拿起钥匙。"
         extractor.extract("sh1", "run_01", text, "rev1")
-        active = extractor.get_active_anchors(limit=10)
+        active = extractor.get_active_anchors(limit=10, run_id="run_01")
         assert len(active) >= 1
+
+    def test_get_active_anchors_excludes_unaccepted_old_runs(self, extractor):
+        """Without current run, only accepted/baseline anchors are canonical."""
+        db = extractor.db
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s2', 'p1', 'run_02', 'completed')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+            "VALUES ('sh2', 'p1', 'run_02', 'v01.c03', 1, 'done_green', 'rev2')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c2', 'p1', 'run_02', 'sh2', 'v01.c03', 'locked', 'h2', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, attempt_id) "
+            "VALUES ('rev2', 'sh2', 'run_02', 'c2', 1, 'write_generate', 'test2', 'hash2', 'att2')"
+        )
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s3', 'p1', 'run_03', 'completed')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+            "VALUES ('sh3', 'p1', 'run_03', 'v01.c04', 1, 'done_green', 'rev3')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c3', 'p1', 'run_03', 'sh3', 'v01.c04', 'locked', 'h3', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, attempt_id) "
+            "VALUES ('rev3', 'sh3', 'run_03', 'c3', 1, 'write_generate', 'test3', 'hash3', 'att3')"
+        )
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status) "
+            "VALUES ('review3', 'p1', 'v01.c04', 'run_03', 'accepted')"
+        )
+        db.commit()
+
+        extractor.record_anchor(
+            "event_occurred", "event:unaccepted", "未接受事实", 0.8,
+            run_id="run_02", shot_id="sh2", source_revision_id="rev2",
+        )
+        extractor.record_anchor(
+            "event_occurred", "event:accepted", "已接受事实", 0.8,
+            run_id="run_03", shot_id="sh3", source_revision_id="rev3",
+        )
+
+        active = extractor.get_active_anchors(limit=10)
+        values = {anchor["anchor_value"] for anchor in active}
+        assert "已接受事实" in values
+        assert "未接受事实" not in values
 
 
 class TestFactAnchorInjection:

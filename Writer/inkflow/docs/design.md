@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.16: 全自动文学文本生产引擎 — 技术设计
+# 墨韵 (InkFlow) v3.17: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.16（Schema v17：分层裁判 hard/type/literary 维度；生产内核硬化第一批：persona prompt、L3/L4 硬停、当前 run 导出过滤、jury unavailable 归因、retry 熔断）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26
+> 版本：v3.17（Schema v18：章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节；previous context / fact anchors 排除 rejected、aborted、unaccepted 历史 run）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -11,7 +11,7 @@
 
 ## 0. 当前 P0 目标（2026-06-27）
 
-墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。当前状态是“受控试跑”，不是正式批量生产：第 2 章和第 3 章已证明方向成立，但 review/reject/abort 的 canonical 真相源、run/shot identity 重构、accepted-only export 仍是 P0 阻塞项。
+墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。当前状态是“受控试跑”，不是正式批量生产：第 2 章和第 3 章已证明方向成立，review/reject/abort 的章节级 canonical 状态机和 accepted-only export 已落地；剩余 P0 阻塞项主要是 run/shot identity 重构和真实库迁移/小样验证。
 
 ```text
 导入《分流》第 1 章人工样章
@@ -20,9 +20,10 @@
   → 提取风格指纹、事实锚点、人物声音基线
   → init 生成章以上层级契约草稿并由人类确认
   → setup --chapter 生成单章生产前校准包
-  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出
+  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出审稿稿
   → writer race + jury + gate + revision + checkpoint
-  → review --chapter 记录人工验收
+  → review --chapter 记录人工验收并写入 DB canonical 状态
+  → ink export 默认只导出 accepted 正式章节
   → 推敲系统 read-only 读取墨韵 DB 导入并独立校准
 ```
 
@@ -51,7 +52,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
   → 人类审核树状继承摘要，在任意节点注入修正
   → 确认后契约进入 confirmed 状态
   → ink setup --chapter 做单章生产前校准
-  → ink run --chapter 创建不可变契约快照，全自动生产正文，通过 L3/L4 后自动导出
+  → ink run --chapter 创建不可变契约快照，全自动生产正文，通过 L3/L4 后自动导出审稿稿
   → 每个 Shot 完成后写入检查点 (D-14)
   → 绿灯/黄灯 Shot 直接进入正文版本链，绿灯自动提取 9 类事实锚点 (D-19)
   → 红灯 Shot 写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
@@ -59,7 +60,7 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
   → 全书生产完成
   → AI 先诊断红灯原因（四层 repair 框架），修约后重跑
   → AI 优化黄灯
-  → 人类用 ink review --chapter 记录生产后判断
+  → 人类用 ink review --chapter 记录生产后判断，accepted 后才进入正式导出和历史上下文
   → Chisel scan/report/fix 做全书校准
 ```
 
@@ -96,7 +97,8 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
   → L4 Shot Gate（封板前硬停）
   → 绿/黄 shot finalize
   → 章节裁判 / L3 Chapter Gate（session complete / auto export 前硬停）
-  → 当前 run 导出
+  → 当前 run 审稿导出
+  → 人工 review accepted 后进入正式导出 selector
 ```
 
 三层裁判职责：
@@ -660,7 +662,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **38 张业务表 + `_schema_meta` 元表**（Schema v16）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
+数据库为 **39 张业务表 + `_schema_meta` 元表**（Schema v18）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -689,6 +691,7 @@ writing_repair_audit          -- repair 审计日志
 writing_exception_events      -- 异常事件
 writing_deviation_notes       -- 偏差记录
 writing_reference_pool        -- 参考样本池（正反面 + 标注）
+writing_chapter_reviews       -- 章节人工审稿 canonical 状态（accepted/rejected/revise）
 model_attempts                -- 模型调用审计
 writing_architect_gates       -- 架构师 gate 记录
 writing_outline_evaluations   -- 大纲评估记录
@@ -735,11 +738,11 @@ execution_records             -- 执行树正文（per-run）
 - `shot_id` = `layer_key + ".s" + zfill(shot_index, 2)` = `v01.c02.s03`
 - 排序：字典序即可（零填充保证）
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v16，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v18，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v16 总计 38 张业务表 + `_schema_meta` 元表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v18 总计 39 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。

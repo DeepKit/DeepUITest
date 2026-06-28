@@ -183,8 +183,8 @@ def _build_previous_context(
     if not pov_character:
         return []
 
-    # 1. Find same POV character's previous shot across ALL runs
-    # (cross-chapter: ch3 郑坤 should see ch2 郑坤's last state)
+    # 1. Find same POV character's previous shot from the current run's
+    # completed earlier shots, or from human-accepted historical chapters.
     from inkflow.services.text_repository import TextRepository
     repo = TextRepository(db)
     shot = db.execute(
@@ -192,21 +192,28 @@ def _build_previous_context(
         "FROM writing_shots ws "
         "JOIN writing_shot_contracts wsc ON ws.shot_id = wsc.shot_id "
         "  AND ws.run_id = wsc.run_id "
+        "LEFT JOIN writing_chapter_reviews cr "
+        "  ON cr.project_id = ws.project_id "
+        " AND cr.chapter_key = ws.layer_key "
+        " AND cr.run_id = ws.run_id "
+        " AND cr.status = 'accepted' "
         "WHERE ws.shot_status IN ('done_green', 'done_yellow') "
+        "  AND ws.current_revision_id IS NOT NULL "
         "  AND json_extract(wsc.pov_routing_json, '$.pov_character') = ? "
         "  AND (? IS NULL OR ws.project_id = ?) "
-        "ORDER BY ws.layer_key DESC, ws.shot_index DESC LIMIT 1",
-        (pov_character, project_id, project_id),
+        "  AND ("
+        "    (ws.run_id = ? AND ws.shot_index < ?) "
+        "    OR cr.review_id IS NOT NULL"
+        "  ) "
+        "ORDER BY CASE WHEN ws.run_id = ? THEN 0 ELSE 1 END, "
+        "ws.layer_key DESC, ws.shot_index DESC LIMIT 1",
+        (
+            pov_character, project_id, project_id,
+            run_id, current_index + 1, run_id,
+        ),
     ).fetchone()
     if shot:
         text = repo.get_shot_text(shot["shot_id"])
-        return [{
-            "shot_index": shot["shot_index"],
-            "text": _summarize_text(text, 100),
-        }]
-
-    if shot:
-        text = shot["text"]
         return [{
             "shot_index": shot["shot_index"],
             "text": _summarize_text(text, 100),
@@ -359,6 +366,98 @@ def _chapter_completion_issues(db, run_id: str, chapter: str | None) -> list[str
         elif not row["current_revision_id"]:
             issues.append(f"s{row['shot_index']:02d}:missing_revision")
     return issues
+
+
+def _latest_chapter_run(db, project_id: str, chapter: str) -> dict | None:
+    row = db.execute(
+        "SELECT ws.run_id, s.session_id, s.status, s.created_at "
+        "FROM writing_shots ws "
+        "JOIN writing_sessions s ON s.run_id = ws.run_id "
+        "WHERE ws.project_id = ? AND ws.layer_key = ? "
+        "GROUP BY ws.run_id "
+        "ORDER BY s.created_at DESC LIMIT 1",
+        (project_id, chapter),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _chapter_l3_passed(db, run_id: str, chapter: str) -> bool:
+    row = db.execute(
+        "SELECT status FROM writing_architect_gates "
+        "WHERE run_id = ? AND level = 'L3' AND scope_key = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (run_id, chapter),
+    ).fetchone()
+    return bool(row and row["status"] == "passed")
+
+
+def _record_chapter_review_db(
+    db,
+    *,
+    project_id: str,
+    chapter: str,
+    run_id: str | None,
+    status: str,
+    review_text: str,
+    notes: str | None,
+    exported_path: Path,
+    shot_stats: list[dict],
+) -> None:
+    import json
+    from inkflow.utils.ulid import generate as generate_ulid
+
+    if status in ("accepted", "needs_revision", "rejected"):
+        db.execute(
+            "UPDATE writing_chapter_reviews SET status = 'superseded', "
+            "updated_at = datetime('now') "
+            "WHERE project_id = ? AND chapter_key = ? AND status = 'accepted'",
+            (project_id, chapter),
+        )
+
+    if status in ("needs_revision", "rejected") and run_id:
+        db.execute(
+            "UPDATE writing_shots SET shot_status = 'redo', "
+            "placeholder_type = 'redo_placeholder', updated_at = datetime('now') "
+            "WHERE project_id = ? AND run_id = ? AND layer_key = ? "
+            "AND shot_status IN ('done_green', 'done_yellow')",
+            (project_id, run_id, chapter),
+        )
+
+    existing = None
+    if run_id:
+        existing = db.execute(
+            "SELECT review_id FROM writing_chapter_reviews "
+            "WHERE project_id = ? AND chapter_key = ? AND run_id = ?",
+            (project_id, chapter, run_id),
+        ).fetchone()
+
+    review_id = existing["review_id"] if existing else generate_ulid()
+    payload = (
+        review_id,
+        project_id,
+        chapter,
+        run_id,
+        status,
+        review_text,
+        notes,
+        str(exported_path) if exported_path.exists() else None,
+        json.dumps(shot_stats, ensure_ascii=False),
+    )
+    if existing:
+        db.execute(
+            "UPDATE writing_chapter_reviews SET status = ?, review_text = ?, "
+            "notes = ?, exported_path = ?, shot_stats_json = ?, "
+            "updated_at = datetime('now') WHERE review_id = ?",
+            (status, review_text, notes, payload[7], payload[8], review_id),
+        )
+    else:
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status, review_text, "
+            "notes, exported_path, shot_stats_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            payload,
+        )
 
 
 def _resume_or_create_session(
@@ -1838,7 +1937,9 @@ def _run_project_inner(
 
             # Step 2: 编译 prompt（两线共用）
             motif_task = motif_tracker.generate_motif_task(shot_id)
-            active_anchors = fact_extractor.get_active_anchors(limit=5)
+            active_anchors = fact_extractor.get_active_anchors(
+                limit=5, run_id=run_id,
+            )
 
             # 构建前文上下文：仅同 POV 角色，简短摘要
             pov_routing = sc.get("pov_routing_json") or {}
@@ -3146,6 +3247,40 @@ def review_project(
         db.close()
         raise click.ClickException(f"项目 '{project}' 尚未初始化。")
 
+    project_id = project_row["project_id"]
+    latest_run = _latest_chapter_run(db, project_id, chapter)
+    run_id = latest_run["run_id"] if latest_run else None
+
+    if accept:
+        if not latest_run:
+            db.close()
+            raise click.ClickException(
+                f"章节 {chapter} 没有可接受的生产 run，不能标记为 accepted。"
+            )
+        if latest_run["status"] != "completed":
+            db.close()
+            raise click.ClickException(
+                f"章节 {chapter} 最新 run 状态为 {latest_run['status']}，"
+                "只有 completed run 可以 accepted。"
+            )
+        completion_issues = _chapter_completion_issues(db, latest_run["run_id"], chapter)
+        if completion_issues:
+            db.close()
+            raise click.ClickException(
+                "章节仍有未封板 shot，不能 accepted；"
+                f"未完成项: {', '.join(completion_issues)}"
+            )
+        if not _chapter_l3_passed(db, latest_run["run_id"], chapter):
+            db.close()
+            raise click.ClickException(
+                "L3 章节 Gate 未通过或未记录，不能 accepted。"
+            )
+
+    stat_where = "project_id = ? AND layer_key = ?"
+    stat_params: list[object] = [project_id, chapter]
+    if run_id:
+        stat_where += " AND run_id = ?"
+        stat_params.append(run_id)
     shot_stats = [
         {
             "shot_status": row["shot_status"],
@@ -3154,9 +3289,9 @@ def review_project(
         }
         for row in db.execute(
             "SELECT shot_status, light_status, COUNT(*) AS cnt "
-            "FROM writing_shots WHERE project_id = ? AND layer_key = ? "
+            f"FROM writing_shots WHERE {stat_where} "
             "GROUP BY shot_status, light_status",
-            (project_row["project_id"], chapter),
+            stat_params,
         ).fetchall()
     ]
 
@@ -3169,6 +3304,7 @@ def review_project(
         "project": project,
         "chapter": chapter,
         "status": status,
+        "run_id": run_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "review": revise or notes or "",
         "notes": notes,
@@ -3181,9 +3317,22 @@ def review_project(
     }
     review_path = _chapter_review_path(project, chapter)
     _write_yaml_file(review_path, review_data)
+    _record_chapter_review_db(
+        db,
+        project_id=project_id,
+        chapter=chapter,
+        run_id=run_id,
+        status=status,
+        review_text=revise or notes or "",
+        notes=notes,
+        exported_path=exported_path,
+        shot_stats=shot_stats,
+    )
+    db.commit()
     db.close()
 
     click.echo(f"人工审稿结论已记录: {review_path}")
+    click.echo("DB canonical 状态已更新。")
     click.echo(f"状态: {status}")
     if status == "accepted":
         _next_steps(f"ink setup \"{project}\" --chapter <下一章>")
@@ -3293,13 +3442,21 @@ def status_project(project: str):
 @click.option("--chapter", default=None, help="章节 key，如 v01.c02（默认全部）")
 @click.option("--output", "-o", default=None, help="输出文件路径（默认 正文/ 目录）")
 @click.option("--plain", is_flag=True, help="纯文本模式（无标注，无标题）")
-def export_project(project: str, chapter: str | None, output: str | None, plain: bool):
+@click.option("--draft", is_flag=True, help="导出未人工 accepted 的封板稿（调试/审稿用）")
+def export_project(
+    project: str,
+    chapter: str | None,
+    output: str | None,
+    plain: bool,
+    draft: bool,
+):
     """导出当前修订为 Markdown 文件。
 
     \b
     示例:
       ink export "分流"                        # 导出全部章节
       ink export "分流" --chapter v01.c02      # 仅导出第 2 章
+      ink export "分流" --chapter v01.c02 --draft  # 导出未 accepted 的审稿稿
       ink export "分流" --plain -o out.txt     # 纯文本导出
     """
     from inkflow.db import init_project_db
@@ -3325,10 +3482,15 @@ def export_project(project: str, chapter: str | None, output: str | None, plain:
         chapter_suffix = f"_{chapter}" if chapter else ""
         out_path = export_dir / f"{project}{chapter_suffix}_导出.md"
 
+    accepted_only = not draft
     if plain:
-        result = export_plain_text(db, out_path, chapters=chapters)
+        result = export_plain_text(
+            db, out_path, chapters=chapters, accepted_only=accepted_only,
+        )
     else:
-        result = export_markdown(db, out_path, chapters=chapters)
+        result = export_markdown(
+            db, out_path, chapters=chapters, accepted_only=accepted_only,
+        )
 
     db.close()
 

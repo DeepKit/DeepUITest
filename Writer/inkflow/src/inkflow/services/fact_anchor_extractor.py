@@ -264,11 +264,33 @@ class FactAnchorExtractor:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_active_anchors(self, limit: int = 50) -> list[dict]:
-        """Get the most recent anchors for context assembly."""
+    def get_active_anchors(
+        self,
+        limit: int = 50,
+        *,
+        run_id: str | None = None,
+    ) -> list[dict]:
+        """Get canonical anchors for context assembly.
+
+        Includes anchors from the active run, human-accepted chapters, and
+        locked baseline shots. This prevents rejected/aborted runs from leaking
+        facts into later prompts.
+        """
         rows = self.db.execute(
-            "SELECT * FROM writing_fact_anchors WHERE project_id = ? "
-            "ORDER BY extracted_at DESC LIMIT ?",
-            (self.project_id, limit),
+            "SELECT fa.* FROM writing_fact_anchors fa "
+            "LEFT JOIN writing_shots ws ON ws.shot_id = fa.shot_id "
+            "LEFT JOIN writing_chapter_reviews cr "
+            "  ON cr.project_id = fa.project_id "
+            " AND cr.chapter_key = ws.layer_key "
+            " AND cr.run_id = fa.run_id "
+            " AND cr.status = 'accepted' "
+            "WHERE fa.project_id = ? "
+            "  AND ("
+            "    (? IS NOT NULL AND fa.run_id = ?) "
+            "    OR cr.review_id IS NOT NULL "
+            "    OR COALESCE(ws.is_baseline, 0) = 1"
+            "  ) "
+            "ORDER BY fa.extracted_at DESC LIMIT ?",
+            (self.project_id, run_id, run_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]

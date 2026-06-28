@@ -28,6 +28,7 @@ def export_markdown(
     title: str | None = None,
     chapters: list[str] | None = None,
     run_id: str | None = None,
+    accepted_only: bool = False,
 ) -> Path:
     """Export current revisions to Markdown.
 
@@ -62,6 +63,7 @@ def export_markdown(
             "FROM writing_shots ws "
             "LEFT JOIN writing_shot_contracts wsc "
             "  ON ws.shot_id = wsc.shot_id AND ws.run_id = wsc.run_id "
+            f"{_accepted_review_join(accepted_only)}"
             "WHERE ws.layer_key = ? "
             "  AND ws.shot_status IN ('done_green', 'done_yellow') "
             "  AND ws.current_revision_id IS NOT NULL "
@@ -105,6 +107,7 @@ def export_plain_text(
     *,
     chapters: list[str] | None = None,
     run_id: str | None = None,
+    accepted_only: bool = False,
 ) -> Path:
     """Export current revisions as plain text (no annotations, no headers).
 
@@ -122,6 +125,7 @@ def export_plain_text(
         query = (
             "SELECT ws.shot_id "
             "FROM writing_shots ws "
+            f"{_accepted_review_join(accepted_only)}"
             "WHERE ws.layer_key = ? "
             "  AND ws.shot_status IN ('done_green', 'done_yellow') "
             "  AND ws.current_revision_id IS NOT NULL "
@@ -142,6 +146,17 @@ def export_plain_text(
 
 
 # ── helpers ──
+
+def _accepted_review_join(accepted_only: bool) -> str:
+    if not accepted_only:
+        return ""
+    return (
+        "JOIN writing_chapter_reviews cr "
+        "  ON cr.project_id = ws.project_id "
+        " AND cr.chapter_key = ws.layer_key "
+        " AND cr.run_id = ws.run_id "
+        " AND cr.status = 'accepted' "
+    )
 
 def _resolve_title(db: sqlite3.Connection) -> str:
     row = db.execute("SELECT name FROM projects LIMIT 1").fetchone()

@@ -1,10 +1,10 @@
-# InkFlow v3.16 Phase 1 实现契约 v1.4
+# InkFlow v3.17 Phase 1 实现契约 v1.5
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + 生产内核硬化第一批）
-> 日期：2026-06-17；最近对齐：2026-06-26
-> 当前范围：DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证，当前只能受控试跑。正式生产阻塞项是 canonical accepted truth source、run/shot identity 重构和 accepted-only export。
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机）
+> 日期：2026-06-17；最近对齐：2026-06-28
+> 当前范围：DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v18）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证，当前只能受控试跑。canonical accepted truth source 与 accepted-only export 已落地；正式生产阻塞项是 run/shot identity 重构和真实库迁移/小样验证。
 
 ---
 
@@ -20,9 +20,10 @@ D:\_Progs\.Story\《分流》
   → 提取风格指纹 / 事实锚点 / 人物声音基线
   → init 多轮交互形成 contract-draft.yaml 并确认元契约
   → setup --chapter 编译单章生产前校准包
-  → run --chapter 逐 shot 生成目标章节，通过 L3/L4 后自动导出
+  → run --chapter 逐 shot 生成目标章节，通过 L3/L4 后自动导出审稿稿
   → writer race + jury + gate + revision + checkpoint
-  → 章完成报告
+  → review --chapter 写入章节级 canonical 状态
+  → accepted 后进入正式导出和后续历史上下文
   → Chesil read-only 导入 InkFlow DB 到自己的 story.db
 ```
 
@@ -36,7 +37,7 @@ P0 固定边界：
 | 生成目标 | 按章生成，严格执行该章 chapter_N_events，只允许补充细节 |
 | 人类介入 | init / contract / chapter setup 阶段确认；run 阶段不中断；review 阶段记录判断 |
 | Gate 硬停 | L4 必须在 shot finalize 前通过；L3 必须在 session complete / auto export 前通过 |
-| 导出边界 | 自动导出只取当前 run 的 done_green/done_yellow 且有 current_revision_id 的正文 |
+| 导出边界 | `run` 自动导出只取当前 run 的 done_green/done_yellow 且有 current_revision_id 的审稿稿；默认 `ink export` 只取 accepted canonical 正式章节 |
 | 红灯 | best-failed placeholder 不断流 |
 | 成本 | 不作为开发和运行约束；记录 usage，但不设成本确认门 |
 | 模型 | 每书 `.inkflow/.models` 配置功能与模型候选/兜底关系 |
@@ -44,14 +45,16 @@ P0 固定边界：
 
 P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-calibrate、完整 contract dashboard、Chesil 反向提取契约、成本估算确认门。
 
-### 0.1 下一阶段必须固化的 canonical 规则
+### 0.1 canonical 正文规则（Schema v18 已落地）
 
-当前实现已收紧当前 run 的封板/导出边界，但尚未完成 DB canonical 状态机。下一阶段 v18/schema 迁移必须满足：
+当前实现区分“审稿稿”和“正式稿”：
 
-1. `review --accept` 产生章节级 accepted/sealed canonical 状态。
-2. `review --revise/--reject` 必须使对应章节不可被默认 previous context、事实锚点和导出 selector 当作正式正文。
-3. `sessions abort/crash` 后的非正式 revision 只能用于排障，不进入后续章节上下文。
-4. stable logical shot 与 run attempt identity 必须分离，同一章节重写不能复用旧 shot 导致跳过旧正文。
+1. `run --chapter` 完成后自动导出当前 `run_id` 的审稿稿，不代表正式正文。
+2. `review --accept` 产生章节级 accepted canonical 状态；同一项目/章节只允许一个 accepted run。
+3. `review --revise/--reject` 记录 DB 状态，并把该 run 本章 `done_green/done_yellow` shot 退回 `redo`，后续不能被默认 previous context、事实锚点和正式导出当作正式正文。
+4. 默认 `ink export` 只取 accepted canonical；`ink export --draft` 才取未 accepted 的当前封板稿用于审稿/排障。
+5. previous context 只读取当前 run 前序 shot 或 accepted 历史章节；fact anchors 只读取当前 run、accepted 章节或 locked baseline。
+6. stable logical shot 与 run attempt identity 尚未分离，同一章节重写不能复用旧 shot 导致跳过旧正文，这是 CORE-2。
 
 ## 1. CLI 命令面（冻结为 `ink <verb>`）
 
@@ -62,8 +65,9 @@ P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-ca
 | `ink confirm-contract <project>` | 兼容/内部命令：确认 `contract-draft.yaml` 并写入 confirmed 元契约 |
 | `ink import-baseline <project> --chapter <key> --file <path>` | 导入人工样章为 locked baseline |
 | `ink review-shots <project> --chapter <key>` | 审核/确认 baseline shot 边界 |
-| `ink run <project> --chapter <key> [flags]` | 全自动生产；L3/L4 通过后自动导出 |
-| `ink review <project> --chapter <key> --accept/--revise/--reject` | 记录生产后人工验收 |
+| `ink run <project> --chapter <key> [flags]` | 全自动生产；L3/L4 通过后自动导出当前 run 审稿稿 |
+| `ink review <project> --chapter <key> --accept/--revise/--reject` | 记录生产后人工验收，并写入 DB canonical 状态 |
+| `ink export <project> [--chapter key] [--draft]` | 默认导出 accepted 正式稿；`--draft` 导出未 accepted 审稿稿 |
 | `ink repair <project> --red / --yellow` | AI 修红/修黄 |
 | `ink resume <session_id>` | 崩溃恢复 |
 | `ink sessions list` | 查看所有未完成 Session |
@@ -187,8 +191,9 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（38 张业务表 + `_schema_meta` 元表，Schema v17）
+## 3. DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v18）
 
+> v18 变更（2026-06-28，accepted canonical）：新增 `writing_chapter_reviews` 表，记录章节人工审稿状态；默认正式导出、历史 previous context 和 fact anchors 均以 accepted canonical selector 为边界。
 > v17 变更（2026-06-26，分层裁判）：`writing_jury_scores.dimension` 新增 `hard_rule_compliance` 与文学 9 维。Jury 流程变为硬规则 → 类型职责 → 文学 9 维 trimmed mean。类型维度仅在对应 shot_profile 启用。
 > v16 变更（2026-06-25，B41）：`model_attempts.phase` 新增 `outline_evaluate`、`constitution_generate`、`architect_chapter_rhythm(_retry)`、`architect_volume_rhythm(_retry)`，避免架构/大纲模型调用审计被 CHECK 约束静默丢弃。
 > v15 变更（2026-06-25，CREATIVE-2）：`shot_revisions.operation` 新增 `write_polish`；`model_attempts.phase` 新增 `polish`。winner 后处理精修必须通过 `parent_revision_id` 指向原 winner revision。
@@ -718,7 +723,33 @@ CREATE TABLE writing_reference_pool (
 );
 ```
 
-### 3.3 Phase 1 最小表集（25 张表，v7 已有）
+#### `writing_chapter_reviews`（Schema v18）
+
+```sql
+CREATE TABLE writing_chapter_reviews (
+  review_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  chapter_key TEXT NOT NULL,
+  run_id TEXT REFERENCES writing_sessions(run_id),
+  status TEXT NOT NULL CHECK (status IN ('accepted','needs_revision','rejected','superseded')),
+  review_text TEXT,
+  notes TEXT,
+  exported_path TEXT,
+  shot_stats_json JSON NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(project_id, chapter_key, run_id)
+);
+CREATE INDEX idx_chapter_reviews_project_chapter
+  ON writing_chapter_reviews(project_id, chapter_key);
+CREATE INDEX idx_chapter_reviews_status
+  ON writing_chapter_reviews(status);
+CREATE UNIQUE INDEX idx_chapter_reviews_one_accepted
+  ON writing_chapter_reviews(project_id, chapter_key)
+  WHERE status = 'accepted';
+```
+
+### 3.3 核心业务表索引（含 v18 之前新增表）
 
 ```
 projects
@@ -731,6 +762,7 @@ writing_motif_definitions / writing_motif_instances / writing_motif_tracker
 writing_writer_profiles / writing_jury_config / writing_jury_scores
 writing_repair_audit / writing_exception_events / writing_deviation_notes
 writing_project_config / writing_reference_pool
+writing_chapter_reviews  -- v18 accepted canonical
 writing_information_gaps / writing_chapter_rhythms  -- v6/v7 新增
 ```
 

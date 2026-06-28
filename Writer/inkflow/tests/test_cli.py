@@ -11,6 +11,7 @@ from inkflow.cli import (
     _extract_chapter_2_events,
     _extract_chapter_events,
     _format_jury_draft_score,
+    _build_previous_context,
     _jury_unavailable_detail,
     _jury_verdict_all_unavailable,
     _validate_chapter_run_preflight,
@@ -408,10 +409,45 @@ class TestChapterSetupSmoke:
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock
         import inkflow.cli as cli
+        from inkflow.db import open_db
 
         story_dir = sample_project / "_Story" / "《测试》"
         db_path = story_dir / ".inkflow" / "inkflow.db"
         review_path = story_dir / ".inkflow" / "chapter-reviews" / "v01.c03.yaml"
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_review', 'p1', 'run_review', 'completed')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, "
+            "light_status, current_revision_id) "
+            "VALUES ('shot_review', 'p1', 'run_review', 'v01.c03', 1, "
+            "'done_green', 'green', 'rev_review')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('contract_review', 'p1', 'run_review', 'shot_review', "
+            "'v01.c03', 'locked', 'hash_review', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, is_current, attempt_id) "
+            "VALUES ('rev_review', 'shot_review', 'run_review', 'contract_review', 1, "
+            "'write_generate', '审稿正文。', 'text_hash_review', 1, 'attempt_review')"
+        )
+        db.execute(
+            "INSERT INTO writing_architect_gates "
+            "(gate_id, run_id, level, scope_key, status, check_result_json) "
+            "VALUES ('gate_review_l3', 'run_review', 'L3', 'v01.c03', "
+            "'passed', '{\"passed\":true}')"
+        )
+        db.commit()
+        db.close()
 
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
@@ -425,6 +461,72 @@ class TestChapterSetupSmoke:
         content = review_path.read_text(encoding="utf-8")
         assert "inkflow.chapter_review.v1" in content
         assert "accepted" in content
+        assert "run_review" in content
+        db = open_db(db_path)
+        row = db.execute(
+            "SELECT status, run_id FROM writing_chapter_reviews "
+            "WHERE project_id = 'p1' AND chapter_key = 'v01.c03'"
+        ).fetchone()
+        db.close()
+        assert row["status"] == "accepted"
+        assert row["run_id"] == "run_review"
+
+    def test_review_reject_invalidates_latest_run_shots(self, runner, sample_project, tmp_dir):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        story_dir = sample_project / "_Story" / "《测试》"
+        db_path = story_dir / ".inkflow" / "inkflow.db"
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_reject', 'p1', 'run_reject', 'completed')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, "
+            "light_status, current_revision_id) "
+            "VALUES ('shot_reject', 'p1', 'run_reject', 'v01.c04', 1, "
+            "'done_green', 'green', 'rev_reject')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('contract_reject', 'p1', 'run_reject', 'shot_reject', "
+            "'v01.c04', 'locked', 'hash_reject', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, is_current, attempt_id) "
+            "VALUES ('rev_reject', 'shot_reject', 'run_reject', 'contract_reject', 1, "
+            "'write_generate', '被拒正文。', 'text_hash_reject', 1, 'attempt_reject')"
+        )
+        db.commit()
+        db.close()
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            result = runner.invoke(
+                main,
+                ["review", "测试", "--chapter", "v01.c04", "--reject", "--notes", "整体重写"],
+            )
+
+        assert result.exit_code == 0, result.output
+        db = open_db(db_path)
+        shot = db.execute(
+            "SELECT shot_status, placeholder_type FROM writing_shots "
+            "WHERE shot_id = 'shot_reject'"
+        ).fetchone()
+        review = db.execute(
+            "SELECT status FROM writing_chapter_reviews WHERE run_id = 'run_reject'"
+        ).fetchone()
+        db.close()
+        assert shot["shot_status"] == "redo"
+        assert shot["placeholder_type"] == "redo_placeholder"
+        assert review["status"] == "rejected"
 
 
 class TestConstitutionCommand:
@@ -752,7 +854,9 @@ class TestExportSmoke:
 
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
-            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+            result = runner.invoke(
+                main, ["export", "测试", "--chapter", "v01.c02", "--draft"],
+            )
 
         assert result.exit_code == 0, result.output
         content = out_path.read_text(encoding="utf-8")
@@ -811,7 +915,9 @@ class TestExportSmoke:
 
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
-            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+            result = runner.invoke(
+                main, ["export", "测试", "--chapter", "v01.c02", "--draft"],
+            )
 
         assert result.exit_code == 0, result.output
         content = out_path.read_text(encoding="utf-8")
@@ -878,7 +984,9 @@ class TestExportSmoke:
 
         with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
              mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
-            result = runner.invoke(main, ["export", "测试", "--chapter", "v01.c02"])
+            result = runner.invoke(
+                main, ["export", "测试", "--chapter", "v01.c02", "--draft"],
+            )
 
         assert result.exit_code == 0, result.output
         content = out_path.read_text(encoding="utf-8")
@@ -942,6 +1050,116 @@ class TestExportSmoke:
         assert "### 新镜" in content
         assert "旧 run 正文。" not in content
         assert "### 旧镜" not in content
+
+    def test_markdown_export_accepted_only_uses_reviewed_run(self, db, tmp_dir):
+        """正式导出应只取人工 accepted 的章节 run。"""
+        from inkflow.export import export_markdown
+
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        for run_id, session_id, shot_id, contract_id, revision_id, title, text in [
+            ("run_rejected", "sess_rejected", "shot_rejected", "contract_rejected", "rev_rejected", "退稿", "不应导出。"),
+            ("run_accepted", "sess_accepted", "shot_accepted", "contract_accepted", "rev_accepted", "定稿", "应导出。"),
+        ]:
+            db.execute(
+                "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+                "VALUES (?, 'p1', ?, 'completed')",
+                (session_id, run_id),
+            )
+            db.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+                "VALUES (?, 'p1', ?, 'v01.c02', 1, 'done_green', ?)",
+                (shot_id, run_id, revision_id),
+            )
+            db.execute(
+                "INSERT INTO writing_shot_contracts "
+                "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+                "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+                "VALUES (?, 'p1', ?, ?, 'v01.c02', 'locked', ?, ?, '{}', '{}')",
+                (contract_id, run_id, shot_id, f"hash_{run_id}", f'{{"title":"{title}"}}'),
+            )
+            db.execute(
+                "INSERT INTO shot_revisions "
+                "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+                "text, text_hash_normalized, is_current, attempt_id) "
+                "VALUES (?, ?, ?, ?, 1, 'write_generate', ?, ?, 1, ?)",
+                (revision_id, shot_id, run_id, contract_id, text, f"text_hash_{run_id}", f"attempt_{run_id}"),
+            )
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status) "
+            "VALUES ('review_accepted', 'p1', 'v01.c02', 'run_accepted', 'accepted')"
+        )
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status) "
+            "VALUES ('review_rejected', 'p1', 'v01.c02', 'run_rejected', 'rejected')"
+        )
+        db.commit()
+
+        out_path = export_markdown(
+            db, tmp_dir / "accepted.md", chapters=["v01.c02"], accepted_only=True,
+        )
+        content = out_path.read_text(encoding="utf-8")
+
+        assert "应导出。" in content
+        assert "### 定稿" in content
+        assert "不应导出。" not in content
+        assert "### 退稿" not in content
+
+    def test_previous_context_uses_only_accepted_historical_runs(self, db):
+        """前文上下文不应读取 rejected/unaccepted 历史 run。"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        for run_id, session_id, shot_id, contract_id, revision_id, status, text in [
+            ("run_rejected", "sess_rejected", "shot_rejected_ctx", "contract_rejected_ctx", "rev_rejected_ctx", "rejected", "退稿里的韩教授。"),
+            ("run_accepted", "sess_accepted", "shot_accepted_ctx", "contract_accepted_ctx", "rev_accepted_ctx", "accepted", "定稿里的韩教授。"),
+        ]:
+            db.execute(
+                "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+                "VALUES (?, 'p1', ?, 'completed')",
+                (session_id, run_id),
+            )
+            db.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+                "VALUES (?, 'p1', ?, 'v01.c02', 1, 'done_green', ?)",
+                (shot_id, run_id, revision_id),
+            )
+            db.execute(
+                "INSERT INTO writing_shot_contracts "
+                "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+                "snapshot_hash, must_land_json, anti_write_json, pov_routing_json, contract_json) "
+                "VALUES (?, 'p1', ?, ?, 'v01.c02', 'locked', ?, '{}', '{}', "
+                "'{\"pov_character\":\"韩教授\"}', '{}')",
+                (contract_id, run_id, shot_id, f"hash_{run_id}"),
+            )
+            db.execute(
+                "INSERT INTO shot_revisions "
+                "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+                "text, text_hash_normalized, is_current, attempt_id) "
+                "VALUES (?, ?, ?, ?, 1, 'write_generate', ?, ?, 1, ?)",
+                (revision_id, shot_id, run_id, contract_id, text, f"text_hash_{run_id}", f"attempt_{run_id}"),
+            )
+            db.execute(
+                "INSERT INTO writing_chapter_reviews "
+                "(review_id, project_id, chapter_key, run_id, status) "
+                "VALUES (?, 'p1', 'v01.c02', ?, ?)",
+                (f"review_{run_id}", run_id, status),
+            )
+        db.commit()
+
+        context = _build_previous_context(
+            db,
+            "run_current",
+            [],
+            0,
+            pov_character="韩教授",
+            project_id="p1",
+        )
+
+        assert context
+        assert "定稿里的韩教授" in context[0]["text"]
+        assert "退稿里的韩教授" not in context[0]["text"]
 
     def test_plain_text_export_strips_generated_heading_lines(self, db, tmp_dir):
         """纯文本导出也应清掉模型生成标题，并保留同块正文。"""
