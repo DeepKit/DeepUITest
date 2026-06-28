@@ -4,6 +4,8 @@ P0 commands:
   ink init <project>
   ink setup <project> --chapter <key>
   ink run <project> --chapter <key>
+  ink run-book <project> --from <chapter> --to <chapter>
+  ink book-report <project> [--book-run <id>]
   ink review <project> --chapter <key> --accept/--revise/--reject
   ink import-baseline <project> --chapter <key> --file <path>
   ink review-shots <project> --chapter <key>
@@ -64,6 +66,34 @@ def _derive_baseline_chapter(chapter: str) -> str:
     elif vol > 1:
         return f"v{vol - 1:02d}.c01"  # caller should resolve last chapter
     return "v01.c01"
+
+
+def _parse_chapter_key(chapter: str) -> tuple[int, int]:
+    """Parse vNN.cNN into numeric volume/chapter parts."""
+    import re
+    m = re.match(r"^v(\d{2})\.c(\d{2})$", chapter or "")
+    if not m:
+        raise click.ClickException(
+            f"章节 key 格式错误: {chapter!r}，应为 vNN.cNN，例如 v01.c02。"
+        )
+    return int(m.group(1)), int(m.group(2))
+
+
+def _format_chapter_key(volume: int, chapter: int) -> str:
+    return f"v{volume:02d}.c{chapter:02d}"
+
+
+def _chapter_range(from_chapter: str, to_chapter: str) -> list[str]:
+    """Build an inclusive chapter range for a single volume."""
+    from_volume, from_num = _parse_chapter_key(from_chapter)
+    to_volume, to_num = _parse_chapter_key(to_chapter)
+    if from_volume != to_volume:
+        raise click.ClickException(
+            "当前 run-book 仅支持同一卷内连续章节；跨卷请按卷分批运行。"
+        )
+    if to_num < from_num:
+        raise click.ClickException("--to 不能早于 --from。")
+    return [_format_chapter_key(from_volume, n) for n in range(from_num, to_num + 1)]
 
 
 def _compute_brilliance_level(score: float) -> str:
@@ -166,6 +196,7 @@ def _build_previous_context(
     db, run_id: str, baseline_shots: list[dict], current_index: int,
     pov_character: str | None = None,
     project_id: str | None = None,
+    book_run_id: str | None = None,
 ) -> list[dict]:
     """Build previous-shots context — only for the SAME POV character.
 
@@ -184,7 +215,8 @@ def _build_previous_context(
         return []
 
     # 1. Find same POV character's previous shot from the current run's
-    # completed earlier shots, or from human-accepted historical chapters.
+    # completed earlier shots, human-accepted historical chapters, or completed
+    # earlier draft chapters in the same book_run.
     from inkflow.services.text_repository import TextRepository
     repo = TextRepository(db)
     shot = db.execute(
@@ -197,18 +229,23 @@ def _build_previous_context(
         " AND cr.chapter_key = ws.layer_key "
         " AND cr.run_id = ws.run_id "
         " AND cr.status = 'accepted' "
+        "LEFT JOIN writing_book_run_chapters brc "
+        "  ON brc.book_run_id = ? "
+        " AND brc.run_id = ws.run_id "
+        " AND brc.status = 'completed' "
         "WHERE ws.shot_status IN ('done_green', 'done_yellow') "
         "  AND ws.current_revision_id IS NOT NULL "
         "  AND json_extract(wsc.pov_routing_json, '$.pov_character') = ? "
         "  AND (? IS NULL OR ws.project_id = ?) "
         "  AND ("
         "    (ws.run_id = ? AND ws.shot_index < ?) "
+        "    OR brc.book_run_chapter_id IS NOT NULL "
         "    OR cr.review_id IS NOT NULL"
         "  ) "
         "ORDER BY CASE WHEN ws.run_id = ? THEN 0 ELSE 1 END, "
         "ws.layer_key DESC, ws.shot_index DESC LIMIT 1",
         (
-            pov_character, project_id, project_id,
+            book_run_id, pov_character, project_id, project_id,
             run_id, current_index + 1, run_id,
         ),
     ).fetchone()
@@ -1525,6 +1562,7 @@ def _print_constitution(constitution: dict) -> None:
 @click.option("--resume", is_flag=True, help="从断点恢复")
 @click.option("--local-jury", is_flag=True, help="本次运行强制使用 local-default 评委")
 @click.option("--session-id", "resume_session_id", default=None, hidden=True)
+@click.option("--book-run-id", default=None, hidden=True)
 def run_project(
     project: str,
     chapter: str | None,
@@ -1534,6 +1572,7 @@ def run_project(
     resume: bool,
     local_jury: bool,
     resume_session_id: str | None,
+    book_run_id: str | None,
 ):
     """全自动生产。
 
@@ -1557,7 +1596,7 @@ def run_project(
         try:
             _run_project_inner(
                 db, db_path, project, chapter, shot_id, writer_count,
-                shot_count, resume, resume_session_id, local_jury,
+                shot_count, resume, resume_session_id, local_jury, book_run_id,
             )
         except Exception:
             _mark_latest_active_session_crashed(db, project, chapter)
@@ -1568,7 +1607,7 @@ def run_project(
 
 def _run_project_inner(
     db, db_path, project, chapter, shot_id, writer_count, shot_count, resume,
-    resume_session_id=None, local_jury=False,
+    resume_session_id=None, local_jury=False, book_run_id=None,
 ):
     """Inner run logic — db is guaranteed to be closed by the caller."""
     from inkflow.services import (
@@ -1676,6 +1715,7 @@ def _run_project_inner(
         snapshot_data={
             "chapter": chapter,
             "writer_count": writer_count,
+            "book_run_id": book_run_id,
             "chapter_setup": {
                 "schema": chapter_setup.get("schema"),
                 "chapter": chapter_setup.get("chapter"),
@@ -1938,7 +1978,7 @@ def _run_project_inner(
             # Step 2: 编译 prompt（两线共用）
             motif_task = motif_tracker.generate_motif_task(shot_id)
             active_anchors = fact_extractor.get_active_anchors(
-                limit=5, run_id=run_id,
+                limit=5, run_id=run_id, book_run_id=book_run_id,
             )
 
             # 构建前文上下文：仅同 POV 角色，简短摘要
@@ -1951,7 +1991,7 @@ def _run_project_inner(
             pov_character = pov_routing.get("pov_character")
             previous_shots = _build_previous_context(
                 db, run_id, baseline_shots, i, pov_character=pov_character,
-                project_id=project_id,
+                project_id=project_id, book_run_id=book_run_id,
             )
 
             # D-25: 获取当前活跃的信息差
@@ -2844,6 +2884,355 @@ def _print_scope_report(
     click.echo("═" * 50)
 
 
+# ── book-run orchestration ─────────────────────────────────────────────────
+
+
+def _create_book_run(
+    db,
+    *,
+    project_id: str,
+    from_chapter: str,
+    to_chapter: str,
+    chapters: list[str],
+    options: dict,
+) -> str:
+    import json
+    from inkflow.utils.ulid import generate as generate_ulid
+
+    book_run_id = generate_ulid()
+    db.execute(
+        "INSERT INTO writing_book_runs "
+        "(book_run_id, project_id, from_chapter, to_chapter, total_chapters, "
+        "options_json) VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            book_run_id, project_id, from_chapter, to_chapter, len(chapters),
+            json.dumps(options, ensure_ascii=False),
+        ),
+    )
+    for order, chapter in enumerate(chapters, start=1):
+        db.execute(
+            "INSERT INTO writing_book_run_chapters "
+            "(book_run_chapter_id, book_run_id, project_id, chapter_key, chapter_order) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (generate_ulid(), book_run_id, project_id, chapter, order),
+        )
+    db.commit()
+    return book_run_id
+
+
+def _load_book_run(db, project_id: str, book_run_id: str | None) -> dict | None:
+    if book_run_id:
+        row = db.execute(
+            "SELECT * FROM writing_book_runs "
+            "WHERE project_id = ? AND book_run_id = ?",
+            (project_id, book_run_id),
+        ).fetchone()
+    else:
+        row = db.execute(
+            "SELECT * FROM writing_book_runs WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _load_book_run_chapters(db, book_run_id: str) -> list[dict]:
+    rows = db.execute(
+        "SELECT * FROM writing_book_run_chapters "
+        "WHERE book_run_id = ? ORDER BY chapter_order",
+        (book_run_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _set_book_run_status(
+    db,
+    book_run_id: str,
+    status: str,
+    *,
+    current_chapter: str | None = None,
+) -> None:
+    db.execute(
+        "UPDATE writing_book_runs SET status = ?, current_chapter = ?, "
+        "updated_at = datetime('now') WHERE book_run_id = ?",
+        (status, current_chapter, book_run_id),
+    )
+    db.commit()
+
+
+def _set_book_chapter_status(
+    db,
+    *,
+    book_run_id: str,
+    chapter: str,
+    status: str,
+    run_id: str | None = None,
+    setup_path: Path | None = None,
+    exported_path: Path | None = None,
+    failure_reason: str | None = None,
+) -> None:
+    db.execute(
+        "UPDATE writing_book_run_chapters SET status = ?, "
+        "run_id = COALESCE(?, run_id), "
+        "setup_path = COALESCE(?, setup_path), "
+        "exported_path = COALESCE(?, exported_path), "
+        "failure_reason = ?, updated_at = datetime('now') "
+        "WHERE book_run_id = ? AND chapter_key = ?",
+        (
+            status, run_id,
+            str(setup_path) if setup_path else None,
+            str(exported_path) if exported_path and exported_path.exists() else None,
+            failure_reason, book_run_id, chapter,
+        ),
+    )
+    db.commit()
+
+
+def _refresh_book_run_counts(db, book_run_id: str) -> None:
+    row = db.execute(
+        "SELECT "
+        "SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed, "
+        "SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed "
+        "FROM writing_book_run_chapters WHERE book_run_id = ?",
+        (book_run_id,),
+    ).fetchone()
+    db.execute(
+        "UPDATE writing_book_runs SET completed_chapters = ?, failed_chapters = ?, "
+        "updated_at = datetime('now') WHERE book_run_id = ?",
+        (row["completed"] or 0, row["failed"] or 0, book_run_id),
+    )
+    db.commit()
+
+
+def _book_run_chapter_export_path(project: str, chapter: str) -> Path:
+    return _STORY_BASE / f"《{project}》" / "正文" / f"{project}_{chapter}_导出.md"
+
+
+@main.command("run-book")
+@click.argument("project")
+@click.option("--from", "from_chapter", default=None, help="起始章节，如 v01.c02")
+@click.option("--to", "to_chapter", default=None, help="结束章节，如 v01.c32")
+@click.option("--book-run", "book_run_id", default=None, help="恢复/继续已有 book_run_id")
+@click.option("--writer-count", type=click.IntRange(2, 4), default=2, help="每章写手数量 (2-4)")
+@click.option("--local-jury", is_flag=True, help="本批次强制使用 local-default 评委")
+@click.option("--force-setup", is_flag=True, help="覆盖每章已有 setup 包")
+@click.option("--continue-on-fail", is_flag=True, help="单章失败后继续后续章节")
+@click.option("--resume", is_flag=True, help="继续已有 book_run 时跳过已完成章节")
+@click.option("--plan-only", is_flag=True, help="只创建/显示全书批次计划，不调用模型")
+def run_book_project(
+    project: str,
+    from_chapter: str | None,
+    to_chapter: str | None,
+    book_run_id: str | None,
+    writer_count: int,
+    local_jury: bool,
+    force_setup: bool,
+    continue_on_fail: bool,
+    resume: bool,
+    plan_only: bool,
+):
+    """全书/整卷编排生产：内部仍按章节和 shot 串行执行。"""
+    from inkflow.db import init_project_db
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+    project_row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if project_row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+    project_id = project_row["project_id"]
+
+    existing_book_run = _load_book_run(db, project_id, book_run_id)
+    if book_run_id:
+        if existing_book_run is None:
+            db.close()
+            raise click.ClickException(f"未找到 book_run: {book_run_id}")
+        chapters = [row["chapter_key"] for row in _load_book_run_chapters(db, book_run_id)]
+        from_chapter = existing_book_run["from_chapter"]
+        to_chapter = existing_book_run["to_chapter"]
+    else:
+        if not from_chapter or not to_chapter:
+            db.close()
+            raise click.ClickException("新建 book run 必须提供 --from 和 --to。")
+        chapters = _chapter_range(from_chapter, to_chapter)
+        options = {
+            "writer_count": writer_count,
+            "local_jury": local_jury,
+            "force_setup": force_setup,
+            "continue_on_fail": continue_on_fail,
+        }
+        book_run_id = _create_book_run(
+            db,
+            project_id=project_id,
+            from_chapter=from_chapter,
+            to_chapter=to_chapter,
+            chapters=chapters,
+            options=options,
+        )
+
+    click.echo(f"Book Run: {book_run_id}")
+    click.echo(f"范围: {from_chapter} → {to_chapter} ({len(chapters)} 章)")
+    if plan_only:
+        click.echo("已创建/读取计划；未调用 setup/run。")
+        db.close()
+        return
+
+    _set_book_run_status(db, book_run_id, "running", current_chapter=None)
+    failed = False
+    chapter_states = {
+        row["chapter_key"]: row
+        for row in _load_book_run_chapters(db, book_run_id)
+    }
+
+    try:
+        for chapter in chapters:
+            state = chapter_states.get(chapter, {})
+            if resume and state.get("status") == "completed":
+                click.echo(f"\n{chapter}: 已完成，跳过")
+                continue
+
+            click.echo(f"\n=== {chapter} ===")
+            _set_book_run_status(db, book_run_id, "running", current_chapter=chapter)
+            try:
+                setup_project.callback(project=project, chapter=chapter, force=force_setup)
+                setup_path = _chapter_setup_path(project, chapter)
+                _set_book_chapter_status(
+                    db,
+                    book_run_id=book_run_id,
+                    chapter=chapter,
+                    status="setup_ready",
+                    setup_path=setup_path,
+                )
+
+                _set_book_chapter_status(
+                    db,
+                    book_run_id=book_run_id,
+                    chapter=chapter,
+                    status="running",
+                )
+                run_project.callback(
+                    project=project,
+                    chapter=chapter,
+                    shot_id=None,
+                    writer_count=writer_count,
+                    shot_count=None,
+                    resume=True,
+                    local_jury=local_jury,
+                    resume_session_id=None,
+                    book_run_id=book_run_id,
+                )
+                latest_run = _latest_chapter_run(db, project_id, chapter)
+                if latest_run is None or latest_run["status"] != "completed":
+                    raise click.ClickException(
+                        f"{chapter} 未形成 completed run，不能进入 book_run completed。"
+                    )
+                _set_book_chapter_status(
+                    db,
+                    book_run_id=book_run_id,
+                    chapter=chapter,
+                    status="completed",
+                    run_id=latest_run["run_id"],
+                    exported_path=_book_run_chapter_export_path(project, chapter),
+                )
+                _refresh_book_run_counts(db, book_run_id)
+            except Exception as exc:
+                failed = True
+                reason = str(exc)
+                _set_book_chapter_status(
+                    db,
+                    book_run_id=book_run_id,
+                    chapter=chapter,
+                    status="failed",
+                    failure_reason=reason[:1000],
+                )
+                _refresh_book_run_counts(db, book_run_id)
+                click.echo(f"{chapter}: 失败: {reason}")
+                if not continue_on_fail:
+                    _set_book_run_status(db, book_run_id, "failed", current_chapter=chapter)
+                    raise
+
+        _set_book_run_status(db, book_run_id, "failed" if failed else "completed")
+    finally:
+        db.close()
+
+    click.echo()
+    click.echo(f"Book Run 完成状态: {'failed' if failed else 'completed'}")
+    _next_steps(f"ink book-report \"{project}\" --book-run {book_run_id}")
+
+
+@main.command("book-report")
+@click.argument("project")
+@click.option("--book-run", "book_run_id", default=None, help="book_run_id；默认最新")
+def book_report_project(project: str, book_run_id: str | None):
+    """查看全书/整卷批次报告，列出待审稿和待返工章节。"""
+    from inkflow.db import init_project_db
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+    project_row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,)
+    ).fetchone()
+    if project_row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+    project_id = project_row["project_id"]
+    book_run = _load_book_run(db, project_id, book_run_id)
+    if book_run is None:
+        db.close()
+        raise click.ClickException("未找到 book_run。")
+
+    rows = db.execute(
+        "SELECT brc.*, cr.status AS canonical_status "
+        "FROM writing_book_run_chapters brc "
+        "LEFT JOIN writing_chapter_reviews cr "
+        "  ON cr.project_id = brc.project_id "
+        " AND cr.chapter_key = brc.chapter_key "
+        " AND cr.run_id = brc.run_id "
+        "WHERE brc.book_run_id = ? "
+        "ORDER BY brc.chapter_order",
+        (book_run["book_run_id"],),
+    ).fetchall()
+
+    click.echo(f"Book Run: {book_run['book_run_id']}")
+    click.echo(
+        f"范围: {book_run['from_chapter']} → {book_run['to_chapter']} / "
+        f"状态: {book_run['status']}"
+    )
+    click.echo(
+        f"章节: {book_run['completed_chapters']}/{book_run['total_chapters']} completed, "
+        f"{book_run['failed_chapters']} failed"
+    )
+
+    needs_review: list[str] = []
+    needs_rework: list[str] = []
+    click.echo("\n章节:")
+    for row in rows:
+        canonical = row["canonical_status"] or "-"
+        click.echo(
+            f"  {row['chapter_key']}: {row['status']} "
+            f"canonical={canonical} run={row['run_id'] or '-'}"
+        )
+        if row["status"] == "failed" or canonical in ("needs_revision", "rejected"):
+            needs_rework.append(row["chapter_key"])
+        elif row["status"] == "completed" and canonical != "accepted":
+            needs_review.append(row["chapter_key"])
+
+    if needs_review:
+        click.echo("\n待人工审稿:")
+        for chapter in needs_review:
+            click.echo(f"  ink review \"{project}\" --chapter {chapter} --accept")
+
+    if needs_rework:
+        click.echo("\n待返工:")
+        for chapter in needs_rework:
+            click.echo(f"  ink repair \"{project}\" --chapter {chapter} --all")
+            click.echo(f"  ink run-book \"{project}\" --from {chapter} --to {chapter}")
+
+    db.close()
+
+
 # ── repair ──
 
 @main.command("repair")
@@ -3411,6 +3800,23 @@ def status_project(project: str):
         click.echo("\nSession:")
         for s in sessions:
             click.echo(f"  {s['status']}: {s['cnt']}")
+
+    book_runs = db.execute(
+        "SELECT book_run_id, from_chapter, to_chapter, status, "
+        "completed_chapters, failed_chapters, total_chapters "
+        "FROM writing_book_runs WHERE project_id = ? "
+        "ORDER BY created_at DESC LIMIT 5",
+        (project_id,),
+    ).fetchall()
+    if book_runs:
+        click.echo("\nBook Run:")
+        for row in book_runs:
+            click.echo(
+                f"  {row['book_run_id']}: {row['status']} "
+                f"{row['completed_chapters']}/{row['total_chapters']} "
+                f"failed={row['failed_chapters']} "
+                f"{row['from_chapter']}→{row['to_chapter']}"
+            )
 
     chapter_run_rows = db.execute(
         "SELECT ws.layer_key, ws.run_id, s.status AS session_status, "

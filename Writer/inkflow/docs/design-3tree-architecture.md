@@ -3,7 +3,7 @@
 > 版本：v1.1（2026-06-27）
 > 决策编号：ARCH-12
 > 依赖：8 层层级设计（`design-8layer-hierarchy.md`）
-> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.2 补充 accepted canonical selector；v1.3 补充 run attempt shot identity）
+> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.2 补充 accepted canonical selector；v1.3 补充 run attempt shot identity；v1.4 补充 book_run 编排层）
 
 ---
 
@@ -408,7 +408,7 @@ CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
 
 `shot_revisions.is_current` 是**封版标记**——只在封版时设置一次，之后不再随新生成而更新。`writing_shots.current_revision_id` 指向最新 revision（始终随新生成而更新），当封版后也指向封版版本（两者一致）。
 
-**accepted canonical / run attempt identity 补充（2026-06-28，Schema v19）**：
+**accepted canonical / run attempt identity / book_run 补充（2026-06-28，Schema v20）**：
 
 `shot_revisions.text` 仍是正文文本的存储真相源，但“哪一版可被后续章节当作正式正文”由 `writing_chapter_reviews` 的 accepted canonical selector 决定。
 
@@ -418,6 +418,8 @@ CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
 - 默认 `ink export`、跨章 previous context、历史 fact anchors 只读取 accepted 章节或 locked baseline；`--draft` 才导出未 accepted 审稿稿。
 - `logical_shot_id` 是契约树/故事树/排序和跨 run 定位的稳定身份；生产 run 的 `shot_id` 是 `{logical_shot_id}@{run_id}`，执行树和 `shot_revisions` 通过该 attempt 身份指向本次 run 的正文。
 - baseline 人工样章是锁定来源，`shot_id == logical_shot_id`；生产章节重写必须创建新的 attempt shot 行，避免同章旧正文被误复用。
+- `writing_book_runs` / `writing_book_run_chapters` 是执行调度索引，用来把多个章节 run 绑成一个全书/整卷批次；它不复制正文，也不改变 `shot_revisions.text` 的正文真相源规则。
+- 同一 `book_run` 已完成的前序 draft 章节可作为后续章节临时上下文；默认正式导出、正式 fact anchors 和跨批次上下文仍只认 accepted canonical。
 
 ---
 

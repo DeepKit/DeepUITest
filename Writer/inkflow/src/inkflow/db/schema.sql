@@ -1,7 +1,7 @@
--- InkFlow v3.18 — Schema v19 (run-attempt shot identity)
--- SCHEMA_VERSION: 19
+-- InkFlow v3.19 — Schema v20 (book-run orchestration)
+-- SCHEMA_VERSION: 20
 -- Generated from implementation-contract-v0.md; aligned 2026-06-28
--- 39 business tables total (+ _schema_meta = 40 SQLite user tables), ordered by FK dependency
+-- 41 business tables total (+ _schema_meta = 42 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
 -- v6→v7: 新增 writing_chapter_rhythms 表 (AI 架构师 L1 章级节奏)
 -- v7→v8: 新增 tree_nodes / contract_versions / story_content / execution_records (ARCH-12 三棵树架构)
@@ -16,6 +16,7 @@
 -- v16→v17: writing_jury_scores.dimension 扩展 hard/type/literary 分层裁判维度
 -- v17→v18: 新增 writing_chapter_reviews 表，记录 accepted canonical 章节审稿状态
 -- v18→v19: writing_shots 新增 logical_shot_id，shot_id 改为 run attempt 主键
+-- v19→v20: 新增 writing_book_runs / writing_book_run_chapters 全书编排批次
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -496,6 +497,52 @@ CREATE INDEX idx_chapter_reviews_status ON writing_chapter_reviews(status);
 CREATE UNIQUE INDEX idx_chapter_reviews_one_accepted
     ON writing_chapter_reviews(project_id, chapter_key)
     WHERE status = 'accepted';
+
+-- =============================================================================
+-- Layer 9c: Book-run orchestration (v20)
+-- =============================================================================
+
+CREATE TABLE writing_book_runs (
+    book_run_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(project_id),
+    from_chapter TEXT NOT NULL,
+    to_chapter TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'planned'
+        CHECK (status IN ('planned', 'running', 'completed', 'failed', 'aborted')),
+    total_chapters INTEGER NOT NULL DEFAULT 0 CHECK (total_chapters >= 0),
+    completed_chapters INTEGER NOT NULL DEFAULT 0 CHECK (completed_chapters >= 0),
+    failed_chapters INTEGER NOT NULL DEFAULT 0 CHECK (failed_chapters >= 0),
+    current_chapter TEXT,
+    options_json JSON NOT NULL DEFAULT '{}',
+    report_json JSON NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_book_runs_project ON writing_book_runs(project_id);
+CREATE INDEX idx_book_runs_status ON writing_book_runs(status);
+
+CREATE TABLE writing_book_run_chapters (
+    book_run_chapter_id TEXT PRIMARY KEY,
+    book_run_id TEXT NOT NULL REFERENCES writing_book_runs(book_run_id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(project_id),
+    chapter_key TEXT NOT NULL,
+    chapter_order INTEGER NOT NULL,
+    run_id TEXT REFERENCES writing_sessions(run_id),
+    status TEXT NOT NULL DEFAULT 'planned'
+        CHECK (status IN (
+            'planned', 'setup_ready', 'running', 'completed',
+            'failed', 'skipped', 'context_stale'
+        )),
+    setup_path TEXT,
+    exported_path TEXT,
+    failure_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(book_run_id, chapter_key)
+);
+CREATE INDEX idx_book_run_chapters_book ON writing_book_run_chapters(book_run_id, chapter_order);
+CREATE INDEX idx_book_run_chapters_run ON writing_book_run_chapters(run_id);
+CREATE INDEX idx_book_run_chapters_status ON writing_book_run_chapters(status);
 
 -- =============================================================================
 -- Layer 10a: Information Gap Tracking (D-25 悬疑引擎)

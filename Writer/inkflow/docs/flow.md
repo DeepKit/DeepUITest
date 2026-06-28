@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.9: 人机交互流程
+# 墨韵 (InkFlow) v3.10: 人机交互流程
 
-> 版本：v3.9（用户交互流程；补充 accepted canonical、正式/审稿导出边界、run attempt shot identity）
-> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26 / accepted canonical：2026-06-27 / run attempt identity：2026-06-28
+> 版本：v3.10（用户交互流程；补充 accepted canonical、正式/审稿导出边界、run attempt shot identity、book_run 编排层）
+> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26 / accepted canonical：2026-06-27 / run attempt identity：2026-06-28 / book_run：2026-06-28
 > 技术设计：`inkflow/docs/design.md`、`inkflow/docs/implementation-contract-v0.md`
 > 角色体系：`inkflow/docs/role-system.md`
 > 设计决策：`docs/decisions/README.md`
@@ -35,9 +35,9 @@ P0 以《分流》作为唯一验收样本：
 模型配置：D:\_Progs\.Story\《分流》\.inkflow\.models
 ```
 
-P0 不做全书一次生成，不做多项目/Universe，不做成本确认门，不让推敲回写墨韵数据库。
+P0 不做单 prompt 全书生成，不做多项目/Universe，不做成本确认门，不让推敲回写墨韵数据库。Schema v20 起支持 `run-book` 全书/整卷编排：一次启动批处理，但内部仍按章节和 shot 串行执行。
 
-当前状态是工程投产候选。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。Schema v19 已拆开 `logical_shot_id` 与 run attempt `shot_id`，同一章节重写会生成新的执行 shot，不再复用旧 run 正文。
+当前状态是工程投产候选。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。Schema v19 已拆开 `logical_shot_id` 与 run attempt `shot_id`；Schema v20 新增 `book_run` 编排批次，同一批次已完成的前序草稿章节可作为后续章节的临时 draft 上下文。
 
 ## 1. 核心流程
 
@@ -62,6 +62,13 @@ P0 不做全书一次生成，不做多项目/Universe，不做成本确认门�
   L3 Chapter Gate 通过后，session 才 complete 并自动导出当前 run 审稿稿
   Scope 完成后生成三层交互式投影报告 (D-12)
 
+阶段 2b: 全书/整卷批处理编排 (ink run-book)
+  创建 book_run 批次，记录 from/to、逐章状态和失败原因
+  对每章串行执行 setup --chapter → run --chapter
+  同一 book_run 中已完成的前序章节 draft 可进入后续章节临时上下文
+  单章失败默认停止；--continue-on-fail 可继续后续章节
+  book-report 汇总待人工审稿和待返工章节
+
 阶段 3: AI 自动修补 (write repair)
   诊断红灯原因（写手失败 vs 契约问题）
   契约问题 → 四层修复金字塔（L1 零改动 / L2 风格级 / L3 结构级 / L4 方向级）(D-3)
@@ -80,7 +87,7 @@ DB3 是唯一真相源。终端摘要、Markdown 报告、导出文件都只是 
 
 P0 中第 1 章人工样章是 locked baseline；墨韵只能读取它作为风格、事实、上下文来源，不得自动改写。第 2 章链路已通过真实项目试跑并获得人工“内容基本合格”反馈；第 3 章起按 `setup --chapter → run --chapter → review --chapter` 逐章推进。
 
-每章生产前必须先执行 `ink setup <project> --chapter <key>` 生成当前章节校准包；每次 `ink run --chapter` 都创建新的 run attempt shot 身份。人类只在生产前校准和生产后审稿介入，正式正文只来自人工 accepted 的章节。
+每章生产前必须先执行 `ink setup <project> --chapter <key>` 生成当前章节校准包；每次 `ink run --chapter` 都创建新的 run attempt shot 身份。`run-book` 只是自动替人按顺序执行多个章节的 setup/run。人类只在生产前校准和生产后审稿介入，正式正文只来自人工 accepted 的章节。
 
 ---
 
@@ -105,6 +112,11 @@ ink clone "分流" --as "分流_英文版"
 ink run "分流" --chapter v01.c02
 ink run "分流" --writer-count 4     # 覆盖默认写手数
 ink run "分流" --config jury.thresholds.green=8
+
+# 全书/整卷编排：一次启动，多章串行生产
+ink run-book "分流" --from v01.c04 --to v01.c32
+ink run-book "分流" --from v01.c04 --to v01.c32 --plan-only
+ink book-report "分流"               # 默认查看最新 book_run
 
 # 生产后人工验收记录
 ink review "分流" --chapter v01.c02 --accept
@@ -131,6 +143,10 @@ ink contracts "分流"                # 契约仪表盘 (D-23)
 # 全书完成后的 AI 自动修补
 ink repair "分流" --red
 ink repair "分流" --yellow
+
+# 对质量不好的章节返工
+ink repair "分流" --chapter v01.c08 --all
+ink run-book "分流" --from v01.c08 --to v01.c08
 
 # 硬边界逃生舱（每 run ≤ 1 次）(Phase 2)
 ink revise-boundary "分流" --layer meta

@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -1173,4 +1173,69 @@ def _migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_shots_run_logical_unique "
         "ON writing_shots(run_id, logical_shot_id)"
+    )
+
+
+@register_migration(19, 20)
+def _migrate_v19_to_v20(conn: sqlite3.Connection) -> None:
+    """v20: 全书编排批次 — 新增 writing_book_runs 与 chapter 状态表。"""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_book_runs ("
+        "book_run_id TEXT PRIMARY KEY, "
+        "project_id TEXT NOT NULL REFERENCES projects(project_id), "
+        "from_chapter TEXT NOT NULL, "
+        "to_chapter TEXT NOT NULL, "
+        "status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ("
+        "'planned', 'running', 'completed', 'failed', 'aborted'"
+        ")), "
+        "total_chapters INTEGER NOT NULL DEFAULT 0 CHECK (total_chapters >= 0), "
+        "completed_chapters INTEGER NOT NULL DEFAULT 0 CHECK (completed_chapters >= 0), "
+        "failed_chapters INTEGER NOT NULL DEFAULT 0 CHECK (failed_chapters >= 0), "
+        "current_chapter TEXT, "
+        "options_json JSON NOT NULL DEFAULT '{}', "
+        "report_json JSON NOT NULL DEFAULT '{}', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now'))"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_book_runs_project "
+        "ON writing_book_runs(project_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_book_runs_status "
+        "ON writing_book_runs(status)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_book_run_chapters ("
+        "book_run_chapter_id TEXT PRIMARY KEY, "
+        "book_run_id TEXT NOT NULL REFERENCES writing_book_runs(book_run_id) "
+        "ON DELETE CASCADE, "
+        "project_id TEXT NOT NULL REFERENCES projects(project_id), "
+        "chapter_key TEXT NOT NULL, "
+        "chapter_order INTEGER NOT NULL, "
+        "run_id TEXT REFERENCES writing_sessions(run_id), "
+        "status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ("
+        "'planned', 'setup_ready', 'running', 'completed', "
+        "'failed', 'skipped', 'context_stale'"
+        ")), "
+        "setup_path TEXT, "
+        "exported_path TEXT, "
+        "failure_reason TEXT, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "updated_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(book_run_id, chapter_key)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_book_run_chapters_book "
+        "ON writing_book_run_chapters(book_run_id, chapter_order)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_book_run_chapters_run "
+        "ON writing_book_run_chapters(run_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_book_run_chapters_status "
+        "ON writing_book_run_chapters(status)"
     )

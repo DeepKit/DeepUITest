@@ -269,12 +269,14 @@ class FactAnchorExtractor:
         limit: int = 50,
         *,
         run_id: str | None = None,
+        book_run_id: str | None = None,
     ) -> list[dict]:
         """Get canonical anchors for context assembly.
 
         Includes anchors from the active run, human-accepted chapters, and
-        locked baseline shots. This prevents rejected/aborted runs from leaking
-        facts into later prompts.
+        locked baseline shots. During book-run orchestration, completed earlier
+        draft chapters in the same book_run are also available as temporary
+        context for subsequent draft chapters.
         """
         rows = self.db.execute(
             "SELECT fa.* FROM writing_fact_anchors fa "
@@ -284,13 +286,18 @@ class FactAnchorExtractor:
             " AND cr.chapter_key = ws.layer_key "
             " AND cr.run_id = fa.run_id "
             " AND cr.status = 'accepted' "
+            "LEFT JOIN writing_book_run_chapters brc "
+            "  ON brc.book_run_id = ? "
+            " AND brc.run_id = fa.run_id "
+            " AND brc.status = 'completed' "
             "WHERE fa.project_id = ? "
             "  AND ("
             "    (? IS NOT NULL AND fa.run_id = ?) "
+            "    OR brc.book_run_chapter_id IS NOT NULL "
             "    OR cr.review_id IS NOT NULL "
             "    OR COALESCE(ws.is_baseline, 0) = 1"
             "  ) "
             "ORDER BY fa.extracted_at DESC LIMIT ?",
-            (self.project_id, run_id, run_id, limit),
+            (book_run_id, self.project_id, run_id, run_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]

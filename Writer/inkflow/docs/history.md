@@ -1704,3 +1704,33 @@ CORE-2 已完成。生产内核不再有已知 P0 代码阻塞；本轮已通过
 - 目标测试：161 passed, 3 warnings
 - 全量测试：428 passed, 4 warnings
 - 真实库检查：`ink status "分流"` 通过；`_schema_meta.version=19`，`logical_shot_id` 无空值，`idx_shots_run_logical_unique` 存在
+
+---
+
+## BOOKRUN-1-V20 全书/整卷编排层 — 2026-06-28
+
+**目标**：支持“一次启动全书/整卷生产，质量不好的章节后续集中返工”，但不走单 prompt 全书生成；内部继续复用既有逐章 `setup -> run -> gate -> export` 生产线。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| Schema v20 | 新增 `writing_book_runs` 与 `writing_book_run_chapters`，记录批次范围、逐章状态、run_id、失败原因和导出路径 |
+| CLI | 新增 `ink run-book <project> --from v01.c04 --to v01.c32` 与 `ink book-report <project>` |
+| 安全执行 | `run-book` 串行逐章执行；默认单章失败即停止，`--continue-on-fail` 才继续 |
+| 计划模式 | `--plan-only` 只创建/显示批次计划，不调用模型 |
+| 草稿上下文 | 同一 `book_run` 已完成的前序 draft 章节可作为后续章节临时上下文和 fact anchors |
+| 正式边界 | 默认正式导出、跨批次上下文和正式事实仍只认 accepted canonical |
+| 可视化 | `ink status` 展示最近 book run；`book-report` 列出待人工审稿和待返工章节 |
+
+### 结论
+
+已具备全书/整卷编排生产的工程骨架。后续真实投产建议先用 `run-book --plan-only` 检查章节范围，再小批量运行 2-3 章，确认模型成本、上下文连续和返工体验后扩展到整卷。
+
+### 验证
+
+- 语法检查：`py_compile` 通过
+- 目标测试：101 passed, 3 warnings
+- 全量测试：434 passed, 4 warnings
+- 真实库检查：已备份 `inkflow.db.bak-v20-20260628`；`ink status "分流"` 通过；`_schema_meta.version=20`
+- 真实 plan-only：`ink run-book "分流" --from v01.c04 --to v01.c06 --plan-only` 创建 book_run `01KW6JNB3ZR52F2036YH9BDAJB`，3 个 planned chapter；`book-report` 通过

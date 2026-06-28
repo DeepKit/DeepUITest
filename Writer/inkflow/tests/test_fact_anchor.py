@@ -151,6 +151,62 @@ class TestFactAnchorExtraction:
         assert "已接受事实" in values
         assert "未接受事实" not in values
 
+    def test_get_active_anchors_includes_completed_book_run_drafts(self, extractor):
+        """Book-run draft context may read completed prior chapters in same batch."""
+        db = extractor.db
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s_book_prev', 'p1', 'run_book_prev', 'completed')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+            "VALUES ('sh_book_prev', 'p1', 'run_book_prev', 'v01.c02', 1, 'done_green', 'rev_book_prev')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c_book_prev', 'p1', 'run_book_prev', 'sh_book_prev', "
+            "'v01.c02', 'locked', 'h_book', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, attempt_id) "
+            "VALUES ('rev_book_prev', 'sh_book_prev', 'run_book_prev', 'c_book_prev', "
+            "1, 'write_generate', 'draft text', 'hash_book', 'att_book')"
+        )
+        db.execute(
+            "INSERT INTO writing_book_runs "
+            "(book_run_id, project_id, from_chapter, to_chapter, status, total_chapters) "
+            "VALUES ('book_run_1', 'p1', 'v01.c02', 'v01.c03', 'running', 2)"
+        )
+        db.execute(
+            "INSERT INTO writing_book_run_chapters "
+            "(book_run_chapter_id, book_run_id, project_id, chapter_key, chapter_order, run_id, status) "
+            "VALUES ('book_ch_1', 'book_run_1', 'p1', 'v01.c02', 1, "
+            "'run_book_prev', 'completed')"
+        )
+        db.commit()
+
+        extractor.record_anchor(
+            "event_occurred", "event:book_draft", "批次草稿事实", 0.8,
+            run_id="run_book_prev", shot_id="sh_book_prev",
+            source_revision_id="rev_book_prev",
+        )
+
+        without_book_run = extractor.get_active_anchors(limit=10)
+        with_book_run = extractor.get_active_anchors(
+            limit=10, book_run_id="book_run_1",
+        )
+        assert "批次草稿事实" not in {
+            anchor["anchor_value"] for anchor in without_book_run
+        }
+        assert "批次草稿事实" in {
+            anchor["anchor_value"] for anchor in with_book_run
+        }
+
 
 class TestFactAnchorInjection:
     """P0-6: Anchors should be injectable into prompt_compiler."""

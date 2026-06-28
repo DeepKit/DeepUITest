@@ -523,3 +523,11 @@
 - **影响**: 同一章节返修、重写或生产恢复时，可能跳过应重新生成的 shot，或把旧 run 的正文、评分、修复状态带入新 run；accepted canonical 即使存在，也无法完全防止执行层污染。
 - **修复**: Schema v19 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；baseline 保持 `shot_id == logical_shot_id`；`create_shots()` 只在同一 run 内幂等；v18→v19 迁移回填旧 rows，并建立 `idx_shots_logical` / `idx_shots_run_logical_unique`；`repair --chapter --all` 限定 latest run。
 - **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `src/inkflow/utils/shot_id.py`, `src/inkflow/services/session_manager.py`, `src/inkflow/importers/baseline_importer.py`, `src/inkflow/cli.py`, `tests/test_schema.py`, `tests/test_migration.py`, `tests/test_shot_id.py`, `tests/test_session_manager.py`, `tests/test_baseline_importer.py`, `tests/test_cli.py`
+
+### B63. 缺少全书/整卷编排层，无法一次启动多章生产后集中返工 ✅ 已修复
+- **严重性**: Important
+- **发现**: 用户要求“一次性全书生产，然后质量不好的章节再返工”
+- **根因**: 现有生产线只有单章 `setup -> run -> review`，没有上层批次 ID 记录多个章节 run 的关系；若直接连续手工跑多章，后续无法区分同一批次草稿、失败章节、待审稿章节和返工入口。
+- **影响**: 无法安全支持全书/整卷批处理；后续章节也不能读取同一批次前序 draft，只能读取 accepted 章节，导致“先全书草稿、后集中审稿”流程不成立。
+- **修复**: Schema v20 新增 `writing_book_runs` / `writing_book_run_chapters`；新增 `ink run-book` 和 `ink book-report`；同一 `book_run` 已完成前序 draft 可作为后续章节临时上下文和 fact anchors；正式导出仍只认 accepted canonical；`ink status` 展示最近 book run。
+- **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `src/inkflow/cli.py`, `src/inkflow/services/fact_anchor_extractor.py`, `tests/test_schema.py`, `tests/test_migration.py`, `tests/test_cli.py`, `tests/test_fact_anchor.py`

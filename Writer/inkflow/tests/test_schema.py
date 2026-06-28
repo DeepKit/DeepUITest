@@ -1,4 +1,4 @@
-"""Verify all 39 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
+"""Verify all 41 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 
-# ── 39 张业务表名（按 implementation-contract-v0.md + v18 chapter review canonical） ──
+# ── 41 张业务表名（按 implementation-contract-v0.md + v20 book-run orchestration） ──
 
 ALL_TABLES = [
     "projects",
@@ -45,6 +45,8 @@ ALL_TABLES = [
     "writing_style_preferences", # v12: 风格偏好学习 (ARCH-10)
     "writing_anti_contract_reviews", # v13: 反契约沙盒 (ARCH-11)
     "writing_chapter_reviews", # v18: 章节 accepted canonical 状态
+    "writing_book_runs", # v20: 全书编排批次
+    "writing_book_run_chapters", # v20: 全书编排章节状态
     # v8: 三棵树架构 (ARCH-12)
     "tree_nodes",
     "contract_versions",
@@ -92,6 +94,12 @@ EXPECTED_INDEXES = [
     "idx_chapter_reviews_project_chapter",
     "idx_chapter_reviews_status",
     "idx_chapter_reviews_one_accepted",
+    # v20: 全书编排
+    "idx_book_runs_project",
+    "idx_book_runs_status",
+    "idx_book_run_chapters_book",
+    "idx_book_run_chapters_run",
+    "idx_book_run_chapters_status",
     # v8: 三棵树架构 (ARCH-12)
     "idx_tree_nodes_parent",
     "idx_tree_nodes_lookup",
@@ -106,10 +114,10 @@ EXPECTED_INDEXES = [
 
 
 class TestSchemaTables:
-    """验证所有 39 张业务表存在"""
+    """验证所有 41 张业务表存在"""
 
     def test_all_tables_exist(self, db):
-        """init_project_db() 应创建全部 39 张业务表"""
+        """init_project_db() 应创建全部 41 张业务表"""
         rows = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_schema_%' ORDER BY name"
         ).fetchall()

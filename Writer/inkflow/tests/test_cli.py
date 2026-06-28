@@ -73,6 +73,8 @@ class TestCLIBasics:
         assert "init" in result.output
         assert "setup" in result.output
         assert "run" in result.output
+        assert "run-book" in result.output
+        assert "book-report" in result.output
         assert "review" in result.output
 
     def test_version(self, runner):
@@ -162,6 +164,156 @@ class TestSetup:
         result = runner.invoke(main, ["setup", "--help"])
         assert result.exit_code == 0
         assert "--chapter" in result.output
+
+
+class TestBookRun:
+    """Book-run orchestration commands."""
+
+    def test_run_book_help(self, runner):
+        result = runner.invoke(main, ["run-book", "--help"])
+        assert result.exit_code == 0
+        assert "--from" in result.output
+        assert "--to" in result.output
+        assert "--plan-only" in result.output
+
+    def test_run_book_plan_only_creates_batch(self, runner, sample_project):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)):
+            result = runner.invoke(
+                main,
+                [
+                    "run-book", "测试",
+                    "--from", "v01.c02",
+                    "--to", "v01.c03",
+                    "--plan-only",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Book Run:" in result.output
+        assert "未调用 setup/run" in result.output
+
+        db = open_db(db_path)
+        book_run = db.execute("SELECT * FROM writing_book_runs").fetchone()
+        chapters = db.execute(
+            "SELECT chapter_key, status FROM writing_book_run_chapters "
+            "ORDER BY chapter_order"
+        ).fetchall()
+        db.close()
+
+        assert book_run["from_chapter"] == "v01.c02"
+        assert book_run["to_chapter"] == "v01.c03"
+        assert book_run["status"] == "planned"
+        assert [row["chapter_key"] for row in chapters] == ["v01.c02", "v01.c03"]
+        assert {row["status"] for row in chapters} == {"planned"}
+
+    def test_book_report_shows_latest_batch(self, runner, sample_project):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_book_runs "
+            "(book_run_id, project_id, from_chapter, to_chapter, status, total_chapters) "
+            "VALUES ('book_01', 'p1', 'v01.c02', 'v01.c03', 'planned', 2)"
+        )
+        db.execute(
+            "INSERT INTO writing_book_run_chapters "
+            "(book_run_chapter_id, book_run_id, project_id, chapter_key, chapter_order, status) "
+            "VALUES ('brc_01', 'book_01', 'p1', 'v01.c02', 1, 'planned')"
+        )
+        db.execute(
+            "INSERT INTO writing_book_run_chapters "
+            "(book_run_chapter_id, book_run_id, project_id, chapter_key, chapter_order, status) "
+            "VALUES ('brc_02', 'book_01', 'p1', 'v01.c03', 2, 'planned')"
+        )
+        db.commit()
+        db.close()
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)):
+            result = runner.invoke(main, ["book-report", "测试"])
+
+        assert result.exit_code == 0, result.output
+        assert "Book Run: book_01" in result.output
+        assert "v01.c02: planned" in result.output
+        assert "v01.c03: planned" in result.output
+
+    def test_run_book_executes_chapter_callbacks(self, runner, sample_project):
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
+        seen: dict[str, str] = {}
+
+        def fake_setup(*, project, chapter, force):
+            seen["setup"] = f"{project}:{chapter}:{force}"
+
+        def fake_run(
+            *,
+            project,
+            chapter,
+            shot_id,
+            writer_count,
+            shot_count,
+            resume,
+            local_jury,
+            resume_session_id,
+            book_run_id,
+        ):
+            seen["book_run_id"] = book_run_id
+            db = open_db(db_path)
+            db.execute(
+                "INSERT INTO writing_sessions "
+                "(session_id, project_id, run_id, act_id, status, total_shots, completed_shots) "
+                "VALUES ('sess_run_book', 'p1', 'run_book_chapter', ?, 'completed', 1, 1)",
+                (chapter,),
+            )
+            db.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, logical_shot_id, project_id, run_id, layer_key, shot_index, "
+                "shot_status, light_status, current_revision_id) "
+                "VALUES (?, ?, 'p1', 'run_book_chapter', ?, 1, "
+                "'done_green', 'green', 'rev_run_book')",
+                (f"{chapter}.s01@run_book_chapter", f"{chapter}.s01", chapter),
+            )
+            db.commit()
+            db.close()
+
+        with (
+            mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)),
+            mock.patch.object(cli.setup_project, "callback", side_effect=fake_setup),
+            mock.patch.object(cli.run_project, "callback", side_effect=fake_run),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "run-book", "测试",
+                    "--from", "v01.c02",
+                    "--to", "v01.c02",
+                    "--force-setup",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert seen["setup"] == "测试:v01.c02:True"
+        assert seen["book_run_id"]
+
+        db = open_db(db_path)
+        book_run = db.execute("SELECT * FROM writing_book_runs").fetchone()
+        chapter = db.execute("SELECT * FROM writing_book_run_chapters").fetchone()
+        db.close()
+
+        assert book_run["status"] == "completed"
+        assert book_run["completed_chapters"] == 1
+        assert chapter["status"] == "completed"
+        assert chapter["run_id"] == "run_book_chapter"
 
 
 class TestInit:

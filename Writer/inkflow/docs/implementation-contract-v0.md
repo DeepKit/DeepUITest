@@ -1,10 +1,10 @@
-# InkFlow v3.18 Phase 1 实现契约 v1.6
+# InkFlow v3.19 Phase 1 实现契约 v1.7
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity）
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层）
 > 日期：2026-06-17；最近对齐：2026-06-28
-> 当前范围：DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v19）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export 与 run attempt shot identity 已落地；工程层进入逐章投产候选，正式正文仍以每章人工 accepted 为准。
+> 当前范围：DB3 DDL（41 张业务表 + `_schema_meta` 元表，Schema v20）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity 与 book_run 编排层已落地；工程层进入逐章/整卷编排投产候选，正式正文仍以每章人工 accepted 为准。
 
 ---
 
@@ -43,9 +43,9 @@ P0 固定边界：
 | 模型 | 每书 `.inkflow/.models` 配置功能与模型候选/兜底关系 |
 | Chesil | 只读读取 InkFlow DB 并复制导入；不得回写 InkFlow DB |
 
-P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-calibrate、完整 contract dashboard、Chesil 反向提取契约、成本估算确认门。
+P0 不实现：Universe、多项目同步、单 prompt 全书生成、完整 voice-calibrate、完整 contract dashboard、Chesil 反向提取契约、成本估算确认门。P0 已实现 `run-book` 编排层：一次启动多章批处理，但内部仍逐章逐 shot 串行运行。
 
-### 0.1 canonical 正文规则（Schema v19 已落地）
+### 0.1 canonical 正文规则（Schema v20 已落地）
 
 当前实现区分“审稿稿”和“正式稿”：
 
@@ -66,6 +66,8 @@ P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-ca
 | `ink import-baseline <project> --chapter <key> --file <path>` | 导入人工样章为 locked baseline |
 | `ink review-shots <project> --chapter <key>` | 审核/确认 baseline shot 边界 |
 | `ink run <project> --chapter <key> [flags]` | 全自动生产；L3/L4 通过后自动导出当前 run 审稿稿 |
+| `ink run-book <project> --from key --to key [flags]` | 全书/整卷编排批处理；内部按章串行执行 setup/run |
+| `ink book-report <project> [--book-run id]` | 查看 book_run 批次状态，列出待审稿和待返工章节 |
 | `ink review <project> --chapter <key> --accept/--revise/--reject` | 记录生产后人工验收，并写入 DB canonical 状态 |
 | `ink export <project> [--chapter key] [--draft]` | 默认导出 accepted 正式稿；`--draft` 导出未 accepted 审稿稿 |
 | `ink repair <project> --red / --yellow` | AI 修红/修黄 |
@@ -191,8 +193,9 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v19）
+## 3. DB3 DDL（41 张业务表 + `_schema_meta` 元表，Schema v20）
 
+> v20 变更（2026-06-28，book_run 编排层）：新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷批处理、逐章 run 状态、失败原因和返工入口。同一 book_run 已完成的前序 draft 章节可作为后续章节临时上下文；正式导出仍只认 accepted canonical。
 > v19 变更（2026-06-28，run attempt shot identity）：`writing_shots` 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；同一 run 内 `logical_shot_id` 唯一，章节重写创建新的 attempt shot，避免复用旧 run 正文。
 > v18 变更（2026-06-28，accepted canonical）：新增 `writing_chapter_reviews` 表，记录章节人工审稿状态；默认正式导出、历史 previous context 和 fact anchors 均以 accepted canonical selector 为边界。
 > v17 变更（2026-06-26，分层裁判）：`writing_jury_scores.dimension` 新增 `hard_rule_compliance` 与文学 9 维。Jury 流程变为硬规则 → 类型职责 → 文学 9 维 trimmed mean。类型维度仅在对应 shot_profile 启用。
@@ -757,7 +760,53 @@ CREATE UNIQUE INDEX idx_chapter_reviews_one_accepted
   WHERE status = 'accepted';
 ```
 
-### 3.3 核心业务表索引（含 v18 之前新增表）
+#### `writing_book_runs` / `writing_book_run_chapters`（Schema v20）
+
+```sql
+CREATE TABLE writing_book_runs (
+  book_run_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  from_chapter TEXT NOT NULL,
+  to_chapter TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned'
+    CHECK (status IN ('planned','running','completed','failed','aborted')),
+  total_chapters INTEGER NOT NULL DEFAULT 0,
+  completed_chapters INTEGER NOT NULL DEFAULT 0,
+  failed_chapters INTEGER NOT NULL DEFAULT 0,
+  current_chapter TEXT,
+  options_json JSON NOT NULL DEFAULT '{}',
+  report_json JSON NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_book_runs_project ON writing_book_runs(project_id);
+CREATE INDEX idx_book_runs_status ON writing_book_runs(status);
+
+CREATE TABLE writing_book_run_chapters (
+  book_run_chapter_id TEXT PRIMARY KEY,
+  book_run_id TEXT NOT NULL REFERENCES writing_book_runs(book_run_id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  chapter_key TEXT NOT NULL,
+  chapter_order INTEGER NOT NULL,
+  run_id TEXT REFERENCES writing_sessions(run_id),
+  status TEXT NOT NULL DEFAULT 'planned'
+    CHECK (status IN ('planned','setup_ready','running','completed','failed','skipped','context_stale')),
+  setup_path TEXT,
+  exported_path TEXT,
+  failure_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(book_run_id, chapter_key)
+);
+CREATE INDEX idx_book_run_chapters_book
+  ON writing_book_run_chapters(book_run_id, chapter_order);
+CREATE INDEX idx_book_run_chapters_run
+  ON writing_book_run_chapters(run_id);
+CREATE INDEX idx_book_run_chapters_status
+  ON writing_book_run_chapters(status);
+```
+
+### 3.3 核心业务表索引（含 v20 之前新增表）
 
 ```
 projects
@@ -771,6 +820,7 @@ writing_writer_profiles / writing_jury_config / writing_jury_scores
 writing_repair_audit / writing_exception_events / writing_deviation_notes
 writing_project_config / writing_reference_pool
 writing_chapter_reviews  -- v18 accepted canonical
+writing_book_runs / writing_book_run_chapters  -- v20 book_run orchestration
 writing_information_gaps / writing_chapter_rhythms  -- v6/v7 新增
 ```
 

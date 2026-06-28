@@ -145,6 +145,47 @@ class TestVersionTracking:
         finally:
             conn.close()
 
+    def test_migrate_v19_to_v20_creates_book_run_tables(self, tmp_dir):
+        """v20 migration should add book-run orchestration tables."""
+        conn = sqlite3.connect(str(tmp_dir / "v19_book_runs.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 19)
+            conn.execute(
+                "CREATE TABLE projects (project_id TEXT PRIMARY KEY, name TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE writing_sessions ("
+                "session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL)"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v19 → v20" in item for item in result)
+            for table in ("writing_book_runs", "writing_book_run_chapters"):
+                row = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()
+                assert row is not None
+            for index in (
+                "idx_book_runs_project",
+                "idx_book_runs_status",
+                "idx_book_run_chapters_book",
+                "idx_book_run_chapters_run",
+                "idx_book_run_chapters_status",
+            ):
+                row = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+                    (index,),
+                ).fetchone()
+                assert row is not None
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""
