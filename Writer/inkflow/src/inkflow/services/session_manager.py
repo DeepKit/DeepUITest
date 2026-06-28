@@ -20,7 +20,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from inkflow.utils.ulid import generate as generate_ulid
-from inkflow.utils.shot_id import generate as generate_shot_id
+from inkflow.utils.shot_id import (
+    generate as generate_shot_id,
+    generate_attempt as generate_attempt_shot_id,
+)
 from inkflow.utils.hashing import context_hash
 from inkflow.utils.config import (
     load_models_config,
@@ -344,7 +347,7 @@ class SessionManager:
         run_id: str,
         shots: list[dict],
     ) -> list[str]:
-        """Create shot records for a run. Idempotent: skips existing shots.
+        """Create shot attempt records for a run.
 
         Args:
             run_id: The run ID these shots belong to.
@@ -355,23 +358,31 @@ class SessionManager:
         """
         shot_ids = []
         for shot in shots:
-            # 8层复合ID: {volume}.{chapter}.s{section}
-            shot_id = generate_shot_id(shot["layer_key"], shot["shot_index"])
+            # logical_shot_id is stable across rewrites; shot_id is run-attempt-specific.
+            logical_shot_id = generate_shot_id(shot["layer_key"], shot["shot_index"])
+            shot_id = generate_attempt_shot_id(
+                shot["layer_key"], shot["shot_index"], run_id,
+            )
 
-            # CLI-2: Check if shot already exists by composite shot_id
-            # (composite ID is unique across runs for the same layer_key + shot_index)
+            # Idempotent only within the same run. A new run must create fresh
+            # shot rows even for the same logical chapter/shot index.
             existing = self.db.execute(
-                "SELECT shot_id FROM writing_shots WHERE shot_id = ?",
-                (shot_id,),
+                "SELECT shot_id FROM writing_shots "
+                "WHERE run_id = ? AND logical_shot_id = ?",
+                (run_id, logical_shot_id),
             ).fetchone()
             if existing:
                 shot_ids.append(existing["shot_id"])
                 continue
             self.db.execute(
                 "INSERT INTO writing_shots "
-                "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
-                "VALUES (?, ?, ?, ?, ?, 'pending')",
-                (shot_id, self.project_id, run_id, shot["layer_key"], shot["shot_index"]),
+                "(shot_id, logical_shot_id, project_id, run_id, layer_key, "
+                "shot_index, shot_status) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'pending')",
+                (
+                    shot_id, logical_shot_id, self.project_id, run_id,
+                    shot["layer_key"], shot["shot_index"],
+                ),
             )
             shot_ids.append(shot_id)
         self.db.commit()

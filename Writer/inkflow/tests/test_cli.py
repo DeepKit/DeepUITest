@@ -763,6 +763,42 @@ class TestStatusSmoke:
             assert result.exit_code == 0
             assert "测试" in result.output
 
+    def test_status_shows_chapter_canonical_state(self, runner, sample_project):
+        """status should expose latest run and accepted canonical state."""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+        from inkflow.db import open_db
+
+        db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
+        db = open_db(db_path)
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_status', 'p1', 'run_status', 'completed')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, logical_shot_id, project_id, run_id, layer_key, shot_index, "
+            "shot_status, current_revision_id) "
+            "VALUES ('v01.c02.s01@runstatusrunstatusruns1', 'v01.c02.s01', "
+            "'p1', 'run_status', 'v01.c02', 1, 'done_green', 'rev_status')"
+        )
+        db.execute(
+            "INSERT INTO writing_chapter_reviews "
+            "(review_id, project_id, chapter_key, run_id, status) "
+            "VALUES ('review_status', 'p1', 'v01.c02', 'run_status', 'accepted')"
+        )
+        db.commit()
+        db.close()
+
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)):
+            result = runner.invoke(main, ["status", "测试"])
+
+        assert result.exit_code == 0, result.output
+        assert "章节 Latest Run" in result.output
+        assert "v01.c02: completed 1/1 run=run_status" in result.output
+        assert "章节 Canonical" in result.output
+        assert "v01.c02: accepted run=run_status" in result.output
+
 
 class TestExportSmoke:
     """Export command path smoke tests."""

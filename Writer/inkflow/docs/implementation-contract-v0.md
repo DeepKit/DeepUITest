@@ -1,10 +1,10 @@
-# InkFlow v3.17 Phase 1 实现契约 v1.5
+# InkFlow v3.18 Phase 1 实现契约 v1.6
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机）
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity）
 > 日期：2026-06-17；最近对齐：2026-06-28
-> 当前范围：DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v18）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证，当前只能受控试跑。canonical accepted truth source 与 accepted-only export 已落地；正式生产阻塞项是 run/shot identity 重构和真实库迁移/小样验证。
+> 当前范围：DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v19）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export 与 run attempt shot identity 已落地；工程层进入逐章投产候选，正式正文仍以每章人工 accepted 为准。
 
 ---
 
@@ -45,7 +45,7 @@ P0 固定边界：
 
 P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-calibrate、完整 contract dashboard、Chesil 反向提取契约、成本估算确认门。
 
-### 0.1 canonical 正文规则（Schema v18 已落地）
+### 0.1 canonical 正文规则（Schema v19 已落地）
 
 当前实现区分“审稿稿”和“正式稿”：
 
@@ -54,7 +54,7 @@ P0 不实现：Universe、多项目同步、全书一次生成、完整 voice-ca
 3. `review --revise/--reject` 记录 DB 状态，并把该 run 本章 `done_green/done_yellow` shot 退回 `redo`，后续不能被默认 previous context、事实锚点和正式导出当作正式正文。
 4. 默认 `ink export` 只取 accepted canonical；`ink export --draft` 才取未 accepted 的当前封板稿用于审稿/排障。
 5. previous context 只读取当前 run 前序 shot 或 accepted 历史章节；fact anchors 只读取当前 run、accepted 章节或 locked baseline。
-6. stable logical shot 与 run attempt identity 尚未分离，同一章节重写不能复用旧 shot 导致跳过旧正文，这是 CORE-2。
+6. `logical_shot_id` 是跨 run 稳定的故事/契约定位；生产 run 的 `shot_id` 是 `{logical_shot_id}@{run_id}`。同一章节重写必须创建新的 run attempt shot 行，不能复用旧 run 正文。
 
 ## 1. CLI 命令面（冻结为 `ink <verb>`）
 
@@ -191,8 +191,9 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v18）
+## 3. DB3 DDL（39 张业务表 + `_schema_meta` 元表，Schema v19）
 
+> v19 变更（2026-06-28，run attempt shot identity）：`writing_shots` 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；同一 run 内 `logical_shot_id` 唯一，章节重写创建新的 attempt shot，避免复用旧 run 正文。
 > v18 变更（2026-06-28，accepted canonical）：新增 `writing_chapter_reviews` 表，记录章节人工审稿状态；默认正式导出、历史 previous context 和 fact anchors 均以 accepted canonical selector 为边界。
 > v17 变更（2026-06-26，分层裁判）：`writing_jury_scores.dimension` 新增 `hard_rule_compliance` 与文学 9 维。Jury 流程变为硬规则 → 类型职责 → 文学 9 维 trimmed mean。类型维度仅在对应 shot_profile 启用。
 > v16 变更（2026-06-25，B41）：`model_attempts.phase` 新增 `outline_evaluate`、`constitution_generate`、`architect_chapter_rhythm(_retry)`、`architect_volume_rhythm(_retry)`，避免架构/大纲模型调用审计被 CHECK 约束静默丢弃。
@@ -209,12 +210,13 @@ best_failed_candidate | redo_placeholder | permanent_red
 ### 3.1 约定
 
 - 主键：ULID 格式（`session_id`、`project_id`、`run_id` 等内部 ID）
-- **`shot_id`：复合层级格式**（详见 §3.1.1）
+- **`logical_shot_id`：复合层级格式**（详见 §3.1.1）
+- **`shot_id`：执行主键**；baseline 为复合层级格式，生产 run 为 `{logical_shot_id}@{run_id}`
 - 时间戳：业务表含 `created_at`、`updated_at`；审计/日志/不可变表仅含 `created_at`
 - JSON 字段：SQLite JSON1
 - 异常事件统一为 `writing_exception_events`
 
-#### 3.1.1 `shot_id` 复合层级格式
+#### 3.1.1 `logical_shot_id` 与 `shot_id` 格式
 
 继承自 DeepStory 8层金字塔设计（详见 `docs/design-8layer-hierarchy.md`）。
 
@@ -230,8 +232,11 @@ best_failed_candidate | redo_placeholder | permanent_red
 | section | `s` + 2位数字 | s03 |
 
 - `layer_key` = `{volume}.{chapter}` (如 `v01.c02`)
-- `shot_id` = `{layer_key}.s{shot_index:02d}` (如 `v01.c02.s03`)
-- 排序：字典序即可（零填充保证）
+- `logical_shot_id` = `{layer_key}.s{shot_index:02d}` (如 `v01.c02.s03`)
+- 生产 run `shot_id` = `{logical_shot_id}@{run_id}` (如 `v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1`)
+- baseline 人工样章 `shot_id == logical_shot_id`
+- 排序：按 `logical_shot_id` 或 `(layer_key, shot_index)`；不要按 run attempt `shot_id` 排序
+- 幂等：`create_shots()` 只在同一 `run_id + logical_shot_id` 内幂等；新 run 必须创建新 `shot_id`
 
 ### 3.2 核心表 DDL
 
@@ -409,7 +414,8 @@ CREATE TABLE writing_run_snapshots (
 
 ```sql
 CREATE TABLE writing_shots (
-  shot_id TEXT PRIMARY KEY,           -- 复合格式: v01.c02.s03 (详见 §3.1.1)
+  shot_id TEXT PRIMARY KEY,           -- baseline: v01.c02.s03；production run: v01.c02.s03@<run_id>
+  logical_shot_id TEXT,               -- 跨 run 稳定身份: v01.c02.s03
   project_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
   layer_key TEXT NOT NULL,            -- v01.c02
@@ -430,6 +436,8 @@ CREATE TABLE writing_shots (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(run_id, shot_index)
 );
+CREATE INDEX idx_shots_logical ON writing_shots(project_id, layer_key, logical_shot_id);
+CREATE UNIQUE INDEX idx_shots_run_logical_unique ON writing_shots(run_id, logical_shot_id);
 ```
 
 #### `shot_revisions`

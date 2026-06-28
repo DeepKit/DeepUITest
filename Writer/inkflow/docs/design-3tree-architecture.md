@@ -3,7 +3,7 @@
 > 版本：v1.1（2026-06-27）
 > 决策编号：ARCH-12
 > 依赖：8 层层级设计（`design-8layer-hierarchy.md`）
-> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.2 补充 accepted canonical selector）
+> 状态：已实施（Schema v8 起落地；ARCH-13 补充正文真相源；ARCH-4 补充 L0 宪法指针；v1.2 补充 accepted canonical selector；v1.3 补充 run attempt shot identity）
 
 ---
 
@@ -219,7 +219,8 @@ L7 段落规则                   L7 段落（完稿后）              L7 段�
 **L6 场景执行**：
 ```json
 {
-  "shot_id": "v01.c02.s01",
+  "logical_shot_id": "v01.c02.s01",
+  "shot_id": "v01.c02.s01@01KW3Q5NCBPZWRG254EXAH2PK1",
   "prompt_snapshot_id": "ps_001",
   "drafts": [
     { "persona": "意象师", "draft_id": "d001", "jury_score": 82 },
@@ -407,7 +408,7 @@ CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
 
 `shot_revisions.is_current` 是**封版标记**——只在封版时设置一次，之后不再随新生成而更新。`writing_shots.current_revision_id` 指向最新 revision（始终随新生成而更新），当封版后也指向封版版本（两者一致）。
 
-**accepted canonical 补充（2026-06-28，Schema v18）**：
+**accepted canonical / run attempt identity 补充（2026-06-28，Schema v19）**：
 
 `shot_revisions.text` 仍是正文文本的存储真相源，但“哪一版可被后续章节当作正式正文”由 `writing_chapter_reviews` 的 accepted canonical selector 决定。
 
@@ -415,7 +416,8 @@ CREATE INDEX idx_execution_records_run  ON execution_records(run_id);
 - `review --accept` 写入 `writing_chapter_reviews(status='accepted')`；同一项目/章节只允许一个 accepted run。
 - `review --revise/--reject` 写入 `needs_revision/rejected`，并把该 run 本章绿/黄 shot 退回 `redo`。
 - 默认 `ink export`、跨章 previous context、历史 fact anchors 只读取 accepted 章节或 locked baseline；`--draft` 才导出未 accepted 审稿稿。
-- 尚未完成的是 CORE-2：logical shot 与 run attempt shot 身份拆分，避免同章多次重写复用旧 `shot_id`。
+- `logical_shot_id` 是契约树/故事树/排序和跨 run 定位的稳定身份；生产 run 的 `shot_id` 是 `{logical_shot_id}@{run_id}`，执行树和 `shot_revisions` 通过该 attempt 身份指向本次 run 的正文。
+- baseline 人工样章是锁定来源，`shot_id == logical_shot_id`；生产章节重写必须创建新的 attempt shot 行，避免同章旧正文被误复用。
 
 ---
 

@@ -59,6 +59,8 @@ EXPECTED_INDEXES = [
     "idx_checkpoints_session",
     "idx_shots_run",
     "idx_shots_status",
+    "idx_shots_logical",
+    "idx_shots_run_logical_unique",
     "idx_revisions_shot",
     "idx_revisions_one_current",
     "idx_drafts_shot",
@@ -126,6 +128,14 @@ class TestSchemaTables:
         actual = {r[0] for r in rows}
         for idx in EXPECTED_INDEXES:
             assert idx in actual, f"缺少索引: {idx}"
+
+    def test_shots_have_logical_shot_id(self, db):
+        """v19: writing_shots records stable logical identity separately."""
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(writing_shots)").fetchall()
+        }
+        assert "logical_shot_id" in columns
 
 
 class TestCheckConstraints:

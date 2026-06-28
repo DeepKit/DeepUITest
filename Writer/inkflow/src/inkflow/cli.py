@@ -2901,14 +2901,20 @@ def repair_project(
 
     placeholders = ",".join("?" for _ in target_status)
     chapter_filter = "AND layer_key = ? " if chapter else ""
+    run_filter = ""
     params = [project_id] + target_status
     if chapter:
         params.append(chapter)
+        latest_run = _latest_chapter_run(db, project_id, chapter)
+        if latest_run:
+            run_filter = "AND run_id = ? "
+            params.append(latest_run["run_id"])
     shots = db.execute(
         f"SELECT shot_id, run_id, shot_index, layer_key, light_status, redo_attempt "
         f"FROM writing_shots "
         f"WHERE project_id = ? AND shot_status IN ({placeholders}) "
         f"{chapter_filter}"
+        f"{run_filter}"
         f"ORDER BY shot_index",
         params,
     ).fetchall()
@@ -3405,6 +3411,56 @@ def status_project(project: str):
         click.echo("\nSession:")
         for s in sessions:
             click.echo(f"  {s['status']}: {s['cnt']}")
+
+    chapter_run_rows = db.execute(
+        "SELECT ws.layer_key, ws.run_id, s.status AS session_status, "
+        "s.created_at, COUNT(*) AS total, "
+        "SUM(CASE WHEN ws.shot_status IN ('done_green', 'done_yellow') "
+        "THEN 1 ELSE 0 END) AS done_count "
+        "FROM writing_shots ws "
+        "JOIN writing_sessions s ON s.run_id = ws.run_id "
+        "WHERE ws.project_id = ? "
+        "GROUP BY ws.layer_key, ws.run_id, s.status, s.created_at "
+        "ORDER BY ws.layer_key, s.created_at DESC",
+        (project_id,),
+    ).fetchall()
+    latest_by_chapter: dict[str, dict] = {}
+    for run_row in chapter_run_rows:
+        chapter_key = run_row["layer_key"]
+        if chapter_key not in latest_by_chapter:
+            latest_by_chapter[chapter_key] = dict(run_row)
+
+    if latest_by_chapter:
+        click.echo("\n章节 Latest Run:")
+        for chapter_key in sorted(latest_by_chapter):
+            run_row = latest_by_chapter[chapter_key]
+            click.echo(
+                f"  {chapter_key}: {run_row['session_status']} "
+                f"{run_row['done_count'] or 0}/{run_row['total']} "
+                f"run={run_row['run_id']}"
+            )
+
+    review_rows = db.execute(
+        "SELECT chapter_key, run_id, status, updated_at "
+        "FROM writing_chapter_reviews "
+        "WHERE project_id = ? "
+        "ORDER BY chapter_key, updated_at DESC",
+        (project_id,),
+    ).fetchall()
+    latest_review_by_chapter: dict[str, dict] = {}
+    for review_row in review_rows:
+        chapter_key = review_row["chapter_key"]
+        if chapter_key not in latest_review_by_chapter:
+            latest_review_by_chapter[chapter_key] = dict(review_row)
+
+    if latest_review_by_chapter:
+        click.echo("\n章节 Canonical:")
+        for chapter_key in sorted(latest_review_by_chapter):
+            review_row = latest_review_by_chapter[chapter_key]
+            click.echo(
+                f"  {chapter_key}: {review_row['status']} "
+                f"run={review_row['run_id'] or '-'}"
+            )
 
     story_dir = _STORY_BASE / f"《{project}》"
     setup_dir = story_dir / ".inkflow" / "chapter-setups"

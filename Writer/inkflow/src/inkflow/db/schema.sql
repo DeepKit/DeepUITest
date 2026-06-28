@@ -1,5 +1,5 @@
--- InkFlow v3.17 — Schema v18 (chapter review canonical state)
--- SCHEMA_VERSION: 18
+-- InkFlow v3.18 — Schema v19 (run-attempt shot identity)
+-- SCHEMA_VERSION: 19
 -- Generated from implementation-contract-v0.md; aligned 2026-06-28
 -- 39 business tables total (+ _schema_meta = 40 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -15,6 +15,7 @@
 -- v15→v16: model_attempts.phase 新增 outline/constitution/chapter/volume architect phases (B41)
 -- v16→v17: writing_jury_scores.dimension 扩展 hard/type/literary 分层裁判维度
 -- v17→v18: 新增 writing_chapter_reviews 表，记录 accepted canonical 章节审稿状态
+-- v18→v19: writing_shots 新增 logical_shot_id，shot_id 改为 run attempt 主键
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -201,6 +202,7 @@ CREATE TABLE writing_run_snapshots (
 
 CREATE TABLE writing_shots (
     shot_id TEXT PRIMARY KEY,
+    logical_shot_id TEXT,
     project_id TEXT NOT NULL REFERENCES projects(project_id),
     run_id TEXT NOT NULL REFERENCES writing_sessions(run_id),
     layer_key TEXT NOT NULL,
@@ -225,6 +227,8 @@ CREATE TABLE writing_shots (
 );
 CREATE INDEX idx_shots_run ON writing_shots(run_id);
 CREATE INDEX idx_shots_status ON writing_shots(shot_status);
+CREATE INDEX idx_shots_logical ON writing_shots(project_id, layer_key, logical_shot_id);
+CREATE UNIQUE INDEX idx_shots_run_logical_unique ON writing_shots(run_id, logical_shot_id);
 
 -- =============================================================================
 -- Layer 5: FK → writing_sessions + writing_shots

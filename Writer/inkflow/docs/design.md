@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.17: 全自动文学文本生产引擎 — 技术设计
+# 墨韵 (InkFlow) v3.18: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.17（Schema v18：章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节；previous context / fact anchors 排除 rejected、aborted、unaccepted 历史 run）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28
+> 版本：v3.18（Schema v19：run attempt shot identity；章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节；previous context / fact anchors 排除 rejected、aborted、unaccepted 历史 run）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28 / v3.18 Schema v19：2026-06-28
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -11,7 +11,7 @@
 
 ## 0. 当前 P0 目标（2026-06-27）
 
-墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。当前状态是“受控试跑”，不是正式批量生产：第 2 章和第 3 章已证明方向成立，review/reject/abort 的章节级 canonical 状态机和 accepted-only export 已落地；剩余 P0 阻塞项主要是 run/shot identity 重构和真实库迁移/小样验证。
+墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。当前状态是“工程投产候选”：第 2 章和第 3 章已证明方向成立，review/reject/abort 的章节级 canonical 状态机、accepted-only export、run attempt shot identity 均已落地。工程层允许进入逐章正式生产；文学成稿仍必须由人类在每章生产后通过 `ink review --accept/--revise/--reject` 定稿。
 
 ```text
 导入《分流》第 1 章人工样章
@@ -662,7 +662,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **39 张业务表 + `_schema_meta` 元表**（Schema v18）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
+数据库为 **39 张业务表 + `_schema_meta` 元表**（Schema v19）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态；Schema v19 新增 `writing_shots.logical_shot_id`，并把生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -717,7 +717,7 @@ execution_records             -- 执行树正文（per-run）
 - AI 修红/修黄 → `shot_revisions(status='current', operation='write_repair')`，旧 current 进入历史
 - 所有 revision 必须记录 `parent_revision_id`、`run_id`、`contract_id`、`text_hash_normalized`
 
-### 9.3 8层层级与复合 shot_id
+### 9.3 8层层级、逻辑 shot 与 run attempt 身份
 
 继承自 DeepStory 8层金字塔设计（详见 `docs/design-8layer-hierarchy.md`）。
 
@@ -732,17 +732,21 @@ execution_records             -- 执行树正文（per-run）
 | L6 | 场景 | scene | (未来扩展) |
 | L7 | 自然段 | para | 输出单元 |
 
-**复合 shot_id 格式**: `{volume}.{chapter}.s{section}` = `v01.c02.s03`
+**逻辑 shot 格式**: `{volume}.{chapter}.s{section}` = `v01.c02.s03`
 
 - `layer_key` = `v01.c02`（卷+章）
-- `shot_id` = `layer_key + ".s" + zfill(shot_index, 2)` = `v01.c02.s03`
-- 排序：字典序即可（零填充保证）
+- `logical_shot_id` = `layer_key + ".s" + zfill(shot_index, 2)` = `v01.c02.s03`
+- 生产 run 的 `shot_id` = `{logical_shot_id}@{run_id}`，例如 `v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1`
+- baseline 人工样章没有 run attempt 重写语义，`shot_id == logical_shot_id`
+- 排序和跨章节定位使用 `logical_shot_id` / `layer_key` / `shot_index`
+- 执行、草稿、评审、修复、revision 的外键使用 run attempt `shot_id`
+- 同一个 `run_id` 内 `logical_shot_id` 唯一；同一章节重写必须创建新的 run attempt shot 行，不能复用旧 run 正文
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v18，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v19，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v18 总计 39 张业务表 + `_schema_meta` 元表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v19 总计 39 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。

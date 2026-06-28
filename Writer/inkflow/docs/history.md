@@ -1675,3 +1675,32 @@ python -m inkflow.cli run "分流" --chapter v01.c03 --resume
 - 语法检查：`py_compile` 通过
 - 目标测试：92 passed, 3 warnings
 - 全量测试：414 passed, 4 warnings
+
+---
+
+## CORE-2-V19 run attempt shot identity — 2026-06-28
+
+**目标**：修复同一章节多次重写时稳定 `shot_id` 跨 run 复用的问题，使新 run 不会跳过或引用旧 run 正文。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| Schema v19 | `writing_shots` 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}` |
+| 身份规则 | `logical_shot_id` 用于契约/故事定位和排序；attempt `shot_id` 用于 drafts、jury、revision、repair 等执行外键 |
+| baseline 兼容 | locked human baseline 保持 `shot_id == logical_shot_id`，避免破坏第 1 章人工样章 |
+| 幂等边界 | `SessionManager.create_shots()` 只在同一 `run_id + logical_shot_id` 内幂等；新 run 必须创建新 shot 行 |
+| 迁移 | v18→v19 回填 `logical_shot_id = shot_id`，并创建 `idx_shots_logical` 与 `idx_shots_run_logical_unique` |
+| repair 边界 | `repair --chapter --all` 限定当前章节 latest run，避免多 run 同逻辑 shot 时误匹配旧 run |
+| status 可视化 | `ink status` 显示章节 latest run 与 canonical 状态，帮助区分审稿稿和正式稿 |
+
+### 结论
+
+CORE-2 已完成。生产内核不再有已知 P0 代码阻塞；本轮已通过全量回归和真实《分流》库 v19 迁移/status 检查。后续正式正文仍以每章人工 accepted 为准。
+
+### 验证
+
+- 语法检查：`py_compile` 通过
+- 目标测试：161 passed, 3 warnings
+- 全量测试：428 passed, 4 warnings
+- 真实库检查：`ink status "分流"` 通过；`_schema_meta.version=19`，`logical_shot_id` 无空值，`idx_shots_run_logical_unique` 存在

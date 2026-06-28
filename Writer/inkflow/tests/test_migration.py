@@ -97,6 +97,54 @@ class TestVersionTracking:
         finally:
             conn.close()
 
+    def test_migrate_v18_to_v19_backfills_logical_shot_id(self, tmp_dir):
+        """v19 migration should preserve old shot ids as logical ids."""
+        conn = sqlite3.connect(str(tmp_dir / "v18_shots.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 18)
+            conn.execute(
+                "CREATE TABLE writing_shots ("
+                "shot_id TEXT PRIMARY KEY, "
+                "project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL, "
+                "layer_key TEXT NOT NULL, "
+                "shot_index INTEGER NOT NULL, "
+                "shot_status TEXT NOT NULL, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+                "updated_at TEXT NOT NULL DEFAULT (datetime('now')), "
+                "UNIQUE(run_id, shot_index)"
+                ")"
+            )
+            conn.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+                "VALUES ('v01.c02.s01', 'p1', 'run_old', 'v01.c02', 1, 'done_green')"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v18 → v19" in item for item in result)
+            row = conn.execute(
+                "SELECT shot_id, logical_shot_id FROM writing_shots"
+            ).fetchone()
+            assert row["shot_id"] == "v01.c02.s01"
+            assert row["logical_shot_id"] == "v01.c02.s01"
+            idx = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='idx_shots_logical'"
+            ).fetchone()
+            assert idx is not None
+            unique_idx = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='idx_shots_run_logical_unique'"
+            ).fetchone()
+            assert unique_idx is not None
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""

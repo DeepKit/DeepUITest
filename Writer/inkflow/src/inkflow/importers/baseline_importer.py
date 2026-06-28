@@ -194,6 +194,7 @@ class BaselineImporter:
 
         # 8层复合ID: {volume}.{chapter}.s{section}
         shot_id = generate_shot_id(chapter_key, shot["shot_index"])
+        logical_shot_id = shot_id
         contract_id = generate_ulid()
         revision_id = generate_ulid()
         attempt_id = generate_ulid()
@@ -202,10 +203,10 @@ class BaselineImporter:
         # 1. Create shot record (done_green, locked, is_baseline=1)
         self.db.execute(
             "INSERT INTO writing_shots "
-            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, "
+            "(shot_id, logical_shot_id, project_id, run_id, layer_key, shot_index, shot_status, "
             "light_status, current_revision_id, is_baseline) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'green', ?, 1)",
-            (shot_id, self.project_id, run_id, chapter_key, shot["shot_index"],
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'green', ?, 1)",
+            (shot_id, logical_shot_id, self.project_id, run_id, chapter_key, shot["shot_index"],
              ShotStatus.DONE_GREEN, revision_id),
         )
 
@@ -245,12 +246,13 @@ class BaselineImporter:
         """
         rows = self.db.execute(
             "SELECT s.shot_id, s.shot_index, s.layer_key, s.shot_status, "
-            "s.light_status, s.current_revision_id, "
+            "s.logical_shot_id, s.light_status, s.current_revision_id, "
             "r.text, r.text_hash_normalized, r.writer_persona, "
             "r.gate_result_json "
             "FROM writing_shots s "
             "LEFT JOIN shot_revisions r ON s.current_revision_id = r.revision_id "
             "WHERE s.project_id = ? AND s.layer_key = ? "
+            "AND s.is_baseline = 1 "
             "ORDER BY s.shot_index",
             (self.project_id, chapter_key),
         ).fetchall()

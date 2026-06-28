@@ -69,6 +69,7 @@ class TestImportChapter:
 
         for shot in shots:
             assert shot["shot_status"] == "done_green"
+            assert shot["logical_shot_id"] == shot["shot_id"]
             assert shot["writer_persona"] == "human_baseline"
             assert shot["light_status"] == "green"
 

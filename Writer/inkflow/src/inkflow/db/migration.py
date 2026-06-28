@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -1150,4 +1150,27 @@ def _migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_chapter_reviews_one_accepted "
         "ON writing_chapter_reviews(project_id, chapter_key) "
         "WHERE status = 'accepted'"
+    )
+
+
+@register_migration(18, 19)
+def _migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
+    """v19: 分离 logical shot 与 run attempt shot 主键。"""
+    cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(writing_shots)").fetchall()
+    }
+    if "logical_shot_id" not in cols:
+        conn.execute("ALTER TABLE writing_shots ADD COLUMN logical_shot_id TEXT")
+    conn.execute(
+        "UPDATE writing_shots SET logical_shot_id = shot_id "
+        "WHERE logical_shot_id IS NULL OR logical_shot_id = ''"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shots_logical "
+        "ON writing_shots(project_id, layer_key, logical_shot_id)"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_shots_run_logical_unique "
+        "ON writing_shots(run_id, logical_shot_id)"
     )

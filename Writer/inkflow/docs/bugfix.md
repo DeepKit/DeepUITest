@@ -515,3 +515,11 @@
 - **影响**: 人工退稿/返修的正文仍可能被默认导出当作正式稿，或作为前文事实进入下一章 prompt，造成连续污染。
 - **修复**: Schema v18 新增 `writing_chapter_reviews`；`review` 写 DB canonical 状态，`--accept` 必须 latest run completed、shot 全封板且 L3 passed；`--revise/--reject` 将该 run 本章绿/黄 shot 退回 `redo`；默认 `ink export` 改为 accepted-only，`--draft` 才导出审稿稿；previous context 和 fact anchors 只读取当前 run、accepted 章节或 locked baseline。
 - **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `src/inkflow/cli.py`, `src/inkflow/export/exporter.py`, `src/inkflow/services/fact_anchor_extractor.py`, `tests/test_schema.py`, `tests/test_cli.py`, `tests/test_fact_anchor.py`
+
+### B62. 同一章节重写复用稳定 `shot_id`，可能跳过旧正文或串到旧 run ✅ 已修复
+- **严重性**: Critical
+- **发现**: 生产内核 CORE-2 审阅
+- **根因**: `writing_shots.shot_id` 同时承担“故事逻辑位置”和“本次执行主键”两种职责；`create_shots()` 以稳定 `v01.c02.s01` 查重，导致新 run 可能复用旧 shot 行，draft/revision/repair/export 难以区分本次重写与历史正文。
+- **影响**: 同一章节返修、重写或生产恢复时，可能跳过应重新生成的 shot，或把旧 run 的正文、评分、修复状态带入新 run；accepted canonical 即使存在，也无法完全防止执行层污染。
+- **修复**: Schema v19 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；baseline 保持 `shot_id == logical_shot_id`；`create_shots()` 只在同一 run 内幂等；v18→v19 迁移回填旧 rows，并建立 `idx_shots_logical` / `idx_shots_run_logical_unique`；`repair --chapter --all` 限定 latest run。
+- **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `src/inkflow/utils/shot_id.py`, `src/inkflow/services/session_manager.py`, `src/inkflow/importers/baseline_importer.py`, `src/inkflow/cli.py`, `tests/test_schema.py`, `tests/test_migration.py`, `tests/test_shot_id.py`, `tests/test_session_manager.py`, `tests/test_baseline_importer.py`, `tests/test_cli.py`

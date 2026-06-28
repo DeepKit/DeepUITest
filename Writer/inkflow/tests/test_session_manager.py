@@ -230,6 +230,34 @@ class TestShots:
         assert len(all_shots) == 3
         assert all_shots[0]["shot_status"] == "pending"
         assert all_shots[0]["shot_index"] == 1
+        assert all_shots[0]["logical_shot_id"] == "v01.c02.s01"
+        assert all_shots[0]["shot_id"].startswith("v01.c02.s01@")
+
+    def test_create_shots_is_idempotent_only_within_same_run(self, mgr):
+        """A chapter rewrite must create fresh shot rows for the new run."""
+        session_a = mgr.get_session(mgr.create_session(act_id="v01.c02", total_shots=1))
+        session_b = mgr.get_session(mgr.create_session(act_id="v01.c02", total_shots=1))
+
+        shot_a = mgr.create_shots(
+            session_a["run_id"], [{"layer_key": "v01.c02", "shot_index": 1}],
+        )[0]
+        shot_a_again = mgr.create_shots(
+            session_a["run_id"], [{"layer_key": "v01.c02", "shot_index": 1}],
+        )[0]
+        shot_b = mgr.create_shots(
+            session_b["run_id"], [{"layer_key": "v01.c02", "shot_index": 1}],
+        )[0]
+
+        assert shot_a == shot_a_again
+        assert shot_b != shot_a
+
+        rows = mgr.db.execute(
+            "SELECT run_id, logical_shot_id, shot_id FROM writing_shots "
+            "WHERE layer_key = 'v01.c02' ORDER BY run_id"
+        ).fetchall()
+        assert len(rows) == 2
+        assert {row["logical_shot_id"] for row in rows} == {"v01.c02.s01"}
+        assert {row["shot_id"] for row in rows} == {shot_a, shot_b}
 
     def test_update_shot_status(self, mgr):
         session_id = mgr.create_session()

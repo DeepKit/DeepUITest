@@ -6,6 +6,8 @@ import pytest
 
 from inkflow.utils.shot_id import (
     generate,
+    generate_attempt,
+    logical_id,
     parse,
     is_valid,
     is_legacy_ulid,
@@ -46,6 +48,19 @@ class TestGenerate:
         with pytest.raises(ValueError, match="shot_index must be >= 1"):
             generate("v01.c01", -1)
 
+    def test_generate_attempt(self):
+        run_id = "01KW3Q5NCBPZWRG254EXAH2PK1"
+        assert generate_attempt("v01.c02", 3, run_id) == (
+            "v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1"
+        )
+
+    def test_generate_attempt_accepts_legacy_test_run_id(self):
+        assert generate_attempt("v01.c02", 1, "run_01") == "v01.c02.s01@run_01"
+
+    def test_generate_attempt_rejects_ambiguous_run_id(self):
+        with pytest.raises(ValueError, match="Invalid run_id"):
+            generate_attempt("v01.c02", 1, "bad@run")
+
 
 class TestParse:
     def test_basic(self):
@@ -62,6 +77,14 @@ class TestParse:
     def test_large_numbers(self):
         result = parse("v99.c99.s99")
         assert result.volume == "v99"
+
+    def test_attempt_id_parses_as_logical(self):
+        result = parse("v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1")
+        assert result == ShotIdParts("v01", "c02", "s03", "v01.c02")
+
+    def test_attempt_id_with_short_run_id_parses_as_logical(self):
+        result = parse("v01.c02.s03@run_01")
+        assert result == ShotIdParts("v01", "c02", "s03", "v01.c02")
 
     def test_invalid_format(self):
         with pytest.raises(ValueError, match="Invalid shot_id"):
@@ -82,6 +105,12 @@ class TestIsValid:
 
     def test_valid_first(self):
         assert is_valid("v01.c01.s01") is True
+
+    def test_valid_attempt(self):
+        assert is_valid("v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1") is True
+
+    def test_valid_attempt_short_run_id(self):
+        assert is_valid("v01.c02.s03@run_01") is True
 
     def test_invalid_layer_key_only(self):
         assert is_valid("v01.c02") is False
@@ -116,6 +145,17 @@ class TestToLayerKey:
 
     def test_first(self):
         assert to_layer_key("v01.c01.s01") == "v01.c01"
+
+    def test_attempt(self):
+        assert to_layer_key("v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1") == "v01.c02"
+
+
+class TestLogicalId:
+    def test_logical_id_from_logical(self):
+        assert logical_id("v01.c02.s03") == "v01.c02.s03"
+
+    def test_logical_id_from_attempt(self):
+        assert logical_id("v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1") == "v01.c02.s03"
 
 
 class TestSortKey:

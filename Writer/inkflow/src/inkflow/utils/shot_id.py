@@ -1,8 +1,11 @@
 """复合 shot_id 生成与解析。
 
 继承自 DeepStory 8层金字塔设计。
-格式: {layer_key}.s{shot_index}
+逻辑格式: {layer_key}.s{shot_index}
 示例: v01.c02.s03
+
+生产 run attempt 使用: {logical_shot_id}@{run_id}
+示例: v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1
 
 详见 docs/design-8layer-hierarchy.md
 """
@@ -23,6 +26,10 @@ class ShotIdParts(NamedTuple):
 
 # v01.c02.s03
 _SHOT_ID_RE = re.compile(r'^(v\d{2})\.(c\d{2})\.(s\d{2})$')
+
+# v01.c02.s03@01KW3Q5NCBPZWRG254EXAH2PK1
+_ATTEMPT_SHOT_ID_RE = re.compile(r'^(v\d{2}\.c\d{2}\.s\d{2})@([A-Za-z0-9_.:-]+)$')
+_RUN_ID_SEGMENT_RE = re.compile(r'^[A-Za-z0-9_.:-]+$')
 
 # v01.c02
 _LAYER_KEY_RE = re.compile(r'^(v\d{2})\.(c\d{2})$')
@@ -54,6 +61,29 @@ def generate(layer_key: str, shot_index: int) -> str:
     return f"{layer_key}.s{shot_index:02d}"
 
 
+def generate_attempt(layer_key: str, shot_index: int, run_id: str) -> str:
+    """Generate a run-attempt-specific shot_id.
+
+    The logical identity remains ``v01.c02.s03``. The primary key used by
+    production runs includes run_id so a chapter rewrite creates fresh rows
+    instead of reusing the previous run's shot records.
+    """
+    logical_id = generate(layer_key, shot_index)
+    if not run_id or not _RUN_ID_SEGMENT_RE.match(run_id):
+        raise ValueError(f"Invalid run_id for attempt shot_id: {run_id!r}")
+    return f"{logical_id}@{run_id}"
+
+
+def logical_id(shot_id: str) -> str:
+    """Return the stable logical shot id for either logical or attempt ids."""
+    if _SHOT_ID_RE.match(shot_id):
+        return shot_id
+    m = _ATTEMPT_SHOT_ID_RE.match(shot_id)
+    if m:
+        return m.group(1)
+    raise ValueError(f"Invalid shot_id format: {shot_id!r}")
+
+
 def parse(shot_id: str) -> ShotIdParts:
     """解析复合 shot_id。
 
@@ -70,6 +100,7 @@ def parse(shot_id: str) -> ShotIdParts:
         >>> parse("v01.c02.s03")
         ShotIdParts(volume='v01', chapter='c02', section='s03', layer_key='v01.c02')
     """
+    shot_id = logical_id(shot_id)
     m = _SHOT_ID_RE.match(shot_id)
     if not m:
         raise ValueError(f"Invalid shot_id format: {shot_id!r}, expected 'vNN.cNN.sNN'")
@@ -88,7 +119,7 @@ def is_valid(shot_id: str) -> bool:
         >>> is_valid("01KVJ1QVDRDGFX9J73459RE11H")  # legacy ULID
         False
     """
-    return bool(_SHOT_ID_RE.match(shot_id))
+    return bool(_SHOT_ID_RE.match(shot_id) or _ATTEMPT_SHOT_ID_RE.match(shot_id))
 
 
 def is_legacy_ulid(shot_id: str) -> bool:
