@@ -33,6 +33,10 @@ import sqlite3
 from inkflow.utils.ulid import generate as generate_ulid
 from inkflow.models.enums import ShotStatus
 from inkflow.services.text_repository import TextRepository
+from inkflow.utils.character_names import (
+    deprecated_aliases_for_layers,
+    find_deprecated_aliases,
+)
 
 
 # ── Closing-sentence audit patterns ──
@@ -184,13 +188,15 @@ class ArchitectGate:
 
         # Check shot-level contract compliance
         contract = self.db.execute(
-            "SELECT must_land_json, anti_write_json FROM writing_shot_contracts "
+            "SELECT must_land_json, anti_write_json, contract_json FROM writing_shot_contracts "
             "WHERE shot_id = ? AND run_id = ?",
             (shot_id, self.run_id),
         ).fetchone()
 
+        contract_text = ""
         if contract:
             must_land = json.loads(contract["must_land_json"] or "{}")
+            contract_text = json.dumps(dict(contract), ensure_ascii=False)
             if must_land and not passed:
                 issues.append("must_land events may not be fully covered")
 
@@ -311,6 +317,26 @@ class ArchitectGate:
             issues.append(issue)
             hard_issues.append(issue)
 
+        # Canonical character names: reject stale aliases after a rename.
+        name_consistency = self._check_canonical_name_usage(text)
+        if name_consistency.get("violations"):
+            issue = (
+                f"character_name: {len(name_consistency['violations'])} "
+                "deprecated alias(es)"
+            )
+            issues.append(issue)
+            hard_issues.append(issue)
+
+        # Prevent concrete medical/institutional facts invented beyond contract.
+        fact_expansion = self._check_unanchored_fact_expansion(text, contract_text)
+        if fact_expansion.get("violations"):
+            issue = (
+                f"unanchored_fact: {len(fact_expansion['violations'])} "
+                "unsupported concrete fact(s)"
+            )
+            issues.append(issue)
+            hard_issues.append(issue)
+
         # D-25: Suspense summary
         suspense_summary = self._build_suspense_summary(
             closing_audit, number_temp, explanation_check, harm_preview,
@@ -334,6 +360,8 @@ class ArchitectGate:
             "paragraph_length": para_length,          # OPT-1
             "narrator_intrusion": narrator_intrusion,  # OPT-3
             "system_voice": system_voice,             # OPT-7
+            "name_consistency": name_consistency,
+            "fact_expansion": fact_expansion,
         }
 
         self._record_gate("L4", shot_id, result)
@@ -724,6 +752,67 @@ class ArchitectGate:
             "interpretive_matches": interpretive_matches,
         }
 
+    # ── Canonical names / factual expansion ──
+
+    def _check_canonical_name_usage(self, text: str) -> dict:
+        """Detect deprecated character aliases in generated prose."""
+        if not text:
+            return {"violations": [], "aliases": {}}
+        row = self.db.execute(
+            "SELECT layers_json FROM writing_meta_contract "
+            "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+            (self.project_id,),
+        ).fetchone()
+        layers = {}
+        if row:
+            try:
+                layers = json.loads(row["layers_json"] or "{}")
+            except (json.JSONDecodeError, TypeError):
+                layers = {}
+        aliases = deprecated_aliases_for_layers(layers)
+        hits = find_deprecated_aliases(text, aliases)
+        return {
+            "violations": hits,
+            "aliases": aliases,
+        }
+
+    def _check_unanchored_fact_expansion(self, text: str, contract_text: str) -> dict:
+        """Catch high-impact concrete facts that are not present in the contract.
+
+        This is deliberately narrow. It targets medical/institutional specifics
+        that can change continuity if invented by a writer model.
+        """
+        if not text:
+            return {"violations": []}
+
+        patterns = [
+            ("社区医院", "medical_visit"),
+            ("拍了片", "medical_visit"),
+            ("诊断意见", "medical_diagnosis"),
+            ("髌骨软化", "medical_diagnosis"),
+            ("关节积液", "medical_diagnosis"),
+            ("建议休息", "medical_diagnosis"),
+            ("请了半天假", "schedule_fact"),
+            ("手术", "medical_procedure"),
+            ("取出来", "medical_procedure"),
+            ("派单量比上月增加", "metric_fact"),
+        ]
+        violations: list[dict] = []
+        contract_text = contract_text or ""
+        for marker, kind in patterns:
+            if marker not in text or marker in contract_text:
+                continue
+            pos = text.find(marker)
+            start = max(0, pos - 30)
+            end = min(len(text), pos + len(marker) + 50)
+            violations.append({
+                "marker": marker,
+                "kind": kind,
+                "context": text[start:end].replace("\n", " "),
+                "suggestion": "新增医疗/制度事实必须先进入 setup/contract，不得由正文模型自由发明。",
+            })
+        return {"violations": violations}
+
     # ── D-25: Suspense summary ──
 
     def _build_suspense_summary(
@@ -883,7 +972,7 @@ class ArchitectGate:
         """
         shots = self.db.execute(
             "SELECT ws.shot_id, ws.shot_index, ws.shot_status, ws.light_status, "
-            "wsc.must_land_json, wsc.pov_routing_json "
+            "wsc.must_land_json, wsc.pov_routing_json, wsc.contract_json "
             "FROM writing_shots ws "
             "LEFT JOIN writing_shot_contracts wsc ON ws.shot_id = wsc.shot_id "
             "AND wsc.run_id = ? "
@@ -946,6 +1035,15 @@ class ArchitectGate:
                 "or interruption, not closure/explanation"
             )
 
+        # Check 4b: Titled shots must be real scenes, not thin labeled stubs.
+        shot_density = self._check_titled_shot_density(shots)
+        for item in shot_density.get("violations", []):
+            issues.append(
+                "shot_too_thin: "
+                f"s{item['shot_index']:02d} {item['title']} "
+                f"{item['chars']}<{item['min_chars']} chars"
+            )
+
         # Check 5 (OPT-4): Character presence — warn if a POV character has zero shots
         # Get POV characters from the meta-contract
         meta_contract_row = self.db.execute(
@@ -988,6 +1086,7 @@ class ArchitectGate:
             "red_count": red_count,
             "pov_coverage": pov_counts,
             "chapter_hook": chapter_hook,
+            "shot_density": shot_density,
             "issues": issues,
         }
 
@@ -1025,6 +1124,54 @@ class ArchitectGate:
             "hook_quality": closing.get("hook_quality", "unknown"),
             "is_unfinished": closing.get("is_unfinished", False),
         }
+
+    def _check_titled_shot_density(self, shots) -> dict:
+        """Require editor-facing titled shots to have enough scene weight."""
+        violations: list[dict] = []
+        repo = TextRepository(self.db)
+        total = len(shots)
+        for shot in shots:
+            title = self._shot_title_from_row(shot)
+            if not title:
+                continue
+            text = repo.get_shot_text(shot["shot_id"])
+            chars = len(re.sub(r"\s+", "", text or ""))
+            is_final = shot["shot_index"] == total
+            min_chars = 500 if is_final else 450
+            if chars < min_chars:
+                violations.append({
+                    "shot_id": shot["shot_id"],
+                    "shot_index": shot["shot_index"],
+                    "title": title,
+                    "chars": chars,
+                    "min_chars": min_chars,
+                })
+        return {
+            "passed": not violations,
+            "violations": violations,
+        }
+
+    @staticmethod
+    def _shot_title_from_row(shot) -> str | None:
+        for field in ("must_land_json", "contract_json"):
+            raw = shot[field] if field in shot.keys() else None
+            if not raw:
+                continue
+            try:
+                data = json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            title = data.get("title")
+            if isinstance(title, str) and title.strip():
+                return title.strip()
+            must_land = data.get("must_land")
+            if isinstance(must_land, dict):
+                nested_title = must_land.get("title")
+                if isinstance(nested_title, str) and nested_title.strip():
+                    return nested_title.strip()
+        return None
 
     def _check_cross_chapter_absence(
         self, absent_characters: list[str], current_chapter: str

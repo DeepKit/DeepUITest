@@ -542,6 +542,25 @@ class TestChapterSetupSmoke:
 
         assert "只生成第 2 章" in str(exc.value)
 
+    def test_contract_scope_rejects_deprecated_character_alias(self):
+        with pytest.raises(Exception) as exc:
+            _validate_contract_scope_for_chapter(
+                "v01.c03",
+                {
+                    "identity": {
+                        "pov_characters": ["郑坤", "白英", "苏然", "韩教授"],
+                    },
+                    "hard_boundaries": {
+                        "characters_alive": ["郑坤", "白英", "苏然", "韩教授"],
+                        "fixed_events": "阿坤到了太古里。",
+                    },
+                    "style_locks": {},
+                },
+            )
+
+        assert "角色名仍含旧称 阿坤" in str(exc.value)
+        assert "郑坤" in str(exc.value)
+
     def test_run_preflight_rejects_setup_from_old_contract(self):
         with pytest.raises(Exception) as exc:
             _validate_chapter_run_preflight(
@@ -557,6 +576,30 @@ class TestChapterSetupSmoke:
             )
 
         assert "旧元契约" in str(exc.value)
+
+    def test_run_preflight_rejects_setup_with_deprecated_alias(self):
+        with pytest.raises(Exception) as exc:
+            _validate_chapter_run_preflight(
+                "测试",
+                "v01.c03",
+                {
+                    "source_contract": {"meta_contract_id": "mc"},
+                    "shots": [{"shot": 1, "must_land": "阿坤到了太古里。"}],
+                },
+                {"meta_contract_id": "mc"},
+                {
+                    "identity": {
+                        "pov_characters": ["郑坤", "白英", "苏然", "韩教授"],
+                    },
+                    "hard_boundaries": {
+                        "characters_alive": ["郑坤", "白英", "苏然", "韩教授"],
+                    },
+                    "style_locks": {},
+                },
+                [{"shot": 1, "event": "郑坤到了太古里。"}],
+            )
+
+        assert "setup 包仍含废弃角色名" in str(exc.value)
 
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock
@@ -1112,6 +1155,52 @@ class TestExportSmoke:
         assert "### 玻璃里的保鲜膜" in content
         assert "\n# 玻璃里的保鲜膜\n" not in content
         assert "雨落在玻璃上。" in content
+
+    def test_markdown_export_uses_contract_json_title_when_must_land_title_lost(
+        self, db, tmp_dir,
+    ):
+        """大纲重写丢失 must_land.title 时，导出应回退到完整 contract title。"""
+        from inkflow.export import export_markdown
+
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('sess_title_fallback', 'p1', 'run_title_fallback', 'active')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, current_revision_id) "
+            "VALUES ('shot_title_fallback', 'p1', 'run_title_fallback', 'v01.c02', 1, "
+            "'done_green', 'rev_title_fallback')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('contract_title_fallback', 'p1', 'run_title_fallback', "
+            "'shot_title_fallback', 'v01.c02', 'locked', 'hash_title_fallback', "
+            "'{\"beats\":\"事件序列\"}', '{}', "
+            "'{\"must_land\":{\"title\":\"四份通知\",\"beats\":\"## 四份通知\\n\\n- 事件\"}}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, operation, "
+            "text, text_hash_normalized, is_current, attempt_id) "
+            "VALUES ('rev_title_fallback', 'shot_title_fallback', 'run_title_fallback', "
+            "'contract_title_fallback', 1, 'write_generate', '白英把门掩上。', "
+            "'text_hash_title_fallback', 1, 'attempt_title_fallback')"
+        )
+        db.commit()
+
+        out_path = export_markdown(
+            db, tmp_dir / "title_fallback.md",
+            chapters=["v01.c02"],
+            run_id="run_title_fallback",
+        )
+
+        content = out_path.read_text(encoding="utf-8")
+        assert "### 四份通知" in content
+        assert "白英把门掩上。" in content
 
     def test_markdown_export_formats_paragraphs_and_scene_breaks(self, runner, sample_project, tmp_dir):
         """编辑稿导出应拆分过长自然段，并在镜头之间加入分隔线。"""

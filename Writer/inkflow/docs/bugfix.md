@@ -531,3 +531,16 @@
 - **影响**: 无法安全支持全书/整卷批处理；后续章节也不能读取同一批次前序 draft，只能读取 accepted 章节，导致“先全书草稿、后集中审稿”流程不成立。
 - **修复**: Schema v20 新增 `writing_book_runs` / `writing_book_run_chapters`；新增 `ink run-book` 和 `ink book-report`；同一 `book_run` 已完成前序 draft 可作为后续章节临时上下文和 fact anchors；正式导出仍只认 accepted canonical；`ink status` 展示最近 book run。
 - **文件**: `src/inkflow/db/schema.sql`, `src/inkflow/db/migration.py`, `src/inkflow/cli.py`, `src/inkflow/services/fact_anchor_extractor.py`, `tests/test_schema.py`, `tests/test_migration.py`, `tests/test_cli.py`, `tests/test_fact_anchor.py`
+
+### B64. 第 3 章审稿发现标题边界、旧称、未授权事实扩写和短 hook 均被放过 ✅ 已修复
+- **严重性**: Critical
+- **发现**: 第 3 章人工审稿；`玻璃里的保鲜膜` 标题下混入白英 shot，`铅笔的问号` 中出现“阿坤/社区医院/髌骨软化”等未授权信息，`慢下来` 作为独立标题场景篇幅过薄。
+- **根因**:
+  - 导出器只读 `must_land_json.title`；大纲重写后 title 可能丢失，没有回退到完整 `contract_json.must_land.title`。
+  - 真实契约和旧 setup 包仍残留废弃角色名“阿坤”，`confirm/setup/run/L4` 没有 canonical name gate。
+  - L4 只抓泛化解释/系统解释，未拦截医疗诊断、请假、手术、派单量等高影响事实扩写。
+  - L3 只检查章末钩子是否“未完成”，不检查有标题 shot 是否具备足够场景重量。
+- **影响**: 远端 writer/jury 可给出 5/5 green，但审稿稿仍存在编辑层不可接受问题；若人工误 accept，会污染后续章节上下文。
+- **修复**: 导出标题解析增加 contract fallback；新增角色名一致性工具，`confirm-contract`、`setup/run` 前置检查和 L4 均拦截废弃别名；L4 新增未授权医疗/制度事实扩写硬 gate；L3 新增 titled shot density gate；真实《分流》`contract-draft.yaml` 与 `v01.c03.yaml` 已清除“阿坤”。
+- **文件**: `src/inkflow/export/exporter.py`, `src/inkflow/utils/character_names.py`, `src/inkflow/cli.py`, `src/inkflow/services/architect_gate.py`, `tests/test_cli.py`, `tests/test_architect_gate.py`
+- **验证**: `python -m pytest -q`：440 passed, 4 warnings

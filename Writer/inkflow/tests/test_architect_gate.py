@@ -75,6 +75,55 @@ class TestArchitectGateL4:
         ).fetchone()["cnt"]
         assert count == 1
 
+    def test_l4_rejects_deprecated_character_alias(self, setup_l4):
+        db, gate, run_id = setup_l4
+        layers = {
+            "identity": {"pov_characters": ["郑坤", "白英", "苏然", "韩教授"]},
+            "hard_boundaries": {"characters_alive": ["郑坤", "白英", "苏然", "韩教授"]},
+        }
+        db.execute(
+            "UPDATE writing_meta_contract SET layers_json = ? "
+            "WHERE meta_contract_id = 'mc1'",
+            (json.dumps(layers, ensure_ascii=False),),
+        )
+        db.execute(
+            "UPDATE writing_drafts SET text = ? WHERE draft_id = 'd_01'",
+            (
+                "雨落在玻璃上，阿坤把手机扣在掌心。"
+                "他听见订单提示音从袖口里闷闷地响起来，膝盖先停了一下。",
+            ),
+        )
+        db.commit()
+
+        result = gate.evaluate_l4(
+            "shot_01", "d_01",
+            {"passed": True, "score": 90, "light_status": "green"},
+        )
+
+        assert result["passed"] is False
+        assert any("character_name" in issue for issue in result["hard_issues"])
+
+    def test_l4_rejects_unanchored_medical_fact_expansion(self, setup_l4):
+        db, gate, run_id = setup_l4
+        text = (
+            "雨声压在窗上，郑坤把诊断单折成四折塞进工牌后面。"
+            "阿姨问他还跑不跑，他没有答，只把膝盖往桌腿后面收了收。"
+            "他上周请了半天假去社区医院拍了片子，诊断意见写着髌骨软化。"
+        )
+        db.execute(
+            "UPDATE writing_drafts SET text = ? WHERE draft_id = 'd_01'",
+            (text,),
+        )
+        db.commit()
+
+        result = gate.evaluate_l4(
+            "shot_01", "d_01",
+            {"passed": True, "score": 90, "light_status": "green"},
+        )
+
+        assert result["passed"] is False
+        assert any("unanchored_fact" in issue for issue in result["hard_issues"])
+
 
 class TestArchitectGateL3:
     """L3: Chapter-level gate tests."""
@@ -302,6 +351,31 @@ class TestArchitectGateL3:
         assert result["passed"] is True
         assert result["chapter_hook"]["passed"] is True
         assert result["chapter_hook"]["hook_quality"] == "excellent"
+
+    def test_l3_fails_titled_hook_that_is_too_thin(self, setup_run):
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c09"
+        run_id = "run_thin_hook"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "郑坤把雨水甩在门外，湿气贴着裤腿往上爬。他没有立刻进去，只看着墙上的排班表。"
+            "表格边角翘起，像一片被泡软的纸。门里有人喊他的名字，他正要回答，屏幕忽然亮了",
+            "电话响了。韩教授看着骨片，给小林发了一句：明天再筛一遍。轮子从门外碾过去，吱呀响。",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+        db.execute(
+            "UPDATE writing_shot_contracts SET must_land_json = ? "
+            "WHERE run_id = ? AND shot_id = ?",
+            (json.dumps({"title": "慢下来"}, ensure_ascii=False), run_id, f"{run_id}_shot_2"),
+        )
+        db.commit()
+
+        result = gate.evaluate_l3(chapter)
+
+        assert result["passed"] is False
+        assert result["shot_density"]["passed"] is False
+        assert any("shot_too_thin" in issue for issue in result["issues"])
 
 
 class TestArchitectGateL2L1:

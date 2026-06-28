@@ -702,6 +702,21 @@ def _validate_contract_scope_for_chapter(
             "'500-800 字/段落，3-4 段/shot'"
         )
 
+    from inkflow.utils.character_names import (
+        deprecated_aliases_for_layers,
+        find_deprecated_aliases,
+        flatten_text,
+    )
+    alias_hits = find_deprecated_aliases(
+        flatten_text(layers),
+        deprecated_aliases_for_layers(layers),
+    )
+    for hit in alias_hits[:3]:
+        issues.append(
+            f"角色名仍含旧称 {hit['alias']}，正式名应为 {hit['canonical']}；"
+            f"上下文: {hit['context']}"
+        )
+
     if issues:
         detail = "\n  - ".join(issues)
         project_arg = f"\"{project}\"" if project else "\"<项目>\""
@@ -726,6 +741,24 @@ def _validate_chapter_run_preflight(
         return
 
     _validate_contract_scope_for_chapter(chapter, layers, project)
+
+    from inkflow.utils.character_names import (
+        deprecated_aliases_for_layers,
+        find_deprecated_aliases,
+        flatten_text,
+    )
+    setup_alias_hits = find_deprecated_aliases(
+        flatten_text(setup_data),
+        deprecated_aliases_for_layers(layers),
+    )
+    if setup_alias_hits:
+        first = setup_alias_hits[0]
+        raise click.ClickException(
+            "章节 setup 包仍含废弃角色名，不能进入生产。\n"
+            f"  - {first['alias']} 应改为 {first['canonical']}；"
+            f"上下文: {first['context']}\n"
+            f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
+        )
 
     source = setup_data.get("source_contract") or {}
     source_id = source.get("meta_contract_id")
@@ -1317,6 +1350,23 @@ def confirm_contract(project: str):
         "suspense_config": draft.get("suspense_config", {}),
         "suspense_blueprint": draft.get("suspense_blueprint", {}),
     }
+
+    from inkflow.utils.character_names import (
+        deprecated_aliases_for_layers,
+        find_deprecated_aliases,
+        flatten_text,
+    )
+    alias_hits = find_deprecated_aliases(
+        flatten_text(contract_data),
+        deprecated_aliases_for_layers(contract_data),
+    )
+    if alias_hits:
+        first = alias_hits[0]
+        raise click.ClickException(
+            "契约草稿仍含废弃角色名，不能确认。\n"
+            f"  - {first['alias']} 应改为 {first['canonical']}；"
+            f"上下文: {first['context']}"
+        )
 
     if existing:
         click.echo(f"元契约已存在 (status={existing['status']})，将更新。")

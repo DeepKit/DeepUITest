@@ -1014,7 +1014,9 @@ repair:
 
 配置兼容规则：旧 `.models` 的 `jury_config.dimensions` 不再注入新文学 9 维，避免旧合规维度污染文学均分；新配置若需调整文学维度，使用 `jury_config.literary_dimensions`。
 
-章节生产准入规则：`ink setup --chapter` 生成的 setup 包必须匹配当前目标章节和当前元契约；`ink run --chapter` 在创建 session 前检查 setup 包的 `source_contract.meta_contract_id`、shot 数和当前 `chapter_N_events`。若元契约还含“只生成第 N 章”这类旧章节限定，或保留旧段落锁 `500-800 字/段落，3-4 段/shot`，生产必须在 setup/run 前失败，不能拖到远端 jury 阶段表现为全 0。
+章节生产准入规则：`ink setup --chapter` 生成的 setup 包必须匹配当前目标章节和当前元契约；`ink run --chapter` 在创建 session 前检查 setup 包的 `source_contract.meta_contract_id`、shot 数和当前 `chapter_N_events`。若元契约还含“只生成第 N 章”这类旧章节限定，或保留旧段落锁 `500-800 字/段落，3-4 段/shot`，生产必须在 setup/run 前失败，不能拖到远端 jury 阶段表现为全 0。契约确认、setup 和 run 还必须通过角色名 canonical gate；例如正式角色已是 `郑坤` 时，旧称 `阿坤` 不得继续留在契约、setup 包或新正文中。
+
+内容 hard gate 补充：L4 会拦截正文模型自由发明的高影响事实，尤其是医疗诊断、社区医院、请假、手术、派单量增长等未进入契约的具体事实；L3 会检查有标题 shot 的最低场景重量，防止章末 hook 只有几百字却作为独立小节通过。导出器输出小标题时必须从 `must_land_json`、beats 首行和完整 `contract_json.must_land.title` 多级回退，避免 outline 重写丢失标题后把不同 POV shot 挂在同一标题下。
 
 ```json
 {

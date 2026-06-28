@@ -59,7 +59,7 @@ def export_markdown(
         lines.append(f"\n## 第 {_chapter_label(chapter_key)} 章\n")
 
         query = (
-            "SELECT ws.shot_id, ws.shot_index, wsc.must_land_json "
+            "SELECT ws.shot_id, ws.shot_index, wsc.must_land_json, wsc.contract_json "
             "FROM writing_shots ws "
             "LEFT JOIN writing_shot_contracts wsc "
             "  ON ws.shot_id = wsc.shot_id AND ws.run_id = wsc.run_id "
@@ -89,7 +89,10 @@ def export_markdown(
                 lines.append("\n---\n")
 
             # Editor-facing export keeps contract titles but hides pipeline metadata.
-            header_title = _resolve_title_from_contract(s["must_land_json"])
+            header_title = _resolve_title_from_contract(
+                s["must_land_json"],
+                s["contract_json"],
+            )
             if header_title:
                 lines.append(f"\n### {header_title}\n")
             lines.append(_format_prose_for_export(text))
@@ -314,12 +317,59 @@ def _split_oversized_sentence(sentence: str) -> list[str]:
     return parts or [sentence]
 
 
-def _resolve_title_from_contract(must_land_json: str | None) -> str | None:
+def _resolve_title_from_contract(
+    must_land_json: str | None,
+    contract_json: str | None = None,
+) -> str | None:
     """Extract shot title from must_land contract."""
-    if not must_land_json:
-        return None
+    must_land = _loads_json_object(must_land_json)
+    title = _clean_title(must_land.get("title"))
+    if title:
+        return title
+
+    title = _title_from_beats(must_land.get("beats"))
+    if title:
+        return title
+
+    contract = _loads_json_object(contract_json)
+    nested_must_land = contract.get("must_land")
+    if isinstance(nested_must_land, dict):
+        title = _clean_title(nested_must_land.get("title"))
+        if title:
+            return title
+        title = _title_from_beats(nested_must_land.get("beats"))
+        if title:
+            return title
+
+    return None
+
+
+def _loads_json_object(value: str | dict | None) -> dict:
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
     try:
-        data = json.loads(must_land_json) if isinstance(must_land_json, str) else must_land_json
-        return data.get("title")
+        data = json.loads(value)
     except (json.JSONDecodeError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _clean_title(value: object) -> str | None:
+    if not isinstance(value, str):
         return None
+    title = value.strip().strip("#").strip()
+    return title or None
+
+
+def _title_from_beats(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    for line in value.splitlines():
+        match = re.match(r"^\s*#{1,6}\s+(.+?)\s*$", line)
+        if match:
+            return _clean_title(match.group(1))
+        if line.strip():
+            break
+    return None

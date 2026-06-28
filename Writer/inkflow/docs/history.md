@@ -1734,3 +1734,30 @@ CORE-2 已完成。生产内核不再有已知 P0 代码阻塞；本轮已通过
 - 全量测试：434 passed, 4 warnings
 - 真实库检查：已备份 `inkflow.db.bak-v20-20260628`；`ink status "分流"` 通过；`_schema_meta.version=20`
 - 真实 plan-only：`ink run-book "分流" --from v01.c04 --to v01.c06 --plan-only` 创建 book_run `01KW6JNB3ZR52F2036YH9BDAJB`，3 个 planned chapter；`book-report` 通过
+
+---
+
+## CONTENT-GATE-1 第 3 章审稿缺陷硬化 — 2026-06-28
+
+**触发**：人工审阅第 3 章导出稿时发现四类问题：标题边界错位、废弃角色名“阿坤”、未经契约授权的医疗/请假/诊断细节、以及 `慢下来` 作为独立标题场景过短。
+
+### 核心实现
+
+| 项 | 内容 |
+|----|------|
+| 导出标题 | `export_markdown()` 从 `must_land_json.title`、beats 首行、`contract_json.must_land.title` 多级回退，避免 outline 重写后 title 丢失 |
+| 角色名一致性 | 新增 `utils.character_names`；当正式角色为郑坤且阿坤不是正式角色时，`阿坤` 视为废弃旧称 |
+| 契约准入 | `confirm-contract`、`setup/run` 前置检查会拒绝契约或 setup 包中的废弃旧称 |
+| L4 gate | 正文中出现废弃旧称直接硬失败；医疗诊断、社区医院、请假、手术、派单量增长等高影响事实若未在契约中出现，也硬失败 |
+| L3 gate | 有标题的 shot 必须具备最低场景重量；章末 hook 如果作为独立标题场景，过短则章节不通过 |
+| 真实项目配置 | 已清理《分流》`contract-draft.yaml` 和 `chapter-setups/v01.c03.yaml` 中的“阿坤”残留 |
+
+### 结论
+
+第 3 章这版审稿稿不能 accept，应记录为退稿/返修后按新 gate 重跑。链路可运行不等于文学稿可投产；人工审稿发现的问题已下沉为程序不变量。
+
+### 验证
+
+- 语法检查：`py_compile` 通过
+- 目标测试：68 passed
+- 全量测试：440 passed, 4 warnings
