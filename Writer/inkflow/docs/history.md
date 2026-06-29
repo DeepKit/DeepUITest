@@ -4,7 +4,7 @@
 
 ---
 
-## v3.21 全程审计半重构 (2026-06-29)
+## v3.21/v3.22 全程审计与契约审计半重构 (2026-06-29)
 
 本轮结论：不完全推倒重来，改为半重构。保留现有 DB、Session、Contract、Prompt、Writer、Jury、Gate、Export 边界，新增统一审计层，让生产流程从 setup 到 review 可追因。
 
@@ -13,6 +13,8 @@
 已完成：
 
 - Schema v21：新增 `writing_audit_events`、`writing_setup_snapshots`、`writing_draft_eligibility`、`writing_failure_attributions`。
+- Schema v22：`writing_audit_events.stage` 增加 `contract`，用于契约审计师复审事件。
+- 真实《分流》库已迁移到 `_schema_meta.version=22`，`ink status "分流"` 正常返回。
 - `model_attempts` 新增 `request_prompt_text`、`response_text`，模型调用不再只靠 hash 审计。
 - `setup` 生成完整 setup snapshot；`run` 加载 setup 时写审计事件。
 - Prompt 编译写入 `writing_context_snaps`，记录前文、事实锚点、意象任务和反样本上下文。
@@ -26,6 +28,7 @@
 - RetryBudget 新增 `hard_rule_violation` 类型；新增 `ink audit-report` 汇总 run 审计链。
 - `run --chapter` 在创建 session 前执行 setup linter，拦截 must_land 命中 forbidden phrases、POV 不一致、未知类型职责、章节 hook 缺失等 setup 自相矛盾问题；失败归因到 `contract_conflict`。
 - `shot_task_card` 增加完整性检查；缺失 must_land、POV、hard_facts、hook duty 或 outline 时归因到 `task_card_gap`，不得进入正文写作。
+- `confirm-contract` 增加契约审计师两轮复审：结构完整性复审和生产就绪复审；两轮通过后才创建 confirmed 元契约，失败写 contract audit report、DB audit event 和 `contract_conflict` 归因，并打回架构师和人类继续讨论。
 
 验证：
 

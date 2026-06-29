@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -164,6 +164,17 @@ def _repair_schema_health(conn: sqlite3.Connection) -> list[str]:
         except Exception as e:
             conn.execute("ROLLBACK TO SAVEPOINT repair_jury_scores_schema")
             repairs.append(f"schema health: FAILED rebuilding writing_jury_scores ({e})")
+    if _audit_events_schema_needs_contract_stage(conn):
+        try:
+            conn.execute("SAVEPOINT repair_audit_events_contract_stage")
+            _rebuild_writing_audit_events_with_contract_stage(conn)
+            conn.execute("RELEASE SAVEPOINT repair_audit_events_contract_stage")
+            repairs.append(
+                "schema health: rebuilt writing_audit_events for contract stage"
+            )
+        except Exception as e:
+            conn.execute("ROLLBACK TO SAVEPOINT repair_audit_events_contract_stage")
+            repairs.append(f"schema health: FAILED rebuilding writing_audit_events ({e})")
     return repairs
 
 
@@ -183,6 +194,15 @@ def _jury_scores_schema_needs_repair(conn: sqlite3.Connection) -> bool:
         "'chapter_continuity'",
     )
     return not all(token in sql for token in required)
+
+
+def _audit_events_schema_needs_contract_stage(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'writing_audit_events'"
+    ).fetchone()
+    if not row or not row[0]:
+        return False
+    return "'contract'" not in row[0]
 
 
 def _create_writing_jury_scores_table(conn: sqlite3.Connection) -> None:
@@ -225,6 +245,33 @@ def _rebuild_writing_jury_scores(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_jury_scores_run "
         "ON writing_jury_scores(run_id)"
     )
+
+
+def _rebuild_writing_audit_events_with_contract_stage(conn: sqlite3.Connection) -> None:
+    if not _table_exists(conn, "writing_audit_events"):
+        _create_v21_audit_tables(conn)
+        return
+    if not _audit_events_schema_needs_contract_stage(conn):
+        return
+
+    temp_table = f"writing_audit_events_rebuild_{abs(id(conn))}"
+    conn.execute("DROP INDEX IF EXISTS idx_audit_events_run")
+    conn.execute("DROP INDEX IF EXISTS idx_audit_events_shot")
+    conn.execute("DROP INDEX IF EXISTS idx_audit_events_failure")
+    conn.execute(f"ALTER TABLE writing_audit_events RENAME TO {temp_table}")
+    _create_v21_audit_tables(conn)
+    conn.execute(
+        "INSERT INTO writing_audit_events ("
+        "event_id, project_id, run_id, session_id, shot_id, stage, event_type, "
+        "status, actor, input_refs_json, output_refs_json, metrics_json, "
+        "payload_json, failure_category, failure_detail, created_at"
+        ") SELECT "
+        "event_id, project_id, run_id, session_id, shot_id, stage, event_type, "
+        "status, actor, input_refs_json, output_refs_json, metrics_json, "
+        "payload_json, failure_category, failure_detail, created_at "
+        f"FROM {temp_table}"
+    )
+    conn.execute(f"DROP TABLE {temp_table}")
 
 
 # ═══════════════════════════════════════════════════════
@@ -1277,6 +1324,12 @@ def _migrate_v20_to_v21(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE model_attempts ADD COLUMN response_text TEXT")
 
 
+@register_migration(21, 22)
+def _migrate_v21_to_v22(conn: sqlite3.Connection) -> None:
+    """v22: 契约审计 — writing_audit_events.stage 增加 contract。"""
+    _rebuild_writing_audit_events_with_contract_stage(conn)
+
+
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -1293,7 +1346,7 @@ def _create_v21_audit_tables(conn: sqlite3.Connection) -> None:
         "session_id TEXT REFERENCES writing_sessions(session_id), "
         "shot_id TEXT REFERENCES writing_shots(shot_id), "
         "stage TEXT NOT NULL CHECK (stage IN ("
-        "'init', 'setup', 'run', 'outline', 'outline_gate', 'prompt', "
+        "'init', 'contract', 'setup', 'run', 'outline', 'outline_gate', 'prompt', "
         "'writer', 'gate1', 'hard_rule', 'type_gate', 'literary_jury', "
         "'jury_unavailable', 'gate2', 'l4', 'l3', 'l2', 'l1', 'export', 'review', "
         "'repair', 'resume', 'book_run'"

@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-29
-Status: v3.21 半重构落地中；Schema v21；45 张业务表 + `_schema_meta` 元表；当前阶段：全程审计底座与 contract-first 第一版已落地，仍需真实章节返工验证；最近相关验证为 `449 passed, 4 warnings`
+Status: v3.22 半重构落地中；Schema v22；45 张业务表 + `_schema_meta` 元表；当前阶段：全程审计底座、契约审计师两轮复审与 contract-first 第一版已落地，仍需真实章节返工验证；最近全量验证仍为 `449 passed, 4 warnings`，本轮局部验证已更新
 
 ---
 
@@ -29,6 +29,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 - DESIGN-REVIEW-20260629 已收敛：大纲和草稿必须先通过硬门槛资格检查，只有 eligible 的大纲/草稿才允许进入文学 PK；不合格稿不能靠高文笔均分晋级。
 - NOVELIX-RESEARCH-1 已完成外部系统研究：Novelix 的 7 个 truth files、chapter memo、context package、rule stack、review/revise cycle、state validation 和 Studio 可视化对 InkFlow 的 contract-first 管线有直接参考价值。
 - AUDIT-1 已完成 v21 全程审计底座：`writing_audit_events`、`writing_setup_snapshots`、`writing_draft_eligibility`、`writing_failure_attributions`；`model_attempts` 保存完整 prompt/response；Gate1 不再清空通过稿审计结果；prompt/context、setup、writer、outline、jury、L3/L4、review、export 均开始写审计事件；新增 `ink audit-report` 读取 run 审计链。
+- CONTRACT-AUDITOR-1 已完成第一版：`confirm-contract` 不再是人工确认即入库；契约审计师执行结构完整性与生产就绪两轮复审，全部通过后才创建 confirmed 元契约；失败写 contract audit report、`writing_audit_events(contract)` 和 `contract_conflict` 归因，并打回架构师和人类继续讨论。
 - CONTRACT-FIRST-1 已完成第一版：`setup --chapter` 生成 `fact_manifest`；`run` 在大纲后先跑 outline fact gate，不合格不进入正文；winning outline 生成 `shot_task_card` 并进入写手 prompt/audit；草稿在 Gate1 后、jury 前跑 hard fact gate，不合格稿写入 `writing_draft_eligibility` 与 `writing_failure_attributions`，不得进入文学 PK。
 - SETUP-LINT-1 已完成第一版：`run --chapter` 在创建 session 前检查 setup 自相矛盾，拦截 must_land 命中 forbidden phrases、POV 与契约/fact_manifest 不一致、未知类型职责、章节 hook 缺失等问题；失败写入 `contract_conflict` 审计。
 
@@ -38,8 +39,8 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 
 | 文档 | 位置 | 当前状态 |
 |------|------|:---:|
-| 技术设计权威 | `docs/design.md` | 已同步 v3.21 / Schema v21 / contract-first + audit 半重构 |
-| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | 待完整同步 Schema v21 审计表细节 |
+| 技术设计权威 | `docs/design.md` | 已同步 v3.22 / Schema v22 / contract auditor + contract-first + audit 半重构 |
+| 实现契约 / DDL / 状态机 | `docs/implementation-contract-v0.md` | 已同步 Schema v22 contract audit stage；仍待完整同步审计表细节 |
 | 人机流程 | `docs/flow.md` | 已同步 run-book / book-report；待补 audit 查询入口 |
 | 三棵树与正文真相源 | `docs/design-3tree-architecture.md` | 已标注 accepted canonical 与 run attempt identity 已落地 |
 | 悬疑引擎 | `docs/suspense-engine.md` | 已实施核心闭环，待更多真实章节验证 |
@@ -68,6 +69,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 | DESIGN-REVIEW-20260629 | 确认旧管线核心缺陷在“大纲门禁未起作用 + 赛马资格与文学评分混合”；确定 contract-first 新管线 |
 | NOVELIX-RESEARCH-1 | 学习 Novelix 10 Agent、7 truth files、chapter memo、state validation、review/revise cycle 与 Studio 观测设计 |
 | AUDIT-1 | Schema v21 全程审计表、模型 prompt/response 完整记录、setup/context/draft eligibility/failure attribution 审计落地 |
+| CONTRACT-AUDITOR-1 | `confirm-contract` 两轮契约审计师复审；通过才 confirmed，失败打回架构师和人类继续讨论 |
 | CONTRACT-FIRST-1 | fact_manifest、outline fact gate、shot task card、草稿 hard fact gate 第一版落地 |
 | SETUP-LINT-1 | setup 自相矛盾 linter 第一版；preflight 失败归因到 `contract_conflict` |
 
@@ -78,10 +80,12 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
 | P0 | PROD-VERIFY-1 | 全量回归 | 已完成 | `python -m pytest -q`：449 passed, 4 warnings |
-| P0 | MIGRATE-1 | 既有真实库 Schema v21 升级验证 | 已完成 | 已备份 `D:\_Progs\.Story\《分流》\.inkflow\inkflow.db.bak-v21-audit-20260629`；`ink status "分流"` 通过；真实库 `_schema_meta.version=21` |
+| P0 | MIGRATE-1 | 既有真实库 Schema v21 升级验证 | 已完成 | 已备份 `D:\_Progs\.Story\《分流》\.inkflow\inkflow.db.bak-v21-audit-20260629`；`ink status "分流"` 通过；真实库当时 `_schema_meta.version=21` |
+| P0 | MIGRATE-2 | 既有真实库 Schema v22 升级验证 | 已完成 | 真实《分流》库 `_schema_meta.version=22`；`writing_audit_events.stage` 支持 `contract`；`ink status "分流"` 正常 |
 | P0 | BOOKRUN-VERIFY-1 | 全书编排层回归 | 已完成 | 全量 `pytest` 通过；真实库已创建 plan-only book_run `01KW6JNB3ZR52F2036YH9BDAJB`，3 个 planned chapter |
 | P0 | CONTENT-GATE-1 | 第 3 章审稿缺陷硬化 | 已完成 | 标题、旧称、未授权事实扩写、短 hook 均有自动拦截；相关测试与全量回归通过 |
 | P0 | AUDIT-1 | 全程审计底座 | 已完成 | Schema v21；关键阶段写 `writing_audit_events`；setup/context/model/draft eligibility/failure attribution 可查；`ink audit-report` 可汇总 run 审计链 |
+| P0 | CONTRACT-AUDITOR-1 | 契约审计师两轮复审 | 已完成第一版 | `confirm-contract` 先执行结构完整性和生产就绪复审；通过才 confirmed；失败写 report/audit/failure attribution 并打回架构师和人类 |
 | P0 | AUDIT-VERIFY-1 | 真实《分流》库 v21 迁移验证 | 待执行 | 打开真实库后 `_schema_meta.version=21`；重跑第 3 章后可查 setup、prompt、task_card、draft eligibility、failure attribution |
 | P0 | PROD-READY-1 | 投产状态结论 | 重新打开 | contract-first 新管线落地并用第 3 章返工、第 4 章首跑验证后，才能改回“可投产” |
 | P0 | FACT-MANIFEST-1 | 章节事实清单编译 | 已完成第一版 | `setup --chapter` 生成 `inkflow.fact_manifest.v1`，包含废弃角色名、禁词、未授权事实扩写、hook 要求和每 shot authorized corpus |
@@ -111,7 +115,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 
 ```powershell
 cd D:\_Progs\02Business\Writer\inkflow
-python -m py_compile src\inkflow\cli.py src\inkflow\db\migration.py src\inkflow\export\exporter.py src\inkflow\services\fact_anchor_extractor.py
+python -m py_compile src\inkflow\cli.py src\inkflow\db\migration.py src\inkflow\export\exporter.py src\inkflow\services\fact_anchor_extractor.py src\inkflow\services\contract_auditor.py
 python -m pytest tests\test_schema.py tests\test_migration.py tests\test_cli.py tests\test_fact_anchor.py -q
 python -m pytest -q
 python -m inkflow.cli status "分流"

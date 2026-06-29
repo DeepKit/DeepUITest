@@ -59,14 +59,28 @@ class TestCliHappyPath:
             result = runner.invoke(main, ["init", "分流"])
             assert result.exit_code == 0, f"init: {result.output}"
 
-            # Fill in required high-creativity fields
+            # Simulate the architect updating the draft after human discussion.
             draft_path = story_dir / ".inkflow" / "contract-draft.yaml"
-            content = draft_path.read_text(encoding="utf-8")
-            content = content.replace("<<请填写: 各角色核心弧线, 如: 阿坤: 从被动承受到主动选择>>", "测试弧线")
-            content = content.replace("<<请填写: 叙事语气基调, 如: 冷静克制, 不煽情, 让事实本身说话>>", "冷静克制")
-            content = content.replace("<<请填写: 第 2 章的创作诠释, 如: 这一章的核心情绪是什么? 希望读者感受到什么?>>", "测试诠释")
-            content = content.replace("<<请填写: 第 2 章中不可改变的事件, 如: 阿坤遇到拖行李箱的年轻人>>", "阿坤遇到年轻人")
-            draft_path.write_text(content, encoding="utf-8")
+            import yaml
+            draft = yaml.safe_load(draft_path.read_text(encoding="utf-8"))
+            draft["identity"]["pov_count"] = 4
+            draft["identity"]["pov_characters"] = ["阿坤", "韩教授", "白英", "苏然"]
+            draft["identity"]["character_arcs"] = "四条 POV 线都围绕外江侵蚀内江展开，各自从误认到看见代价。"
+            draft["narrative_voice"]["register_tone"] = "冷静克制，不替读者解释主题。"
+            draft["hard_boundaries"]["characters_alive"] = ["阿坤", "韩教授", "白英", "苏然"]
+            draft["hard_boundaries"]["fixed_events"] = "阿坤遇到年轻人，韩教授发现骨片，白英看见茶社边界变化，苏然发现边界外推。"
+            draft["creative_zones"]["chapter_2_interpretation"] = "本章让读者看见外江正在向内侵蚀，但不把机制说透。"
+            draft["suspense_config"]["reader_anchor"] = "外江为什么会吞入三环内侧，谁会先被系统推出去？"
+            draft["chapter_2_events"] = [
+                {"shot": 1, "pov": "阿坤", "event": "阿坤在边界单中遇到拖行李箱的年轻人，膝盖疼痛暴露他的处境。"},
+                {"shot": 2, "pov": "韩教授", "event": "韩教授在旧资料里发现骨片手势，意识到它和城市分流图形有相似处。"},
+                {"shot": 3, "pov": "白英", "event": "白英发现茶社周围店铺被系统标注为外江边缘，客人开始减少。"},
+                {"shot": 4, "pov": "苏然", "event": "苏然看到边界线向三环内侧移动，却还没有决定是否上报。", "type_roles": ["hook"]},
+            ]
+            draft_path.write_text(
+                yaml.dump(draft, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
 
             result = runner.invoke(main, ["confirm-contract", "分流"])
             assert result.exit_code == 0, f"confirm-contract: {result.output}"

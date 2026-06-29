@@ -262,6 +262,68 @@ class TestVersionTracking:
         finally:
             conn.close()
 
+    def test_migrate_v21_to_v22_allows_contract_audit_stage(self, tmp_dir):
+        """v22 migration should rebuild audit events with contract stage support."""
+        conn = sqlite3.connect(str(tmp_dir / "v21_contract_stage.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 21)
+            conn.execute(
+                "CREATE TABLE writing_audit_events ("
+                "event_id TEXT PRIMARY KEY, "
+                "project_id TEXT, run_id TEXT, session_id TEXT, shot_id TEXT, "
+                "stage TEXT NOT NULL CHECK (stage IN ("
+                "'init', 'setup', 'run', 'outline', 'outline_gate', 'prompt', "
+                "'writer', 'gate1', 'hard_rule', 'type_gate', 'literary_jury', "
+                "'jury_unavailable', 'gate2', 'l4', 'l3', 'l2', 'l1', 'export', "
+                "'review', 'repair', 'resume', 'book_run'"
+                ")), "
+                "event_type TEXT NOT NULL, "
+                "status TEXT NOT NULL DEFAULT 'recorded' CHECK (status IN ("
+                "'started', 'recorded', 'passed', 'failed', 'skipped', "
+                "'selected', 'rejected', 'completed'"
+                ")), "
+                "actor TEXT, "
+                "input_refs_json JSON NOT NULL DEFAULT '{}', "
+                "output_refs_json JSON NOT NULL DEFAULT '{}', "
+                "metrics_json JSON NOT NULL DEFAULT '{}', "
+                "payload_json JSON NOT NULL DEFAULT '{}', "
+                "failure_category TEXT CHECK (failure_category IN ("
+                "'contract_conflict', 'outline_gap', 'task_card_gap', 'writer_drift', "
+                "'gate_false_positive', 'model_failure', 'jury_failure', 'unknown'"
+                ")), "
+                "failure_detail TEXT, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+                ")"
+            )
+            conn.execute(
+                "INSERT INTO writing_audit_events "
+                "(event_id, stage, event_type, status) "
+                "VALUES ('evt_old', 'setup', 'old_setup', 'recorded')"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v21 → v22" in item for item in result)
+            old_row = conn.execute(
+                "SELECT stage, event_type FROM writing_audit_events "
+                "WHERE event_id = 'evt_old'"
+            ).fetchone()
+            assert old_row["stage"] == "setup"
+            conn.execute(
+                "INSERT INTO writing_audit_events "
+                "(event_id, stage, event_type, status) "
+                "VALUES ('evt_contract', 'contract', 'contract_audit', 'passed')"
+            )
+            contract_row = conn.execute(
+                "SELECT stage FROM writing_audit_events WHERE event_id = 'evt_contract'"
+            ).fetchone()
+            assert contract_row["stage"] == "contract"
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""

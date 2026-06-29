@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from .anti_contract import AntiContractSandbox
     from .polish_service import PolishService
     from .audit_recorder import AuditRecorder
+    from .contract_auditor import ContractAuditor
     from .retry_budget import RetryBudgetService, RetryBudgetExhausted, CircuitBreakerTriggered, classify_failure_type
 
 _LAZY_MAP = {
@@ -50,6 +51,7 @@ _LAZY_MAP = {
     "AntiContractSandbox": "anti_contract",
     "PolishService": "polish_service",
     "AuditRecorder": "audit_recorder",
+    "ContractAuditor": "contract_auditor",
     "RetryBudgetService": "retry_budget",
     "RetryBudgetExhausted": "retry_budget",
     "CircuitBreakerTriggered": "retry_budget",

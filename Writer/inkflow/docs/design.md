@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.21: 全自动文学文本生产引擎 — 技术设计
+# 墨韵 (InkFlow) v3.22: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.21（Schema v21：contract-first 生产线设计口径 + 全程审计半重构；book_run 全书/整卷编排；run attempt shot identity；章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28 / v3.18 Schema v19：2026-06-28 / v3.19 Schema v20：2026-06-28 / v3.21 contract-first + audit：2026-06-29
+> 版本：v3.22（Schema v22：contract audit stage + 契约审计师两轮复审；Schema v21 contract-first 生产线设计口径 + 全程审计半重构；book_run 全书/整卷编排；run attempt shot identity；章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28 / v3.18 Schema v19：2026-06-28 / v3.19 Schema v20：2026-06-28 / v3.21 contract-first + audit：2026-06-29 / v3.22 contract auditor：2026-06-29
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -13,9 +13,9 @@
 
 墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。第 2 章和第 3 章证明 `init -> setup --chapter -> run --chapter -> review` 方向成立，review/reject/abort 的章节级 canonical 状态机、accepted-only export、run attempt shot identity、book_run 全书/整卷编排层均已落地。
 
-但第 3 章人工审稿和后续复盘证明：旧管线的大纲门禁没有真正起作用，赛马评估曾在未先判定“是否有资格参赛”的情况下选出契约违规稿。当前状态调整为“受控试跑，暂不正式放量投产”。v3.21 已落地 contract-first 第一版：`setup` 生成 fact manifest，`run` 在大纲和草稿进入文学 PK 前先做硬资格门禁；文学成稿仍必须由人类在每章生产后通过 `ink review --accept/--revise/--reject` 定稿。正式投产前必须用真实第 3 章返工和第 4 章首跑验证这套门禁。
+但第 3 章人工审稿和后续复盘证明：旧管线的大纲门禁没有真正起作用，赛马评估曾在未先判定“是否有资格参赛”的情况下选出契约违规稿。当前状态调整为“受控试跑，暂不正式放量投产”。v3.22 已落地 contract-first 第一版和契约审计师两轮复审：`confirm-contract` 先审契约，`setup` 生成 fact manifest，`run` 在大纲和草稿进入文学 PK 前先做硬资格门禁；文学成稿仍必须由人类在每章生产后通过 `ink review --accept/--revise/--reject` 定稿。正式投产前必须用真实第 3 章返工和第 4 章首跑验证这套门禁。
 
-v3.21 的工程策略是**半重构**，不是完全推倒重来，也不是继续打零散补丁。保留现有 SQLite DB、Session、Contract、Prompt、Writer、Jury、Gate、Export 服务边界，在这些边界之间新增统一审计层和资格记录层。原因：
+v3.22 的工程策略是**半重构**，不是完全推倒重来，也不是继续打零散补丁。保留现有 SQLite DB、Session、Contract、Prompt、Writer、Jury、Gate、Export 服务边界，在这些边界之间新增统一审计层、契约审计师和资格记录层。原因：
 
 1. 现有系统已有 accepted canonical、run attempt identity、book_run、model_attempts、L3/L4 gate、review 状态机等可用资产，完全重构会丢失已验证路径。
 2. 质量问题的核心不是所有模块都错，而是“大纲/草稿资格没有先于文学 PK”和“因果审计链不完整”。
@@ -135,13 +135,16 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 
 ---
 
-## 1.2 v3.21 Contract-first 资格先于 PK 生产线
+## 1.2 v3.22 Contract-first 资格先于 PK 生产线
 
-v3.16 分层裁判解决了“硬规则、类型职责、文学评分不能混合平均”的问题，但真实第 3 章暴露出更上游的缺陷：大纲门禁没有把契约违规挡在写作前，赛马评估也没有先判断候选稿是否有资格参赛。因此 v3.21 的权威顺序改为：
+v3.16 分层裁判解决了“硬规则、类型职责、文学评分不能混合平均”的问题，但真实第 3 章暴露出更上游的缺陷：契约确认缺少复审、大纲门禁没有把契约违规挡在写作前，赛马评估也没有先判断候选稿是否有资格参赛。因此 v3.22 的权威顺序改为：
 
 ```text
-Contract Compile / Facts Manifest
-  → 生成 chapter hard fact pack:
+Contract Draft
+  → Contract Auditor Round 1: 结构完整性复审
+  → Contract Auditor Round 2: 生产就绪复审
+  → 两轮通过后 confirmed；不通过则打回架构师和人类继续讨论
+  → Setup 编译 chapter hard fact pack:
     allowed facts, forbidden expansions, must_land anchors,
     POV known/unknown, contract numbers, hook requirements,
     format rules, editorial intent
@@ -739,7 +742,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **45 张业务表 + `_schema_meta` 元表**（Schema v21）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态；Schema v19 新增 `writing_shots.logical_shot_id`，并把生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；Schema v20 新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷编排批次和逐章状态；Schema v21 新增 `writing_audit_events` / `writing_setup_snapshots` / `writing_draft_eligibility` / `writing_failure_attributions`，并让 `model_attempts` 保存完整 prompt/response。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿。
+数据库为 **45 张业务表 + `_schema_meta` 元表**（Schema v22）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态；Schema v19 新增 `writing_shots.logical_shot_id`，并把生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；Schema v20 新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷编排批次和逐章状态；Schema v21 新增 `writing_audit_events` / `writing_setup_snapshots` / `writing_draft_eligibility` / `writing_failure_attributions`，并让 `model_attempts` 保存完整 prompt/response；Schema v22 为 `writing_audit_events.stage` 增加 `contract`，用于契约审计师复审事件。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -825,11 +828,11 @@ execution_records             -- 执行树正文（per-run）
 - 执行、草稿、评审、修复、revision 的外键使用 run attempt `shot_id`
 - 同一个 `run_id` 内 `logical_shot_id` 唯一；同一章节重写必须创建新的 run attempt shot 行，不能复用旧 run 正文
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v21，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v22，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v21 总计 45 张业务表 + `_schema_meta` 元表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v22 总计 45 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。

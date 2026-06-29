@@ -7,7 +7,14 @@
 
 ---
 
-## 第十轮：v21 全程审计半重构（2026-06-29）
+## 第十轮：v21/v22 全程审计与契约审计半重构（2026-06-29）
+
+### B75. confirm-contract 人工确认即入库，缺少契约审计师复审 ✅ 已修复
+- **严重性**: Critical
+- **根因**: `confirm-contract` 只有格式校验和少量硬规则检查，随后直接 `draft → human_review → confirmed`；人类被流程暗示要直接编辑 YAML，缺少“架构师修订 + 契约审计师复审”的生产角色边界。
+- **影响**: 结构不完整、POV 未声明、shot 编号异常、提示词残留等问题可能在契约层进入 confirmed，后续 setup/run 只能按坏契约执行。
+- **修复**: 新增 `ContractAuditor` 确定性两轮复审：结构完整性复审 + 生产就绪复审；`confirm-contract` 只有两轮全通过才创建 confirmed 元契约；Schema v22 为 `writing_audit_events.stage` 增加 `contract`；失败写 contract audit report、`writing_audit_events(contract)` 和 `contract_conflict` 失败归因，并打回架构师和人类继续讨论。
+- **文件**: `cli.py`, `contract_auditor.py`, `services/__init__.py`, `schema.sql`, `migration.py`, `tests/test_cli.py`, `tests/test_migration.py`
 
 ### B70. Gate1 通过稿审计结果被清空 ✅ 已修复
 - **严重性**: Critical

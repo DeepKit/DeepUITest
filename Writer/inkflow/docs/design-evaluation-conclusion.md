@@ -15,7 +15,7 @@
 
 2026-06-28 复核结论：Schema v18 已完成 CORE-1/EXPORT-4/REVIEW-1，Schema v19 已完成 CORE-2 run attempt shot identity，Schema v20 已完成 BOOKRUN-1 全书/整卷编排层。旧 run 导出、未 accepted 污染、同章重写复用旧 shot、L3/L4 假封板、远端 jury 假回落等 P0 软件风险已收敛。`run-book` 提供一次启动多章生产的调度能力，但内部仍按章串行执行现有 setup/run/gate/export；进入生产后每章仍必须人工审稿 accepted。
 
-2026-06-29 复核结论：第 3 章问题不是单纯写手漂移，也不是只靠加几个 L4 正则就能解决。核心缺陷是“大纲门禁未起作用 + 赛马资格与文学评分混合”：违约大纲进入写作，违约草稿又可能凭语言顺滑度成为 winner。新的最小可投产条件是 contract-first 管线：`setup` 编译 fact manifest，Outline Hard Gate 先判资格；合格大纲编译 task card；Draft Eligibility Gate 先隔离违约稿，只有 eligible 草稿进入类型/文学 jury；失败必须归因为 contract_conflict / outline_gap / task_card_gap / writer_drift / gate_false_positive / model_failure。当前第一版已实现 fact manifest、outline fact gate、shot task card、draft hard fact gate、setup linter、task_card_gap 归因和 audit-report；`gate_false_positive` 仍需通过真实失败样本继续细化。
+2026-06-29 复核结论：第 3 章问题不是单纯写手漂移，也不是只靠加几个 L4 正则就能解决。核心缺陷是“大纲门禁未起作用 + 赛马资格与文学评分混合”：违约大纲进入写作，违约草稿又可能凭语言顺滑度成为 winner。新的最小可投产条件是 contract-first 管线：`confirm-contract` 先由契约审计师两轮复审，`setup` 编译 fact manifest，Outline Hard Gate 先判资格；合格大纲编译 task card；Draft Eligibility Gate 先隔离违约稿，只有 eligible 草稿进入类型/文学 jury；失败必须归因为 contract_conflict / outline_gap / task_card_gap / writer_drift / gate_false_positive / model_failure。当前第一版已实现契约审计师两轮复审、fact manifest、outline fact gate、shot task card、draft hard fact gate、setup linter、task_card_gap 归因和 audit-report；`gate_false_positive` 仍需通过真实失败样本继续细化。
 
 第一轮（4 专家）：needs fix — 方向正确，工程规格未冻结。
 第二轮（3 专家）：发现 30 跨文档不一致，确立 9 条人类决策。
@@ -56,8 +56,8 @@
 
 ## 最终状态
 
-- **implementation-contract-v0.md**：当前实现对齐版，DDL（45 张业务表 + `_schema_meta` 元表，Schema v21）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审、模型审计 phase、分层裁判、accepted canonical 状态机、run attempt shot identity、book_run 编排层、全程审计和 contract-first 第一版已记录
-- **tasks.md**：当前 P0 已更新为第 3 章返工验证、第 4 章首跑验证、失败归因细化和 setup linter 增强
+- **implementation-contract-v0.md**：当前实现对齐版，DDL（45 张业务表 + `_schema_meta` 元表，Schema v22）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审、模型审计 phase、分层裁判、accepted canonical 状态机、run attempt shot identity、book_run 编排层、契约审计师两轮复审、全程审计和 contract-first 第一版已记录
+- **tasks.md**：当前 P0 已更新为契约审计师两轮复审、第 3 章返工验证、第 4 章首跑验证、失败归因细化和 setup linter 增强
 - **文档卫生**：CLI 统一为 `ink`、L2 Opus 移除、编码修复、日期修正、旧表述替换全部完成
 - **Phase 1 继续编码，但正式投产结论重新打开**
 

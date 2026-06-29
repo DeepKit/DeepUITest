@@ -1,10 +1,10 @@
-# InkFlow v3.21 Phase 1 实现契约 v1.8
+# InkFlow v3.22 Phase 1 实现契约 v1.9
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层 + Schema v21 全程审计底座 + contract-first 第一版）
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层 + Schema v22 contract audit stage + Schema v21 全程审计底座 + contract-first 第一版）
 > 日期：2026-06-17；最近对齐：2026-06-29
-> 当前范围：DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v21）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase 与完整 prompt/response、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排、全程审计事件与失败归因、fact manifest、outline fact gate、shot task card、draft hard fact gate
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity、book_run 编排层与 contract-first 第一版已落地；但第 3 章返工和第 4 章首跑尚未用新门禁验证，正式正文仍以每章人工 accepted 为准。
+> 当前范围：DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v22）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase 与完整 prompt/response、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排、契约审计师两轮复审、全程审计事件与失败归因、fact manifest、outline fact gate、shot task card、draft hard fact gate
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity、book_run 编排层、契约审计师两轮复审与 contract-first 第一版已落地；但第 3 章返工和第 4 章首跑尚未用新门禁验证，正式正文仍以每章人工 accepted 为准。
 
 ---
 
@@ -84,11 +84,13 @@ Schema v21 增加四张一等审计表，并扩展 `model_attempts`：
 
 | 表 / 字段 | 语义 |
 |-----------|------|
-| `writing_audit_events` | 统一阶段事件链：setup、run、outline、prompt、writer、gate1、jury、gate2、L4/L3、export、review、resume/book_run |
+| `writing_audit_events` | 统一阶段事件链：contract、setup、run、outline、prompt、writer、gate1、jury、gate2、L4/L3、export、review、resume/book_run |
 | `writing_setup_snapshots` | 章前 setup YAML 的不可变快照；用 `setup_hash` 关联 run 审计事件 |
 | `writing_draft_eligibility` | 每份草稿在 Gate1、hard_rule、type_gate、literary_jury、gate2、L4/L3 的资格判定 |
 | `writing_failure_attributions` | 统一失败归因：`contract_conflict`、`outline_gap`、`task_card_gap`、`writer_drift`、`gate_false_positive`、`model_failure`、`jury_failure`、`unknown` |
 | `model_attempts.request_prompt_text` / `response_text` | 模型调用完整 prompt/response；hash 继续用于去重和快速比对 |
+
+Schema v22 不新增业务表，只扩展 `writing_audit_events.stage`，加入 `contract` 阶段，用于记录 `confirm-contract` 中契约审计师两轮复审、通过入库或打回原因。
 
 审计不替代业务表。业务表负责正文、评分、门禁和状态；审计表负责把阶段输入、输出、判定、失败类别串成可查询链。任何生产质量问题至少应能回答：
 
@@ -103,7 +105,7 @@ Schema v21 增加四张一等审计表，并扩展 `model_attempts`：
 |------|------|
 | `ink init <project> [--chapter-file path]` | 全书初始化、导入样章、生成章以上层级契约草稿 |
 | `ink setup <project> --chapter <key>` | 单章生产前校准，生成 `.inkflow/chapter-setups/<chapter>.yaml` |
-| `ink confirm-contract <project>` | 兼容/内部命令：确认 `contract-draft.yaml` 并写入 confirmed 元契约 |
+| `ink confirm-contract <project>` | 兼容/内部命令：对架构师输出的 `contract-draft.yaml` 执行契约审计师两轮复审，通过后写入 confirmed 元契约 |
 | `ink import-baseline <project> --chapter <key> --file <path>` | 导入人工样章为 locked baseline |
 | `ink review-shots <project> --chapter <key>` | 审核/确认 baseline shot 边界 |
 | `ink run <project> --chapter <key> [flags]` | 全自动生产；L3/L4 通过后自动导出当前 run 审稿稿 |
@@ -235,7 +237,7 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v21）
+## 3. DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v22）
 
 > v21 变更（2026-06-29，全程审计半重构）：新增 `writing_audit_events` / `writing_setup_snapshots` / `writing_draft_eligibility` / `writing_failure_attributions`；`model_attempts` 新增完整 prompt/response 文本字段。
 > v20 变更（2026-06-28，book_run 编排层）：新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷批处理、逐章 run 状态、失败原因和返工入口。同一 book_run 已完成的前序 draft 章节可作为后续章节临时上下文；正式导出仍只认 accepted canonical。

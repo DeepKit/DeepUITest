@@ -1,5 +1,5 @@
--- InkFlow v3.21 — Schema v21 (end-to-end auditability)
--- SCHEMA_VERSION: 21
+-- InkFlow v3.22 — Schema v22 (contract audit stage)
+-- SCHEMA_VERSION: 22
 -- Generated from implementation-contract-v0.md; aligned 2026-06-29
 -- 45 business tables total (+ _schema_meta = 46 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -18,6 +18,7 @@
 -- v18→v19: writing_shots 新增 logical_shot_id，shot_id 改为 run attempt 主键
 -- v19→v20: 新增 writing_book_runs / writing_book_run_chapters 全书编排批次
 -- v20→v21: 新增全程审计事件、setup 快照、草稿资格、失败归因表
+-- v21→v22: writing_audit_events.stage 新增 contract，用于契约审计师复审
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -610,7 +611,7 @@ CREATE TABLE writing_audit_events (
     session_id TEXT REFERENCES writing_sessions(session_id),
     shot_id TEXT REFERENCES writing_shots(shot_id),
     stage TEXT NOT NULL CHECK (stage IN (
-        'init', 'setup', 'run', 'outline', 'outline_gate', 'prompt',
+        'init', 'contract', 'setup', 'run', 'outline', 'outline_gate', 'prompt',
         'writer', 'gate1', 'hard_rule', 'type_gate', 'literary_jury',
         'jury_unavailable', 'gate2', 'l4', 'l3', 'l2', 'l1', 'export', 'review',
         'repair', 'resume', 'book_run'

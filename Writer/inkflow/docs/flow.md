@@ -37,7 +37,7 @@ P0 以《分流》作为唯一验收样本：
 
 P0 不做单 prompt 全书生成，不做多项目/Universe，不做成本确认门，不让推敲回写墨韵数据库。Schema v20 起支持 `run-book` 全书/整卷编排：一次启动批处理，但内部仍按章节和 shot 串行执行。
 
-当前状态是受控试跑，不进入正式放量生产。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。Schema v19 已拆开 `logical_shot_id` 与 run attempt `shot_id`；Schema v20 新增 `book_run` 编排批次，同一批次已完成的前序草稿章节可作为后续章节的临时 draft 上下文。Schema v21 新增全程审计：setup 快照、context 快照、完整模型 prompt/response、草稿资格、失败归因和阶段事件都写入 DB。contract-first 第一版已落地：setup 生成 fact manifest，run 在大纲和草稿进入文学 PK 前先做硬资格门禁。正式投产前仍必须用第 3 章返工和第 4 章首跑验证这套门禁能稳定挡住违约稿。
+当前状态是受控试跑，不进入正式放量生产。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。Schema v19 已拆开 `logical_shot_id` 与 run attempt `shot_id`；Schema v20 新增 `book_run` 编排批次，同一批次已完成的前序草稿章节可作为后续章节的临时 draft 上下文。Schema v21 新增全程审计：setup 快照、context 快照、完整模型 prompt/response、草稿资格、失败归因和阶段事件都写入 DB。Schema v22 增加 `contract` 审计阶段，用于契约审计师两轮复审。contract-first 第一版已落地：confirm-contract 先审契约，setup 生成 fact manifest，run 在大纲和草稿进入文学 PK 前先做硬资格门禁。正式投产前仍必须用第 3 章返工和第 4 章首跑验证这套门禁能稳定挡住违约稿。
 
 ## 1. 核心流程
 
@@ -46,8 +46,10 @@ P0 不做单 prompt 全书生成，不做多项目/Universe，不做成本确认
   混合式交互：高创造力字段访谈 + 低创造力字段 AI 推断一次性呈现 (D-7)
   两阶段编译：human_confirm_layer 以上人类确认 + 以下 AI 自动展开 (D-7)
   AI 架构师识别项目结构 → 提取元契约 → 编译全链契约
-  人类审核树状继承摘要，在任意节点注入修正
-  契约落库，进入 confirmed 状态
+  人类和架构师讨论树状继承摘要，在任意节点注入修正
+  架构师修订契约草案，普通用户不直接编辑 YAML 作为主流程
+  confirm-contract 触发契约审计师两轮复审
+  两轮复审通过后，契约落库并进入 confirmed 状态；不通过则打回架构师和人类继续讨论
 
 阶段 2: 章前校准与 AI 全自动生产 (ink setup → ink run)
   setup 检查契约是否适用于当前章节；run 检查 setup 包是否来自当前元契约
@@ -99,6 +101,8 @@ P0 中第 1 章人工样章是 locked baseline；墨韵只能读取它作为风�
 ```bash
 # 全书初始化：建库、导入样章、生成章以上层级契约草稿
 ink init "分流"
+
+# 人类和架构师讨论并修订契约草案后，触发契约审计师两轮复审
 ink confirm-contract "分流"
 
 # 导入人工样章并确认 shot 边界（P0）
@@ -177,9 +181,16 @@ chisel export "分流" -o "分流_终版.md"
 
 ### 3.1 Init 对话目标
 
-`ink init` 的目标是**把全书与章以上层级的人类创作意图转为可执行契约草稿**。人类编辑 `contract-draft.yaml` 后，通过 `ink confirm-contract` 确认入库。
+`ink init` 的目标是**把全书与章以上层级的人类创作意图转为可执行契约草稿**。人类不以直接编辑 `contract-draft.yaml` 作为主流程；人类和架构师讨论创作意图，由架构师修订契约草案，然后通过 `ink confirm-contract` 触发契约审计师两轮复审。两轮复审通过后才确认入库；不通过则打回架构师和人类继续讨论。
 
 关键创作字段不得由 AI 擅自补完。主题、硬边界、人物命运、不解之谜、结尾策略、叙事声音必须经人类明确确认后才能进入 confirmed 契约。AI 可以提出候选，但不能静默写入。
+
+`confirm-contract` 的硬门禁是契约审计师两轮复审：
+
+- 第一轮：结构完整性复审，检查必需段落、角色弧线、`chapter_N_events` 和占位符。
+- 第二轮：生产就绪复审，检查 shot 编号、POV 声明、must_land 事件、提示词残留和章末 hook 提示。
+
+任一轮存在 blocker，契约不能 confirmed，软件写入 contract audit report 和 `contract_conflict` 审计事件。只有两轮全部通过，后续 `setup --chapter` 和 `run --chapter` 才能启动。
 
 `ink setup <project> --chapter <key>` 的目标是**某一章生产前校准**：读取已确认契约、抽出本章 shot、生成 `.inkflow/chapter-setups/<chapter>.yaml`，供人类确认本章 shot 事件、类型职责（悬疑/留白/钩子）和禁止议论规则。它不初始化全书，也不改写正文。
 
@@ -220,8 +231,8 @@ Step 3: 意象和元素分配
 Step 4: 展开 human_confirm_layer 以上契约（阶段 1a 编译）
   编译到 human_confirm_layer → 暂停，等待人类确认
 
-Step 5: 人类审核（阶段 1a 确认点）
-  展示树状继承摘要 → 人类注入修正 → AI 只重编译受影响节点
+Step 5: 人类与架构师讨论（阶段 1a 确认点）
+  展示树状继承摘要 → 人类注入修正 → 架构师只重编译受影响节点
 
 Step 6: 展开 human_confirm_layer 以下至 Shot 级（阶段 1b 编译）
   AI 自动向下展开，人类不逐一审核此层
@@ -229,8 +240,9 @@ Step 6: 展开 human_confirm_layer 以下至 Shot 级（阶段 1b 编译）
 Step 7: 全链冲突检测
   硬边界 / anti_reveal / exit_to 连续性 / 意象密度硬计数 / 意象互斥对
 
-Step 8: 确认落库
-  全链契约写入 DB → 状态变为 confirmed
+Step 8: 契约审计师两轮复审后落库
+  结构完整性复审 + 生产就绪复审全部通过 → 全链契约写入 DB → 状态变为 confirmed
+  任一轮不通过 → 打回架构师和人类继续讨论
 ```
 
 ### 3.5 人类对话界面
@@ -517,14 +529,14 @@ Chisel 的职责是二次校准和优化，不是生产期拦截器。Chisel 只
 # Step 1: 全书初始化，并生成 contract-draft.yaml
 ink init "分流"
 
-# Step 2: 人类编辑 contract-draft.yaml 后确认
+# Step 2: 人类和架构师讨论，架构师修订草案后触发契约审计师复审
 ink confirm-contract "分流"
   # 高创造力字段：10-12 轮访谈对话
   # 低创造力字段：AI 推断 + 一次性呈现，约 2-3 分钟扫视
   # 阶段 1a 编译到 human_confirm_layer
-  # 人类审核树状继承摘要 → 注入修正 → AI 重编译受影响节点
+  # 人类审核树状继承摘要 → 注入修正 → 架构师重编译受影响节点
   # 阶段 1b AI 自动展开至 Shot 级
-  # 确认后契约落库
+  # 契约审计师两轮复审通过后 confirmed 入库；不通过则打回讨论
 
 # Step 3: 章前校准
 ink setup "分流" --chapter v01.c03

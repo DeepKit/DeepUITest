@@ -632,6 +632,13 @@ def _chapter_review_path(project: str, chapter: str) -> Path:
     )
 
 
+def _contract_audit_path(project: str) -> Path:
+    return (
+        _STORY_BASE / f"《{project}》" / ".inkflow" /
+        "contract-audits" / "contract-audit-latest.yaml"
+    )
+
+
 def _write_yaml_file(path: Path, data: dict) -> None:
     import yaml
 
@@ -649,6 +656,17 @@ def _read_yaml_file(path: Path) -> dict:
 
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
+
+
+def _contract_audit_failure_summary(report: dict) -> str:
+    lines: list[str] = []
+    for review in report.get("reviews") or []:
+        for issue in review.get("issues") or []:
+            lines.append(
+                f"{review.get('name', '契约复审')}: "
+                f"{issue.get('field')} - {issue.get('message')}"
+            )
+    return "\n".join(f"  - {line}" for line in lines[:8])
 
 
 def _load_chapter_setup(project: str, chapter: str | None) -> dict:
@@ -1582,8 +1600,8 @@ def init_project(project: str, chapter_file: str | None):
     流程:
       1. 初始化项目 + 导入第 1 章为 locked baseline
       2. AI 架构师分析第 1 章 + 全书资料
-      3. 生成 contract-draft.yaml (高创造力字段留空等人类填写)
-      4. 人类编辑 contract-draft.yaml → ink confirm-contract 确认
+      3. 生成 contract-draft.yaml (高创造力字段交给人类与架构师讨论)
+      4. 架构师修订草案 → ink confirm-contract 触发契约审计师两轮复审
 
     \b
     示例:
@@ -1691,9 +1709,9 @@ def _run_init_project(project: str, chapter_file: str | None) -> None:
     click.echo("    chapter_N_events: 逐章逐 shot 必须落地的事件")
     click.echo()
     click.echo("  下一步:")
-    click.echo(f"    1. 编辑 {draft_path}")
-    click.echo(f"    2. 填写高创造力字段，审核 AI 推断")
-    click.echo(f"    3. ink confirm-contract \"{project}\"")
+    click.echo(f"    1. 与架构师讨论草稿: {draft_path}")
+    click.echo("    2. 由架构师修订高创造力字段和 AI 推断")
+    click.echo(f"    3. ink confirm-contract \"{project}\"  # 触发契约审计师两轮复审")
     click.echo("═" * 60)
 
 
@@ -1869,13 +1887,14 @@ def setup_project(project: str, chapter: str, force: bool):
 @main.command("confirm-contract")
 @click.argument("project")
 def confirm_contract(project: str):
-    """确认契约: 读取 contract-draft.yaml → 验证 → 写入 DB → confirmed。
+    """确认契约: 读取草稿 → 契约审计师两轮复审 → 通过后写入 DB。
 
     \b
-    前置条件: 已运行 ink init 并编辑过 contract-draft.yaml。
+    前置条件: 已运行 ink init，并由架构师根据人类讨论修订 contract-draft.yaml。
     """
     from inkflow.db import init_project_db
-    from inkflow.services import ContractCompiler
+    from inkflow.services import ContractCompiler, ContractAuditor
+    from inkflow.services.audit_recorder import AuditRecorder
     import yaml
 
     db_path = _resolve_project_db(project)
@@ -1933,9 +1952,6 @@ def confirm_contract(project: str):
         raise click.ClickException(f"项目 '{project}' 尚未初始化。请先运行 init。")
     project_id = row["project_id"]
 
-    compiler = ContractCompiler(db, project_id)
-    existing = compiler.get_meta_contract()
-
     # Build contract data — include all chapter_X_events fields
     structure_rules = {
         "chapter_2_interpretation": creative.get("chapter_2_interpretation", ""),
@@ -1969,12 +1985,65 @@ def confirm_contract(project: str):
         deprecated_aliases_for_layers(contract_data),
     )
     if alias_hits:
+        db.close()
         first = alias_hits[0]
         raise click.ClickException(
             "契约草稿仍含废弃角色名，不能确认。\n"
             f"  - {first['alias']} 应改为 {first['canonical']}；"
             f"上下文: {first['context']}"
         )
+
+    audit_path = _contract_audit_path(project)
+    audit_report = ContractAuditor().review_twice(contract_data)
+    _write_yaml_file(audit_path, audit_report)
+
+    audit = AuditRecorder(db, project_id=project_id)
+    audit.record_event(
+        stage="contract",
+        event_type="contract_auditor_two_pass_review",
+        status="passed" if audit_report["passed"] else "failed",
+        actor="contract_auditor",
+        input_refs={"draft_path": str(draft_path)},
+        output_refs={"audit_path": str(audit_path)},
+        metrics={
+            "required_reviews": audit_report["required_reviews"],
+            "passed_reviews": audit_report["passed_reviews"],
+            "blocker_count": audit_report["blocker_count"],
+            "warning_count": audit_report["warning_count"],
+        },
+        payload=audit_report,
+        failure_category=None if audit_report["passed"] else "contract_conflict",
+        failure_detail=None if audit_report["passed"] else _contract_audit_failure_summary(audit_report)[:500],
+    )
+
+    if not audit_report["passed"]:
+        audit.record_failure_attribution(
+            stage="contract",
+            failure_category="contract_conflict",
+            root_cause=audit_report,
+            evidence_refs={
+                "draft_path": str(draft_path),
+                "audit_path": str(audit_path),
+            },
+            suggested_action="契约审计师复审未通过；打回架构师和人类继续讨论后重新 confirm-contract。",
+        )
+        db.close()
+        raise click.ClickException(
+            "契约审计师两轮复审未通过，不能入库为 confirmed。\n"
+            f"复审报告: {audit_path}\n"
+            f"{_contract_audit_failure_summary(audit_report)}\n"
+            "请打回架构师和人类继续讨论，修订契约草稿后重新运行 confirm-contract。"
+        )
+
+    click.echo(
+        "契约审计师两轮复审通过 "
+        f"({audit_report['passed_reviews']}/{audit_report['required_reviews']})"
+    )
+    if audit_report["warning_count"]:
+        click.echo(f"  警告: {audit_report['warning_count']} 项，详见 {audit_path}")
+
+    compiler = ContractCompiler(db, project_id)
+    existing = compiler.get_meta_contract()
 
     if existing:
         click.echo(f"元契约已存在 (status={existing['status']})，将更新。")
@@ -1987,13 +2056,22 @@ def confirm_contract(project: str):
     contract = compiler.get_meta_contract()
     if contract["status"] == "draft":
         compiler.update_contract_status(mc_id, "human_review")
-        click.echo("draft → human_review")
+        click.echo("draft → auditor_review_passed")
     compiler.update_contract_status(mc_id, "confirmed")
-    click.echo("human_review → confirmed ✅")
+    audit.record_event(
+        stage="contract",
+        event_type="contract_confirmed",
+        status="completed",
+        actor="contract_auditor",
+        input_refs={"audit_path": str(audit_path)},
+        output_refs={"meta_contract_id": mc_id},
+        payload={"audit_passed": True},
+    )
+    click.echo("auditor_review_passed → confirmed ✅")
 
     click.echo()
     click.echo("契约已确认。可以运行:")
-    click.echo(f"  ink run \"{project}\" --chapter v01.c02")
+    click.echo(f"  ink setup \"{project}\" --chapter v01.c02")
     db.close()
 
 

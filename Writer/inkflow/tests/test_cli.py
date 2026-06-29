@@ -1040,6 +1040,13 @@ suspense_config:
             result = runner.invoke(main, ["confirm-contract", "测试"])
             assert result.exit_code == 0, result.output
             assert "confirmed" in result.output.lower() or "✅" in result.output
+            assert "契约审计师两轮复审通过" in result.output
+
+            audit_path = (
+                sample_project / "_Story" / "《测试》" /
+                ".inkflow" / "contract-audits" / "contract-audit-latest.yaml"
+            )
+            assert audit_path.exists()
 
             from inkflow.db.connection import open_db
             db = open_db(str(db_path))
@@ -1049,6 +1056,13 @@ suspense_config:
                 "ORDER BY created_at DESC LIMIT 1"
             ).fetchone()
             assert row["status"] == "confirmed"
+            audit_row = db.execute(
+                "SELECT status FROM writing_audit_events "
+                "WHERE stage = 'contract' "
+                "AND event_type = 'contract_auditor_two_pass_review' "
+                "ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            assert audit_row["status"] == "passed"
             db.close()
 
     def test_confirm_no_draft_fails(self, runner, sample_project, tmp_dir):
@@ -1089,6 +1103,52 @@ suspense_config:
             result = runner.invoke(main, ["confirm-contract", "测试"])
             assert result.exit_code != 0, result.output
             assert "character_arcs" in result.output
+
+    def test_confirm_contract_auditor_rejects_undeclared_pov(
+        self, runner, sample_project, tmp_dir
+    ):
+        """contract auditor should reject drafts before confirmed DB entry."""
+        import unittest.mock as mock
+        import inkflow.cli as cli
+
+        db_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "inkflow.db"
+        with mock.patch.object(cli, "_resolve_project_db", return_value=str(db_path)), \
+             mock.patch.object(cli, "_STORY_BASE", tmp_dir / "_Story"):
+            runner.invoke(main, ["init", "测试"])
+
+            self._create_draft_yaml(sample_project)
+            draft_path = sample_project / "_Story" / "《测试》" / ".inkflow" / "contract-draft.yaml"
+            content = draft_path.read_text(encoding="utf-8")
+            content = content.replace("pov: 角色B", "pov: 未声明角色", 1)
+            draft_path.write_text(content, encoding="utf-8")
+
+            result = runner.invoke(main, ["confirm-contract", "测试"])
+            assert result.exit_code != 0, result.output
+            assert "契约审计师两轮复审未通过" in result.output
+            assert "undeclared_pov" in result.output or "未声明" in result.output
+
+            audit_path = (
+                sample_project / "_Story" / "《测试》" /
+                ".inkflow" / "contract-audits" / "contract-audit-latest.yaml"
+            )
+            assert audit_path.exists()
+
+            from inkflow.db.connection import open_db
+            db = open_db(str(db_path))
+            row = db.execute(
+                "SELECT COUNT(*) AS cnt FROM writing_meta_contract "
+                "WHERE status = 'confirmed'"
+            ).fetchone()
+            assert row["cnt"] == 0
+            audit_row = db.execute(
+                "SELECT status, failure_category FROM writing_audit_events "
+                "WHERE stage = 'contract' "
+                "AND event_type = 'contract_auditor_two_pass_review' "
+                "ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            assert audit_row["status"] == "failed"
+            assert audit_row["failure_category"] == "contract_conflict"
+            db.close()
 
 
 class TestReviewShotsSmoke:

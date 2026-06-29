@@ -1,6 +1,6 @@
 # InkFlow 交互式 Init / Setup 协议 v1.4
 
-> 记录于 2026-06-19。v1.2：2026-06-25 增加叙事分析师审查角色；v1.3：2026-06-26 将 `init` 定义为全书启动，将 `setup --chapter` 定义为单章生产前校准；v1.4：2026-06-29 增加 contract-first 章前事实清单和资格门禁口径。
+> 记录于 2026-06-19。v1.2：2026-06-25 增加叙事分析师审查角色；v1.3：2026-06-26 将 `init` 定义为全书启动，将 `setup --chapter` 定义为单章生产前校准；v1.4：2026-06-29 增加 contract-first 章前事实清单和资格门禁口径；v1.5：2026-06-29 增加 `confirm-contract` 契约审计师两轮复审。
 
 ## 核心规则
 
@@ -50,7 +50,14 @@
 L1 世界观 → 确认(8) → L2 角色弧线 → 确认(8) → L3 章节结构 → 确认(8) → L4 Shot事件 → 确认(8) → 生成 contract-draft.yaml
 ```
 
-`ink init <project>` 用于全书启动和章以上层级交互初始化。每级只问一个问题，给 1-7 个选项。人类选 8 进入下一级，选 9 换一批选项，选 0 回到上一级，直接输入文字覆盖 AI 的所有选项。Init 完成后生成 `contract-draft.yaml`，人类编辑后运行 `ink confirm-contract <project>` 入库。
+`ink init <project>` 用于全书启动和章以上层级交互初始化。每级只问一个问题，给 1-7 个选项。人类选 8 进入下一级，选 9 换一批选项，选 0 回到上一级，直接输入文字交给架构师吸收。Init 完成后生成 `contract-draft.yaml`，但主流程不是让普通用户直接编辑 YAML；人类和架构师继续讨论，由架构师修订契约草案，然后运行 `ink confirm-contract <project>`。
+
+`ink confirm-contract <project>` 必须触发契约审计师两轮复审：
+
+1. 结构完整性复审：检查必需段落、角色弧线、`chapter_N_events`、占位符。
+2. 生产就绪复审：检查 shot 编号、POV 声明、must_land 事件、提示词残留、章末 hook 提示。
+
+两轮复审都通过，契约才能入库为 `confirmed`。任何一轮不通过，都写 contract audit report 和 `contract_conflict` 审计事件，并打回架构师和人类继续讨论。
 
 ## Chapter Setup 阶段流程
 
