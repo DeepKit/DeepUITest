@@ -111,6 +111,13 @@ class TestJuryScoreScale:
         assert "language_texture" in dimensions
         assert "chapter_continuity" in dimensions
         assert "unexpected_value" not in dimensions
+        eligibility = setup_run_with_draft.execute(
+            "SELECT gate_stage, passed, score FROM writing_draft_eligibility "
+            "WHERE draft_id = 'd1' AND gate_stage = 'literary_jury'"
+        ).fetchone()
+        assert eligibility is not None
+        assert eligibility["passed"] == 1
+        assert eligibility["score"] == 80
 
     def test_creative_review_can_choose_less_safe_high_value_draft(self, setup_run_with_draft):
         """CREATIVE-3: blank-shot review weights unexpected_value over safe compliance."""

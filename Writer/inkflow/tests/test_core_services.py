@@ -49,6 +49,25 @@ class TestWriterDispatcher:
         drafts = dispatcher.get_drafts("shot_01")
         assert drafts[0]["is_usable"] == 1
 
+    def test_mark_draft_usable_does_not_clear_existing_gate1_result(self, setup_run):
+        dispatcher = WriterDispatcher(setup_run, "run_01", {})
+        result = dispatcher.dispatch_dual_track("shot_01", "请写一段小说正文。")
+        d0 = result["drafts"][0]["draft_id"]
+        setup_run.execute(
+            "UPDATE writing_drafts SET gate1_result_json = ? WHERE draft_id = ?",
+            ('{"passed": true, "violations": []}', d0),
+        )
+        setup_run.commit()
+
+        dispatcher.mark_draft_usable(d0)
+
+        row = setup_run.execute(
+            "SELECT is_usable, gate1_result_json FROM writing_drafts WHERE draft_id = ?",
+            (d0,),
+        ).fetchone()
+        assert row["is_usable"] == 1
+        assert row["gate1_result_json"] == '{"passed": true, "violations": []}'
+
     def test_blank_shot_quad_track_caps_temperature(self, setup_run):
         """CREATIVE-1: blank shots carry the marker and relaxed 1.4 temp cap."""
         models_config = {
@@ -132,6 +151,12 @@ class TestQualityController:
         qc = QualityController(setup_run, "run_01")
         passed = qc.gate1_check("shot_01", ["d1"])
         assert len(passed) == 1
+        row = setup_run.execute(
+            "SELECT passed, gate_stage FROM writing_draft_eligibility "
+            "WHERE draft_id = 'd1' AND gate_stage = 'gate1'"
+        ).fetchone()
+        assert row is not None
+        assert row["passed"] == 1
 
     def test_gate2_green(self, setup_run):
         qc = QualityController(setup_run, "run_01")

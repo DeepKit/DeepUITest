@@ -186,6 +186,82 @@ class TestVersionTracking:
         finally:
             conn.close()
 
+    def test_migrate_v20_to_v21_creates_audit_tables_and_columns(self, tmp_dir):
+        """v21 migration should add audit tables and full model/outline audit columns."""
+        conn = sqlite3.connect(str(tmp_dir / "v20_audit.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 20)
+            conn.execute(
+                "CREATE TABLE projects (project_id TEXT PRIMARY KEY, name TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE writing_sessions ("
+                "session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE writing_shots ("
+                "shot_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL, layer_key TEXT NOT NULL, "
+                "shot_index INTEGER NOT NULL, shot_status TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE writing_drafts ("
+                "draft_id TEXT PRIMARY KEY, shot_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL, writer_persona TEXT NOT NULL, "
+                "writer_index INTEGER NOT NULL, text TEXT NOT NULL, attempt_id TEXT NOT NULL)"
+            )
+            conn.execute(
+                "CREATE TABLE model_attempts ("
+                "attempt_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, shot_id TEXT, "
+                "phase TEXT NOT NULL, model_name TEXT NOT NULL, idempotency_key TEXT NOT NULL, "
+                "request_prompt_hash TEXT NOT NULL, response_text_hash TEXT, "
+                "usage_prompt_tokens INTEGER DEFAULT 0, usage_completion_tokens INTEGER DEFAULT 0, "
+                "usage_total_tokens INTEGER DEFAULT 0, error_message TEXT)"
+            )
+            conn.execute(
+                "CREATE TABLE writing_outline_evaluations ("
+                "evaluation_id TEXT PRIMARY KEY, shot_id TEXT NOT NULL, run_id TEXT NOT NULL, "
+                "attempt INTEGER NOT NULL DEFAULT 1, outline_text TEXT NOT NULL, "
+                "score INTEGER NOT NULL, dimensions_json JSON NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO writing_outline_evaluations "
+                "(evaluation_id, shot_id, run_id, outline_text, score, dimensions_json) "
+                "VALUES ('oe1', 'shot_01', 'run_01', 'outline', 80, '{}')"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v20 → v21" in item for item in result)
+            for table in (
+                "writing_audit_events",
+                "writing_setup_snapshots",
+                "writing_draft_eligibility",
+                "writing_failure_attributions",
+            ):
+                assert conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()
+            model_cols = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(model_attempts)").fetchall()
+            }
+            assert "request_prompt_text" in model_cols
+            assert "response_text" in model_cols
+            outline = conn.execute(
+                "SELECT threshold, passed FROM writing_outline_evaluations "
+                "WHERE evaluation_id = 'oe1'"
+            ).fetchone()
+            assert outline["threshold"] == 70
+            assert outline["passed"] == 1
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""

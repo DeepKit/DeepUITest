@@ -1,7 +1,7 @@
--- InkFlow v3.19 — Schema v20 (book-run orchestration)
--- SCHEMA_VERSION: 20
--- Generated from implementation-contract-v0.md; aligned 2026-06-28
--- 41 business tables total (+ _schema_meta = 42 SQLite user tables), ordered by FK dependency
+-- InkFlow v3.21 — Schema v21 (end-to-end auditability)
+-- SCHEMA_VERSION: 21
+-- Generated from implementation-contract-v0.md; aligned 2026-06-29
+-- 45 business tables total (+ _schema_meta = 46 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
 -- v6→v7: 新增 writing_chapter_rhythms 表 (AI 架构师 L1 章级节奏)
 -- v7→v8: 新增 tree_nodes / contract_versions / story_content / execution_records (ARCH-12 三棵树架构)
@@ -17,6 +17,7 @@
 -- v17→v18: 新增 writing_chapter_reviews 表，记录 accepted canonical 章节审稿状态
 -- v18→v19: writing_shots 新增 logical_shot_id，shot_id 改为 run attempt 主键
 -- v19→v20: 新增 writing_book_runs / writing_book_run_chapters 全书编排批次
+-- v20→v21: 新增全程审计事件、setup 快照、草稿资格、失败归因表
 
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -585,7 +586,9 @@ CREATE TABLE model_attempts (
     model_name TEXT NOT NULL,
     idempotency_key TEXT NOT NULL,
     request_prompt_hash TEXT NOT NULL,
+    request_prompt_text TEXT,
     response_text_hash TEXT,
+    response_text TEXT,
     usage_prompt_tokens INTEGER DEFAULT 0,
     usage_completion_tokens INTEGER DEFAULT 0,
     usage_total_tokens INTEGER DEFAULT 0,
@@ -595,6 +598,101 @@ CREATE TABLE model_attempts (
 );
 CREATE INDEX idx_model_attempts_run ON model_attempts(run_id);
 CREATE INDEX idx_model_attempts_shot ON model_attempts(shot_id);
+
+-- =============================================================================
+-- Layer 10b: End-to-End Auditability (v21)
+-- =============================================================================
+
+CREATE TABLE writing_audit_events (
+    event_id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(project_id),
+    run_id TEXT REFERENCES writing_sessions(run_id),
+    session_id TEXT REFERENCES writing_sessions(session_id),
+    shot_id TEXT REFERENCES writing_shots(shot_id),
+    stage TEXT NOT NULL CHECK (stage IN (
+        'init', 'setup', 'run', 'outline', 'outline_gate', 'prompt',
+        'writer', 'gate1', 'hard_rule', 'type_gate', 'literary_jury',
+        'jury_unavailable', 'gate2', 'l4', 'l3', 'l2', 'l1', 'export', 'review',
+        'repair', 'resume', 'book_run'
+    )),
+    event_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'recorded' CHECK (status IN (
+        'started', 'recorded', 'passed', 'failed', 'skipped',
+        'selected', 'rejected', 'completed'
+    )),
+    actor TEXT,
+    input_refs_json JSON NOT NULL DEFAULT '{}',
+    output_refs_json JSON NOT NULL DEFAULT '{}',
+    metrics_json JSON NOT NULL DEFAULT '{}',
+    payload_json JSON NOT NULL DEFAULT '{}',
+    failure_category TEXT CHECK (failure_category IN (
+        'contract_conflict', 'outline_gap', 'task_card_gap', 'writer_drift',
+        'gate_false_positive', 'model_failure', 'jury_failure', 'unknown'
+    )),
+    failure_detail TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_audit_events_run ON writing_audit_events(run_id, created_at);
+CREATE INDEX idx_audit_events_shot ON writing_audit_events(shot_id, stage);
+CREATE INDEX idx_audit_events_failure ON writing_audit_events(failure_category);
+
+CREATE TABLE writing_setup_snapshots (
+    setup_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(project_id),
+    run_id TEXT REFERENCES writing_sessions(run_id),
+    chapter_key TEXT NOT NULL,
+    meta_contract_id TEXT REFERENCES writing_meta_contract(meta_contract_id),
+    source_path TEXT,
+    setup_hash TEXT NOT NULL,
+    setup_json JSON NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(project_id, chapter_key, setup_hash)
+);
+CREATE INDEX idx_setup_snapshots_project_chapter
+    ON writing_setup_snapshots(project_id, chapter_key);
+CREATE INDEX idx_setup_snapshots_run ON writing_setup_snapshots(run_id);
+
+CREATE TABLE writing_draft_eligibility (
+    eligibility_id TEXT PRIMARY KEY,
+    draft_id TEXT NOT NULL REFERENCES writing_drafts(draft_id),
+    shot_id TEXT NOT NULL REFERENCES writing_shots(shot_id),
+    run_id TEXT NOT NULL REFERENCES writing_sessions(run_id),
+    gate_stage TEXT NOT NULL CHECK (gate_stage IN (
+        'gate1', 'hard_rule', 'type_gate', 'literary_jury',
+        'jury_unavailable', 'gate2', 'l4', 'l3'
+    )),
+    passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+    score REAL,
+    threshold REAL,
+    reason_json JSON NOT NULL DEFAULT '{}',
+    result_json JSON NOT NULL DEFAULT '{}',
+    attempt_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(draft_id, gate_stage, attempt_id)
+);
+CREATE INDEX idx_draft_eligibility_run ON writing_draft_eligibility(run_id, gate_stage);
+CREATE INDEX idx_draft_eligibility_shot ON writing_draft_eligibility(shot_id, gate_stage);
+
+CREATE TABLE writing_failure_attributions (
+    attribution_id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(project_id),
+    run_id TEXT REFERENCES writing_sessions(run_id),
+    shot_id TEXT REFERENCES writing_shots(shot_id),
+    draft_id TEXT REFERENCES writing_drafts(draft_id),
+    stage TEXT NOT NULL,
+    failure_category TEXT NOT NULL CHECK (failure_category IN (
+        'contract_conflict', 'outline_gap', 'task_card_gap', 'writer_drift',
+        'gate_false_positive', 'model_failure', 'jury_failure', 'unknown'
+    )),
+    root_cause_json JSON NOT NULL DEFAULT '{}',
+    evidence_refs_json JSON NOT NULL DEFAULT '{}',
+    suggested_action TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_failure_attr_run ON writing_failure_attributions(run_id, stage);
+CREATE INDEX idx_failure_attr_shot ON writing_failure_attributions(shot_id, stage);
+CREATE INDEX idx_failure_attr_category ON writing_failure_attributions(failure_category);
 
 -- =============================================================================
 -- Layer 11: Architect Gates — 4-level cascading quality gate
@@ -623,6 +721,8 @@ CREATE TABLE writing_outline_evaluations (
     attempt INTEGER NOT NULL DEFAULT 1,
     outline_text TEXT NOT NULL,
     score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
+    threshold INTEGER NOT NULL DEFAULT 70 CHECK (threshold BETWEEN 0 AND 100),
+    passed INTEGER NOT NULL DEFAULT 0 CHECK (passed IN (0, 1)),
     dimensions_json JSON NOT NULL,
     issues_json JSON,
     suggestions_json JSON,

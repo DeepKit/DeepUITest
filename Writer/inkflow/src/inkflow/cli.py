@@ -14,6 +14,7 @@ P0 commands:
   ink sessions list
   ink sessions abort <id>
   ink status <project>
+  ink audit-report <project>
 """
 
 from __future__ import annotations
@@ -366,7 +367,7 @@ def _raise_if_jury_unavailable(
     *,
     shot_id: str,
     retry_budget,
-) -> None:
+) -> str:
     if not _jury_verdict_all_unavailable(jury_verdict):
         return
     detail = _jury_unavailable_detail(jury_verdict)
@@ -495,6 +496,7 @@ def _record_chapter_review_db(
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             payload,
         )
+    return review_id
 
 
 def _resume_or_create_session(
@@ -780,6 +782,21 @@ def _validate_chapter_run_preflight(
             f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
         )
 
+    manifest = setup_data.get("fact_manifest") or {}
+    manifest_shots = manifest.get("shots") or []
+    if manifest.get("schema") != "inkflow.fact_manifest.v1":
+        raise click.ClickException(
+            "章节 setup 包缺少 fact_manifest，不能进入 contract-first 生产。\n"
+            f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
+        )
+    if chapter_events and len(manifest_shots) != len(chapter_events):
+        raise click.ClickException(
+            "章节 fact_manifest 与当前契约的 shot 数不一致。\n"
+            f"  fact_manifest shots: {len(manifest_shots)}\n"
+            f"  contract events: {len(chapter_events)}\n"
+            f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
+        )
+
 
 def _chapter_number_from_key(chapter: str | None) -> int | None:
     import re
@@ -848,6 +865,379 @@ def _normalize_type_roles(roles: list | tuple | set | None) -> list[str]:
         if normalized and normalized not in result:
             result.append(normalized)
     return result
+
+
+_FACT_PROMPT_ARTIFACT_MARKERS = [
+    "以下是",
+    "这段文字",
+    "核心落点",
+    "风格执行",
+    "写作说明",
+    "大纲如下",
+]
+
+_FACT_EXPOSITION_MARKERS = [
+    "系统并不恶意",
+    "它只是",
+    "本质上",
+    "逻辑结构",
+    "资源分配",
+    "低效率",
+    "直接回报",
+    "闭环",
+]
+
+_FACT_MEDICAL_MARKERS = [
+    "社区医院",
+    "拍了片",
+    "拍片",
+    "片子",
+    "X光",
+    "CT",
+    "诊断",
+    "请了半天假",
+]
+
+_FACT_CLOSURE_MARKERS = [
+    "这意味着",
+    "这说明",
+    "本质上",
+    "于是他明白",
+    "终于明白",
+    "逻辑结构",
+    "完整的逻辑",
+    "什么都抓不到",
+]
+
+
+def _build_fact_manifest(
+    *,
+    chapter: str,
+    layers: dict,
+    chapter_events: list[dict],
+    exposition_gate: dict,
+    suspense: dict,
+) -> dict:
+    """Build the chapter fact manifest used by hard gates and audit.
+
+    The manifest is intentionally conservative. It blocks exact, known-bad
+    facts and phrasing, while leaving literary execution to jury/gates.
+    """
+    from inkflow.utils.character_names import deprecated_aliases_for_layers
+
+    forbidden_phrases = list(
+        dict.fromkeys(
+            list(exposition_gate.get("forbidden_phrases") or [])
+            + _FACT_PROMPT_ARTIFACT_MARKERS
+        )
+    )
+    aliases = deprecated_aliases_for_layers(layers)
+    total = len(chapter_events)
+    shots: list[dict] = []
+    for index, event in enumerate(chapter_events, start=1):
+        type_roles: list[str] = []
+        if index == total:
+            type_roles.append("hook")
+        explicit_roles = _normalize_type_roles(event.get("type_roles"))
+        for role in explicit_roles:
+            if role not in type_roles:
+                type_roles.append(role)
+        hard_facts = event.get("hard_facts") or []
+        soft_constraints = event.get("soft_constraints") or []
+        reference = event.get("reference") or {}
+        authorized_corpus = _flatten_contract_text(
+            {
+                "event": event.get("event", ""),
+                "title": event.get("title", ""),
+                "pov": event.get("pov", ""),
+                "hard_facts": hard_facts,
+                "soft_constraints": soft_constraints,
+                "reference": reference,
+                "hard_boundaries": layers.get("hard_boundaries", {}),
+                "world_knowledge": layers.get("world_knowledge", {}),
+            }
+        )
+        shots.append(
+            {
+                "shot": event.get("shot", index),
+                "title": event.get("title", f"Shot {index}"),
+                "pov": event.get("pov", "unknown"),
+                "must_land": event.get("event", ""),
+                "hard_facts": hard_facts,
+                "type_roles": type_roles,
+                "hook_required": index == total,
+                "authorized_corpus": authorized_corpus,
+                "forbidden_phrases": forbidden_phrases,
+                "unauthorized_fact_markers": {
+                    "medical_or_leave": _FACT_MEDICAL_MARKERS,
+                },
+            }
+        )
+
+    return {
+        "schema": "inkflow.fact_manifest.v1",
+        "chapter": chapter,
+        "policy": "contract_first_then_literary_pk",
+        "global": {
+            "deprecated_aliases": aliases,
+            "forbidden_phrases": forbidden_phrases,
+            "exposition_markers": _FACT_EXPOSITION_MARKERS,
+            "prompt_artifact_markers": _FACT_PROMPT_ARTIFACT_MARKERS,
+            "closure_markers": _FACT_CLOSURE_MARKERS,
+            "chapter_hook_requirements": suspense.get("chapter_hooks") or [],
+        },
+        "shots": shots,
+    }
+
+
+def _setup_fact_manifest_shot(setup_data: dict, shot_index: int) -> dict:
+    manifest = setup_data.get("fact_manifest") or {}
+    for shot in manifest.get("shots") or []:
+        if not isinstance(shot, dict):
+            continue
+        try:
+            declared_index = int(shot.get("shot"))
+        except (TypeError, ValueError):
+            declared_index = None
+        if declared_index == shot_index:
+            return shot
+    shots = manifest.get("shots") or []
+    if 0 <= shot_index - 1 < len(shots):
+        shot = shots[shot_index - 1]
+        return shot if isinstance(shot, dict) else {}
+    return {}
+
+
+def _evaluate_text_against_fact_manifest(
+    text: str,
+    setup_data: dict,
+    shot_index: int,
+    *,
+    phase: str,
+) -> dict:
+    """Return deterministic contract-first gate result for outline/draft text."""
+    shot_manifest = _setup_fact_manifest_shot(setup_data, shot_index)
+    manifest = setup_data.get("fact_manifest") or {}
+    global_manifest = manifest.get("global") or {}
+    violations: list[dict] = []
+    text = text or ""
+    head = text[:800]
+
+    for alias, canonical in (global_manifest.get("deprecated_aliases") or {}).items():
+        if alias and alias in text:
+            violations.append({
+                "code": "deprecated_alias",
+                "marker": alias,
+                "expected": canonical,
+            })
+
+    forbidden = list(global_manifest.get("forbidden_phrases") or [])
+    forbidden.extend(shot_manifest.get("forbidden_phrases") or [])
+    for marker in dict.fromkeys(str(item) for item in forbidden if item):
+        if marker in head:
+            violations.append({
+                "code": "forbidden_phrase",
+                "marker": marker,
+            })
+
+    authorized = str(shot_manifest.get("authorized_corpus") or "")
+    unauthorized_markers = shot_manifest.get("unauthorized_fact_markers") or {}
+    for group, markers in unauthorized_markers.items():
+        for marker in markers or []:
+            marker = str(marker)
+            if marker and marker in text and marker not in authorized:
+                violations.append({
+                    "code": "unauthorized_fact_expansion",
+                    "group": group,
+                    "marker": marker,
+                })
+
+    if phase == "draft" and shot_manifest.get("hook_required"):
+        tail = _last_nonempty_line(text)
+        if tail:
+            for marker in global_manifest.get("closure_markers") or []:
+                if marker and marker in tail:
+                    violations.append({
+                        "code": "chapter_hook_closed_by_exposition",
+                        "marker": marker,
+                        "tail": tail[-80:],
+                    })
+                    break
+
+    if phase == "outline":
+        outline_text = text
+        if not outline_text.strip():
+            violations.append({"code": "empty_outline"})
+        if _outline_missing_any_contract_signal(outline_text, shot_manifest):
+            violations.append({
+                "code": "outline_missing_contract_signal",
+                "must_land": str(shot_manifest.get("must_land", ""))[:120],
+            })
+
+    score = max(0, 100 - len(violations) * 30)
+    return {
+        "schema": "inkflow.fact_gate_result.v1",
+        "phase": phase,
+        "passed": not violations,
+        "score": score,
+        "violations": violations,
+        "shot_manifest": {
+            "shot": shot_manifest.get("shot"),
+            "title": shot_manifest.get("title"),
+            "pov": shot_manifest.get("pov"),
+            "type_roles": shot_manifest.get("type_roles") or [],
+            "hook_required": bool(shot_manifest.get("hook_required")),
+        },
+    }
+
+
+def _outline_missing_any_contract_signal(outline_text: str, shot_manifest: dict) -> bool:
+    must_land = str(shot_manifest.get("must_land") or "")
+    hard_facts = _flatten_contract_text(shot_manifest.get("hard_facts") or [])
+    if not must_land and not hard_facts:
+        return False
+    signals = _extract_gate_signals(must_land + "\n" + hard_facts)
+    if not signals:
+        return False
+    return not any(signal in outline_text for signal in signals[:6])
+
+
+def _extract_gate_signals(text: str) -> list[str]:
+    import re
+
+    signals: list[str] = []
+    for item in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,12}", text or ""):
+        if item in {
+            "必须", "落地", "场景", "事件", "一个", "没有", "不要", "禁止",
+            "开始", "发现", "继续", "进入", "这个", "那个", "他们",
+        }:
+            continue
+        if len(item) <= 1:
+            continue
+        if item not in signals:
+            signals.append(item)
+    return signals
+
+
+def _last_nonempty_line(text: str) -> str:
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+def _build_shot_task_card(
+    *,
+    chapter: str | None,
+    shot_index: int,
+    setup_shot: dict,
+    fact_manifest_shot: dict,
+    outline_result: dict,
+) -> dict:
+    return {
+        "schema": "inkflow.shot_task_card.v1",
+        "chapter": chapter,
+        "shot": shot_index,
+        "title": setup_shot.get("title") or fact_manifest_shot.get("title"),
+        "pov": setup_shot.get("pov") or fact_manifest_shot.get("pov"),
+        "must_land": setup_shot.get("must_land") or fact_manifest_shot.get("must_land"),
+        "hard_facts": fact_manifest_shot.get("hard_facts") or [],
+        "type_roles": _normalize_type_roles(
+            setup_shot.get("type_roles") or fact_manifest_shot.get("type_roles")
+        ),
+        "hook_required": bool(fact_manifest_shot.get("hook_required")),
+        "forbidden_phrases": fact_manifest_shot.get("forbidden_phrases") or [],
+        "outline": outline_result.get("final_outline") or "",
+        "outline_score": outline_result.get("final_score") or outline_result.get("initial_score"),
+        "outline_passed": outline_result.get("final_passed", outline_result.get("passed")),
+    }
+
+
+def _build_outline_text_from_contract(shot_contract: dict) -> str:
+    must_land = shot_contract.get("must_land_json", {})
+    if isinstance(must_land, str):
+        try:
+            import json
+
+            must_land = json.loads(must_land) if must_land else {}
+        except Exception:
+            must_land = {}
+    if not isinstance(must_land, dict):
+        must_land = {}
+
+    parts: list[str] = []
+    title = must_land.get("title")
+    if title:
+        parts.append(str(title))
+    for key in ("beats", "event"):
+        value = must_land.get(key)
+        if value:
+            parts.append(str(value))
+    return "\n".join(parts)
+
+
+def _filter_drafts_by_fact_manifest(
+    *,
+    db,
+    audit,
+    shot_id: str,
+    draft_ids: list[str],
+    setup_data: dict,
+    shot_index: int,
+) -> list[str]:
+    """Apply deterministic contract-first draft gate before literary jury."""
+    passed: list[str] = []
+    for draft_id in draft_ids:
+        draft = db.execute(
+            "SELECT text, attempt_id FROM writing_drafts WHERE draft_id = ?",
+            (draft_id,),
+        ).fetchone()
+        if not draft:
+            continue
+        result = _evaluate_text_against_fact_manifest(
+            draft["text"],
+            setup_data,
+            shot_index,
+            phase="draft",
+        )
+        audit.record_draft_eligibility(
+            draft_id=draft_id,
+            shot_id=shot_id,
+            gate_stage="hard_rule",
+            passed=result["passed"],
+            attempt_id=draft["attempt_id"],
+            score=result["score"],
+            threshold=80,
+            reason={"violations": result["violations"]},
+            result=result,
+        )
+        if result["passed"]:
+            passed.append(draft_id)
+        else:
+            audit.record_failure_attribution(
+                stage="hard_rule",
+                failure_category="writer_drift",
+                shot_id=shot_id,
+                draft_id=draft_id,
+                root_cause=result,
+                evidence_refs={"draft_id": draft_id, "attempt_id": draft["attempt_id"]},
+                suggested_action="草稿违背 fact manifest，不进入文学评审；优先返写，重复失败则回退大纲/task card。",
+            )
+    return passed
+
+
+def _sanitize_models_config(value):
+    """Return an audit-safe config snapshot with credentials redacted."""
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if any(token in lowered for token in ("api_key", "apikey", "secret", "token", "password")):
+                sanitized[key] = "<redacted>"
+            else:
+                sanitized[key] = _sanitize_models_config(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_models_config(item) for item in value]
+    return value
 
 
 def _auto_export_chapter(
@@ -1202,6 +1592,9 @@ def setup_project(project: str, chapter: str, force: bool):
         roles = []
         if index == total:
             roles.append("hook")
+        for role in _normalize_type_roles(event.get("type_roles")):
+            if role not in roles:
+                roles.append(role)
         shots.append({
             "shot": event.get("shot", index),
             "title": event.get("title", f"Shot {index}"),
@@ -1214,6 +1607,14 @@ def setup_project(project: str, chapter: str, force: bool):
                 "禁止用总结句替代动作和身体反应",
             ],
         })
+
+    fact_manifest = _build_fact_manifest(
+        chapter=chapter,
+        layers=layers,
+        chapter_events=chapter_events,
+        exposition_gate=default_exposition_gate,
+        suspense=suspense,
+    )
 
     data = {
         "schema": "inkflow.chapter_setup.v1",
@@ -1228,6 +1629,7 @@ def setup_project(project: str, chapter: str, force: bool):
         "previous_chapter": previous_chapter,
         "previous_review": previous_review or None,
         "existing_chapter_state": existing_state,
+        "fact_manifest": fact_manifest,
         "shots": shots,
         "chapter_hook": {
             "required": True,
@@ -1245,6 +1647,14 @@ def setup_project(project: str, chapter: str, force: bool):
     }
 
     _write_yaml_file(setup_path, data)
+    from inkflow.services.audit_recorder import AuditRecorder
+    AuditRecorder(db, project_id=project_id).record_setup_snapshot(
+        chapter_key=chapter,
+        setup_data=data,
+        source_path=setup_path,
+        meta_contract_id=meta_contract["meta_contract_id"],
+        status=data["status"],
+    )
     db.close()
 
     click.echo(f"章节生产包已生成: {setup_path}")
@@ -1751,6 +2161,43 @@ def _run_project_inner(
     click.echo(f"目标章节: {chapter or '全部'}")
     click.echo(f"契约驱动: {num_shots} shots (来自 {len(chapter_events)} 个 chapter_events)")
 
+    from inkflow.services.audit_recorder import AuditRecorder
+    audit = AuditRecorder(db, project_id=project_id, run_id=run_id, session_id=session_id)
+    audit.record_event(
+        stage="run",
+        event_type="run_started",
+        status="started",
+        input_refs={
+            "meta_contract_id": meta_contract["meta_contract_id"],
+            "chapter": chapter,
+            "book_run_id": book_run_id,
+        },
+        metrics={
+            "shot_count": num_shots,
+            "chapter_event_count": len(chapter_events),
+            "writer_count": writer_count,
+        },
+        payload={
+            "models_config": _sanitize_models_config(models_config),
+            "resume": resume,
+            "local_jury": local_jury,
+        },
+    )
+    if chapter_setup:
+        setup_id = audit.record_setup_snapshot(
+            chapter_key=chapter,
+            setup_data=chapter_setup,
+            source_path=_chapter_setup_path(project, chapter),
+            meta_contract_id=meta_contract["meta_contract_id"],
+        )
+        audit.record_event(
+            stage="setup",
+            event_type="setup_loaded_for_run",
+            status="passed",
+            output_refs={"setup_id": setup_id},
+            payload={"chapter": chapter},
+        )
+
     # D25-R1: Retry budget + circuit breaker
     retry_budget = RetryBudgetService(db, run_id)
     click.echo(f"  重试预算: {retry_budget.max_budget} 次（{num_shots} shots × 2）")
@@ -1766,6 +2213,7 @@ def _run_project_inner(
             "chapter": chapter,
             "writer_count": writer_count,
             "book_run_id": book_run_id,
+            "models_config": _sanitize_models_config(models_config),
             "chapter_setup": {
                 "schema": chapter_setup.get("schema"),
                 "chapter": chapter_setup.get("chapter"),
@@ -1977,9 +2425,23 @@ def _run_project_inner(
                     f"  ⏭ 已 ({shot_status_row['shot_status']}/"
                     f"{shot_status_row['light_status']})，跳过"
                 )
+                audit.record_event(
+                    stage="run",
+                    event_type="shot_skipped_completed",
+                    status="skipped",
+                    shot_id=shot_id,
+                    payload={"shot_status": shot_status_row["shot_status"]},
+                )
                 continue
 
             mgr.update_current_shot(session_id, shot_id)
+            audit.record_event(
+                stage="run",
+                event_type="shot_started",
+                status="started",
+                shot_id=shot_id,
+                metrics={"shot_index": i + 1, "total_shots": len(shot_ids)},
+            )
 
             # 留白机制：每 5 个 shot 释放 1 个（第 5、10、15... 个 shot）
             is_blank_shot = ((i + 1) % 5 == 0)
@@ -1989,6 +2451,7 @@ def _run_project_inner(
                 click.echo(f"  🪨 留白 shot：释放创造自由度（budget×2, temp≤{blank_temp_cap}）")
 
             setup_shot = _chapter_setup_shot(chapter_setup, i + 1)
+            fact_manifest_shot = _setup_fact_manifest_shot(chapter_setup, i + 1)
             setup_roles = _normalize_type_roles(setup_shot.get("type_roles"))
             if "blank_space" in setup_roles:
                 is_blank_shot = True
@@ -2005,6 +2468,7 @@ def _run_project_inner(
 
             # Step 1: 大纲评估 → 不合格则重新生成
             click.echo(f"  📋 大纲评估...")
+            outline_result = {}
             try:
                 outline_result = outline_evaluator.evaluate_and_fix(
                     shot_id=shot_id,
@@ -2024,6 +2488,57 @@ def _run_project_inner(
                         sc = refreshed_sc
             except (ModelCallError, ValueError, KeyError) as exc:
                 click.echo(f"    ⚠ 大纲评估失败: {exc}，使用原大纲")
+
+            outline_text_for_gate = outline_result.get("final_outline") or ""
+            if not outline_text_for_gate:
+                outline_text_for_gate = _build_outline_text_from_contract(sc)
+            outline_fact_gate = _evaluate_text_against_fact_manifest(
+                outline_text_for_gate,
+                chapter_setup,
+                i + 1,
+                phase="outline",
+            )
+            outline_history = outline_result.get("evaluation_history") or []
+            last_outline_eval = outline_history[-1] if outline_history else {}
+            score_passed = bool(
+                last_outline_eval.get(
+                    "passed",
+                    outline_result.get("final_score", 100)
+                    >= getattr(outline_evaluator, "threshold", 0),
+                )
+            ) if outline_result else True
+            outline_result["fact_gate"] = outline_fact_gate
+            outline_result["final_passed"] = score_passed and outline_fact_gate["passed"]
+            audit.record_event(
+                stage="outline_gate",
+                event_type="outline_fact_manifest_checked",
+                status="passed" if outline_fact_gate["passed"] else "failed",
+                shot_id=shot_id,
+                metrics={
+                    "score": outline_fact_gate["score"],
+                    "violation_count": len(outline_fact_gate["violations"]),
+                },
+                payload=outline_fact_gate,
+                failure_category=None if outline_fact_gate["passed"] else "outline_gap",
+                failure_detail="; ".join(
+                    str(item.get("code")) for item in outline_fact_gate["violations"][:3]
+                ) if not outline_fact_gate["passed"] else None,
+            )
+            if not outline_result["final_passed"]:
+                audit.record_failure_attribution(
+                    stage="outline_gate",
+                    failure_category="outline_gap",
+                    shot_id=shot_id,
+                    root_cause=outline_result,
+                    evidence_refs={
+                        "setup_chapter": chapter,
+                        "fact_manifest_shot": fact_manifest_shot.get("shot"),
+                    },
+                    suggested_action="先优化本 shot 大纲或重新 setup，再进入正文写作。",
+                )
+                click.echo("  🔴 大纲硬门禁未通过，不进入正文写作")
+                quality_controller.smart_redo(shot_id, 0)
+                continue
 
             # Step 2: 编译 prompt（两线共用）
             motif_task = motif_tracker.generate_motif_task(shot_id)
@@ -2071,6 +2586,22 @@ def _run_project_inner(
                     if not rhythm_sensory:
                         rhythm_sensory = this_rhythm.get("sensory_pressure")
 
+            shot_task_card = _build_shot_task_card(
+                chapter=chapter,
+                shot_index=i + 1,
+                setup_shot=setup_shot,
+                fact_manifest_shot=fact_manifest_shot,
+                outline_result=outline_result,
+            )
+            audit.record_event(
+                stage="prompt",
+                event_type="shot_task_card_compiled",
+                status="recorded",
+                shot_id=shot_id,
+                output_refs={"fact_manifest_shot": fact_manifest_shot.get("shot")},
+                payload=shot_task_card,
+            )
+
             shot_context_payload = {
                 "must_land": sc.get("must_land_json", {}),
                 "anti_write": sc.get("anti_write_json", {}),
@@ -2091,9 +2622,12 @@ def _run_project_inner(
                     "exposition_gate": chapter_setup.get("exposition_gate"),
                     "chapter_hook": chapter_setup.get("chapter_hook"),
                 } if chapter_setup else None,
+                "task_card": shot_task_card,
+                "fact_manifest_shot": fact_manifest_shot,
             }
             gaps_text = info_gap_tracker.build_active_gaps_prompt() if active_gaps else ""
             persona_prompts: dict[str, str] = {}
+            persona_prompt_ids: dict[str, str] = {}
             for persona in ["意象师", "节奏师", "对话师", "结构师"]:
                 pid = prompt_compiler.compile_shot_prompt(
                     shot_id, run_id, persona,
@@ -2103,6 +2637,7 @@ def _run_project_inner(
                     fact_anchors=active_anchors,
                     motif_tasks=motif_task,
                 )
+                persona_prompt_ids[persona] = pid
                 prompt_row = db.execute(
                     "SELECT assembled_prompt FROM writing_shot_prompts WHERE prompt_id = ?",
                     (pid,),
@@ -2158,18 +2693,40 @@ def _run_project_inner(
             draft_ids = [d["draft_id"] for d in race_result["drafts"]]
 
             # Step 4: 质量门 1（机械检查：空文/太短/重复）
-            usable = quality_controller.gate1_check(shot_id, draft_ids)
+            gate1_usable = quality_controller.gate1_check(shot_id, draft_ids)
             for d in race_result["drafts"]:
-                if d["draft_id"] in usable:
+                if d["draft_id"] in gate1_usable:
                     writer_dispatcher.mark_draft_usable(d["draft_id"])
+
+            usable = gate1_usable
+            if usable:
+                fact_usable = _filter_drafts_by_fact_manifest(
+                    db=db,
+                    audit=audit,
+                    shot_id=shot_id,
+                    draft_ids=usable,
+                    setup_data=chapter_setup,
+                    shot_index=i + 1,
+                )
+                if len(fact_usable) < len(usable):
+                    click.echo(
+                        f"  硬规则门禁: {len(fact_usable)}/{len(usable)} 份草稿可进入文学评审"
+                    )
+                usable = fact_usable
+            draft_ids = usable
 
             if not usable:
                 # D25-R1: 记录 gate1 失败
                 try:
-                    ft = classify_failure_type(
-                        gate1_violations=["empty_text", "too_short", "excessive_repetition"],
-                    )
-                    retry_budget.record_failure(shot_id, ft, detail="gate1 all failed")
+                    if gate1_usable:
+                        ft = "hard_rule_violation"
+                        detail = "fact manifest hard rule all failed"
+                    else:
+                        ft = classify_failure_type(
+                            gate1_violations=["empty_text", "too_short", "excessive_repetition"],
+                        )
+                        detail = "gate1 all failed"
+                    retry_budget.record_failure(shot_id, ft, detail=detail)
                 except CircuitBreakerTriggered:
                     click.echo(f"  🔴 熔断：此 shot 同类失败 {retry_budget.circuit_breaker_threshold} 次，跳过")
                     continue
@@ -2177,7 +2734,7 @@ def _run_project_inner(
                     click.echo(f"  🔴 重试预算耗尽: {exc}，跳过后续 shots")
                     break
 
-                click.echo(f"  🔴 质量门 1 全部失败（空文/太短），进入第二轮")
+                click.echo(f"  🔴 质量门 1/硬规则门禁全部失败，进入第二轮")
                 # 第二轮写作
                 race_result2 = writer_dispatcher.dispatch_quad_track(
                     shot_id=shot_id, base_prompt=compiled_prompt, attempt=2,
@@ -2187,10 +2744,21 @@ def _run_project_inner(
                     blank_shot=is_blank_shot,
                 )
                 draft_ids = [d["draft_id"] for d in race_result2["drafts"]]
-                usable = quality_controller.gate1_check(shot_id, draft_ids)
+                gate1_usable = quality_controller.gate1_check(shot_id, draft_ids)
                 for d in race_result2["drafts"]:
-                    if d["draft_id"] in usable:
+                    if d["draft_id"] in gate1_usable:
                         writer_dispatcher.mark_draft_usable(d["draft_id"])
+
+                usable = gate1_usable
+                if usable:
+                    usable = _filter_drafts_by_fact_manifest(
+                        db=db,
+                        audit=audit,
+                        shot_id=shot_id,
+                        draft_ids=usable,
+                        setup_data=chapter_setup,
+                        shot_index=i + 1,
+                    )
 
                 if not usable:
                     click.echo(f"  🔴 第二轮仍失败，跳过此 Shot")
@@ -2321,6 +2889,16 @@ def _run_project_inner(
                 for d in race_result2["drafts"]:
                     if d["draft_id"] in usable2:
                         writer_dispatcher.mark_draft_usable(d["draft_id"])
+
+                if usable2:
+                    usable2 = _filter_drafts_by_fact_manifest(
+                        db=db,
+                        audit=audit,
+                        shot_id=shot_id,
+                        draft_ids=usable2,
+                        setup_data=chapter_setup,
+                        shot_index=i + 1,
+                    )
 
                 if usable2:
                     click.echo(f"  ⚖️ 第二轮九评委评分...")
@@ -2512,7 +3090,29 @@ def _run_project_inner(
                     "draft_id": winner_id,
                     "light_status": light,
                     "score": winner_score,
+                    "outline_result": outline_result,
+                    "prompt_ids": persona_prompt_ids,
+                    "shot_profile": shot_profile,
+                    "jury_verdict": jury_verdict,
+                    "gate2_result": gate2,
+                    "l4_result": l4_result,
+                    "final_revision_id": final_rev_id,
                 })
+                audit.record_event(
+                    stage="run",
+                    event_type="shot_completed",
+                    status="completed",
+                    shot_id=shot_id,
+                    output_refs={
+                        "draft_id": winner_id,
+                        "revision_id": final_rev_id,
+                    },
+                    metrics={
+                        "score": winner_score,
+                        "light_status": light,
+                        "shot_index": i + 1,
+                    },
+                )
 
                 track_str = f"赛道{winner_track}" if winner_track else "未知"
                 click.echo(
@@ -2525,6 +3125,14 @@ def _run_project_inner(
 
         completion_issues = _chapter_completion_issues(db, run_id, chapter)
         if completion_issues:
+            audit.record_event(
+                stage="run",
+                event_type="completion_gate_failed",
+                status="failed",
+                payload={"issues": completion_issues, "chapter": chapter},
+                failure_category="writer_drift",
+                failure_detail="; ".join(completion_issues[:3]),
+            )
             raise click.ClickException(
                 "章节未达到封板/导出条件，已停止自动导出；"
                 f"未完成项: {', '.join(completion_issues)}"
@@ -2589,6 +3197,16 @@ def _run_project_inner(
 
         # Complete session only after shot completion and L3 gate pass.
         mgr.complete_session(session_id)
+        audit.record_event(
+            stage="run",
+            event_type="session_completed",
+            status="completed",
+            metrics={
+                "completed_shots": len(shot_ids),
+                "total_shots": len(shot_ids),
+            },
+            payload={"chapter": chapter},
+        )
         click.echo(f"\n✅ 章节 {chapter} 生成完成。")
 
         # P0-7: Generate minimal scope report
@@ -2596,6 +3214,13 @@ def _run_project_inner(
 
         exported = _auto_export_chapter(db, project, chapter, run_id=run_id)
         if exported:
+            audit.record_event(
+                stage="export",
+                event_type="chapter_exported",
+                status="completed",
+                output_refs={"exported_path": str(exported)},
+                payload={"chapter": chapter},
+            )
             click.echo(f"\n📤 已自动导出: {exported}")
 
     next_steps = [f"ink status \"{project}\""]
@@ -3640,6 +4265,20 @@ def sessions_abort(session_id: str, project: str | None):
                     (run_row["run_id"],),
                 )
                 db.commit()
+                from inkflow.services.audit_recorder import AuditRecorder
+                AuditRecorder(
+                    db,
+                    project_id=row["project_id"],
+                    run_id=run_row["run_id"],
+                    session_id=session_id,
+                ).record_event(
+                    stage="run",
+                    event_type="session_aborted",
+                    status="failed",
+                    payload={"source": "sessions abort"},
+                    failure_category="unknown",
+                    failure_detail="human aborted session",
+                )
 
             click.echo(f"Session {session_id[:12]}... 已放弃。")
             click.echo("已生成文本已保留。")
@@ -3762,7 +4401,7 @@ def review_project(
     }
     review_path = _chapter_review_path(project, chapter)
     _write_yaml_file(review_path, review_data)
-    _record_chapter_review_db(
+    review_id = _record_chapter_review_db(
         db,
         project_id=project_id,
         chapter=chapter,
@@ -3772,6 +4411,17 @@ def review_project(
         notes=notes,
         exported_path=exported_path,
         shot_stats=shot_stats,
+    )
+    from inkflow.services.audit_recorder import AuditRecorder
+    AuditRecorder(db, project_id=project_id, run_id=run_id).record_event(
+        stage="review",
+        event_type="human_chapter_review",
+        status="completed" if status == "accepted" else "failed",
+        actor="human",
+        output_refs={"review_id": review_id, "review_path": str(review_path)},
+        payload=review_data,
+        failure_category=None if status == "accepted" else "writer_drift",
+        failure_detail=review_data.get("review") if status != "accepted" else None,
     )
     db.commit()
     db.close()
@@ -3943,6 +4593,133 @@ def status_project(project: str):
                     f"  {data.get('chapter', path.stem)}: "
                     f"{data.get('status', 'unknown')}"
                 )
+
+    db.close()
+
+
+# ── audit-report ──
+
+@main.command("audit-report")
+@click.argument("project")
+@click.option("--chapter", default=None, help="章节 key，如 v01.c03；未指定 --run 时取该章 latest run")
+@click.option("--run", "run_id", default=None, help="指定 run_id")
+@click.option("--limit", default=30, type=int, help="显示最近事件数量")
+def audit_report_project(project: str, chapter: str | None, run_id: str | None, limit: int):
+    """查看生产审计链路。
+
+    \b
+    示例:
+      ink audit-report "分流" --chapter v01.c03
+      ink audit-report "分流" --run <run_id> --limit 50
+    """
+    from inkflow.db import init_project_db
+
+    db_path = _resolve_project_db(project)
+    db = init_project_db(db_path)
+    project_row = db.execute(
+        "SELECT project_id FROM projects WHERE name = ?", (project,),
+    ).fetchone()
+    if project_row is None:
+        db.close()
+        raise click.ClickException(f"项目 '{project}' 尚未初始化。")
+
+    project_id = project_row["project_id"]
+    if not run_id and chapter:
+        latest = _latest_chapter_run(db, project_id, chapter)
+        run_id = latest["run_id"] if latest else None
+    if not run_id:
+        latest_session = db.execute(
+            "SELECT run_id FROM writing_sessions WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        run_id = latest_session["run_id"] if latest_session else None
+    if not run_id:
+        db.close()
+        raise click.ClickException("没有可审计的 run。")
+
+    click.echo(f"项目: {project}")
+    click.echo(f"Run: {run_id}")
+    if chapter:
+        click.echo(f"章节: {chapter}")
+
+    setup_count = db.execute(
+        "SELECT COUNT(*) AS cnt FROM writing_setup_snapshots "
+        "WHERE project_id = ? AND (? IS NULL OR run_id = ? OR chapter_key = ?)",
+        (project_id, run_id, run_id, chapter),
+    ).fetchone()["cnt"]
+    model_row = db.execute(
+        "SELECT COUNT(*) AS cnt, "
+        "SUM(CASE WHEN request_prompt_text IS NOT NULL AND LENGTH(request_prompt_text) > 0 THEN 1 ELSE 0 END) AS prompt_rows, "
+        "SUM(CASE WHEN response_text IS NOT NULL AND LENGTH(response_text) > 0 THEN 1 ELSE 0 END) AS response_rows "
+        "FROM model_attempts WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+
+    click.echo("\n审计覆盖:")
+    click.echo(f"  setup snapshots: {setup_count}")
+    click.echo(
+        f"  model attempts: {model_row['cnt']} "
+        f"(prompt={model_row['prompt_rows'] or 0}, response={model_row['response_rows'] or 0})"
+    )
+
+    event_rows = db.execute(
+        "SELECT stage, status, COUNT(*) AS cnt FROM writing_audit_events "
+        "WHERE run_id = ? GROUP BY stage, status ORDER BY stage, status",
+        (run_id,),
+    ).fetchall()
+    click.echo("\n阶段事件:")
+    if event_rows:
+        for row in event_rows:
+            click.echo(f"  {row['stage']} / {row['status']}: {row['cnt']}")
+    else:
+        click.echo("  无 writing_audit_events 记录。")
+
+    eligibility_rows = db.execute(
+        "SELECT gate_stage, passed, COUNT(*) AS cnt FROM writing_draft_eligibility "
+        "WHERE run_id = ? GROUP BY gate_stage, passed ORDER BY gate_stage, passed DESC",
+        (run_id,),
+    ).fetchall()
+    click.echo("\n草稿资格:")
+    if eligibility_rows:
+        for row in eligibility_rows:
+            label = "passed" if row["passed"] else "failed"
+            click.echo(f"  {row['gate_stage']} / {label}: {row['cnt']}")
+    else:
+        click.echo("  无 writing_draft_eligibility 记录。")
+
+    failure_rows = db.execute(
+        "SELECT failure_category, stage, COUNT(*) AS cnt "
+        "FROM writing_failure_attributions WHERE run_id = ? "
+        "GROUP BY failure_category, stage ORDER BY cnt DESC, failure_category, stage",
+        (run_id,),
+    ).fetchall()
+    click.echo("\n失败归因:")
+    if failure_rows:
+        for row in failure_rows:
+            click.echo(f"  {row['failure_category']} / {row['stage']}: {row['cnt']}")
+    else:
+        click.echo("  无 failure attribution。")
+
+    recent_events = db.execute(
+        "SELECT created_at, stage, event_type, status, shot_id, failure_category, failure_detail "
+        "FROM writing_audit_events WHERE run_id = ? "
+        "ORDER BY created_at DESC LIMIT ?",
+        (run_id, max(1, limit)),
+    ).fetchall()
+    click.echo("\n最近事件:")
+    if recent_events:
+        for row in recent_events:
+            detail = ""
+            if row["failure_category"]:
+                detail = f" | {row['failure_category']}: {row['failure_detail'] or ''}"
+            shot_label = f" | shot={row['shot_id']}" if row["shot_id"] else ""
+            click.echo(
+                f"  {row['created_at']} | {row['stage']} | "
+                f"{row['event_type']} | {row['status']}{shot_label}{detail}"
+            )
+    else:
+        click.echo("  无事件。")
 
     db.close()
 

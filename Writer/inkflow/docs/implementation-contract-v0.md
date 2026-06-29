@@ -1,10 +1,10 @@
-# InkFlow v3.19 Phase 1 实现契约 v1.7
+# InkFlow v3.21 Phase 1 实现契约 v1.8
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层）
-> 日期：2026-06-17；最近对齐：2026-06-28
-> 当前范围：DB3 DDL（41 张业务表 + `_schema_meta` 元表，Schema v20）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity 与 book_run 编排层已落地；工程层进入逐章/整卷编排投产候选，正式正文仍以每章人工 accepted 为准。
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层 + Schema v21 全程审计底座 + contract-first 第一版）
+> 日期：2026-06-17；最近对齐：2026-06-29
+> 当前范围：DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v21）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase 与完整 prompt/response、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排、全程审计事件与失败归因、fact manifest、outline fact gate、shot task card、draft hard fact gate
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity、book_run 编排层与 contract-first 第一版已落地；但第 3 章返工和第 4 章首跑尚未用新门禁验证，正式正文仍以每章人工 accepted 为准。
 
 ---
 
@@ -20,8 +20,10 @@ D:\_Progs\.Story\《分流》
   → 提取风格指纹 / 事实锚点 / 人物声音基线
   → init 多轮交互形成 contract-draft.yaml 并确认元契约
   → setup --chapter 编译单章生产前校准包
-  → run --chapter 逐 shot 生成目标章节，通过 L3/L4 后自动导出审稿稿
-  → writer race + jury + gate + revision + checkpoint
+  → setup 编译 fact_manifest / hard fact pack
+  → run --chapter 先做大纲硬门禁，再编译 shot task card 并逐 shot 生成目标章节
+  → Gate1 后、jury 前执行 draft hard fact gate，不合格稿不得进入文学 PK
+  → draft eligibility gate + jury + L4/L3 gate + revision + checkpoint
   → review --chapter 写入章节级 canonical 状态
   → accepted 后进入正式导出和后续历史上下文
   → Chesil read-only 导入 InkFlow DB 到自己的 story.db
@@ -45,7 +47,7 @@ P0 固定边界：
 
 P0 不实现：Universe、多项目同步、单 prompt 全书生成、完整 voice-calibrate、完整 contract dashboard、Chesil 反向提取契约、成本估算确认门。P0 已实现 `run-book` 编排层：一次启动多章批处理，但内部仍逐章逐 shot 串行运行。
 
-### 0.1 canonical 正文规则（Schema v20 已落地）
+### 0.1 canonical 正文规则（Schema v20+ 已落地）
 
 当前实现区分“审稿稿”和“正式稿”：
 
@@ -55,6 +57,45 @@ P0 不实现：Universe、多项目同步、单 prompt 全书生成、完整 voi
 4. 默认 `ink export` 只取 accepted canonical；`ink export --draft` 才取未 accepted 的当前封板稿用于审稿/排障。
 5. previous context 只读取当前 run 前序 shot 或 accepted 历史章节；fact anchors 只读取当前 run、accepted 章节或 locked baseline。
 6. `logical_shot_id` 是跨 run 稳定的故事/契约定位；生产 run 的 `shot_id` 是 `{logical_shot_id}@{run_id}`。同一章节重写必须创建新的 run attempt shot 行，不能复用旧 run 正文。
+
+### 0.2 contract-first 第一版协议（已落地，仍需真实章节验证）
+
+以下协议已进入运行链路；当前以保守硬门槛为主，避免误杀文学表达：
+
+| 工件 / 字段 | 语义 |
+|-------------|------|
+| `fact_manifest` | `setup --chapter` 编译出的章节硬事实包：废弃角色名、forbidden phrases、forbidden expansions、must_land、POV、hook requirements、per-shot authorized corpus |
+| `outline_eligibility` | `run` 中的大纲 hard gate；空大纲、缺失契约信号、旧称、禁词、未授权扩写失败时不得进入正文写作 |
+| `task_card` | 合格大纲编译出的 shot 任务卡，写手 prompt、audit event 和 hard gate 读取同一份 hard/soft/reference 输入 |
+| `draft_eligibility` | Gate1 后、jury 前的草稿 hard fact gate；不合格草稿隔离，不进入类型/文学 jury，不得成为 winner |
+| `failure_type` | 统一归因：`contract_conflict` / `outline_gap` / `task_card_gap` / `writer_drift` / `gate_false_positive` / `model_failure` / `jury_failure` |
+
+实现时必须保证：
+
+1. 文学评分永远不能覆盖硬资格失败。
+2. outline rewrite 和 draft rewrite 都有轮次上限。
+3. 同类失败重复达到阈值时停止生产，并输出人类可修复的 setup/audit 报告。
+4. `run-book` 中任一章节触发 contract-first hard fail，默认停止整批；`--continue-on-fail` 只记录失败并进入下一章。
+5. 后续增强仍需把 `contract_conflict`、`task_card_gap`、`gate_false_positive` 做成更精确的自动分类，而不是全部归入 writer drift。
+
+### 0.3 v21 全程审计协议（已落地）
+
+Schema v21 增加四张一等审计表，并扩展 `model_attempts`：
+
+| 表 / 字段 | 语义 |
+|-----------|------|
+| `writing_audit_events` | 统一阶段事件链：setup、run、outline、prompt、writer、gate1、jury、gate2、L4/L3、export、review、resume/book_run |
+| `writing_setup_snapshots` | 章前 setup YAML 的不可变快照；用 `setup_hash` 关联 run 审计事件 |
+| `writing_draft_eligibility` | 每份草稿在 Gate1、hard_rule、type_gate、literary_jury、gate2、L4/L3 的资格判定 |
+| `writing_failure_attributions` | 统一失败归因：`contract_conflict`、`outline_gap`、`task_card_gap`、`writer_drift`、`gate_false_positive`、`model_failure`、`jury_failure`、`unknown` |
+| `model_attempts.request_prompt_text` / `response_text` | 模型调用完整 prompt/response；hash 继续用于去重和快速比对 |
+
+审计不替代业务表。业务表负责正文、评分、门禁和状态；审计表负责把阶段输入、输出、判定、失败类别串成可查询链。任何生产质量问题至少应能回答：
+
+1. 当时使用哪个 meta contract、setup snapshot、model config、prompt/context。
+2. 哪些草稿被 Gate1、hard/type/literary jury、Gate2、L4/L3 接受或拒绝。
+3. 失败属于 contract/setup、大纲、task card、writer 漂移、gate 误判、jury/model 基础设施失败中的哪一类。
+4. 人类 review 对该 run 的最终判断是什么，是否进入 accepted canonical。
 
 ## 1. CLI 命令面（冻结为 `ink <verb>`）
 
@@ -75,6 +116,7 @@ P0 不实现：Universe、多项目同步、单 prompt 全书生成、完整 voi
 | `ink sessions list` | 查看所有未完成 Session |
 | `ink sessions abort <id>` | 放弃 Session，已生成文本保留 |
 | `ink status <project>` | 写作进度查看 |
+| `ink audit-report <project> [--chapter key | --run id]` | 查看 run 审计链、草稿资格、失败归因和模型调用覆盖 |
 | `ink contracts <project>` | 契约仪表盘 |
 | `ink voice-calibrate <project>` | 声音校准 |
 | `ink clone <source> --as <target>` | 跨项目 clone |
@@ -193,8 +235,9 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（41 张业务表 + `_schema_meta` 元表，Schema v20）
+## 3. DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v21）
 
+> v21 变更（2026-06-29，全程审计半重构）：新增 `writing_audit_events` / `writing_setup_snapshots` / `writing_draft_eligibility` / `writing_failure_attributions`；`model_attempts` 新增完整 prompt/response 文本字段。
 > v20 变更（2026-06-28，book_run 编排层）：新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷批处理、逐章 run 状态、失败原因和返工入口。同一 book_run 已完成的前序 draft 章节可作为后续章节临时上下文；正式导出仍只认 accepted canonical。
 > v19 变更（2026-06-28，run attempt shot identity）：`writing_shots` 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；同一 run 内 `logical_shot_id` 唯一，章节重写创建新的 attempt shot，避免复用旧 run 正文。
 > v18 变更（2026-06-28，accepted canonical）：新增 `writing_chapter_reviews` 表，记录章节人工审稿状态；默认正式导出、历史 previous context 和 fact anchors 均以 accepted canonical selector 为边界。
@@ -806,7 +849,7 @@ CREATE INDEX idx_book_run_chapters_status
   ON writing_book_run_chapters(status);
 ```
 
-### 3.3 核心业务表索引（含 v20 之前新增表）
+### 3.3 核心业务表索引（含 v21 新增表）
 
 ```
 projects
@@ -821,6 +864,8 @@ writing_repair_audit / writing_exception_events / writing_deviation_notes
 writing_project_config / writing_reference_pool
 writing_chapter_reviews  -- v18 accepted canonical
 writing_book_runs / writing_book_run_chapters  -- v20 book_run orchestration
+writing_audit_events / writing_setup_snapshots  -- v21 auditability
+writing_draft_eligibility / writing_failure_attributions  -- v21 eligibility/attribution
 writing_information_gaps / writing_chapter_rhythms  -- v6/v7 新增
 ```
 

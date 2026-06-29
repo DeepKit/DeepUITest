@@ -1,19 +1,21 @@
 # InkFlow 设计评估结论
 
 > 评估日期：2026-06-16
-> 最近复核：2026-06-28
+> 最近复核：2026-06-29
 > 评估范围：inkflow/docs/design.md、flow.md、role-system.md、module-v3.6.md、implementation-contract-v0.md
 > 评估方法：四轮专家审阅（本地审计 + 4 + 3 + 3 + 3 位专家，共 13 人次）
 
 ## 核心结论
 
-**经过四轮评估，InkFlow v3.6 的完整架构曾达到 near-optimal；2026-06-28 生产内核硬化和 book_run 编排层落地后，当前判断调整为：工程层达到逐章/整卷编排投产候选标准，但不承诺无人值守批量放量。**
+**经过四轮评估，InkFlow v3.6 的完整架构曾达到 near-optimal；2026-06-29 第 3 章复盘后，当前判断调整为：工程内核方向成立，contract-first 资格门禁第一版已经落地，但未经第 3 章返工和第 4 章首跑验证前，不应宣布正式投产。**
 
 2026-06-25 复核结论：P0 纵向闭环、三棵树、正文真相源、D-25 能力、L0 全书宪法、L0.5 卷部节奏、风格偏好学习、反契约沙盒、CREATIVE-1 意外价值维度、CREATIVE-2 二次精修、CREATIVE-3 留白创意评审已经落地，当前实现为 Schema v16 / 38 张业务表 + `_schema_meta` 元表。设计仍不需要推倒重做；后续最优路径是实战验证、留白/polish 效果评估和非阻塞议题评估。
 
 2026-06-27 复核结论：第 2/3 章真实链路证明方向成立，但专家审阅发现 production kernel 仍有未固化不变量：run/shot identity 复用、review/reject/abort canonical 语义不足、旧 run 导出风险、L3/L4 曾经只告警不硬停、远端 jury 配置失败可能假回落。当前策略为“推倒 40%，保留 60%”：保留现有 CLI/模型/Prompt/Jury 资产，重做 canonical truth source、run identity、export selector 和 gate 状态机。
 
 2026-06-28 复核结论：Schema v18 已完成 CORE-1/EXPORT-4/REVIEW-1，Schema v19 已完成 CORE-2 run attempt shot identity，Schema v20 已完成 BOOKRUN-1 全书/整卷编排层。旧 run 导出、未 accepted 污染、同章重写复用旧 shot、L3/L4 假封板、远端 jury 假回落等 P0 软件风险已收敛。`run-book` 提供一次启动多章生产的调度能力，但内部仍按章串行执行现有 setup/run/gate/export；进入生产后每章仍必须人工审稿 accepted。
+
+2026-06-29 复核结论：第 3 章问题不是单纯写手漂移，也不是只靠加几个 L4 正则就能解决。核心缺陷是“大纲门禁未起作用 + 赛马资格与文学评分混合”：违约大纲进入写作，违约草稿又可能凭语言顺滑度成为 winner。新的最小可投产条件是 contract-first 管线：`setup` 编译 fact manifest，Outline Hard Gate 先判资格；合格大纲编译 task card；Draft Eligibility Gate 先隔离违约稿，只有 eligible 草稿进入类型/文学 jury；失败必须归因为 contract_conflict / outline_gap / task_card_gap / writer_drift / gate_false_positive / model_failure。当前第一版已实现 fact manifest、outline fact gate、shot task card、draft hard fact gate 和 audit-report，但自动归因仍需继续细化。
 
 第一轮（4 专家）：needs fix — 方向正确，工程规格未冻结。
 第二轮（3 专家）：发现 30 跨文档不一致，确立 9 条人类决策。
@@ -54,10 +56,10 @@
 
 ## 最终状态
 
-- **implementation-contract-v0.md**：当前实现对齐版，DDL（41 张业务表 + `_schema_meta` 元表，Schema v20）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审、模型审计 phase、分层裁判、accepted canonical 状态机、run attempt shot identity 和 book_run 编排层已记录；P0 以《分流》第 1 章导入、第 2/3 章链路验证、后续章节按章/整卷生产为验收闭环
-- **tasks.md**：10 条验收标准，7 个待编码时细化的议题（非阻塞）
+- **implementation-contract-v0.md**：当前实现对齐版，DDL（45 张业务表 + `_schema_meta` 元表，Schema v21）、状态机、idempotency_key、JSON 协议、并发控制、Caching 降级口径、polish 精修链路、留白创意评审、模型审计 phase、分层裁判、accepted canonical 状态机、run attempt shot identity、book_run 编排层、全程审计和 contract-first 第一版已记录
+- **tasks.md**：当前 P0 已更新为第 3 章返工验证、第 4 章首跑验证、失败归因细化和 setup linter 增强
 - **文档卫生**：CLI 统一为 `ink`、L2 Opus 移除、编码修复、日期修正、旧表述替换全部完成
-- **Phase 1 编码可以开工**
+- **Phase 1 继续编码，但正式投产结论重新打开**
 
 ---
 

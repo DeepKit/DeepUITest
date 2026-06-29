@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -1238,4 +1238,177 @@ def _migrate_v19_to_v20(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_book_run_chapters_status "
         "ON writing_book_run_chapters(status)"
+    )
+
+
+@register_migration(20, 21)
+def _migrate_v20_to_v21(conn: sqlite3.Connection) -> None:
+    """v21: 全程审计 — 事件、setup 快照、草稿资格、失败归因。"""
+    _create_v21_audit_tables(conn)
+    if _table_exists(conn, "writing_outline_evaluations"):
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(writing_outline_evaluations)").fetchall()
+        }
+        if "threshold" not in columns:
+            conn.execute(
+                "ALTER TABLE writing_outline_evaluations "
+                "ADD COLUMN threshold INTEGER NOT NULL DEFAULT 70 "
+                "CHECK (threshold BETWEEN 0 AND 100)"
+            )
+        if "passed" not in columns:
+            conn.execute(
+                "ALTER TABLE writing_outline_evaluations "
+                "ADD COLUMN passed INTEGER NOT NULL DEFAULT 0 "
+                "CHECK (passed IN (0, 1))"
+            )
+        conn.execute(
+            "UPDATE writing_outline_evaluations "
+            "SET passed = CASE WHEN score >= threshold THEN 1 ELSE 0 END"
+        )
+    if _table_exists(conn, "model_attempts"):
+        model_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(model_attempts)").fetchall()
+        }
+        if "request_prompt_text" not in model_columns:
+            conn.execute("ALTER TABLE model_attempts ADD COLUMN request_prompt_text TEXT")
+        if "response_text" not in model_columns:
+            conn.execute("ALTER TABLE model_attempts ADD COLUMN response_text TEXT")
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def _create_v21_audit_tables(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_audit_events ("
+        "event_id TEXT PRIMARY KEY, "
+        "project_id TEXT REFERENCES projects(project_id), "
+        "run_id TEXT REFERENCES writing_sessions(run_id), "
+        "session_id TEXT REFERENCES writing_sessions(session_id), "
+        "shot_id TEXT REFERENCES writing_shots(shot_id), "
+        "stage TEXT NOT NULL CHECK (stage IN ("
+        "'init', 'setup', 'run', 'outline', 'outline_gate', 'prompt', "
+        "'writer', 'gate1', 'hard_rule', 'type_gate', 'literary_jury', "
+        "'jury_unavailable', 'gate2', 'l4', 'l3', 'l2', 'l1', 'export', 'review', "
+        "'repair', 'resume', 'book_run'"
+        ")), "
+        "event_type TEXT NOT NULL, "
+        "status TEXT NOT NULL DEFAULT 'recorded' CHECK (status IN ("
+        "'started', 'recorded', 'passed', 'failed', 'skipped', "
+        "'selected', 'rejected', 'completed'"
+        ")), "
+        "actor TEXT, "
+        "input_refs_json JSON NOT NULL DEFAULT '{}', "
+        "output_refs_json JSON NOT NULL DEFAULT '{}', "
+        "metrics_json JSON NOT NULL DEFAULT '{}', "
+        "payload_json JSON NOT NULL DEFAULT '{}', "
+        "failure_category TEXT CHECK (failure_category IN ("
+        "'contract_conflict', 'outline_gap', 'task_card_gap', 'writer_drift', "
+        "'gate_false_positive', 'model_failure', 'jury_failure', 'unknown'"
+        ")), "
+        "failure_detail TEXT, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_run "
+        "ON writing_audit_events(run_id, created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_shot "
+        "ON writing_audit_events(shot_id, stage)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_failure "
+        "ON writing_audit_events(failure_category)"
+    )
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_setup_snapshots ("
+        "setup_id TEXT PRIMARY KEY, "
+        "project_id TEXT NOT NULL REFERENCES projects(project_id), "
+        "run_id TEXT REFERENCES writing_sessions(run_id), "
+        "chapter_key TEXT NOT NULL, "
+        "meta_contract_id TEXT REFERENCES writing_meta_contract(meta_contract_id), "
+        "source_path TEXT, "
+        "setup_hash TEXT NOT NULL, "
+        "setup_json JSON NOT NULL, "
+        "status TEXT NOT NULL DEFAULT 'ready', "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(project_id, chapter_key, setup_hash)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_setup_snapshots_project_chapter "
+        "ON writing_setup_snapshots(project_id, chapter_key)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_setup_snapshots_run "
+        "ON writing_setup_snapshots(run_id)"
+    )
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_draft_eligibility ("
+        "eligibility_id TEXT PRIMARY KEY, "
+        "draft_id TEXT NOT NULL REFERENCES writing_drafts(draft_id), "
+        "shot_id TEXT NOT NULL REFERENCES writing_shots(shot_id), "
+        "run_id TEXT NOT NULL REFERENCES writing_sessions(run_id), "
+        "gate_stage TEXT NOT NULL CHECK (gate_stage IN ("
+        "'gate1', 'hard_rule', 'type_gate', 'literary_jury', "
+        "'jury_unavailable', 'gate2', 'l4', 'l3'"
+        ")), "
+        "passed INTEGER NOT NULL CHECK (passed IN (0, 1)), "
+        "score REAL, "
+        "threshold REAL, "
+        "reason_json JSON NOT NULL DEFAULT '{}', "
+        "result_json JSON NOT NULL DEFAULT '{}', "
+        "attempt_id TEXT NOT NULL, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(draft_id, gate_stage, attempt_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_draft_eligibility_run "
+        "ON writing_draft_eligibility(run_id, gate_stage)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_draft_eligibility_shot "
+        "ON writing_draft_eligibility(shot_id, gate_stage)"
+    )
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_failure_attributions ("
+        "attribution_id TEXT PRIMARY KEY, "
+        "project_id TEXT REFERENCES projects(project_id), "
+        "run_id TEXT REFERENCES writing_sessions(run_id), "
+        "shot_id TEXT REFERENCES writing_shots(shot_id), "
+        "draft_id TEXT REFERENCES writing_drafts(draft_id), "
+        "stage TEXT NOT NULL, "
+        "failure_category TEXT NOT NULL CHECK (failure_category IN ("
+        "'contract_conflict', 'outline_gap', 'task_card_gap', 'writer_drift', "
+        "'gate_false_positive', 'model_failure', 'jury_failure', 'unknown'"
+        ")), "
+        "root_cause_json JSON NOT NULL DEFAULT '{}', "
+        "evidence_refs_json JSON NOT NULL DEFAULT '{}', "
+        "suggested_action TEXT, "
+        "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_failure_attr_run "
+        "ON writing_failure_attributions(run_id, stage)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_failure_attr_shot "
+        "ON writing_failure_attributions(shot_id, stage)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_failure_attr_category "
+        "ON writing_failure_attributions(failure_category)"
     )

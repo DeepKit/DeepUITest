@@ -33,6 +33,7 @@ from inkflow.services.model_client import (
     create_model_client,
     ModelCallError,
 )
+from inkflow.services.audit_recorder import AuditRecorder
 
 
 _SCORE_PROMPT = """\
@@ -398,14 +399,97 @@ class JuryService:
 
         score_key = "creative_score" if creative_review else "literary_score"
         review_mode = "creative_blank" if creative_review else "typed_literary"
-        return self._select_winner(
+        self._record_draft_eligibility_audit(
+            shot_id=shot_id,
+            draft_scores=draft_scores,
+            attempt_id=attempt_id,
+            threshold=threshold,
+            score_key=score_key,
+        )
+        verdict = self._select_winner(
             draft_scores,
             threshold,
             score_key=score_key,
             review_mode=review_mode,
         )
+        AuditRecorder(self.db, run_id=self.run_id).record_event(
+            stage="literary_jury",
+            event_type="jury_verdict",
+            status="selected" if verdict.get("winner_draft_id") else "failed",
+            shot_id=shot_id,
+            output_refs={"winner_draft_id": verdict.get("winner_draft_id")},
+            metrics={
+                "winner_score": verdict.get("winner_score", 0),
+                "threshold": threshold,
+                "passing_count": verdict.get("passing_count", 0),
+                "min_passing_drafts": verdict.get("min_passing_drafts", self.min_passing_drafts),
+            },
+            payload={
+                "review_mode": review_mode,
+                "score_key": score_key,
+            },
+            failure_category=None if verdict.get("winner_draft_id") else "jury_failure",
+            failure_detail=None if verdict.get("winner_draft_id") else "无 eligible winner",
+        )
+        return verdict
 
     # ── 分层评分辅助 ──
+
+    def _record_draft_eligibility_audit(
+        self,
+        *,
+        shot_id: str,
+        draft_scores: dict[str, dict],
+        attempt_id: str,
+        threshold: int,
+        score_key: str,
+    ) -> None:
+        audit = AuditRecorder(self.db, run_id=self.run_id)
+        for draft_id, score_data in draft_scores.items():
+            stage = score_data.get("failure_stage")
+            eligible = bool(score_data.get("eligible", False))
+            if eligible:
+                gate_stage = "literary_jury"
+                passed = score_data.get(score_key, score_data.get("literary_score", 0)) >= threshold
+            elif stage == "hard_rule":
+                gate_stage = "hard_rule"
+                passed = False
+            elif stage == "type_gate":
+                gate_stage = "type_gate"
+                passed = False
+            elif stage == "jury_unavailable":
+                gate_stage = "jury_unavailable"
+                passed = False
+            else:
+                gate_stage = "literary_jury"
+                passed = False
+
+            score = score_data.get(score_key, score_data.get("literary_score"))
+            audit.record_draft_eligibility(
+                draft_id=draft_id,
+                shot_id=shot_id,
+                gate_stage=gate_stage,
+                passed=passed,
+                attempt_id=attempt_id,
+                score=score,
+                threshold=threshold,
+                reason=score_data.get("failure_summary") or {
+                    "eligible": eligible,
+                    "jury_failures": score_data.get("jury_failures", []),
+                },
+                result=score_data,
+            )
+            if not passed:
+                failure_category = "jury_failure" if gate_stage == "jury_unavailable" else "writer_drift"
+                audit.record_failure_attribution(
+                    stage=gate_stage,
+                    failure_category=failure_category,
+                    shot_id=shot_id,
+                    draft_id=draft_id,
+                    root_cause=score_data.get("failure_summary") or score_data,
+                    evidence_refs={"attempt_id": attempt_id, "score_key": score_key},
+                    suggested_action="按失败阶段返写；若多稿同类失败，回退优化大纲或 task card。",
+                )
 
     def _score_dimension_group(
         self,

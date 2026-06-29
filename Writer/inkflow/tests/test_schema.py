@@ -1,4 +1,4 @@
-"""Verify all 41 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
+"""Verify all 45 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 
-# ── 41 张业务表名（按 implementation-contract-v0.md + v20 book-run orchestration） ──
+# ── 45 张业务表名（按 implementation-contract-v0.md + v21 auditability） ──
 
 ALL_TABLES = [
     "projects",
@@ -37,6 +37,10 @@ ALL_TABLES = [
     "writing_deviation_notes",
     "writing_reference_pool",
     "model_attempts",
+    "writing_audit_events", # v21: 全流程审计事件
+    "writing_setup_snapshots", # v21: setup 快照
+    "writing_draft_eligibility", # v21: 草稿资格/门禁记录
+    "writing_failure_attributions", # v21: 统一失败归因
     "writing_architect_gates",
     "writing_outline_evaluations",
     "writing_information_gaps",
@@ -77,6 +81,16 @@ EXPECTED_INDEXES = [
     "idx_deviation_notes_run",
     "idx_model_attempts_run",
     "idx_model_attempts_shot",
+    "idx_audit_events_run",
+    "idx_audit_events_shot",
+    "idx_audit_events_failure",
+    "idx_setup_snapshots_project_chapter",
+    "idx_setup_snapshots_run",
+    "idx_draft_eligibility_run",
+    "idx_draft_eligibility_shot",
+    "idx_failure_attr_run",
+    "idx_failure_attr_shot",
+    "idx_failure_attr_category",
     "idx_architect_gates_run",
     "idx_architect_gates_level",
     "idx_chapter_rhythms_run",
@@ -114,10 +128,10 @@ EXPECTED_INDEXES = [
 
 
 class TestSchemaTables:
-    """验证所有 41 张业务表存在"""
+    """验证所有 45 张业务表存在"""
 
     def test_all_tables_exist(self, db):
-        """init_project_db() 应创建全部 41 张业务表"""
+        """init_project_db() 应创建全部 45 张业务表"""
         rows = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_schema_%' ORDER BY name"
         ).fetchall()
@@ -144,6 +158,15 @@ class TestSchemaTables:
             for row in db.execute("PRAGMA table_info(writing_shots)").fetchall()
         }
         assert "logical_shot_id" in columns
+
+    def test_model_attempts_store_full_prompt_and_response(self, db):
+        """v21: model attempts keep full text, not only hashes."""
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(model_attempts)").fetchall()
+        }
+        assert "request_prompt_text" in columns
+        assert "response_text" in columns
 
 
 class TestCheckConstraints:

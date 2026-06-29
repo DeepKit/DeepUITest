@@ -148,6 +148,16 @@ class TestPromptCompiler:
                         "requirements": ["最后一句必须是未完成动作"],
                     },
                 },
+                "task_card": {
+                    "title": "玻璃里的保鲜膜",
+                    "pov": "郑坤",
+                    "must_land": "郑坤在三环边缘看到边界提示。",
+                    "hard_facts": ["外江向内侵蚀内江"],
+                    "type_roles": ["hook"],
+                    "hook_required": True,
+                    "forbidden_phrases": ["系统并不恶意"],
+                    "outline": "郑坤在玻璃反光里看到保鲜膜。",
+                },
             },
             previous_shots=[],
             motif_tasks={"required": [], "suggested": [], "forbidden": [], "allowed": []},
@@ -162,6 +172,9 @@ class TestPromptCompiler:
         assert "系统并不恶意" in prompt
         assert "禁止长段系统议论" in prompt
         assert "最后一句必须是未完成动作" in prompt
+        assert "Shot Task Card" in prompt
+        assert "玻璃里的保鲜膜" in prompt
+        assert "外江向内侵蚀内江" in prompt
 
     def test_different_personas(self, compiler, setup_run):
         static_prefix = compiler.compile_static_prefix(

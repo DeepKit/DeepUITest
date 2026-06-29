@@ -1,6 +1,6 @@
-# InkFlow 交互式 Init / Setup 协议 v1.3
+# InkFlow 交互式 Init / Setup 协议 v1.4
 
-> 记录于 2026-06-19。v1.2：2026-06-25 增加叙事分析师审查角色；v1.3：2026-06-26 将 `init` 定义为全书启动，将 `setup --chapter` 定义为单章生产前校准。
+> 记录于 2026-06-19。v1.2：2026-06-25 增加叙事分析师审查角色；v1.3：2026-06-26 将 `init` 定义为全书启动，将 `setup --chapter` 定义为单章生产前校准；v1.4：2026-06-29 增加 contract-first 章前事实清单和资格门禁口径。
 
 ## 核心规则
 
@@ -58,8 +58,9 @@ L1 世界观 → 确认(8) → L2 角色弧线 → 确认(8) → L3 章节结构
 读取 confirmed/locked 元契约
   → 抽取本章 chapter_N_events
   → 读取前一章 review 结论
+  → 编译 fact manifest / hard fact pack
   → 生成 .inkflow/chapter-setups/<chapter>.yaml
-  → 人类确认本章 shot、POV、类型职责、章末钩子、禁止议论规则
+  → 人类确认本章 shot、POV、类型职责、章末钩子、禁止议论规则、硬事实与禁扩写范围
   → run --chapter 执行生产
 ```
 
@@ -70,6 +71,23 @@ L1 世界观 → 确认(8) → L2 角色弧线 → 确认(8) → L3 章节结构
 每章生成前必须重新 `setup --chapter`，因为契约里的章节事件、上一章人工 review、类型职责和章末钩子都可能变化。若契约仍含“只生成第 N 章”这类旧范围限制，或仍保留旧段落锁（如 `500-800 字/段落，3-4 段/shot`），这是契约未校准，必须先更新契约并重新 confirm/setup。
 
 软件规则负责防呆和判定边界：`run --chapter` 必须拒绝缺失/过期/章节不匹配的 setup 包；硬规则裁判只清零硬事实、POV、must_land、禁写、提前揭示、提示词残留、空文/重复等问题。段落长度、方言点缀、感官密度和身体时刻开场属于风格或文学质量问题，不能直接导致 `eligible=False`。
+
+### Contract-first setup 输出
+
+`setup --chapter` 必须把人类可审的章节计划编译成机器可检查的 `fact_manifest`。第一版已经包含废弃角色名、禁词、未授权医疗/请假类扩写标记、hook 要求、每 shot must_land / POV / authorized corpus；完整目标字段如下：
+
+| 字段 | 说明 |
+|------|------|
+| `allowed_facts` | 本章允许出现和推进的事实、机构、地点、人物关系 |
+| `forbidden_expansions` | 未经授权不得新增的医疗、制度、国际、系统、履历等高影响事实 |
+| `must_land_anchors` | 可定位动作/台词/物件/信息变化，不接受散文化愿望句 |
+| `pov_known_unknown` | POV 角色知道/不知道的信息边界 |
+| `contract_numbers` | 必须保真或不得新增同类替代的数字 |
+| `hook_requirements` | 仅对有职责的 shot 标记悬疑、留白、章末钩子 |
+| `format_rules` | 正文标题、分隔符、管线元数据、提示词残留等排版规则 |
+| `editorial_intent` | 本章编辑意图：该推进什么、压住什么、读者应带着什么问题离开 |
+
+run 阶段必须先用 `fact_manifest` 审大纲，再审草稿。第一版已做到：大纲不合格不得进入正文写作；Gate1 通过稿还要先过 hard fact gate，不合格草稿不得进入文学 jury。若 setup 本身自相矛盾，例如 `must_land` 同时命中 `forbidden_phrases`，后续应在 run 前失败并返回人类校准；这一类 setup linter 仍是待增强项。
 
 ## 叙事分析师（审查角色）
 

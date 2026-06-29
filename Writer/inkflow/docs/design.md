@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.19: 全自动文学文本生产引擎 — 技术设计
+# 墨韵 (InkFlow) v3.21: 全自动文学文本生产引擎 — 技术设计
 
-> 版本：v3.19（Schema v20：book_run 全书/整卷编排；run attempt shot identity；章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节）
-> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28 / v3.18 Schema v19：2026-06-28 / v3.19 Schema v20：2026-06-28
+> 版本：v3.21（Schema v21：contract-first 生产线设计口径 + 全程审计半重构；book_run 全书/整卷编排；run attempt shot identity；章节 accepted canonical 状态机；默认正式导出只取人工 accepted 章节）
+> 创建：2026-06-12 / v3.5 收敛：2026-06-14 / v3.6 变更：2026-06-14 / D-7~D-24 全部落地：2026-06-15 / v3.9 Schema v8：2026-06-21 / v3.12 Schema v9：2026-06-24 / 优化迭代 Schema v16：2026-06-25 / v3.14 Schema v17：2026-06-26 / 公开生产流简化：2026-06-26 / v3.17 Schema v18：2026-06-28 / v3.18 Schema v19：2026-06-28 / v3.19 Schema v20：2026-06-28 / v3.21 contract-first + audit：2026-06-29
 > 决策记录：`docs/decisions/` 下 D-01 至 D-24
 > 角色体系：`inkflow/docs/role-system.md`
 >
@@ -9,9 +9,17 @@
 
 ---
 
-## 0. 当前 P0 目标（2026-06-27）
+## 0. 当前 P0 目标（2026-06-29）
 
-墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。当前状态是“工程投产候选”：第 2 章和第 3 章已证明方向成立，review/reject/abort 的章节级 canonical 状态机、accepted-only export、run attempt shot identity、book_run 全书/整卷编排层均已落地。工程层允许进入逐章或整卷编排生产；文学成稿仍必须由人类在每章生产后通过 `ink review --accept/--revise/--reject` 定稿。
+墨韵当前开发目标已经收敛为《分流》单书按章受控生产闭环。第 2 章和第 3 章证明 `init -> setup --chapter -> run --chapter -> review` 方向成立，review/reject/abort 的章节级 canonical 状态机、accepted-only export、run attempt shot identity、book_run 全书/整卷编排层均已落地。
+
+但第 3 章人工审稿和后续复盘证明：旧管线的大纲门禁没有真正起作用，赛马评估曾在未先判定“是否有资格参赛”的情况下选出契约违规稿。当前状态调整为“受控试跑，暂不正式放量投产”。v3.21 已落地 contract-first 第一版：`setup` 生成 fact manifest，`run` 在大纲和草稿进入文学 PK 前先做硬资格门禁；文学成稿仍必须由人类在每章生产后通过 `ink review --accept/--revise/--reject` 定稿。正式投产前必须用真实第 3 章返工和第 4 章首跑验证这套门禁。
+
+v3.21 的工程策略是**半重构**，不是完全推倒重来，也不是继续打零散补丁。保留现有 SQLite DB、Session、Contract、Prompt、Writer、Jury、Gate、Export 服务边界，在这些边界之间新增统一审计层和资格记录层。原因：
+
+1. 现有系统已有 accepted canonical、run attempt identity、book_run、model_attempts、L3/L4 gate、review 状态机等可用资产，完全重构会丢失已验证路径。
+2. 质量问题的核心不是所有模块都错，而是“大纲/草稿资格没有先于文学 PK”和“因果审计链不完整”。
+3. 单纯补丁无法保证每个阶段都可追因，所以 v21 先建立统一审计骨架，再把 fact manifest、outline hard gate、task card、draft eligibility 作为横切管线收紧。
 
 ```text
 导入《分流》第 1 章人工样章
@@ -20,9 +28,12 @@
   → 提取风格指纹、事实锚点、人物声音基线
   → init 生成章以上层级契约草稿并由人类确认
   → setup --chapter 生成单章生产前校准包
-  → run --chapter 按该章大纲逐 shot 生成，通过 L3/L4 后自动导出审稿稿
+  → setup 编译 fact manifest / hard fact pack
+  → run --chapter 先做大纲硬门禁，再按合格大纲编译 shot task card 并逐 shot 生成
+  → Gate1 后、jury 前执行草稿 hard fact gate，不合格稿不得进入文学 PK
+  → 全流程写 writing_audit_events；setup/context/model/task_card/draft eligibility/failure attribution 可审计
   → 或 run-book --from/--to 创建 book_run 批次，内部逐章串行执行 setup/run
-  → writer race + jury + gate + revision + checkpoint
+  → draft eligibility gate + literary jury + L4/L3 gate + revision + checkpoint
   → review --chapter 记录人工验收并写入 DB canonical 状态
   → ink export 默认只导出 accepted 正式章节
   → 推敲系统 read-only 读取墨韵 DB 导入并独立校准
@@ -124,15 +135,80 @@ Chisel Write 的目标是生产高质量长篇文学文本，同时在受控空�
 
 ---
 
+## 1.2 v3.21 Contract-first 资格先于 PK 生产线
+
+v3.16 分层裁判解决了“硬规则、类型职责、文学评分不能混合平均”的问题，但真实第 3 章暴露出更上游的缺陷：大纲门禁没有把契约违规挡在写作前，赛马评估也没有先判断候选稿是否有资格参赛。因此 v3.21 的权威顺序改为：
+
+```text
+Contract Compile / Facts Manifest
+  → 生成 chapter hard fact pack:
+    allowed facts, forbidden expansions, must_land anchors,
+    POV known/unknown, contract numbers, hook requirements,
+    format rules, editorial intent
+  → Outline A/B 串行生成
+  → Outline Hard Gate（逐份大纲）
+    fail = 重写大纲；同类失败到上限后停止并要求人类重新 setup
+  → Outline Literary/Structural PK（只在 eligible 大纲中选优）
+  → Task Card 编译（从胜出大纲生成每个 shot 的硬事实 / 软约束 / 留白入口）
+  → Draft 串行生成
+  → Draft Eligibility Gate
+    fail = 隔离草稿，不进入文学 jury，不允许成为 winner
+  → 继续生成/返写，直到 pass_count >= K 或达到 retry/cost cap
+  → Literary Jury（只评 eligible 草稿）
+  → 可选 editorial voice-unification pass
+  → L4 Shot Gate / L3 Chapter Gate
+  → 导出当前 run 审稿稿
+  → 人工 review accept/revise/reject
+```
+
+`K` 是文学 PK 的最小合格稿数量，默认 `K=2`。系统不要求最早两稿都通过；未通过的稿件只用于失败归因和定向重写，不能拖累或污染已合格稿。若 `writer_count > K`，系统先跑到 `K` 个 eligible，再按配置补写更多候选。
+
+硬门槛必须是机器可检查或可由 LLM 明确判定的资格项：
+
+| 类别 | 示例 |
+|------|------|
+| canonical names | 正式角色名、废弃旧称、别名范围 |
+| timeline / numbers | `72 小时`、`8%`、`12 分钟` 等契约数字不得替换或无授权新增同类数字 |
+| POV boundary | POV 角色知道/不知道什么；不得提前泄露读者或别的角色才知道的信息 |
+| unauthorized expansions | 未授权机构、国家、医疗诊断、制度流程、系统功能、人物履历 |
+| must_land anchors | 可定位动作/台词/物件/信息变化，不接受散文化愿望句 |
+| hook / suspense duty | 只有被标记有职责的 shot 才强制检查悬疑、留白、章末钩子 |
+| format hygiene | 正文不得带生成标题、评分标签、管线元数据、提示词残留 |
+| setup consistency | setup 内部不得自相矛盾；must_land 不得含 forbidden phrase |
+
+软评分只在资格通过后发生，负责文学表现而不是资格裁决：语言质感、人物声音、对白潜台词、场景具体度、情绪推进、节奏控制、意象使用、段落呼吸、章节衔接等。硬门槛失败不允许被文学高分抵消。
+
+失败归因必须写入执行记录：
+
+| failure_type | 含义 |
+|--------------|------|
+| `contract_conflict` | setup / contract 自相矛盾或硬事实缺失 |
+| `outline_gap` | 大纲没有覆盖 fact manifest / must_land / hook duty |
+| `task_card_gap` | 胜出大纲到 shot task card 编译丢失硬事实 |
+| `writer_drift` | task card 正确，但写手输出偏离 |
+| `gate_false_positive` | gate 误判，需修规则或 prompt |
+| `model_failure` | API、timeout、解析失败或 jury unavailable |
+
+停止规则：
+
+1. outline rewrite 最多 2-3 轮；同类硬失败重复两次，停止并要求人类重新 setup。
+2. 单个 shot draft rewrite 默认最多 2 轮；若仍不达 `K`，输出 failure report。
+3. 任何 L4 hard issue 未解决时，不允许 official export；只能导出排障稿。
+4. `run-book` 继承同一规则：单章 contract-first 失败默认停止整批，`--continue-on-fail` 只允许继续后续章节并记录失败归因。
+
+---
+
 ## 2. 角色边界
 
 | 角色 | 类型 | 职责 |
 |------|------|------|
 | 出品人 | 人类 | 前置沟通、审核继承摘要、节点修正、最终方向判断、Scope 投影中集中操作 |
 | AI 架构师 | AI | 识别项目结构、编译全链契约、生成元契约、冲突检测、诊断红灯原因、Voice Calibration、Intent Drift 检测 |
-| 赛车场经理 | Python 编排 | 锁定契约快照、加载预编译提示词、调度写手/裁判/门控、提取 9 类事实锚点、Motif 追踪、检查点、状态恢复、落库 |
+| 赛车场经理 | Python 编排 | 锁定契约快照、编译 fact manifest / task card、调度写手/裁判/门控、提取 9 类事实锚点、Motif 追踪、检查点、状态恢复、落库 |
+| 大纲资格官 | 规则 + LLM | 在大纲 PK 前检查 hard fact pack、must_land、POV、数字锁、禁写和章末职责；不合格大纲不得参赛 |
 | 写手池 | AI | 按 4 人格差异化提示词 + voice samples + 反例生成候选正文 |
-| 裁判团 | AI | 当前默认 3 模型 × 5 维评分；标准 shot 按 `trimmed_mean`，留白 shot 按 `creative_score` |
+| 草稿资格官 | 规则 + LLM | 在文学 jury 前检查候选正文是否违反硬门槛；不合格草稿隔离并记录 failure_type |
+| 裁判团 | AI | 只对 eligible 草稿做类型职责与文学 9 维评分；标准 shot 按 `trimmed_mean`，留白 shot 按 `creative_score` |
 | Chisel 校准链 | Python + AI + 人类 | 全书完成后做 scan/report/fix/二次校准 |
 
 生产期的人类角色是旁观者，不参与单章或单 Shot 决策。
@@ -663,7 +739,7 @@ Phase 3: 最终输出
 
 ### 9.1 核心表
 
-数据库为 **41 张业务表 + `_schema_meta` 元表**（Schema v20）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态；Schema v19 新增 `writing_shots.logical_shot_id`，并把生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；Schema v20 新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷编排批次和逐章状态。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿，无新增业务表。
+数据库为 **45 张业务表 + `_schema_meta` 元表**（Schema v21）。Schema v8 引入三棵树 4 表；Schema v9 引入 L0 全书宪法表；Schema v10 引入 L0.5 卷部节奏表；Schema v12 引入风格偏好学习表；Schema v13 引入反契约沙盒表；Schema v14 引入 `unexpected_value` 意外价值评审维度；Schema v15 引入 `write_polish` 精修 revision 与 `polish` 模型审计 phase；Schema v16 扩展 `model_attempts.phase`，保留大纲/宪法/章级/卷部架构模型调用审计；Schema v17 引入 hard/type/literary 分层裁判维度；Schema v18 新增 `writing_chapter_reviews`，记录章节人工 accepted canonical 状态；Schema v19 新增 `writing_shots.logical_shot_id`，并把生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；Schema v20 新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷编排批次和逐章状态；Schema v21 新增 `writing_audit_events` / `writing_setup_snapshots` / `writing_draft_eligibility` / `writing_failure_attributions`，并让 `model_attempts` 保存完整 prompt/response。CREATIVE-3 属于运行时评审策略变更：留白 shot 使用 `creative_score` 加权选稿。
 
 ```text
 projects                      -- InkFlow 项目索引
@@ -696,6 +772,10 @@ writing_chapter_reviews       -- 章节人工审稿 canonical 状态（accepted/
 writing_book_runs             -- 全书/整卷编排批次
 writing_book_run_chapters     -- book_run 内逐章状态与 run 绑定
 model_attempts                -- 模型调用审计
+writing_audit_events          -- 统一阶段事件链
+writing_setup_snapshots       -- setup YAML 快照
+writing_draft_eligibility     -- 草稿资格/门禁记录
+writing_failure_attributions  -- 统一失败归因
 writing_architect_gates       -- 架构师 gate 记录
 writing_outline_evaluations   -- 大纲评估记录
 writing_information_gaps      -- D-25 信息差生命周期追踪
@@ -745,11 +825,11 @@ execution_records             -- 执行树正文（per-run）
 - 执行、草稿、评审、修复、revision 的外键使用 run attempt `shot_id`
 - 同一个 `run_id` 内 `logical_shot_id` 唯一；同一章节重写必须创建新的 run attempt shot 行，不能复用旧 run 正文
 
-### 9.4 三棵树架构（Schema v8 引入，当前 Schema v20，ARCH-12/13）
+### 9.4 三棵树架构（Schema v8 引入，当前 Schema v21，ARCH-12/13）
 
 > 完整设计见 `docs/design-3tree-architecture.md`
 
-InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v20 总计 41 张业务表 + `_schema_meta` 元表：
+InkFlow 的数据库是**唯一真相源**。为支撑 AI 架构师多层治理，数据库由 **3 棵树** 构成，每棵树都遵循 8 层标准金字塔（空则占位），共用 **4 张数据库表**。这 4 表在 Schema v8 引入；当前 Schema v21 总计 45 张业务表 + `_schema_meta` 元表：
 
 > **三棵树是索引，不是正文。**
 > 正文唯一真相源是 `shot_revisions.text`。

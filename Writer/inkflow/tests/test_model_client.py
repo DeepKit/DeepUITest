@@ -156,12 +156,14 @@ def test_record_model_error_writes_attempt(db):
     _record_model_error(db, req, "remote-model", "timed out")
 
     row = db.execute(
-        "SELECT phase, model_name, error_message FROM model_attempts "
+        "SELECT phase, model_name, request_prompt_text, response_text, error_message FROM model_attempts "
         "WHERE shot_id = 'shot_01'"
     ).fetchone()
     assert row is not None
     assert row["phase"] == "jury_score"
     assert row["model_name"] == "remote-model"
+    assert row["request_prompt_text"] == "score this"
+    assert row["response_text"] == ""
     assert row["error_message"] == "timed out"
 
 
@@ -190,7 +192,10 @@ def test_model_attempt_idempotency_includes_prompt_hash(db):
     gen.generate(ModelRequest(prompt="【待评文本】\n文本二", **base))
 
     row = db.execute(
-        "SELECT COUNT(*) AS cnt FROM model_attempts "
+        "SELECT COUNT(*) AS cnt, MIN(LENGTH(request_prompt_text)) AS min_prompt, "
+        "MIN(LENGTH(response_text)) AS min_response FROM model_attempts "
         "WHERE shot_id = 'shot_01' AND phase = 'jury_score'"
     ).fetchone()
     assert row["cnt"] == 2
+    assert row["min_prompt"] > 0
+    assert row["min_response"] > 0

@@ -12,6 +12,8 @@ from inkflow.cli import (
     _extract_chapter_events,
     _format_jury_draft_score,
     _build_previous_context,
+    _build_fact_manifest,
+    _evaluate_text_against_fact_manifest,
     _jury_unavailable_detail,
     _jury_verdict_all_unavailable,
     _validate_chapter_run_preflight,
@@ -76,6 +78,7 @@ class TestCLIBasics:
         assert "run-book" in result.output
         assert "book-report" in result.output
         assert "review" in result.output
+        assert "audit-report" in result.output
 
     def test_version(self, runner):
         result = runner.invoke(main, ["--version"])
@@ -414,6 +417,16 @@ class TestStatus:
         assert result.exit_code == 0
 
 
+class TestAuditReport:
+    """audit-report command."""
+
+    def test_help(self, runner):
+        result = runner.invoke(main, ["audit-report", "--help"])
+        assert result.exit_code == 0
+        assert "--chapter" in result.output
+        assert "--run" in result.output
+
+
 class TestReviewShots:
     """review-shots command (M4)"""
 
@@ -507,6 +520,8 @@ class TestChapterSetupSmoke:
         content = setup_path.read_text(encoding="utf-8")
         assert "inkflow.chapter_setup.v1" in content
         assert "exposition_gate" in content
+        assert "inkflow.fact_manifest.v1" in content
+        assert "contract_first_then_literary_pk" in content
 
     def test_run_requires_chapter_setup(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock
@@ -600,6 +615,93 @@ class TestChapterSetupSmoke:
             )
 
         assert "setup 包仍含废弃角色名" in str(exc.value)
+
+    def test_run_preflight_rejects_setup_without_fact_manifest(self):
+        with pytest.raises(Exception) as exc:
+            _validate_chapter_run_preflight(
+                "测试",
+                "v01.c03",
+                {
+                    "source_contract": {"meta_contract_id": "mc"},
+                    "shots": [{"shot": 1, "must_land": "郑坤到了太古里。"}],
+                },
+                {"meta_contract_id": "mc"},
+                {
+                    "identity": {"pov_characters": ["郑坤"]},
+                    "hard_boundaries": {"characters_alive": ["郑坤"]},
+                    "style_locks": {},
+                },
+                [{"shot": 1, "event": "郑坤到了太古里。"}],
+            )
+
+        assert "缺少 fact_manifest" in str(exc.value)
+
+    def test_fact_manifest_gate_catches_deprecated_alias_and_forbidden_phrase(self):
+        manifest = _build_fact_manifest(
+            chapter="v01.c03",
+            layers={
+                "identity": {"pov_characters": ["郑坤"]},
+                "hard_boundaries": {"characters_alive": ["郑坤"]},
+                "world_knowledge": {},
+            },
+            chapter_events=[
+                {"shot": 1, "title": "第一镜", "pov": "郑坤", "event": "郑坤走到门口。"},
+            ],
+            exposition_gate={
+                "forbidden_phrases": ["系统并不恶意"],
+            },
+            suspense={},
+        )
+        setup_data = {
+            "schema": "inkflow.chapter_setup.v1",
+            "chapter": "v01.c03",
+            "fact_manifest": manifest,
+        }
+
+        result = _evaluate_text_against_fact_manifest(
+            "阿坤没有说话。系统并不恶意，它只是继续计算。",
+            setup_data,
+            1,
+            phase="draft",
+        )
+
+        assert result["passed"] is False
+        codes = {item["code"] for item in result["violations"]}
+        assert "deprecated_alias" in codes
+        assert "forbidden_phrase" in codes
+
+    def test_fact_manifest_gate_catches_unauthorized_medical_expansion(self):
+        manifest = _build_fact_manifest(
+            chapter="v01.c03",
+            layers={
+                "identity": {"pov_characters": ["郑坤"]},
+                "hard_boundaries": {"characters_alive": ["郑坤"]},
+                "world_knowledge": {},
+            },
+            chapter_events=[
+                {"shot": 1, "title": "第一镜", "pov": "郑坤", "event": "郑坤打开手机。"},
+            ],
+            exposition_gate={"forbidden_phrases": []},
+            suspense={},
+        )
+        setup_data = {
+            "schema": "inkflow.chapter_setup.v1",
+            "chapter": "v01.c03",
+            "fact_manifest": manifest,
+        }
+
+        result = _evaluate_text_against_fact_manifest(
+            "郑坤想起上周请了半天假，去社区医院拍了片子。",
+            setup_data,
+            1,
+            phase="draft",
+        )
+
+        assert result["passed"] is False
+        assert any(
+            item["code"] == "unauthorized_fact_expansion"
+            for item in result["violations"]
+        )
 
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock

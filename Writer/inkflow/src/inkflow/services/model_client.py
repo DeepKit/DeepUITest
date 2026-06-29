@@ -531,13 +531,13 @@ def _record_model_attempt(
         db.execute(
             "INSERT OR IGNORE INTO model_attempts "
             "(attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
-            "request_prompt_hash, response_text_hash, "
+            "request_prompt_hash, request_prompt_text, response_text_hash, response_text, "
             "usage_prompt_tokens, usage_completion_tokens, usage_total_tokens) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 generate_ulid(), request.run_id, request.shot_id,
                 phase, response.model, idempotency_key,
-                request_hash, response_hash,
+                request_hash, request.prompt, response_hash, response.text,
                 response.usage.get("prompt_tokens", 0),
                 response.usage.get("completion_tokens", 0),
                 response.usage.get("total", 0),
@@ -566,13 +566,13 @@ def _record_model_error(
         db.execute(
             "INSERT OR IGNORE INTO model_attempts "
             "(attempt_id, run_id, shot_id, phase, model_name, idempotency_key, "
-            "request_prompt_hash, response_text_hash, "
+            "request_prompt_hash, request_prompt_text, response_text_hash, response_text, "
             "usage_prompt_tokens, usage_completion_tokens, usage_total_tokens, error_message) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)",
             (
                 generate_ulid(), request.run_id, request.shot_id,
                 request.operation, model_name, idempotency_key,
-                request_hash, "", error_message[:500],
+                request_hash, request.prompt, "", "", error_message[:500],
             ),
         )
         db.commit()

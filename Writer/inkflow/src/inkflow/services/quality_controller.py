@@ -21,6 +21,7 @@ from inkflow.models.enums import (
     RedoLevel,
     RepairLayer,
 )
+from inkflow.services.audit_recorder import AuditRecorder
 
 
 class QualityController:
@@ -78,6 +79,15 @@ class QualityController:
                 "UPDATE writing_drafts SET gate1_result_json = ? WHERE draft_id = ?",
                 (json.dumps(gate1_result, ensure_ascii=False), draft_id),
             )
+            AuditRecorder(self.db, run_id=self.run_id).record_draft_eligibility(
+                draft_id=draft_id,
+                shot_id=shot_id,
+                gate_stage="gate1",
+                passed=gate1_result["passed"],
+                attempt_id=draft["attempt_id"],
+                reason={"violations": violations},
+                result=gate1_result,
+            )
 
         self.db.commit()
         return passed
@@ -118,6 +128,33 @@ class QualityController:
             (json.dumps(gate2_result, ensure_ascii=False), draft_id),
         )
         self.db.commit()
+
+        draft = self.db.execute(
+            "SELECT attempt_id FROM writing_drafts WHERE draft_id = ?", (draft_id,)
+        ).fetchone()
+        if draft:
+            audit = AuditRecorder(self.db, run_id=self.run_id)
+            audit.record_draft_eligibility(
+                draft_id=draft_id,
+                shot_id=shot_id,
+                gate_stage="gate2",
+                passed=gate2_result["passed"],
+                attempt_id=draft["attempt_id"],
+                score=score,
+                threshold=LightThreshold.YELLOW_MIN,
+                reason={"violations": violations},
+                result=gate2_result,
+            )
+            if not gate2_result["passed"]:
+                audit.record_failure_attribution(
+                    stage="gate2",
+                    failure_category="writer_drift",
+                    shot_id=shot_id,
+                    draft_id=draft_id,
+                    root_cause=gate2_result,
+                    evidence_refs={"draft_id": draft_id},
+                    suggested_action="保留失败稿证据，回到单线返写或重写 shot task card。",
+                )
 
         return gate2_result
 

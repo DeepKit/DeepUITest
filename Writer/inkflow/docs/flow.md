@@ -1,7 +1,7 @@
-# 墨韵 (InkFlow) v3.10: 人机交互流程
+# 墨韵 (InkFlow) v3.11: 人机交互流程
 
-> 版本：v3.10（用户交互流程；补充 accepted canonical、正式/审稿导出边界、run attempt shot identity、book_run 编排层）
-> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26 / accepted canonical：2026-06-27 / run attempt identity：2026-06-28 / book_run：2026-06-28
+> 版本：v3.12（用户交互流程；补充 contract-first 资格先于 PK、全程审计、accepted canonical、正式/审稿导出边界、run attempt shot identity、book_run 编排层）
+> 创建：2026-06-12 / 收敛：2026-06-15 / D-7~D-24 全部落地：2026-06-15 / 公开生产流简化：2026-06-26 / accepted canonical：2026-06-27 / run attempt identity：2026-06-28 / book_run：2026-06-28 / contract-first + audit：2026-06-29
 > 技术设计：`inkflow/docs/design.md`、`inkflow/docs/implementation-contract-v0.md`
 > 角色体系：`inkflow/docs/role-system.md`
 > 设计决策：`docs/decisions/README.md`
@@ -37,7 +37,7 @@ P0 以《分流》作为唯一验收样本：
 
 P0 不做单 prompt 全书生成，不做多项目/Universe，不做成本确认门，不让推敲回写墨韵数据库。Schema v20 起支持 `run-book` 全书/整卷编排：一次启动批处理，但内部仍按章节和 shot 串行执行。
 
-当前状态是工程投产候选。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。Schema v19 已拆开 `logical_shot_id` 与 run attempt `shot_id`；Schema v20 新增 `book_run` 编排批次，同一批次已完成的前序草稿章节可作为后续章节的临时 draft 上下文。
+当前状态是受控试跑，不进入正式放量生产。人类只在生产前契约/章前校准和生产后审稿阶段介入；`review --accept` 已成为章节级 accepted canonical 真相源，默认正式导出、后续 previous context 和历史 fact anchors 只认 accepted 章节。Schema v19 已拆开 `logical_shot_id` 与 run attempt `shot_id`；Schema v20 新增 `book_run` 编排批次，同一批次已完成的前序草稿章节可作为后续章节的临时 draft 上下文。Schema v21 新增全程审计：setup 快照、context 快照、完整模型 prompt/response、草稿资格、失败归因和阶段事件都写入 DB。contract-first 第一版已落地：setup 生成 fact manifest，run 在大纲和草稿进入文学 PK 前先做硬资格门禁。正式投产前仍必须用第 3 章返工和第 4 章首跑验证这套门禁能稳定挡住违约稿。
 
 ## 1. 核心流程
 
@@ -51,14 +51,17 @@ P0 不做单 prompt 全书生成，不做多项目/Universe，不做成本确认
 
 阶段 2: 章前校准与 AI 全自动生产 (ink setup → ink run)
   setup 检查契约是否适用于当前章节；run 检查 setup 包是否来自当前元契约
-  创建不可变契约快照
-  赛车场经理加载预编译提示词
+  setup 编译 fact manifest / hard fact pack，并写入 setup snapshot
+  run 创建不可变契约快照；shot 大纲先过 Outline Fact Gate，不合格不进入正文写作
+  合格大纲编译为 shot task card
+  赛车场经理加载 task card、fact manifest 和预编译提示词
   不打断人类，不修改契约
   2-4 写手赛马（按人格差异化 prompt）(D-17)
-  分层裁判：硬规则 → 类型职责 → 文学 9 维
+  Draft Eligibility Gate 在 Gate1 后、jury 前判断候选稿是否有资格参赛
+  分层裁判：硬规则资格 → 类型职责 → 文学 9 维
   L4 Shot Gate 通过后，绿/黄进入正文，绿灯自动提取 9 类事实锚点 (D-19)
   红灯写 best-failed-candidate 占位 + smart-redo 3 级升级 (D-9)
-  每个 Shot 完成后写入检查点 (D-14)
+  每个 Shot 完成后写入检查点 (D-14)，同时写入 audit event、draft eligibility 和 failure attribution
   L3 Chapter Gate 通过后，session 才 complete 并自动导出当前 run 审稿稿
   Scope 完成后生成三层交互式投影报告 (D-12)
 
@@ -117,6 +120,10 @@ ink run "分流" --config jury.thresholds.green=8
 ink run-book "分流" --from v01.c04 --to v01.c32
 ink run-book "分流" --from v01.c04 --to v01.c32 --plan-only
 ink book-report "分流"               # 默认查看最新 book_run
+
+# 审计报告：查看 run 的事件链、草稿资格、失败归因和模型调用覆盖
+ink audit-report "分流" --chapter v01.c03
+ink audit-report "分流" --run <run_id> --limit 50
 
 # 生产后人工验收记录
 ink review "分流" --chapter v01.c02 --accept

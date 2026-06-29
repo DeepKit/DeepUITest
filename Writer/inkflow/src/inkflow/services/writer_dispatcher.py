@@ -37,6 +37,7 @@ from inkflow.services.model_client import (
     create_model_client,
     ModelCallError,
 )
+from inkflow.services.audit_recorder import AuditRecorder
 
 
 # ARCH-8: 4-track persona style configuration
@@ -189,6 +190,7 @@ class WriterDispatcher:
             })
 
         self.db.commit()
+        self._record_draft_generated_events(shot_id, result_drafts, attempt=attempt)
 
         return {
             "shot_id": shot_id,
@@ -265,14 +267,20 @@ class WriterDispatcher:
         self, draft_id: str, gate1_result: dict | None = None,
     ) -> None:
         """标记草稿通过质量门1。"""
-        self.db.execute(
-            "UPDATE writing_drafts SET is_usable = 1, "
-            "gate1_result_json = ? WHERE draft_id = ?",
-            (
-                json.dumps(gate1_result, ensure_ascii=False) if gate1_result else None,
-                draft_id,
-            ),
-        )
+        if gate1_result is None:
+            self.db.execute(
+                "UPDATE writing_drafts SET is_usable = 1 WHERE draft_id = ?",
+                (draft_id,),
+            )
+        else:
+            self.db.execute(
+                "UPDATE writing_drafts SET is_usable = 1, "
+                "gate1_result_json = ? WHERE draft_id = ?",
+                (
+                    json.dumps(gate1_result, ensure_ascii=False),
+                    draft_id,
+                ),
+            )
         self.db.commit()
 
     # ── ARCH-8: 四线赛马 ──
@@ -379,6 +387,7 @@ class WriterDispatcher:
             })
 
         self.db.commit()
+        self._record_draft_generated_events(shot_id, result_drafts, attempt=attempt)
 
         # ARCH-11: Designate the first track (意象师, highest deviation_multiplier)
         # as the "deviant" track for soft-constraint deviation evaluation.
@@ -447,7 +456,7 @@ class WriterDispatcher:
             ),
         )
         self.db.commit()
-        return {
+        result = {
             "shot_id": shot_id,
             "drafts": [{
                 "draft_id": draft_id,
@@ -462,6 +471,8 @@ class WriterDispatcher:
             "single_line_rewrite": True,
             "blank_shot": blank_shot,
         }
+        self._record_draft_generated_events(shot_id, result["drafts"], attempt=attempt)
+        return result
 
     def _generate_persona_draft(
         self,
@@ -522,6 +533,40 @@ class WriterDispatcher:
             }
 
     # ── 向后兼容 ──
+
+    def _record_draft_generated_events(
+        self,
+        shot_id: str,
+        drafts: list[dict],
+        *,
+        attempt: int,
+    ) -> None:
+        audit = AuditRecorder(self.db, run_id=self.run_id)
+        for draft in drafts:
+            audit.record_event(
+                stage="writer",
+                event_type="draft_generated",
+                status="recorded",
+                shot_id=shot_id,
+                actor=draft.get("persona") or draft.get("track") or draft.get("writer_persona"),
+                output_refs={
+                    "draft_id": draft.get("draft_id"),
+                    "model_ref": draft.get("model_ref"),
+                },
+                metrics={
+                    "attempt": attempt,
+                    "text_length": len(draft.get("text") or ""),
+                    "temperature": draft.get("temperature"),
+                },
+                payload={
+                    "style_direction": draft.get("style_direction"),
+                    "self_note": draft.get("self_note"),
+                },
+                failure_category="model_failure"
+                if draft.get("model_ref") == "local-default" else None,
+                failure_detail="writer fallback to local-default"
+                if draft.get("model_ref") == "local-default" else None,
+            )
 
     def dispatch_race(
         self,

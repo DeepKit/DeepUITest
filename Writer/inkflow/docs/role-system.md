@@ -2,7 +2,7 @@
 
 > Status: 设计文档 v3.6，非代码实现
 > Date: 2026-06-15
-> Last updated: 2026-06-26 (公开生产流简化为 init/setup/run/review)
+> Last updated: 2026-06-29 (contract-first 资格先于 PK)
 > 本文是 Chisel Write 写作角色与权限边界的权威口径。
 > 决策来源：`docs/decisions/` 下 D-01 至 D-24 全部 24 个 ADR。
 
@@ -17,7 +17,8 @@ P0 只验证《分流》单书闭环：
   → AI 架构师与人类通过 init 完成章以上层级契约
   → confirmed 契约
   → setup --chapter 做单章生产前校准
-  → run --chapter 按 shot 生成并自动导出
+  → setup 编译 fact_manifest / hard fact pack
+  → run --chapter 先审大纲资格，再按 shot 生成并自动导出审稿稿
   → review --chapter 记录人工验收
   → 推敲 read-only 导入墨韵 DB
 ```
@@ -43,9 +44,11 @@ Chisel Write 是全自动文学文本生产引擎。
 |------|------|------|--------------|
 | 出品人 | 人类 | 前置方向、最终集中处理、必要时重设契约 | 生产期逐 Shot 干预 |
 | AI 架构师 | AI | 编译全链契约、解释人类意图、标记创意空间、诊断红灯原因、元契约校准建议、Intent Drift 检测 | `ink run` 期间自动改契约；自主修改人类确认过的硬边界 |
-| 赛车场经理 | Python | 锁定契约快照、调度生产、状态机、恢复/检查点、落库、提取事实锚点、Motif 密度追踪 | 改写契约语义 |
+| 赛车场经理 | Python | 锁定契约快照、编译 fact manifest / task card、调度生产、状态机、恢复/检查点、落库、提取事实锚点、Motif 密度追踪 | 改写契约语义 |
+| 大纲资格官 | 规则 + LLM | 在大纲 PK 前检查 hard fact pack、must_land、POV、数字锁、禁写和章末职责 | 给违约大纲文学加分；让不合格大纲进入 PK |
 | 写手池 | AI | 按编译好的差异化提示词（按人格加权）生成候选正文；附带自评注释 | 改事实、改人物状态、输出正文外附注 |
-| 多模型裁判团 | AI | 默认 3 模型 × 5 维评分；标准 shot 按 `trimmed_mean`，留白 shot 按 `creative_score` | 中断生产请求人类决策 |
+| 草稿资格官 | 规则 + LLM | 在文学 jury 前检查候选正文是否违反硬门槛；记录失败归因 | 让不合格草稿进入文学 jury 或成为 winner |
+| 多模型裁判团 | AI | 只对 eligible 草稿做类型职责和文学 9 维评分；标准 shot 按 `trimmed_mean`，留白 shot 按 `creative_score` | 中断生产请求人类决策；用文学高分覆盖硬事实失败 |
 | 叙事分析师 | AI | Init/Setup 阶段审查契约的结构合理性；输出诊断报告 | 不修改契约、不参与生产 |
 
 ## 2.5 叙事分析师
@@ -130,7 +133,7 @@ Chisel Write 是全自动文学文本生产引擎。
    - 交互采用**混合式**（D-7）：高创造力字段（主题、硬边界、核心意象等 7 项）用访谈对话；低创造力字段（反例集合、节奏曲线、ASTO 坐标等 8 项）由 AI 推断+一次性呈现。
    - 提取采用**渐进式**（D-7）：Init 只提取核心字段 → 第一卷完成后 Chisel scan 反向提取隐含契约 → 人类确认/修正 → 后续 Act 获得更精准约束。
 
-2. `ink setup --chapter`：生产前确认某一章的 shot、POV、类型职责、章末钩子、禁止议论规则。
+2. `ink setup --chapter`：生产前确认某一章的 shot、POV、类型职责、章末钩子、禁止议论规则、硬事实与禁扩写范围。setup 输出的 `fact_manifest` 是后续大纲门禁和草稿资格门禁的共同依据。
 
 3. `ink review --chapter`：生产后记录人工验收、返修或拒绝结论。
 

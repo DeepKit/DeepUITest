@@ -23,6 +23,7 @@ from inkflow.services.model_client import (
     LocalDefaultGenerator,
     ModelCallError,
 )
+from inkflow.services.audit_recorder import AuditRecorder
 
 
 _EVALUATE_PROMPT = """\
@@ -381,12 +382,14 @@ class OutlineEvaluator:
         self.db.execute(
             "INSERT INTO writing_outline_evaluations "
             "(evaluation_id, shot_id, run_id, attempt, outline_text, score, "
-            "dimensions_json, issues_json, suggestions_json, "
+            "threshold, passed, dimensions_json, issues_json, suggestions_json, "
             "regenerated, new_outline_text, model_used) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 evaluation_id, shot_id, self.run_id, attempt,
                 outline_text, evaluation["score"],
+                self.threshold,
+                1 if evaluation.get("passed") else 0,
                 json.dumps(evaluation.get("dimensions", {}), ensure_ascii=False),
                 json.dumps(evaluation.get("issues", []), ensure_ascii=False),
                 json.dumps(evaluation.get("suggestions", []), ensure_ascii=False),
@@ -396,6 +399,41 @@ class OutlineEvaluator:
             ),
         )
         self.db.commit()
+        audit = AuditRecorder(self.db, run_id=self.run_id)
+        audit.record_event(
+            stage="outline_gate",
+            event_type="outline_evaluated",
+            status="passed" if evaluation.get("passed") else "failed",
+            shot_id=shot_id,
+            actor=evaluation.get("model_used", "unknown"),
+            metrics={
+                "score": evaluation["score"],
+                "threshold": self.threshold,
+                "attempt": attempt,
+                "regenerated": regenerated,
+            },
+            payload={
+                "issues": evaluation.get("issues", []),
+                "suggestions": evaluation.get("suggestions", []),
+                "new_outline_saved": bool(new_outline_text),
+            },
+            failure_category=None if evaluation.get("passed") else "outline_gap",
+            failure_detail="; ".join(str(i) for i in evaluation.get("issues", [])[:3])
+            if not evaluation.get("passed") else None,
+        )
+        if not evaluation.get("passed"):
+            audit.record_failure_attribution(
+                stage="outline_gate",
+                failure_category="outline_gap",
+                shot_id=shot_id,
+                root_cause={
+                    "score": evaluation["score"],
+                    "threshold": self.threshold,
+                    "issues": evaluation.get("issues", []),
+                },
+                evidence_refs={"evaluation_id": evaluation_id},
+                suggested_action="重写或收紧 shot 大纲，再进入正文写作。",
+            )
         return evaluation_id
 
     def _update_contract(self, shot_id: str, new_outline_text: str) -> None:

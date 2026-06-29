@@ -37,6 +37,7 @@ from inkflow.utils.character_names import (
     deprecated_aliases_for_layers,
     find_deprecated_aliases,
 )
+from inkflow.services.audit_recorder import AuditRecorder
 
 
 # ── Closing-sentence audit patterns ──
@@ -1300,6 +1301,42 @@ class ArchitectGate:
              json.dumps(result, ensure_ascii=False)),
         )
         self.db.commit()
+        stage = level.lower()
+        audit = AuditRecorder(self.db, project_id=self.project_id, run_id=self.run_id)
+        audit.record_event(
+            stage=stage,
+            event_type="architect_gate",
+            status=status,
+            shot_id=scope_key if level == "L4" else None,
+            actor="architect_gate",
+            metrics={
+                "score": result.get("score"),
+                "level": level,
+            },
+            payload={
+                "scope_key": scope_key,
+                "issues": result.get("issues", []),
+                "hard_issues": result.get("hard_issues", []),
+            },
+            failure_category=None if status == "passed" else "writer_drift",
+            failure_detail="; ".join(str(i) for i in result.get("issues", [])[:3])
+            if status == "failed" else None,
+        )
+        if status == "failed":
+            audit.record_failure_attribution(
+                stage=stage,
+                failure_category="writer_drift",
+                shot_id=scope_key if level == "L4" else None,
+                root_cause={
+                    "level": level,
+                    "scope_key": scope_key,
+                    "issues": result.get("issues", []),
+                    "hard_issues": result.get("hard_issues", []),
+                    "score": result.get("score"),
+                },
+                evidence_refs={"gate_id": gate_id},
+                suggested_action="若同类 L4/L3 失败重复出现，回退优化大纲或章前 setup，而不是继续盲目返写。",
+            )
         return gate_id
 
     def get_gate_result(self, level: str, scope_key: str) -> dict | None:

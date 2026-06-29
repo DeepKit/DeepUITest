@@ -3,7 +3,46 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；开放实现任务见 `../TASKS.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；开放实现任务见 `../tasks.md`
+
+---
+
+## 第十轮：v21 全程审计半重构（2026-06-29）
+
+### B70. Gate1 通过稿审计结果被清空 ✅ 已修复
+- **严重性**: Critical
+- **根因**: `QualityController.gate1_check()` 先写入 `gate1_result_json`，随后 `WriterDispatcher.mark_draft_usable()` 在未传入 gate1_result 时把该字段覆盖为 NULL。
+- **影响**: 真实库中大量 `is_usable=1` 的草稿无法审计 Gate1 当时是否通过以及通过原因。
+- **修复**: `mark_draft_usable()` 只更新 `is_usable`；只有显式传入 gate1_result 时才更新 JSON。
+- **文件**: `writer_dispatcher.py`, `tests/test_core_services.py`
+
+### B71. 只有分散业务表，缺少统一阶段事件链 ✅ 已修复
+- **严重性**: Critical
+- **根因**: 契约、prompt、draft、jury、gate 各自有表，但没有统一事件表连接阶段输入、输出、状态和失败类别。
+- **影响**: 能看到末端失败，不能稳定还原“setup → outline → prompt → writer → jury → gate → review”的因果链。
+- **修复**: Schema v21 新增 `writing_audit_events`，关键阶段开始写事件。
+- **文件**: `schema.sql`, `migration.py`, `audit_recorder.py`, `cli.py`, `architect_gate.py`, `jury_service.py`, `prompt_compiler.py`, `writer_dispatcher.py`
+
+### B72. setup 包和上下文注入不是一等审计记录 ✅ 已修复
+- **严重性**: Important
+- **根因**: run snapshot 只保存 setup 路径和概要；`writing_context_snaps` 表存在但没有写入路径。
+- **影响**: 质量差时无法确认是否因章前校准包、前文上下文或事实锚点注入导致写偏。
+- **修复**: 新增 `writing_setup_snapshots`；Prompt 编译时写 `writing_context_snaps`；setup/run 记录 setup 快照事件。
+- **文件**: `schema.sql`, `migration.py`, `audit_recorder.py`, `cli.py`, `prompt_compiler.py`
+
+### B73. model_attempts 只存 hash，无法完整复盘模型调用 ✅ 已修复
+- **严重性**: Important
+- **根因**: `model_attempts` 只记录 prompt/response hash 和 usage。
+- **影响**: jury 误判、模型输出异常、prompt 漂移无法从 DB 直接复现。
+- **修复**: Schema v21 为 `model_attempts` 新增 `request_prompt_text` 和 `response_text`；远端与本地模型调用统一写完整文本。
+- **文件**: `schema.sql`, `migration.py`, `model_client.py`, `tests/test_model_client.py`
+
+### B74. 被拒稿和失败重试缺少结构化归因 ✅ 已修复
+- **严重性**: Critical
+- **根因**: jury 返回的 rejected score 和 retry failure signature 主要停留在运行期 JSON/控制台输出，缺少一等 DB 归因表。
+- **影响**: “质量不好”时只能看到分数或 L4 问题，不能稳定区分 outline_gap、writer_drift、jury_failure、model_failure 等。
+- **修复**: 新增 `writing_draft_eligibility` 与 `writing_failure_attributions`；Gate1/Gate2/Jury/Outline/L3/L4/Retry 写入资格记录和失败归因。
+- **文件**: `schema.sql`, `migration.py`, `audit_recorder.py`, `quality_controller.py`, `jury_service.py`, `outline_evaluator.py`, `architect_gate.py`, `retry_budget.py`
 
 ---
 
@@ -544,3 +583,49 @@
 - **修复**: 导出标题解析增加 contract fallback；新增角色名一致性工具，`confirm-contract`、`setup/run` 前置检查和 L4 均拦截废弃别名；L4 新增未授权医疗/制度事实扩写硬 gate；L3 新增 titled shot density gate；真实《分流》`contract-draft.yaml` 与 `v01.c03.yaml` 已清除“阿坤”。
 - **文件**: `src/inkflow/export/exporter.py`, `src/inkflow/utils/character_names.py`, `src/inkflow/cli.py`, `src/inkflow/services/architect_gate.py`, `tests/test_cli.py`, `tests/test_architect_gate.py`
 - **验证**: `python -m pytest -q`：440 passed, 4 warnings
+
+---
+
+## 第十轮 (2026-06-29) — Contract-first 设计缺陷归因
+
+### B65. 大纲门禁没有强制 hard fact manifest，违约大纲仍进入写作 ✅ 已修复第一版
+- **严重性**: Critical
+- **发现**: 第 3 章人工审稿和管线复盘。
+- **根因**: 大纲评估主要关注结构合理性和文学潜力，没有先把 `setup` 输出编译为 machine-checkable fact manifest，也没有要求大纲逐项覆盖 allowed facts、forbidden expansions、must_land anchors、POV 边界和 hook duty。
+- **影响**: 写手从一开始就可能拿到违约大纲，后续 writer/jury/gate 只能补救，不能从源头阻断。
+- **修复**: `setup --chapter` 生成 `inkflow.fact_manifest.v1`；`run --chapter` 在大纲评估后执行 outline fact gate，拦截空大纲、缺失契约信号、废弃角色名、禁词和未授权事实扩写；失败写入 `writing_audit_events(outline_gate)` 和 `writing_failure_attributions`，不进入正文写作。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/outline_evaluator.py`, `src/inkflow/services/contract_compiler.py`, `docs/design.md`, `tasks.md`
+
+### B66. 草稿赛马把 eligibility 与文学评分混在一起，违约稿可能凭文笔晋级 ✅ 已修复第一版
+- **严重性**: Critical
+- **发现**: 第 3 章远端链路可给 5/5 green，但人工审稿仍发现不可接受的事实扩写和人物旧称问题。
+- **根因**: draft 的硬事实资格检查未形成独立候选隔离层；部分问题被延后到 L4/L3 或人工审稿，文学评分可能先选出“顺滑但违约”的 winner。
+- **影响**: 赛马花费更多算力，却可能选择更会写但更偏契约的稿，形成“管线不如直写”的直观结果。
+- **修复**: Gate1 后立即执行 draft hard fact gate；废弃角色名、禁词、未授权医疗/请假扩写、章末解释性收束等确定违约稿写入 `writing_draft_eligibility(hard_rule, passed=0)` 和 failure attribution，不进入类型/文学 jury，也不能成为 winner；同时修复 Gate1 后候选集未收窄的问题。
+- **文件**: `src/inkflow/services/jury_service.py`, `src/inkflow/services/quality_controller.py`, `src/inkflow/cli.py`, `tests/test_jury_scoring.py`
+
+### B67. winning outline 到 shot prompt 缺少结构化 task card，硬事实可能在编译中丢失 ✅ 已修复第一版
+- **严重性**: Important
+- **发现**: 第 3 章复盘中发现 must_land 既有散文化表达，又可能被 outline 重写或 prompt 编译过程弱化。
+- **根因**: 胜出大纲没有被编译成每个 shot 共用的 task card；写手 prompt、gate、jury 可能读取不同形态的自然语言描述。
+- **影响**: 大纲合格也不能保证草稿 gate 检查同一套硬事实，容易出现“写手以为完成，gate 读不到”的错位。
+- **修复**: `run` 将合格大纲编译为 `inkflow.shot_task_card.v1`，包含 title、POV、must_land、hard_facts、type_roles、hook_required、forbidden_phrases、outline；task card 进入写手 prompt 和 `writing_audit_events(prompt:shot_task_card_compiled)`，写手与门禁读取同一份结构化输入。
+- **文件**: `src/inkflow/services/prompt_compiler.py`, `src/inkflow/services/contract_compiler.py`, `src/inkflow/cli.py`
+
+### B68. setup 包自相矛盾时不能在 run 前失败 ◐ 部分修复
+- **严重性**: Important
+- **发现**: 当前 `v01.c03` setup 曾出现 must_land 含 forbidden phrase 的模式，说明 setup 自身需要 lint。
+- **根因**: setup 人类可编辑后缺少严格 linter；must_land、forbidden_phrases、数字锁、hook duty、POV 边界之间的冲突未被系统化检查。
+- **影响**: 契约问题会拖到 writer/jury 阶段才暴露，排障时容易误判为模型或规则问题。
+- **修复**: `run --chapter` 已要求 setup 包含 `fact_manifest`，并校验 setup/fact_manifest 与当前契约 shot 数一致；旧契约 ID、废弃角色名、过期 setup 继续硬停。
+- **剩余**: must_land 与 forbidden_phrases、数字锁、POV known/unknown 之间的自相矛盾 linter 仍需补齐。
+- **文件**: `src/inkflow/cli.py`, `src/inkflow/services/architect_gate.py`, `tests/test_cli.py`
+
+### B69. 失败归因粒度不足，无法判断应重写大纲、修 task card 还是修规则 ◐ 部分修复
+- **严重性**: Important
+- **发现**: 第 3 章远端全 0 / 无 winner 排障中，契约问题与软件规则问题需要反复人工区分。
+- **根因**: 现有 retry/failure 记录偏 gate 或模型调用结果，没有统一归因为 `contract_conflict/outline_gap/task_card_gap/writer_drift/gate_false_positive/model_failure`。
+- **影响**: 管线失败后可能盲目重写正文，浪费 API 调用，也掩盖真正需要人类 setup 校准的问题。
+- **修复**: 新增 `hard_rule_violation` 重试类型；outline fact gate、draft hard fact gate、jury/gate/retry 均写入 `writing_failure_attributions`；新增 `ink audit-report` 汇总 run 审计链、草稿资格、失败归因和模型调用覆盖。
+- **剩余**: `contract_conflict`、`task_card_gap`、`gate_false_positive` 的自动分类还不够精细，部分仍会归入 `writer_drift`。
+- **文件**: `src/inkflow/services/retry_budget.py`, `src/inkflow/services/session_manager.py`, `src/inkflow/cli.py`

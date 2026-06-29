@@ -4,6 +4,39 @@
 
 ---
 
+## v3.21 全程审计半重构 (2026-06-29)
+
+本轮结论：不完全推倒重来，改为半重构。保留现有 DB、Session、Contract、Prompt、Writer、Jury、Gate、Export 边界，新增统一审计层，让生产流程从 setup 到 review 可追因。
+
+本轮第二阶段补齐 contract-first 第一版：不推倒现有服务边界，在 setup/run/prompt/jury 前增加横切资格门禁。
+
+已完成：
+
+- Schema v21：新增 `writing_audit_events`、`writing_setup_snapshots`、`writing_draft_eligibility`、`writing_failure_attributions`。
+- `model_attempts` 新增 `request_prompt_text`、`response_text`，模型调用不再只靠 hash 审计。
+- `setup` 生成完整 setup snapshot；`run` 加载 setup 时写审计事件。
+- Prompt 编译写入 `writing_context_snaps`，记录前文、事实锚点、意象任务和反样本上下文。
+- Writer、Gate1、Jury、Gate2、Outline、L3/L4、Retry、Review、Export 均开始写统一 audit event 或 failure attribution。
+- 修复 Gate1 通过稿 `gate1_result_json` 被 `mark_draft_usable()` 清空的问题。
+- `setup --chapter` 生成 `inkflow.fact_manifest.v1`，包含废弃角色名、禁词、未授权事实扩写、hook 要求和每 shot authorized corpus。
+- `run --chapter` 在大纲评估后执行 outline fact gate；失败时写 `outline_gate` audit event 和 failure attribution，不进入正文写作。
+- 合格大纲编译为 `inkflow.shot_task_card.v1`，进入写手 prompt 和 `writing_audit_events`。
+- Gate1 通过后、jury 前执行草稿 hard fact gate；不合格稿写入 `writing_draft_eligibility(hard_rule)` 和 failure attribution，不进入文学 PK。
+- 修复 Gate1 后候选集未收窄的问题，避免机械检查失败稿继续进入 jury。
+- RetryBudget 新增 `hard_rule_violation` 类型；新增 `ink audit-report` 汇总 run 审计链。
+
+验证：
+
+- `python -m py_compile ...` 通过。
+- 全量回归：`447 passed, 4 warnings`。
+
+仍未完成：
+
+- `contract_conflict`、`task_card_gap`、`gate_false_positive` 仍需更精确的自动归因规则。
+- 新门禁尚未用《分流》第 3 章返工和第 4 章首跑验证，不能宣布正式投产。
+
+---
+
 ## 第一轮 专家审查修复 (2026-06-17)
 
 > 5 位专家审查 → 44 项问题 → 全部修复 → 170 tests pass
@@ -1761,3 +1794,76 @@ CORE-2 已完成。生产内核不再有已知 P0 代码阻塞；本轮已通过
 - 语法检查：`py_compile` 通过
 - 目标测试：68 passed
 - 全量测试：440 passed, 4 warnings
+
+---
+
+## DESIGN-REVIEW-20260629 Contract-first 生产线重校准
+
+**触发**：第 3 章人工审稿和“直写 vs 管线”对比复盘显示，旧管线跑通不代表质量可靠。大纲门禁没有真正拦住契约违规，赛马评估可能选出语言较顺但事实违约的稿。
+
+### 核心结论
+
+| 项 | 结论 |
+|----|------|
+| 设计是否推倒重来 | 不推倒 DB / CLI / accepted canonical / book_run / Jury 资产；重做上游 contract-first gate |
+| 关键缺陷 | 先文学 PK、后发现硬事实问题，顺序错误 |
+| 新原则 | 大纲和草稿先判资格，只有 eligible 才进入文学 PK |
+| 投产口径 | 正式投产结论重新打开；P0 gate 落地并通过真实章节验证前只做受控试跑 |
+
+### 新权威流程
+
+```text
+setup 编译 fact_manifest
+  → Outline A/B 串行生成
+  → Outline Hard Gate
+  → eligible outline PK
+  → winning outline 编译 shot task card
+  → Draft 串行生成
+  → Draft Eligibility Gate
+  → eligible draft literary jury
+  → L4/L3 gate
+  → 导出审稿稿
+  → 人工 review
+```
+
+### 新 P0 任务
+
+| ID | 内容 |
+|----|------|
+| FACT-MANIFEST-1 | setup 生成 allowed facts、forbidden expansions、must_land anchors、POV 边界、数字锁、hook 要求和 editorial intent |
+| OUTLINE-GATE-1 | 大纲硬门禁，不合格大纲不得进入 PK |
+| TASK-CARD-1 | 从胜出大纲编译 shot task card |
+| DRAFT-ELIGIBILITY-1 | 草稿资格门禁，不合格草稿不得进入文学 jury |
+| FAIL-ATTR-2 | 统一失败归因为 contract_conflict / outline_gap / task_card_gap / writer_drift / gate_false_positive / model_failure |
+
+---
+
+## NOVELIX-RESEARCH-1 外部系统研究 — 2026-06-29
+
+**目标**：学习 `github.com/zxerai/novelix`，提炼对 InkFlow 管线优化有用的设计。
+
+### 观察
+
+Novelix 的有价值部分不是 agent 数量，而是把章节生产拆成稳定工件：7 个 truth files、chapter memo、context package、rule stack、review/revise cycle、state validator、snapshot/rollback 和 Studio 观测面。
+
+### 对 InkFlow 的启发
+
+| Novelix 做法 | InkFlow 迁移建议 |
+|--------------|------------------|
+| 7 个 truth files | DB3 仍是真相源，但可生成可读 truth 投影 |
+| chapter memo 每段必须在正文留下痕迹 | setup 输出 fact_manifest，must_land 改为可定位 anchor |
+| ContextPackage 按相关性挑上下文 | previous context / accepted anchors / book_run draft context 合成可审计 context package |
+| RuleStack 分 hard / soft / diagnostic | contract-first gate 明确硬事实、软表达、诊断提示三层 |
+| audit → revise → reassess | outline/draft 重写要有轮次上限、净提升判断和失败归因 |
+| state validator | 正文封板前检查状态变化是否被正文支持 |
+
+### 产物
+
+- 新增 `docs/research-novelix.md`
+- 更新 `tasks.md`
+- 更新 `docs/design.md`
+- 更新 `docs/flow.md`
+- 更新 `docs/setup-protocol.md`
+- 更新 `docs/design-evaluation-conclusion.md`
+- 更新 `docs/implementation-contract-v0.md`
+- 更新 `docs/role-system.md`

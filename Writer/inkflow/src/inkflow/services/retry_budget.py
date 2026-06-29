@@ -26,6 +26,7 @@ from inkflow.models.enums import (
     LightStatus,
     LightThreshold,
 )
+from inkflow.services.audit_recorder import AuditRecorder, failure_category_for_retry_type
 
 
 _FAILURE_TYPES = [
@@ -36,6 +37,7 @@ _FAILURE_TYPES = [
     "l4_violation",
     "l3_violation",
     "chapter_hook_weak",
+    "hard_rule_violation",
     "jury_unavailable",
     "model_error",
     "json_parse_error",
@@ -104,6 +106,21 @@ class RetryBudgetService:
         count = self._count_consecutive_failures(shot_id, failure_type)
         next_count = count + 1
         self._record_failure_signature(shot_id, failure_type, detail)
+        category = failure_category_for_retry_type(failure_type)
+        AuditRecorder(self.db, run_id=self.run_id).record_failure_attribution(
+            stage=_stage_for_failure_type(failure_type),
+            failure_category=category,
+            shot_id=shot_id,
+            root_cause={
+                "failure_type": failure_type,
+                "detail": detail,
+                "consecutive_count": next_count,
+                "used_budget": self._used_budget,
+                "max_budget": self.max_budget,
+            },
+            evidence_refs={"source": "retry_budget.failure_signature"},
+            suggested_action=_suggested_action_for_failure_type(failure_type),
+        )
 
         if next_count >= self.circuit_breaker_threshold:
             self._mark_circuit_breaker(shot_id, failure_type, next_count)
@@ -277,3 +294,34 @@ def classify_failure_type(
         return "l3_violation"
 
     return "model_error"
+
+
+def _stage_for_failure_type(failure_type: str) -> str:
+    mapping = {
+        "empty_text": "gate1",
+        "too_short": "gate1",
+        "excessive_repetition": "gate1",
+        "below_threshold": "literary_jury",
+        "l4_violation": "l4",
+        "l3_violation": "l3",
+        "chapter_hook_weak": "l3",
+        "hard_rule_violation": "hard_rule",
+        "jury_unavailable": "jury_unavailable",
+        "model_error": "writer",
+        "json_parse_error": "jury_unavailable",
+    }
+    return mapping.get(failure_type, "run")
+
+
+def _suggested_action_for_failure_type(failure_type: str) -> str:
+    if failure_type in {"l4_violation", "l3_violation", "chapter_hook_weak"}:
+        return "优先检查大纲和章前 setup 是否把硬门槛说清，再决定返写。"
+    if failure_type == "below_threshold":
+        return "检查分维评分和被拒稿原因；必要时单线返写或重写 task card。"
+    if failure_type == "jury_unavailable":
+        return "先修复远端评审可用性，不要把基础设施失败当成文本质量失败。"
+    if failure_type == "hard_rule_violation":
+        return "先检查 fact manifest、task card 和草稿违约项；重复失败时回退大纲。"
+    if failure_type in {"empty_text", "too_short", "excessive_repetition"}:
+        return "检查 writer 模型响应和 prompt，避免无效稿进入评审。"
+    return "查看 model_attempts 和相邻 audit_events 后再归因。"

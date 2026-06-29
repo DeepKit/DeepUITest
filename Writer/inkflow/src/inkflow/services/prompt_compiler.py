@@ -18,6 +18,7 @@ import sqlite3
 from inkflow.utils.ulid import generate as generate_ulid
 from inkflow.utils.hashing import snapshot_hash
 from inkflow.services.suspense_profile import get_preset, build_suspense_directive
+from inkflow.services.audit_recorder import AuditRecorder
 
 
 # Token budget for P0
@@ -155,6 +156,13 @@ class PromptCompiler:
             "has_motif_tasks": motif_tasks is not None,
             "anti_sample_count": len(anti_samples) if anti_samples else 0,
         }
+        context_payload = {
+            "previous_shots": previous_shots or [],
+            "fact_anchors": fact_anchors or [],
+            "motif_tasks": motif_tasks or {},
+            "anti_samples": anti_samples or [],
+        }
+        context_hash_value = snapshot_hash(_jsonable(context_payload))
 
         # Full assembly respecting token budget
         full_prompt = _assemble_with_budget(
@@ -184,7 +192,36 @@ class PromptCompiler:
              json.dumps(dynamic_assembly, ensure_ascii=False),
              full_prompt),
         )
+        self.db.execute(
+            "INSERT INTO writing_context_snaps "
+            "(snap_id, shot_id, run_id, context_hash, previous_shots_json, "
+            "fact_anchor_refs_json, motif_tracker_state_json, anti_samples_json, "
+            "injected_with_warning) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            (
+                generate_ulid(), shot_id, run_id, context_hash_value,
+                json.dumps(_jsonable(previous_shots or []), ensure_ascii=False),
+                json.dumps(_jsonable(fact_anchors or []), ensure_ascii=False),
+                json.dumps(_jsonable(motif_tasks or {}), ensure_ascii=False),
+                json.dumps(_jsonable(anti_samples or []), ensure_ascii=False),
+            ),
+        )
         self.db.commit()
+        AuditRecorder(self.db, run_id=run_id).record_event(
+            stage="prompt",
+            event_type="prompt_compiled",
+            status="recorded",
+            shot_id=shot_id,
+            actor=writer_persona,
+            output_refs={"prompt_id": prompt_id, "prompt_hash": snapshot_hash({"full": full_prompt})},
+            metrics={
+                "static_prefix_length": static_prefix["prefix_length"],
+                "assembled_prompt_length": len(full_prompt),
+                "previous_shot_count": dynamic_assembly["previous_shot_count"],
+                "fact_anchor_count": dynamic_assembly["fact_anchor_count"],
+            },
+            payload={"dynamic_assembly": dynamic_assembly},
+        )
         return prompt_id
 
     def get_shot_prompt(self, shot_id: str, run_id: str, writer_persona: str) -> dict | None:
@@ -222,6 +259,10 @@ def _build_writer_identity(persona: str, meta_contract: dict) -> str:
 
 作品身份: {json.dumps(identity, ensure_ascii=False)}
 叙事声音: {json.dumps(narrative_voice, ensure_ascii=False)}"""
+
+
+def _jsonable(value):
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
 
 def _build_hard_constraints(meta_contract: dict) -> str:
@@ -406,6 +447,10 @@ def _build_shot_context(shot_context: dict) -> str:
     if isinstance(chapter_setup, dict) and chapter_setup:
         parts.extend(_build_chapter_setup_context(chapter_setup))
 
+    task_card = shot_context.get("task_card")
+    if isinstance(task_card, dict) and task_card:
+        parts.extend(_build_task_card_context(task_card))
+
     # ARCH-7: Non-interference declaration
     parts.append(_build_non_interference_declaration())
 
@@ -452,6 +497,41 @@ def _build_chapter_setup_context(chapter_setup: dict) -> list[str]:
             for item in requirements:
                 parts.append(f"- {item}")
 
+    return parts
+
+
+def _build_task_card_context(task_card: dict) -> list[str]:
+    """Build the machine-checkable task card section."""
+    parts = ["## Shot Task Card（必须执行）"]
+    title = task_card.get("title")
+    pov = task_card.get("pov")
+    if title:
+        parts.append(f"标题: {title}")
+    if pov:
+        parts.append(f"POV: {pov}")
+    must_land = task_card.get("must_land")
+    if must_land:
+        parts.append("必须落地:")
+        parts.append(str(must_land))
+    hard_facts = task_card.get("hard_facts") or []
+    if hard_facts:
+        parts.append("硬事实:")
+        for item in hard_facts:
+            parts.append(f"- {item}")
+    type_roles = task_card.get("type_roles") or []
+    if type_roles:
+        parts.append("类型职责: " + ", ".join(str(role) for role in type_roles))
+    if task_card.get("hook_required"):
+        parts.append("章末钩子: 最后一段必须留下未完成动作或未回答问题，不能解释性收束。")
+    forbidden = task_card.get("forbidden_phrases") or []
+    if forbidden:
+        parts.append("硬门禁禁词/禁句:")
+        for item in forbidden[:20]:
+            parts.append(f"- {item}")
+    outline = task_card.get("outline")
+    if outline:
+        parts.append("大纲裁定稿:")
+        parts.append(str(outline))
     return parts
 
 
