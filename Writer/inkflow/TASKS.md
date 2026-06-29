@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-06-29
-Status: v3.21 半重构落地中；Schema v21；45 张业务表 + `_schema_meta` 元表；当前阶段：全程审计底座与 contract-first 第一版已落地，仍需真实章节返工验证；最近相关验证为 `447 passed, 4 warnings`
+Status: v3.21 半重构落地中；Schema v21；45 张业务表 + `_schema_meta` 元表；当前阶段：全程审计底座与 contract-first 第一版已落地，仍需真实章节返工验证；最近相关验证为 `449 passed, 4 warnings`
 
 ---
 
@@ -30,6 +30,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 - NOVELIX-RESEARCH-1 已完成外部系统研究：Novelix 的 7 个 truth files、chapter memo、context package、rule stack、review/revise cycle、state validation 和 Studio 可视化对 InkFlow 的 contract-first 管线有直接参考价值。
 - AUDIT-1 已完成 v21 全程审计底座：`writing_audit_events`、`writing_setup_snapshots`、`writing_draft_eligibility`、`writing_failure_attributions`；`model_attempts` 保存完整 prompt/response；Gate1 不再清空通过稿审计结果；prompt/context、setup、writer、outline、jury、L3/L4、review、export 均开始写审计事件；新增 `ink audit-report` 读取 run 审计链。
 - CONTRACT-FIRST-1 已完成第一版：`setup --chapter` 生成 `fact_manifest`；`run` 在大纲后先跑 outline fact gate，不合格不进入正文；winning outline 生成 `shot_task_card` 并进入写手 prompt/audit；草稿在 Gate1 后、jury 前跑 hard fact gate，不合格稿写入 `writing_draft_eligibility` 与 `writing_failure_attributions`，不得进入文学 PK。
+- SETUP-LINT-1 已完成第一版：`run --chapter` 在创建 session 前检查 setup 自相矛盾，拦截 must_land 命中 forbidden phrases、POV 与契约/fact_manifest 不一致、未知类型职责、章节 hook 缺失等问题；失败写入 `contract_conflict` 审计。
 
 ---
 
@@ -68,6 +69,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 | NOVELIX-RESEARCH-1 | 学习 Novelix 10 Agent、7 truth files、chapter memo、state validation、review/revise cycle 与 Studio 观测设计 |
 | AUDIT-1 | Schema v21 全程审计表、模型 prompt/response 完整记录、setup/context/draft eligibility/failure attribution 审计落地 |
 | CONTRACT-FIRST-1 | fact_manifest、outline fact gate、shot task card、草稿 hard fact gate 第一版落地 |
+| SETUP-LINT-1 | setup 自相矛盾 linter 第一版；preflight 失败归因到 `contract_conflict` |
 
 ---
 
@@ -75,7 +77,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
-| P0 | PROD-VERIFY-1 | 全量回归 | 已完成 | `python -m pytest -q`：447 passed, 4 warnings |
+| P0 | PROD-VERIFY-1 | 全量回归 | 已完成 | `python -m pytest -q`：449 passed, 4 warnings |
 | P0 | MIGRATE-1 | 既有真实库 Schema v21 升级验证 | 已完成 | 已备份 `D:\_Progs\.Story\《分流》\.inkflow\inkflow.db.bak-v21-audit-20260629`；`ink status "分流"` 通过；真实库 `_schema_meta.version=21` |
 | P0 | BOOKRUN-VERIFY-1 | 全书编排层回归 | 已完成 | 全量 `pytest` 通过；真实库已创建 plan-only book_run `01KW6JNB3ZR52F2036YH9BDAJB`，3 个 planned chapter |
 | P0 | CONTENT-GATE-1 | 第 3 章审稿缺陷硬化 | 已完成 | 标题、旧称、未授权事实扩写、短 hook 均有自动拦截；相关测试与全量回归通过 |
@@ -86,7 +88,8 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 | P0 | OUTLINE-GATE-1 | 大纲硬门禁 | 已完成第一版 | `run` 在正文写作前执行 outline fact gate；空大纲、缺失契约信号、禁词/旧称/未授权扩写会硬停并写 failure attribution |
 | P0 | TASK-CARD-1 | winning outline 编译任务卡 | 已完成第一版 | `shot_task_card` 进入 prompt 与 audit event；写手和门禁共享 fact manifest/outline/task card 输入 |
 | P0 | DRAFT-ELIGIBILITY-1 | 草稿资格门禁 | 已完成第一版 | Gate1 后、jury 前执行 hard fact gate；失败稿写 `writing_draft_eligibility(hard_rule)` 和 failure attribution，不进入文学 PK |
-| P0 | FAIL-ATTR-2 | 失败归因与重试上限 | 部分完成 | 已新增 `hard_rule_violation` 重试类型；仍需把 `contract_conflict`、`task_card_gap` 与 `gate_false_positive` 做成更精确自动分类 |
+| P0 | SETUP-LINT-1 | setup 自相矛盾 linter | 已完成第一版 | run preflight 创建 session 前拦截 setup 自冲突；失败写 `writing_audit_events(setup)` 与 `writing_failure_attributions(contract_conflict)` |
+| P0 | FAIL-ATTR-2 | 失败归因与重试上限 | 部分完成 | 已新增 `hard_rule_violation`；setup preflight 归 `contract_conflict`，task card 缺字段归 `task_card_gap`，草稿违约归 `writer_drift`；`gate_false_positive` 仍需真实样本后细分 |
 
 ---
 

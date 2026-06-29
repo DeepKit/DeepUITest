@@ -87,7 +87,7 @@ L1 世界观 → 确认(8) → L2 角色弧线 → 确认(8) → L3 章节结构
 | `format_rules` | 正文标题、分隔符、管线元数据、提示词残留等排版规则 |
 | `editorial_intent` | 本章编辑意图：该推进什么、压住什么、读者应带着什么问题离开 |
 
-run 阶段必须先用 `fact_manifest` 审大纲，再审草稿。第一版已做到：大纲不合格不得进入正文写作；Gate1 通过稿还要先过 hard fact gate，不合格草稿不得进入文学 jury。若 setup 本身自相矛盾，例如 `must_land` 同时命中 `forbidden_phrases`，后续应在 run 前失败并返回人类校准；这一类 setup linter 仍是待增强项。
+run 阶段必须先用 `fact_manifest` 审大纲，再审草稿。第一版已做到：大纲不合格不得进入正文写作；Gate1 通过稿还要先过 hard fact gate，不合格草稿不得进入文学 jury。setup linter 也已在 run 前执行，能拦截 `must_land` 同时命中 `forbidden_phrases`、POV 与契约/fact_manifest 不一致、未知类型职责、章节 hook 缺失等问题，并归因为 `contract_conflict`；数字锁与 POV known/unknown 的细粒度校验仍需后续增强。
 
 ## 叙事分析师（审查角色）
 

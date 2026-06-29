@@ -76,7 +76,7 @@ P0 不实现：Universe、多项目同步、单 prompt 全书生成、完整 voi
 2. outline rewrite 和 draft rewrite 都有轮次上限。
 3. 同类失败重复达到阈值时停止生产，并输出人类可修复的 setup/audit 报告。
 4. `run-book` 中任一章节触发 contract-first hard fail，默认停止整批；`--continue-on-fail` 只记录失败并进入下一章。
-5. 后续增强仍需把 `contract_conflict`、`task_card_gap`、`gate_false_positive` 做成更精确的自动分类，而不是全部归入 writer drift。
+5. 当前第一版已把 setup preflight 失败归为 `contract_conflict`，task card 缺字段归为 `task_card_gap`，草稿硬事实违约归为 `writer_drift`；后续仍需把 `gate_false_positive` 基于真实失败样本细分出来。
 
 ### 0.3 v21 全程审计协议（已落地）
 

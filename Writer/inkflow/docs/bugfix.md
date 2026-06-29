@@ -612,13 +612,13 @@
 - **修复**: `run` 将合格大纲编译为 `inkflow.shot_task_card.v1`，包含 title、POV、must_land、hard_facts、type_roles、hook_required、forbidden_phrases、outline；task card 进入写手 prompt 和 `writing_audit_events(prompt:shot_task_card_compiled)`，写手与门禁读取同一份结构化输入。
 - **文件**: `src/inkflow/services/prompt_compiler.py`, `src/inkflow/services/contract_compiler.py`, `src/inkflow/cli.py`
 
-### B68. setup 包自相矛盾时不能在 run 前失败 ◐ 部分修复
+### B68. setup 包自相矛盾时不能在 run 前失败 ✅ 已修复第一版
 - **严重性**: Important
 - **发现**: 当前 `v01.c03` setup 曾出现 must_land 含 forbidden phrase 的模式，说明 setup 自身需要 lint。
 - **根因**: setup 人类可编辑后缺少严格 linter；must_land、forbidden_phrases、数字锁、hook duty、POV 边界之间的冲突未被系统化检查。
 - **影响**: 契约问题会拖到 writer/jury 阶段才暴露，排障时容易误判为模型或规则问题。
-- **修复**: `run --chapter` 已要求 setup 包含 `fact_manifest`，并校验 setup/fact_manifest 与当前契约 shot 数一致；旧契约 ID、废弃角色名、过期 setup 继续硬停。
-- **剩余**: must_land 与 forbidden_phrases、数字锁、POV known/unknown 之间的自相矛盾 linter 仍需补齐。
+- **修复**: `run --chapter` 在创建 session 前执行 setup linter；除要求 setup 包含 `fact_manifest` 且 shot 数一致外，还会拦截 `must_land` 命中 `forbidden_phrases`、POV 与契约/fact_manifest 不一致、POV 未声明、未知类型职责、章节要求 hook 但最后一个 shot 未标记 hook 等问题；失败写入 `writing_audit_events(setup)` 与 `writing_failure_attributions(contract_conflict)`。
+- **剩余**: 数字锁与 POV known/unknown 的更细粒度一致性检查仍需后续基于真实 setup 字段扩展。
 - **文件**: `src/inkflow/cli.py`, `src/inkflow/services/architect_gate.py`, `tests/test_cli.py`
 
 ### B69. 失败归因粒度不足，无法判断应重写大纲、修 task card 还是修规则 ◐ 部分修复
@@ -626,6 +626,6 @@
 - **发现**: 第 3 章远端全 0 / 无 winner 排障中，契约问题与软件规则问题需要反复人工区分。
 - **根因**: 现有 retry/failure 记录偏 gate 或模型调用结果，没有统一归因为 `contract_conflict/outline_gap/task_card_gap/writer_drift/gate_false_positive/model_failure`。
 - **影响**: 管线失败后可能盲目重写正文，浪费 API 调用，也掩盖真正需要人类 setup 校准的问题。
-- **修复**: 新增 `hard_rule_violation` 重试类型；outline fact gate、draft hard fact gate、jury/gate/retry 均写入 `writing_failure_attributions`；新增 `ink audit-report` 汇总 run 审计链、草稿资格、失败归因和模型调用覆盖。
-- **剩余**: `contract_conflict`、`task_card_gap`、`gate_false_positive` 的自动分类还不够精细，部分仍会归入 `writer_drift`。
+- **修复**: 新增 `hard_rule_violation` 重试类型；outline fact gate、draft hard fact gate、jury/gate/retry 均写入 `writing_failure_attributions`；新增 `ink audit-report` 汇总 run 审计链、草稿资格、失败归因和模型调用覆盖；setup preflight 失败归为 `contract_conflict`；task card 缺字段归为 `task_card_gap`；草稿写偏归为 `writer_drift`。
+- **剩余**: `gate_false_positive` 仍需通过真实章节失败样本继续细化，避免把规则误杀误判成写手漂移。
 - **文件**: `src/inkflow/services/retry_budget.py`, `src/inkflow/services/session_manager.py`, `src/inkflow/cli.py`

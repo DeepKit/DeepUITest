@@ -24,15 +24,17 @@
 - Gate1 通过后、jury 前执行草稿 hard fact gate；不合格稿写入 `writing_draft_eligibility(hard_rule)` 和 failure attribution，不进入文学 PK。
 - 修复 Gate1 后候选集未收窄的问题，避免机械检查失败稿继续进入 jury。
 - RetryBudget 新增 `hard_rule_violation` 类型；新增 `ink audit-report` 汇总 run 审计链。
+- `run --chapter` 在创建 session 前执行 setup linter，拦截 must_land 命中 forbidden phrases、POV 不一致、未知类型职责、章节 hook 缺失等 setup 自相矛盾问题；失败归因到 `contract_conflict`。
+- `shot_task_card` 增加完整性检查；缺失 must_land、POV、hard_facts、hook duty 或 outline 时归因到 `task_card_gap`，不得进入正文写作。
 
 验证：
 
 - `python -m py_compile ...` 通过。
-- 全量回归：`447 passed, 4 warnings`。
+- 全量回归：`449 passed, 4 warnings`。
 
 仍未完成：
 
-- `contract_conflict`、`task_card_gap`、`gate_false_positive` 仍需更精确的自动归因规则。
+- `gate_false_positive` 仍需通过真实章节失败样本继续细化自动归因规则。
 - 新门禁尚未用《分流》第 3 章返工和第 4 章首跑验证，不能宣布正式投产。
 
 ---

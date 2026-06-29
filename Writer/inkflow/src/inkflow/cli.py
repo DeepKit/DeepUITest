@@ -797,6 +797,17 @@ def _validate_chapter_run_preflight(
             f"请重新运行: ink setup \"{project}\" --chapter {chapter} --force"
         )
 
+    lint_issues = _lint_chapter_setup_consistency(
+        setup_data, layers, chapter_events,
+    )
+    if lint_issues:
+        detail = "\n  - ".join(_format_setup_lint_issue(issue) for issue in lint_issues[:8])
+        raise click.ClickException(
+            "章节 setup 包自相矛盾，不能进入生产。\n"
+            f"  - {detail}\n"
+            f"请修正 setup 或重新运行: ink setup \"{project}\" --chapter {chapter} --force"
+        )
+
 
 def _chapter_number_from_key(chapter: str | None) -> int | None:
     import re
@@ -865,6 +876,147 @@ def _normalize_type_roles(roles: list | tuple | set | None) -> list[str]:
         if normalized and normalized not in result:
             result.append(normalized)
     return result
+
+
+def _lint_chapter_setup_consistency(
+    setup_data: dict,
+    layers: dict,
+    chapter_events: list[dict],
+) -> list[dict]:
+    """Return setup/package contradictions that should fail before run."""
+    issues: list[dict] = []
+    setup_shots = setup_data.get("shots") or []
+    manifest = setup_data.get("fact_manifest") or {}
+    manifest_shots = manifest.get("shots") or []
+    exposition_gate = setup_data.get("exposition_gate") or {}
+    global_manifest = manifest.get("global") or {}
+
+    forbidden_phrases = list(exposition_gate.get("forbidden_phrases") or [])
+    forbidden_phrases.extend(global_manifest.get("forbidden_phrases") or [])
+    forbidden_phrases = [str(item) for item in dict.fromkeys(forbidden_phrases) if item]
+
+    declared_povs = set()
+    identity = layers.get("identity") or {}
+    hard = layers.get("hard_boundaries") or {}
+    for value in (identity.get("pov_characters"), hard.get("characters_alive")):
+        if isinstance(value, str):
+            declared_povs.add(value)
+        elif isinstance(value, (list, tuple, set)):
+            declared_povs.update(str(item) for item in value if item)
+
+    seen_shots: set[int] = set()
+    total = len(chapter_events)
+    for index, shot in enumerate(setup_shots, start=1):
+        if not isinstance(shot, dict):
+            issues.append({"code": "invalid_shot_entry", "shot": index})
+            continue
+        try:
+            declared_index = int(shot.get("shot"))
+        except (TypeError, ValueError):
+            declared_index = index
+        if declared_index in seen_shots:
+            issues.append({"code": "duplicate_shot", "shot": declared_index})
+        seen_shots.add(declared_index)
+        if declared_index < 1 or (total and declared_index > total):
+            issues.append({"code": "shot_index_out_of_range", "shot": declared_index})
+
+        event = chapter_events[declared_index - 1] if 0 <= declared_index - 1 < total else {}
+        manifest_shot = (
+            manifest_shots[declared_index - 1]
+            if 0 <= declared_index - 1 < len(manifest_shots)
+            and isinstance(manifest_shots[declared_index - 1], dict)
+            else {}
+        )
+
+        must_land = str(shot.get("must_land") or "")
+        if not must_land.strip():
+            issues.append({"code": "empty_must_land", "shot": declared_index})
+        for phrase in forbidden_phrases:
+            if phrase and phrase in must_land:
+                issues.append({
+                    "code": "must_land_hits_forbidden_phrase",
+                    "shot": declared_index,
+                    "marker": phrase,
+                })
+
+        pov = str(shot.get("pov") or "")
+        event_pov = str(event.get("pov") or "")
+        manifest_pov = str(manifest_shot.get("pov") or "")
+        if event_pov and pov and pov != event_pov:
+            issues.append({
+                "code": "setup_pov_mismatch_contract",
+                "shot": declared_index,
+                "setup_pov": pov,
+                "contract_pov": event_pov,
+            })
+        if manifest_pov and pov and pov != manifest_pov:
+            issues.append({
+                "code": "setup_pov_mismatch_manifest",
+                "shot": declared_index,
+                "setup_pov": pov,
+                "manifest_pov": manifest_pov,
+            })
+        if declared_povs and pov and pov not in declared_povs and pov != "unknown":
+            issues.append({
+                "code": "pov_not_declared",
+                "shot": declared_index,
+                "pov": pov,
+            })
+
+        roles = _normalize_type_roles(shot.get("type_roles"))
+        unknown_roles = [
+            role for role in roles
+            if role not in {"suspense", "blank_space", "hook"}
+        ]
+        if unknown_roles:
+            issues.append({
+                "code": "unknown_type_roles",
+                "shot": declared_index,
+                "roles": unknown_roles,
+            })
+
+    hook_required = (setup_data.get("chapter_hook") or {}).get("required")
+    if hook_required and setup_shots:
+        last_shot = setup_shots[-1] if isinstance(setup_shots[-1], dict) else {}
+        last_roles = _normalize_type_roles(last_shot.get("type_roles"))
+        if "hook" not in last_roles:
+            issues.append({
+                "code": "chapter_hook_missing_on_last_shot",
+                "shot": last_shot.get("shot", len(setup_shots)),
+            })
+
+    return issues
+
+
+def _format_setup_lint_issue(issue: dict) -> str:
+    code = issue.get("code", "unknown")
+    shot = issue.get("shot")
+    prefix = f"shot {shot}: " if shot is not None else ""
+    if code == "must_land_hits_forbidden_phrase":
+        return f"{prefix}must_land 命中禁词/禁句 {issue.get('marker')}"
+    if code == "setup_pov_mismatch_contract":
+        return (
+            f"{prefix}setup POV={issue.get('setup_pov')} "
+            f"但契约 POV={issue.get('contract_pov')}"
+        )
+    if code == "setup_pov_mismatch_manifest":
+        return (
+            f"{prefix}setup POV={issue.get('setup_pov')} "
+            f"但 fact_manifest POV={issue.get('manifest_pov')}"
+        )
+    if code == "pov_not_declared":
+        return f"{prefix}POV {issue.get('pov')} 不在契约声明角色中"
+    if code == "unknown_type_roles":
+        return f"{prefix}未知类型职责 {', '.join(issue.get('roles') or [])}"
+    if code == "chapter_hook_missing_on_last_shot":
+        return f"{prefix}章节要求 hook，但最后一个 shot 未标记 hook"
+    if code == "empty_must_land":
+        return f"{prefix}must_land 为空"
+    if code == "duplicate_shot":
+        return f"{prefix}shot 编号重复"
+    if code == "shot_index_out_of_range":
+        return f"{prefix}shot 编号超出契约范围"
+    return f"{prefix}{code}"
 
 
 _FACT_PROMPT_ARTIFACT_MARKERS = [
@@ -1151,6 +1303,29 @@ def _build_shot_task_card(
     }
 
 
+def _evaluate_task_card_integrity(
+    task_card: dict,
+    fact_manifest_shot: dict,
+) -> dict:
+    violations: list[dict] = []
+    if not task_card.get("must_land"):
+        violations.append({"code": "missing_must_land"})
+    if not task_card.get("pov") or task_card.get("pov") == "unknown":
+        violations.append({"code": "missing_pov"})
+    manifest_hard_facts = fact_manifest_shot.get("hard_facts") or []
+    if manifest_hard_facts and not task_card.get("hard_facts"):
+        violations.append({"code": "missing_hard_facts"})
+    if fact_manifest_shot.get("hook_required") and not task_card.get("hook_required"):
+        violations.append({"code": "missing_hook_duty"})
+    if not task_card.get("outline"):
+        violations.append({"code": "missing_outline"})
+    return {
+        "schema": "inkflow.task_card_integrity.v1",
+        "passed": not violations,
+        "violations": violations,
+    }
+
+
 def _build_outline_text_from_contract(shot_contract: dict) -> str:
     must_land = shot_contract.get("must_land_json", {})
     if isinstance(must_land, str):
@@ -1182,6 +1357,7 @@ def _filter_drafts_by_fact_manifest(
     draft_ids: list[str],
     setup_data: dict,
     shot_index: int,
+    task_card: dict | None = None,
 ) -> list[str]:
     """Apply deterministic contract-first draft gate before literary jury."""
     passed: list[str] = []
@@ -1212,9 +1388,12 @@ def _filter_drafts_by_fact_manifest(
         if result["passed"]:
             passed.append(draft_id)
         else:
+            failure_category = _failure_category_for_fact_gate_result(
+                result, phase="draft", task_card=task_card,
+            )
             audit.record_failure_attribution(
                 stage="hard_rule",
-                failure_category="writer_drift",
+                failure_category=failure_category,
                 shot_id=shot_id,
                 draft_id=draft_id,
                 root_cause=result,
@@ -1222,6 +1401,25 @@ def _filter_drafts_by_fact_manifest(
                 suggested_action="草稿违背 fact manifest，不进入文学评审；优先返写，重复失败则回退大纲/task card。",
             )
     return passed
+
+
+def _failure_category_for_fact_gate_result(
+    result: dict,
+    *,
+    phase: str,
+    task_card: dict | None = None,
+) -> str:
+    codes = {str(item.get("code")) for item in result.get("violations") or []}
+    if phase == "outline" or codes & {"empty_outline", "outline_missing_contract_signal"}:
+        return "outline_gap"
+    if task_card is not None:
+        integrity = _evaluate_task_card_integrity(
+            task_card,
+            result.get("shot_manifest") or {},
+        )
+        if not integrity["passed"]:
+            return "task_card_gap"
+    return "writer_drift"
 
 
 def _sanitize_models_config(value):
@@ -2139,9 +2337,31 @@ def _run_project_inner(
     # Contract is the authority — the chapter outline defines how many shots exist.
     chapter_events = compiler.get_chapter_events(chapter)
     chapter_setup = _load_chapter_setup(project, chapter)
-    _validate_chapter_run_preflight(
-        project, chapter, chapter_setup, meta_contract, layers, chapter_events,
-    )
+    try:
+        _validate_chapter_run_preflight(
+            project, chapter, chapter_setup, meta_contract, layers, chapter_events,
+        )
+    except click.ClickException as exc:
+        from inkflow.services.audit_recorder import AuditRecorder
+
+        setup_path = _chapter_setup_path(project, chapter) if chapter else None
+        AuditRecorder(db, project_id=project_id).record_event(
+            stage="setup",
+            event_type="chapter_setup_preflight_failed",
+            status="failed",
+            input_refs={"setup_path": str(setup_path) if setup_path else None},
+            payload={"chapter": chapter, "error": str(exc)},
+            failure_category="contract_conflict",
+            failure_detail=str(exc)[:500],
+        )
+        AuditRecorder(db, project_id=project_id).record_failure_attribution(
+            stage="setup",
+            failure_category="contract_conflict",
+            root_cause={"error": str(exc), "chapter": chapter},
+            evidence_refs={"setup_path": str(setup_path) if setup_path else None},
+            suggested_action="修正章节 setup 或重新 setup --force 后再运行。",
+        )
+        raise
     num_shots = shot_count or compiler.get_shot_count(chapter) or 8
 
     # Create session or resume
@@ -2593,14 +2813,43 @@ def _run_project_inner(
                 fact_manifest_shot=fact_manifest_shot,
                 outline_result=outline_result,
             )
+            task_card_integrity = _evaluate_task_card_integrity(
+                shot_task_card, fact_manifest_shot,
+            )
             audit.record_event(
                 stage="prompt",
                 event_type="shot_task_card_compiled",
-                status="recorded",
+                status="recorded" if task_card_integrity["passed"] else "failed",
                 shot_id=shot_id,
                 output_refs={"fact_manifest_shot": fact_manifest_shot.get("shot")},
-                payload=shot_task_card,
+                payload={
+                    "task_card": shot_task_card,
+                    "integrity": task_card_integrity,
+                },
+                failure_category=None if task_card_integrity["passed"] else "task_card_gap",
+                failure_detail="; ".join(
+                    item.get("code", "unknown")
+                    for item in task_card_integrity["violations"][:3]
+                ) if not task_card_integrity["passed"] else None,
             )
+            if not task_card_integrity["passed"]:
+                audit.record_failure_attribution(
+                    stage="prompt",
+                    failure_category="task_card_gap",
+                    shot_id=shot_id,
+                    root_cause={
+                        "task_card": shot_task_card,
+                        "integrity": task_card_integrity,
+                    },
+                    evidence_refs={
+                        "fact_manifest_shot": fact_manifest_shot.get("shot"),
+                        "chapter": chapter,
+                    },
+                    suggested_action="修正大纲到 task card 的编译输入，必要时重新 setup。",
+                )
+                click.echo("  🔴 Task card 完整性失败，不进入正文写作")
+                quality_controller.smart_redo(shot_id, 0)
+                continue
 
             shot_context_payload = {
                 "must_land": sc.get("must_land_json", {}),
@@ -2707,6 +2956,7 @@ def _run_project_inner(
                     draft_ids=usable,
                     setup_data=chapter_setup,
                     shot_index=i + 1,
+                    task_card=shot_task_card,
                 )
                 if len(fact_usable) < len(usable):
                     click.echo(
@@ -2758,6 +3008,7 @@ def _run_project_inner(
                         draft_ids=usable,
                         setup_data=chapter_setup,
                         shot_index=i + 1,
+                        task_card=shot_task_card,
                     )
 
                 if not usable:
@@ -2898,6 +3149,7 @@ def _run_project_inner(
                         draft_ids=usable2,
                         setup_data=chapter_setup,
                         shot_index=i + 1,
+                        task_card=shot_task_card,
                     )
 
                 if usable2:

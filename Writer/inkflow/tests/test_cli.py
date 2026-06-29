@@ -14,6 +14,7 @@ from inkflow.cli import (
     _build_previous_context,
     _build_fact_manifest,
     _evaluate_text_against_fact_manifest,
+    _evaluate_task_card_integrity,
     _jury_unavailable_detail,
     _jury_verdict_all_unavailable,
     _validate_chapter_run_preflight,
@@ -636,6 +637,51 @@ class TestChapterSetupSmoke:
 
         assert "缺少 fact_manifest" in str(exc.value)
 
+    def test_run_preflight_rejects_setup_self_conflict(self):
+        layers = {
+            "identity": {"pov_characters": ["郑坤"]},
+            "hard_boundaries": {"characters_alive": ["郑坤"]},
+            "world_knowledge": {},
+            "style_locks": {},
+        }
+        chapter_events = [
+            {"shot": 1, "title": "第一镜", "pov": "郑坤", "event": "郑坤走到门口。"},
+        ]
+        fact_manifest = _build_fact_manifest(
+            chapter="v01.c03",
+            layers=layers,
+            chapter_events=chapter_events,
+            exposition_gate={"forbidden_phrases": ["系统并不恶意"]},
+            suspense={},
+        )
+
+        with pytest.raises(Exception) as exc:
+            _validate_chapter_run_preflight(
+                "测试",
+                "v01.c03",
+                {
+                    "source_contract": {"meta_contract_id": "mc"},
+                    "fact_manifest": fact_manifest,
+                    "exposition_gate": {"forbidden_phrases": ["系统并不恶意"]},
+                    "chapter_hook": {"required": True},
+                    "shots": [
+                        {
+                            "shot": 1,
+                            "title": "第一镜",
+                            "pov": "郑坤",
+                            "must_land": "系统并不恶意，郑坤走到门口。",
+                            "type_roles": ["hook"],
+                        },
+                    ],
+                },
+                {"meta_contract_id": "mc"},
+                layers,
+                chapter_events,
+            )
+
+        assert "setup 包自相矛盾" in str(exc.value)
+        assert "must_land 命中禁词" in str(exc.value)
+
     def test_fact_manifest_gate_catches_deprecated_alias_and_forbidden_phrase(self):
         manifest = _build_fact_manifest(
             chapter="v01.c03",
@@ -702,6 +748,32 @@ class TestChapterSetupSmoke:
             item["code"] == "unauthorized_fact_expansion"
             for item in result["violations"]
         )
+
+    def test_task_card_integrity_catches_missing_required_fields(self):
+        result = _evaluate_task_card_integrity(
+            {
+                "schema": "inkflow.shot_task_card.v1",
+                "title": "第一镜",
+                "pov": "",
+                "must_land": "",
+                "hard_facts": [],
+                "hook_required": False,
+                "outline": "",
+            },
+            {
+                "shot": 1,
+                "hard_facts": ["郑坤必须看见三环边界"],
+                "hook_required": True,
+            },
+        )
+
+        assert result["passed"] is False
+        codes = {item["code"] for item in result["violations"]}
+        assert "missing_must_land" in codes
+        assert "missing_pov" in codes
+        assert "missing_hard_facts" in codes
+        assert "missing_hook_duty" in codes
+        assert "missing_outline" in codes
 
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock
