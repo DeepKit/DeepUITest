@@ -185,6 +185,21 @@ class TestCreateModelClient:
 
         assert isinstance(client, AnthropicClient)
 
+    def test_single_provider_can_override_registry_provider(self):
+        client = create_model_client(
+            "deepseek-v4-pro",
+            providers={
+                "opencode": {
+                    "api_key": "sk-test",
+                    "base_url": "https://opencode.example.test/v1",
+                    "protocol": "openai",
+                }
+            },
+        )
+
+        assert isinstance(client, OpenAIClient)
+        assert client.base_url == "https://opencode.example.test/v1"
+
     def test_openai_client_sends_user_agent(self, monkeypatch):
         captured = {}
 

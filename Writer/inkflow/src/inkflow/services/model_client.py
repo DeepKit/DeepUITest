@@ -646,13 +646,17 @@ def create_model_client(
     if providers is None:
         raise ValueError(f"No providers config for model {model_name}")
 
-    if provider_key not in providers:
+    if provider_key in providers:
+        cfg = providers[provider_key]
+    elif len(providers) == 1:
+        # A fully-qualified model ref such as opencode/deepseek-v4-pro can
+        # intentionally route a known model name through an aggregate provider.
+        provider_key, cfg = next(iter(providers.items()))
+    else:
         raise ValueError(
             f"Provider '{provider_key}' not found in providers config. "
             f"Available: {list(providers.keys())}"
         )
-
-    cfg = providers[provider_key]
     api_key = cfg.get("api_key", "")
     base_url = cfg.get("base_url", "")
     actual_model = cfg.get("model", model_name)
