@@ -119,6 +119,34 @@ class TestJuryScoreScale:
         assert eligibility["passed"] == 1
         assert eligibility["score"] == 80
 
+    def test_literary_dimensions_are_partitioned_across_three_judges(self, setup_run_with_draft):
+        """Three literary judges score 3 dimensions each, not all 9 dimensions each."""
+        config = {
+            "jury_config": {
+                "models": ["test/jury-a", "test/jury-b", "test/jury-c"],
+                "min_passing_drafts": 1,
+            },
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        jury.score_candidates("shot_01", ["d1"], score_override=90)
+
+        rows = setup_run_with_draft.execute(
+            "SELECT jury_persona, COUNT(*) AS cnt "
+            "FROM writing_jury_scores "
+            "WHERE shot_id = 'shot_01' "
+            "AND dimension != 'hard_rule_compliance' "
+            "GROUP BY jury_persona ORDER BY jury_persona"
+        ).fetchall()
+        counts = {row["jury_persona"]: row["cnt"] for row in rows}
+
+        assert counts == {"jury-a": 3, "jury-b": 3, "jury-c": 3}
+        total = setup_run_with_draft.execute(
+            "SELECT COUNT(*) AS cnt FROM writing_jury_scores "
+            "WHERE shot_id = 'shot_01'"
+        ).fetchone()["cnt"]
+        assert total == 10
+
     def test_creative_review_can_choose_less_safe_high_value_draft(self, setup_run_with_draft):
         """CREATIVE-3: blank-shot review weights unexpected_value over safe compliance."""
         setup_run_with_draft.execute(
@@ -303,7 +331,7 @@ class TestJuryScoreScale:
         config = {
             "providers": {"test": {"api_key": "sk-test", "base_url": "https://x.test/v1"}},
             "jury_config": {
-                "models": ["test/pass-jury", "test/timeout-jury"],
+                "models": ["test/timeout-jury", "test/pass-jury"],
                 "min_passing_drafts": 1,
             },
         }
@@ -404,8 +432,8 @@ class TestJuryScoreScale:
         assert draft_score["eligible"] is False
         assert draft_score["failure_stage"] == "jury_unavailable"
         assert draft_score["missing_dimensions"]
-        attempts = setup_run_with_draft.execute(
-            "SELECT COUNT(*) AS cnt FROM writing_jury_scores "
-            "WHERE run_id = 'run_01' AND jury_persona = 'deepseek-v4-flash'"
-        ).fetchone()["cnt"]
-        assert attempts > 0
+        assert draft_score["jury_failures"]
+        assert any(
+            failure["model_ref"] == "deepseek/deepseek-v4-flash"
+            for failure in draft_score["jury_failures"]
+        )

@@ -266,6 +266,7 @@ class JuryService:
                 draft_id=draft_id,
                 draft_text=draft_text,
                 dimensions=self.hard_dimensions,
+                assignment_stage="hard_rule",
                 meta_summary=hard_meta_summary,
                 previous_ending=previous_ending,
                 attempt_id=attempt_id,
@@ -303,6 +304,7 @@ class JuryService:
                     draft_id=draft_id,
                     draft_text=draft_text,
                     dimensions=type_dimensions,
+                    assignment_stage="type_gate",
                     meta_summary=meta_summary,
                     previous_ending=previous_ending,
                     attempt_id=attempt_id,
@@ -344,6 +346,7 @@ class JuryService:
                 draft_id=draft_id,
                 draft_text=draft_text,
                 dimensions=self.literary_dimensions,
+                assignment_stage="literary",
                 meta_summary=meta_summary,
                 previous_ending=previous_ending,
                 attempt_id=attempt_id,
@@ -498,6 +501,7 @@ class JuryService:
         draft_id: str,
         draft_text: str,
         dimensions: list[str],
+        assignment_stage: str,
         meta_summary: str,
         previous_ending: str,
         attempt_id: str,
@@ -508,38 +512,25 @@ class JuryService:
     ) -> tuple[dict[str, list[int]], list[dict]]:
         grouped: dict[str, list[int]] = {}
         failures: list[dict] = []
-        for model_ref in self.jury_models:
-            _, model_name = parse_model_ref(model_ref)
-            for dimension in dimensions:
-                if deterministic_gate and dimension == "hard_rule_compliance":
-                    if not deterministic_gate["passed"]:
-                        score = min(60, deterministic_gate["score"])
-                        comment = "; ".join(deterministic_gate["violations"])[:200]
-                    elif score_override is not None:
-                        score = score_override
-                        comment = f"硬规则测试覆盖: {score}/100"
-                    elif not use_llm:
-                        score = deterministic_gate["score"]
-                        comment = "规则硬检通过"
-                    else:
-                        result = self._score_single(
-                            shot_id=shot_id,
-                            draft_text=draft_text,
-                            jury_model_ref=model_ref,
-                            dimension=dimension,
-                            meta_contract_summary=meta_summary,
-                            previous_ending=previous_ending,
-                        )
-                        score = result["score"]
-                        comment = result["comment"]
-                        if result.get("failed") and dimension != "hard_rule_compliance":
-                            failures.append({
-                                "model": model_name,
-                                "model_ref": model_ref,
-                                "dimension": dimension,
-                                "comment": comment,
-                            })
-                            continue
+        for dimension, model_chain in self._dimension_model_chains(
+            dimensions, assignment_stage,
+        ):
+            scored = False
+            for model_ref in model_chain:
+                _, model_name = parse_model_ref(model_ref)
+                if (
+                    deterministic_gate
+                    and dimension == "hard_rule_compliance"
+                    and not deterministic_gate["passed"]
+                ):
+                    score = min(60, deterministic_gate["score"])
+                    comment = "; ".join(deterministic_gate["violations"])[:200]
+                elif deterministic_gate and dimension == "hard_rule_compliance" and score_override is not None:
+                    score = score_override
+                    comment = f"硬规则测试覆盖: {score}/100"
+                elif deterministic_gate and dimension == "hard_rule_compliance" and not use_llm:
+                    score = deterministic_gate["score"]
+                    comment = "规则硬检通过"
                 elif use_llm:
                     result = self._score_single(
                         shot_id=shot_id,
@@ -551,7 +542,7 @@ class JuryService:
                     )
                     score = result["score"]
                     comment = result["comment"]
-                    if result.get("failed") and dimension != "hard_rule_compliance":
+                    if result.get("failed"):
                         failures.append({
                             "model": model_name,
                             "model_ref": model_ref,
@@ -577,7 +568,32 @@ class JuryService:
                     attempt_id=attempt_id,
                 )
                 grouped.setdefault(dimension, []).append(score)
+                scored = True
+                break
+            if not scored:
+                continue
         return grouped, failures
+
+    def _dimension_model_chains(
+        self,
+        dimensions: list[str],
+        assignment_stage: str,
+    ) -> list[tuple[str, list[str]]]:
+        """Assign each dimension to one primary judge, with failure fallback.
+
+        Hard-rule/type gates use the first configured judge as the single gate
+        judge. Literary scoring distributes the 9 dimensions across configured
+        judges, so three judges naturally score three dimensions each. If the
+        assigned judge has an infrastructure failure, later judges are tried for
+        that dimension before the dimension is marked unavailable.
+        """
+        models = self.jury_models or ["local-default"]
+        assignments: list[tuple[str, list[str]]] = []
+        for idx, dimension in enumerate(dimensions):
+            start_idx = idx % len(models) if assignment_stage == "literary" else 0
+            chain = models[start_idx:] + models[:start_idx]
+            assignments.append((dimension, chain))
+        return assignments
 
     def _record_score(
         self,
