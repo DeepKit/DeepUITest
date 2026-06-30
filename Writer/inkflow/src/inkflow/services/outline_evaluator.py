@@ -262,13 +262,22 @@ class OutlineEvaluator:
                     prompt=prompt,
                     model=model_name,
                     temperature=params.get("temperature", 0.3),
-                    max_tokens=min(params.get("max_tokens", 4096), 4096),
+                    max_tokens=min(
+                        params.get("outline_max_tokens", params.get("max_tokens", 4096)),
+                        4096,
+                    ),
                     shot_id=shot_id,
                     run_id=self.run_id,
+                    extra={
+                        "timeout_seconds": params.get(
+                            "outline_timeout_seconds",
+                            params.get("timeout_seconds", 60),
+                        ),
+                    },
                 )
                 response = client.generate(request)
                 return ref, response.text
-            except ModelCallError:
+            except (ModelCallError, ValueError):
                 continue
 
         # 全部失败 → 本地兜底

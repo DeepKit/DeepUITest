@@ -10,6 +10,7 @@ from inkflow.services.jury_service import JuryService
 from inkflow.services.quality_controller import QualityController
 from inkflow.services.fact_anchor_extractor import FactAnchorExtractor
 from inkflow.services.motif_tracker import MotifTracker
+from inkflow.services.outline_evaluator import OutlineEvaluator
 from inkflow.models.enums import ShotStatus, LightStatus
 
 
@@ -619,3 +620,47 @@ class TestJuryV4Config:
     def test_trimmed_mean_small_list(self, setup_run):
         """不足3分时直接平均。"""
         assert JuryService._compute_trimmed_mean([80, 90]) == 85.0
+
+
+class TestOutlineEvaluator:
+    def test_call_model_uses_outline_limits(self, setup_run, monkeypatch):
+        """Outline evaluation should not use writer-sized token/time limits."""
+        import inkflow.services.outline_evaluator as oe
+        from inkflow.services.model_client import ModelResponse
+
+        captured = {}
+
+        class FakeClient:
+            def generate(self, request):
+                captured["max_tokens"] = request.max_tokens
+                captured["timeout_seconds"] = request.extra.get("timeout_seconds")
+                return ModelResponse(
+                    text='{"dimensions": {}, "score": 90, "issues": [], "suggestions": []}',
+                    model=request.model,
+                )
+
+        monkeypatch.setattr(oe, "create_model_client", lambda *args, **kwargs: FakeClient())
+        config = {
+            "providers": {
+                "fccy": {
+                    "api_key": "sk-test",
+                    "base_url": "https://x.test/v1",
+                    "protocol": "openai",
+                },
+            },
+            "roles": {
+                "outline_evaluator": {"primary_model": "fccy/gpt-5.5"},
+            },
+            "model_params": {
+                "gpt-5.5": {
+                    "max_tokens": 12000,
+                    "outline_max_tokens": 512,
+                    "outline_timeout_seconds": 30,
+                },
+            },
+        }
+        evaluator = OutlineEvaluator(setup_run, "run_01", config)
+
+        evaluator._call_model("outline_evaluator", "评估大纲", "shot_01")
+
+        assert captured == {"max_tokens": 512, "timeout_seconds": 30}
