@@ -243,7 +243,7 @@ class WriterDispatcher:
                     "text": response.text,
                     "self_note": response.self_note or f"[{model_name}] 赛道{track}",
                 }
-            except ModelCallError:
+            except (ModelCallError, ValueError):
                 continue
 
         # 全部失败 → 本地兜底
@@ -485,52 +485,61 @@ class WriterDispatcher:
         attempt: int,
     ) -> dict:
         """Generate a draft for a specific persona with style direction."""
-        supplier, model_name = parse_model_ref(model_ref)
-        providers_for_model = build_providers_for_model(model_ref, self.models_config)
-        params = get_model_params(model_name, self.models_config)
+        chain = resolve_model_chain("writer", self.models_config)
+        start_idx = 0
+        for i, ref in enumerate(chain):
+            if ref == model_ref:
+                start_idx = i
+                break
 
-        try:
-            client = create_model_client(
-                model_name, db=self.db, providers=providers_for_model,
-            )
-            request = ModelRequest(
-                operation="write_generate",
-                persona=persona_name,
-                prompt=prompt,
-                model=model_name,
-                temperature=temperature,
-                max_tokens=params.get("max_tokens", 16384),
-                shot_id=shot_id,
-                run_id=self.run_id,
-            )
-            response = client.generate(request)
-            return {
-                "persona": persona_name,
-                "style_direction": persona_config["style_direction"],
-                "temperature": round(temperature, 3),
-                "model_ref": model_ref,
-                "text": response.text,
-                "self_note": response.self_note or f"[{model_name}] {persona_name}/{persona_config['style_direction']}",
-            }
-        except ModelCallError:
-            # Fallback to local
-            fallback = LocalDefaultGenerator(db=self.db)
-            request = ModelRequest(
-                operation="write_generate",
-                persona=persona_name,
-                prompt=prompt,
-                shot_id=shot_id,
-                run_id=self.run_id,
-            )
-            response = fallback.generate(request)
-            return {
-                "persona": persona_name,
-                "style_direction": persona_config["style_direction"],
-                "temperature": round(temperature, 3),
-                "model_ref": "local-default",
-                "text": response.text,
-                "self_note": f"[兜底] {persona_name}/{persona_config['style_direction']}",
-            }
+        for ref in chain[start_idx:]:
+            supplier, model_name = parse_model_ref(ref)
+            providers_for_model = build_providers_for_model(ref, self.models_config)
+            params = get_model_params(model_name, self.models_config)
+
+            try:
+                client = create_model_client(
+                    model_name, db=self.db, providers=providers_for_model,
+                )
+                request = ModelRequest(
+                    operation="write_generate",
+                    persona=persona_name,
+                    prompt=prompt,
+                    model=model_name,
+                    temperature=temperature,
+                    max_tokens=params.get("max_tokens", 16384),
+                    shot_id=shot_id,
+                    run_id=self.run_id,
+                )
+                response = client.generate(request)
+                return {
+                    "persona": persona_name,
+                    "style_direction": persona_config["style_direction"],
+                    "temperature": round(temperature, 3),
+                    "model_ref": ref,
+                    "text": response.text,
+                    "self_note": response.self_note or f"[{model_name}] {persona_name}/{persona_config['style_direction']}",
+                }
+            except (ModelCallError, ValueError):
+                continue
+
+        fallback = LocalDefaultGenerator(db=self.db)
+        request = ModelRequest(
+            operation="write_generate",
+            persona=persona_name,
+            prompt=prompt,
+            shot_id=shot_id,
+            run_id=self.run_id,
+        )
+        response = fallback.generate(request)
+        return {
+            "persona": persona_name,
+            "style_direction": persona_config["style_direction"],
+            "temperature": round(temperature, 3),
+            "model_ref": "local-default",
+            "text": response.text,
+            "self_note": f"[兜底:链式耗尽] {persona_name}/{persona_config['style_direction']}",
+        }
 
     # ── 向后兼容 ──
 

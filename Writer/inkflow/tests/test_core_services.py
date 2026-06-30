@@ -90,6 +90,108 @@ class TestWriterDispatcher:
         assert max(temps) == 1.4
         assert all(temp <= 1.4 for temp in temps)
 
+    def test_quad_track_uses_backup_before_local_fallback(self, setup_run, monkeypatch):
+        """Primary provider failure should try backup model before local-default."""
+        import inkflow.services.writer_dispatcher as wd
+        from inkflow.services.model_client import ModelCallError, ModelResponse
+
+        class FakeClient:
+            def __init__(self, model_name: str):
+                self.model_name = model_name
+
+            def generate(self, request):
+                if self.model_name == "deepseek-v4-flash":
+                    raise ModelCallError("primary unavailable")
+                return ModelResponse(
+                    text=(
+                        f"{request.persona} 使用 {self.model_name} 写出一段超过五十字的正文，"
+                        "它保留动作、物件和人物反应，不退回本地模板，也不输出分析。"
+                    ),
+                    model=self.model_name,
+                    self_note=f"[{self.model_name}] fake",
+                )
+
+        def fake_create_model_client(model_name, **kwargs):
+            return FakeClient(model_name)
+
+        monkeypatch.setattr(wd, "create_model_client", fake_create_model_client)
+
+        models_config = {
+            "providers": {
+                "deepseek": {"api_key": "sk-test", "base_url": "https://deepseek.test/v1"},
+                "opencode": {"api_key": "sk-test", "base_url": "https://opencode.test/v1"},
+            },
+            "roles": {
+                "writer": {
+                    "primary_model": "deepseek/deepseek-v4-flash",
+                    "backup_model": "opencode/glm-5.2",
+                    "fallback_model": "local-default",
+                },
+            },
+            "model_params": {
+                "deepseek-v4-flash": {"temperature": 0.8},
+                "glm-5.2": {"temperature": 0.8},
+            },
+        }
+        dispatcher = WriterDispatcher(setup_run, "run_01", models_config)
+
+        result = dispatcher.dispatch_quad_track(
+            "shot_01",
+            base_prompt="请写一段小说正文。",
+        )
+
+        assert len(result["drafts"]) == 4
+        assert {draft["model_ref"] for draft in result["drafts"]} == {"opencode/glm-5.2"}
+
+    def test_quad_track_treats_provider_config_error_as_recoverable(self, setup_run, monkeypatch):
+        """Writer chain should continue when the primary provider is misconfigured."""
+        import inkflow.services.writer_dispatcher as wd
+        from inkflow.services.model_client import ModelResponse
+
+        class FakeClient:
+            def __init__(self, model_name: str):
+                self.model_name = model_name
+
+            def generate(self, request):
+                return ModelResponse(
+                    text=(
+                        f"{request.persona} 使用 {self.model_name} 完成正文。"
+                        "人物只通过动作和物件反应推进，不退回本地模板。"
+                    ),
+                    model=self.model_name,
+                    self_note=f"[{self.model_name}] fake",
+                )
+
+        def fake_create_model_client(model_name, **kwargs):
+            if model_name == "deepseek-v4-flash":
+                raise ValueError("No API key for provider")
+            return FakeClient(model_name)
+
+        monkeypatch.setattr(wd, "create_model_client", fake_create_model_client)
+
+        models_config = {
+            "providers": {
+                "opencode": {"api_key": "sk-test", "base_url": "https://opencode.test/v1"},
+            },
+            "roles": {
+                "writer": {
+                    "primary_model": "deepseek/deepseek-v4-flash",
+                    "backup_model": "opencode/glm-5.2",
+                    "fallback_model": "local-default",
+                },
+            },
+            "model_params": {
+                "deepseek-v4-flash": {"temperature": 0.8},
+                "glm-5.2": {"temperature": 0.8},
+            },
+        }
+        dispatcher = WriterDispatcher(setup_run, "run_01", models_config)
+
+        result = dispatcher.dispatch_quad_track("shot_01", base_prompt="请写一段小说正文。")
+
+        assert len(result["drafts"]) == 4
+        assert {draft["model_ref"] for draft in result["drafts"]} == {"opencode/glm-5.2"}
+
 
 class TestJuryService:
     def test_score_candidates(self, setup_run):

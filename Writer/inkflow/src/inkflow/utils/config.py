@@ -281,10 +281,14 @@ def _infer_supplier(model_name: str, models_config: dict) -> str:
     """从模型名推断所属供应商（v3 兼容）。"""
     if model_name.startswith("step"):
         return "stepfun"
+    elif model_name.startswith(("glm-", "kimi-", "minimax-", "mimo-")):
+        return "opencode"
     elif model_name.startswith("qwen"):
         return "bailian"
     elif model_name.startswith("deepseek"):
         return "deepseek"
+    elif model_name.startswith("gpt-5.5"):
+        return "fccy"
     return "stepfun"
 
 

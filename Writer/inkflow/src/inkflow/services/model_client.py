@@ -588,9 +588,19 @@ _MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     # StepFun (OpenAI)
     "step-router-v1": ("stepfun", "openai"),
     "step-3.7-flash": ("stepfun", "openai"),
+    # OpenCode Go (OpenAI-compatible aggregate endpoint)
+    "minimax-m3": ("opencode", "openai"),
+    "kimi-k2.7-code": ("opencode", "openai"),
+    "kimi-k2.6": ("opencode", "openai"),
+    "glm-5.2": ("opencode", "openai"),
+    "mimo-v2.5-pro": ("opencode", "openai"),
+    "mimo-v2.5": ("opencode", "openai"),
     # DeepSeek (OpenAI)
     "deepseek-v4-pro": ("deepseek", "openai"),
     "deepseek-v4-flash": ("deepseek", "openai"),
+    # FCCY (OpenAI)
+    "gpt-5.5": ("fccy", "openai"),
+    "gpt-5.5-Pro": ("fccy", "openai"),
     # 百炼 (OpenAI 兼容 - coding.dashscope)
     "qwen3.7-plus": ("bailian", "openai"),
     "qwen3.6-plus": ("bailian", "openai"),

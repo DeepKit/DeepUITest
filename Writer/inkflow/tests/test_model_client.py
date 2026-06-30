@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from inkflow.services.model_client import (
+    OpenAIClient,
     LocalDefaultGenerator,
     ModelRequest,
     ModelResponse,
@@ -129,6 +130,30 @@ class TestCreateModelClient:
     def test_unknown_model_raises(self):
         with pytest.raises(ValueError, match="Unknown model"):
             create_model_client("gpt-nonexistent")
+
+    @pytest.mark.parametrize(
+        ("model_name", "provider"),
+        [
+            ("glm-5.2", "opencode"),
+            ("kimi-k2.6", "opencode"),
+            ("minimax-m3", "opencode"),
+            ("mimo-v2.5-pro", "opencode"),
+            ("gpt-5.5", "fccy"),
+        ],
+    )
+    def test_create_new_openai_compatible_models(self, model_name, provider):
+        client = create_model_client(
+            model_name,
+            providers={
+                provider: {
+                    "api_key": "sk-test",
+                    "base_url": "https://example.test/v1",
+                    "protocol": "openai",
+                }
+            },
+        )
+
+        assert isinstance(client, OpenAIClient)
 
 
 def test_record_model_error_writes_attempt(db):
