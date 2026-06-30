@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from inkflow.services.model_client import (
+    AnthropicClient,
     OpenAIClient,
     LocalDefaultGenerator,
     ModelRequest,
@@ -154,6 +155,63 @@ class TestCreateModelClient:
         )
 
         assert isinstance(client, OpenAIClient)
+
+    def test_create_qwen_uses_anthropic_protocol(self):
+        client = create_model_client(
+            "qwen3.7-plus",
+            providers={
+                "bailian": {
+                    "api_key": "sk-test",
+                    "base_url": "https://example.test/apps/anthropic/v1",
+                    "protocol": "anthropic",
+                }
+            },
+        )
+
+        assert isinstance(client, AnthropicClient)
+
+    def test_provider_protocol_overrides_registry_default(self):
+        client = create_model_client(
+            "glm-5.2",
+            providers={
+                "opencode": {
+                    "api_key": "sk-test",
+                    "base_url": "https://example.test/messages",
+                    "protocol": "anthropic",
+                }
+            },
+        )
+
+        assert isinstance(client, AnthropicClient)
+
+    def test_openai_client_sends_user_agent(self, monkeypatch):
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                self.status = 200
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{}}'
+
+        def fake_urlopen(req, timeout):
+            captured["headers"] = dict(req.header_items())
+            return FakeResponse()
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+        client = OpenAIClient(
+            api_key="sk-test",
+            base_url="https://example.test/v1",
+            model_name="glm-5.2",
+        )
+
+        client.generate(ModelRequest(operation="write_generate", persona="test", prompt="hi"))
+
+        assert captured["headers"]["User-agent"] == "InkFlow/1.0 OpenAI-Compatible"
 
 
 def test_record_model_error_writes_attempt(db):

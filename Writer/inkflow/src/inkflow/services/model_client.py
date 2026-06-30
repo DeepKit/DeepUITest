@@ -102,6 +102,7 @@ class OpenAIClient:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "User-Agent": "InkFlow/1.0 OpenAI-Compatible",
             },
             method="POST",
         )
@@ -601,11 +602,11 @@ _MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     # FCCY (OpenAI)
     "gpt-5.5": ("fccy", "openai"),
     "gpt-5.5-Pro": ("fccy", "openai"),
-    # 百炼 (OpenAI 兼容 - coding.dashscope)
-    "qwen3.7-plus": ("bailian", "openai"),
-    "qwen3.6-plus": ("bailian", "openai"),
-    "qwen3.5-plus": ("bailian", "openai"),
-    "qwen3-coder-plus": ("bailian", "openai"),
+    # 百炼 (Anthropic 兼容 - coding.dashscope)
+    "qwen3.7-plus": ("bailian", "anthropic"),
+    "qwen3.6-plus": ("bailian", "anthropic"),
+    "qwen3.5-plus": ("bailian", "anthropic"),
+    "qwen3-coder-plus": ("bailian", "anthropic"),
 }
 
 
@@ -643,20 +644,21 @@ def create_model_client(
     api_key = cfg.get("api_key", "")
     base_url = cfg.get("base_url", "")
     actual_model = cfg.get("model", model_name)
+    actual_protocol = cfg.get("protocol") or protocol
 
     if not api_key:
         raise ValueError(f"No API key for provider '{provider_key}'")
 
-    if protocol == "openai":
+    if actual_protocol == "openai":
         return OpenAIClient(
             api_key=api_key, base_url=base_url, model_name=actual_model, db=db,
         )
-    elif protocol == "anthropic":
+    elif actual_protocol == "anthropic":
         return AnthropicClient(
             api_key=api_key, base_url=base_url, model_name=actual_model, db=db,
         )
     else:
-        raise ValueError(f"Unknown protocol: {protocol}")
+        raise ValueError(f"Unknown protocol: {actual_protocol}")
 
 
 def resolve_model_for_tier(
