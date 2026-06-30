@@ -258,6 +258,36 @@ class TestCreateModelClient:
                 prompt="score",
             ))
 
+    def test_openai_client_strips_think_blocks(self, monkeypatch):
+        class FakeResponse:
+            def __enter__(self):
+                self.status = 200
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    b'{"choices":[{"message":{"content":"<think>hidden reasoning</think>\\u6b63\\u6587\\u7559\\u4e0b"},'
+                    b'"finish_reason":"stop"}],"usage":{}}'
+                )
+
+        monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout: FakeResponse())
+        client = OpenAIClient(
+            api_key="sk-test",
+            base_url="https://example.test/v1",
+            model_name="minimax-m3",
+        )
+
+        response = client.generate(ModelRequest(
+            operation="write_generate",
+            persona="writer",
+            prompt="write",
+        ))
+
+        assert response.text == "正文留下"
+
 
 def test_record_model_error_writes_attempt(db):
     db.execute("INSERT INTO projects (project_id, name) VALUES ('proj_01', '分流')")

@@ -142,6 +142,19 @@ class OpenAIClient:
                 )
             # Fallback: reasoning models (step-3.7-flash) put output in reasoning_content
             text = msg.get("reasoning_content", "") or msg.get("reasoning", "")
+        text = _clean_model_text(text)
+        if request.operation == "jury_score" and not text.strip():
+            if self.db is not None:
+                _record_model_error(
+                    self.db,
+                    request,
+                    self.model_name,
+                    "OpenAI API returned no jury content after cleanup",
+                )
+            raise ModelCallError(
+                "OpenAI API returned no jury content after cleanup",
+                recoverable=True,
+            )
         usage_raw = result.get("usage", {})
         usage = {
             "prompt_tokens": usage_raw.get("prompt_tokens", 0),
@@ -150,7 +163,7 @@ class OpenAIClient:
         }
 
         response = ModelResponse(
-            text=text.strip(),
+            text=text,
             model=self.model_name,
             usage=usage,
             finish_reason=choice.get("finish_reason", "stop"),
@@ -228,6 +241,7 @@ class AnthropicClient:
         for block in content_blocks:
             if block.get("type") == "text":
                 text += block.get("text", "")
+        text = _clean_model_text(text)
 
         usage_raw = result.get("usage", {})
         usage = {
@@ -237,7 +251,7 @@ class AnthropicClient:
         }
 
         response = ModelResponse(
-            text=text.strip(),
+            text=text,
             model=self.model_name,
             usage=usage,
             finish_reason=result.get("stop_reason", "stop"),
@@ -374,6 +388,15 @@ def _extract_prompt_opening(prompt: str) -> str:
     if match:
         return _clean_prompt_line(match.group(1))
     return ""
+
+
+def _clean_model_text(text: str) -> str:
+    """Remove provider reasoning artifacts that should never enter prose/gates."""
+    text = text or ""
+    text = re.sub(r"(?is)<think>.*?</think>", "", text)
+    text = re.sub(r"(?is)<thinking>.*?</thinking>", "", text)
+    text = re.sub(r"(?is)<reasoning>.*?</reasoning>", "", text)
+    return text.strip()
 
 
 def _extract_prompt_pov(prompt: str) -> str:
