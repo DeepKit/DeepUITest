@@ -881,7 +881,10 @@ class JuryService:
                     prompt=prompt,
                     model=model_name,
                     temperature=params.get("temperature", 0.3),
-                    max_tokens=min(params.get("max_tokens", 1024), 1024),
+                    max_tokens=min(
+                        params.get("jury_max_tokens", params.get("max_tokens", 1024)),
+                        1024,
+                    ),
                     shot_id=shot_id,
                     run_id=self.run_id,
                     extra={"timeout_seconds": timeout_seconds},

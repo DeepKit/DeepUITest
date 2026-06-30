@@ -127,8 +127,20 @@ class OpenAIClient:
         choice = result.get("choices", [{}])[0]
         msg = choice.get("message", {})
         text = msg.get("content", "")
-        # Fallback: reasoning models (step-3.7-flash) put output in reasoning_content
         if not text or not text.strip():
+            if request.operation == "jury_score":
+                if self.db is not None:
+                    _record_model_error(
+                        self.db,
+                        request,
+                        self.model_name,
+                        "OpenAI API returned no jury content",
+                    )
+                raise ModelCallError(
+                    "OpenAI API returned no jury content",
+                    recoverable=True,
+                )
+            # Fallback: reasoning models (step-3.7-flash) put output in reasoning_content
             text = msg.get("reasoning_content", "") or msg.get("reasoning", "")
         usage_raw = result.get("usage", {})
         usage = {

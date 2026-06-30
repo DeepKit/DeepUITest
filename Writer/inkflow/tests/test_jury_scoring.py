@@ -147,6 +147,48 @@ class TestJuryScoreScale:
         ).fetchone()["cnt"]
         assert total == 10
 
+    def test_jury_score_uses_jury_max_tokens(self, setup_run_with_draft, monkeypatch):
+        """Remote jury JSON scoring should use a short cap, not writer max_tokens."""
+        import inkflow.services.jury_service as js
+        from inkflow.services.model_client import ModelResponse
+
+        captured = {}
+
+        class FakeClient:
+            def generate(self, request):
+                captured["max_tokens"] = request.max_tokens
+                return ModelResponse(
+                    text='{"score": 91, "comment": "通过"}',
+                    model=request.model,
+                )
+
+        monkeypatch.setattr(js, "create_model_client", lambda *args, **kwargs: FakeClient())
+        config = {
+            "providers": {
+                "opencode": {
+                    "api_key": "sk-test",
+                    "base_url": "https://x.test/v1",
+                    "protocol": "openai",
+                },
+            },
+            "jury_config": {"models": ["opencode/glm-5.2"]},
+            "model_params": {
+                "glm-5.2": {"max_tokens": 12000, "jury_max_tokens": 256},
+            },
+        }
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+
+        jury._score_single(
+            shot_id="shot_01",
+            draft_text="她把手机扣回掌心。",
+            jury_model_ref="opencode/glm-5.2",
+            dimension="language_texture",
+            meta_contract_summary="无",
+            previous_ending="无",
+        )
+
+        assert captured["max_tokens"] == 256
+
     def test_creative_review_can_choose_less_safe_high_value_draft(self, setup_run_with_draft):
         """CREATIVE-3: blank-shot review weights unexpected_value over safe compliance."""
         setup_run_with_draft.execute(

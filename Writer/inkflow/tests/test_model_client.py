@@ -8,6 +8,7 @@ from inkflow.services.model_client import (
     AnthropicClient,
     OpenAIClient,
     LocalDefaultGenerator,
+    ModelCallError,
     ModelRequest,
     ModelResponse,
     _record_model_error,
@@ -212,6 +213,35 @@ class TestCreateModelClient:
         client.generate(ModelRequest(operation="write_generate", persona="test", prompt="hi"))
 
         assert captured["headers"]["User-agent"] == "InkFlow/1.0 OpenAI-Compatible"
+
+    def test_openai_jury_rejects_reasoning_only_response(self, monkeypatch):
+        class FakeResponse:
+            def __enter__(self):
+                self.status = 200
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    b'{"choices":[{"message":{"content":"","reasoning_content":"score 90"},'
+                    b'"finish_reason":"length"}],"usage":{}}'
+                )
+
+        monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout: FakeResponse())
+        client = OpenAIClient(
+            api_key="sk-test",
+            base_url="https://example.test/v1",
+            model_name="glm-5.2",
+        )
+
+        with pytest.raises(ModelCallError, match="no jury content"):
+            client.generate(ModelRequest(
+                operation="jury_score",
+                persona="judge",
+                prompt="score",
+            ))
 
 
 def test_record_model_error_writes_attempt(db):
