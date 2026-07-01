@@ -1,7 +1,7 @@
 # InkFlow — 当前任务与议题清单
 
 Date: 2026-07-01
-Status: v3.23 配置项 DB 强制化方案已决策；TITLE-FIX-1 已落地；Schema v22；45 张业务表 + `_schema_meta` 元表
+Status: v3.23 CONFIG-ENFORCE-1 已落地（Schema v23，6 张结构化配置表 + CHECK 约束）；全量回归 495 passed；下一步 CONFIG-ENFORCE-2/3
 
 ---
 
@@ -51,6 +51,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 | TITLE-FIX-1 | 导出标题泄漏修复；`_derive_event_title()` 从内容提取短标题；8 个测试通过 |
 | OUTLINE-HALLUCINATION-1 | 大纲重生成幻觉防护；bigram drift 检测 |
 | L3-GATE-FP-1 | L3 `chapter_hook_weak` / `character_absence` 假阳性改 warning |
+| CONFIG-ENFORCE-1 | Schema v23：6 张元契约结构化表 + NOT NULL + CHECK + FK；495 tests pass |
 
 ---
 
@@ -67,7 +68,7 @@ InkFlow 的工程内核已完成 accepted canonical、run attempt identity、acc
 
 | 优先级 | ID | 任务 | 当前状态 | 验收标准 |
 |--------|----|------|----------|----------|
-| P1 | CONFIG-ENFORCE-1 | Schema v23：元契约结构化表 | 待实施 | 新增 `writing_project_identity` / `writing_hard_boundaries` / `writing_narrative_voice` / `writing_style_locks` / `writing_suspense_blueprint` / `writing_chapter_tension_arc`；所有字段 NOT NULL + CHECK + FK |
+| P1 | CONFIG-ENFORCE-1 | Schema v23：元契约结构化表 | ✅ 已完成 | 6 张表 + NOT NULL + CHECK + FK；495 tests pass |
 | P1 | CONFIG-ENFORCE-2 | Schema v23：shot 契约结构化表 | 待实施 | 新增 `writing_shot_must_land` / `writing_shot_anti_write` / `writing_shot_narrative_params`；替代 `must_land_json` / `anti_write_json` / `contract_json` 中 AI 写入字段 |
 | P1 | CONFIG-ENFORCE-3 | `confirm-contract` 改造：写结构化表 + Schema 验证 | 待实施 | Python 层 `validate_contract_schema()` 快速失败 + DB INSERT 硬拦 + 语义完整性检查（弧线峰谷、角色覆盖）|
 | P1 | CONFIG-ENFORCE-4 | 消费端改造：gate/exporter 读结构化表 | 待实施 | `architect_gate.py` / `exporter.py` / `prompt_compiler.py` 改为读结构化表，不再 `json.loads(layers_json).get(...)` |

@@ -26,9 +26,23 @@
 - 悬疑/紧张度约束方案讨论完成，决定采用 **DB 字段级线束**：所有 AI 生成的配置项必须有结构化 DB 表接收，DB NOT NULL + CHECK + FK 硬拦，AI 无法绕过。JSON blob 仅保留给日志/快照/审计。
 - 配置强制化方案已设计，待实施：新增 `writing_project_identity` / `writing_hard_boundaries` / `writing_narrative_voice` / `writing_style_locks` / `writing_suspense_blueprint` / `writing_chapter_tension_arc` 等结构化表。
 
+### CONFIG-ENFORCE-1 落地
+
+- Schema v22 → v23：新增 6 张元契约结构化表
+  - `writing_project_identity`：title/author/genre/era/language（NOT NULL + CHECK length > 0）
+  - `writing_hard_boundaries`：forbidden_phrases/deprecated_aliases/world_rules/characters_alive（NOT NULL）
+  - `writing_narrative_voice`：pov_mode/pov_characters/tense/narrator_type（CHECK 枚举值）
+  - `writing_style_locks`：max_paragraph_chars/dialogue_ratio/anti_patterns（CHECK 范围）
+  - `writing_suspense_blueprint`：preset（5 选 1 CHECK）/global_question（CHECK length > 5）
+  - `writing_chapter_tension_arc`：tension_target（CHECK 0-100）/suspense_role（枚举 CHECK）/blueprint_id FK
+- 新增 8 个约束测试（TestV23ConfigEnforcement）+ 1 个迁移测试
+- 修复 `test_l3_fails_when_chapter_hook_is_closed` 以适配 B79 非阻断改动
+- 全量回归：495 passed, 4 warnings
+
 验证：
 
 - `rtk proxy python -m pytest tests/test_cli.py -v`：68 passed（含 8 个新增 TITLE-FIX 测试）。
+- `rtk proxy python -m pytest -q`：495 passed, 4 warnings（含 8 个 v23 约束测试 + 1 个 v22→v23 迁移测试）。
 
 ---
 
