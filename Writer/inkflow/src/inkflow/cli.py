@@ -4176,11 +4176,13 @@ def _extract_bullet_chapter_events(
     conflict = field_map.get("冲突", "")
     if conflict:
         for idx, part in enumerate(_split_conflict_events(conflict), start=1):
-            add_event(f"冲突{idx}", f"冲突：{part}")
+            title = _derive_event_title(part) or f"冲突{idx}"
+            add_event(title, f"冲突：{part}")
 
     hook = field_map.get("章末钩子", "") or field_map.get("钩子", "")
     if hook:
-        add_event("章末钩子", f"章末钩子：{hook}", role="hook")
+        title = _derive_event_title(hook) or "章末钩子"
+        add_event(title, f"章末钩子：{hook}", role="hook")
 
     if events:
         return events
@@ -4209,6 +4211,36 @@ def _split_conflict_events(text: str) -> list[str]:
     if buffer:
         events.append(buffer)
     return events[:3]
+
+
+def _derive_event_title(text: str, *, max_chars: int = 10) -> str:
+    """Extract a short meaningful title from event description text.
+
+    Takes the first sentence's first clause and caps the length.
+    Strips common structural prefixes that would leak into subtitles.
+    """
+    import re
+
+    if not text:
+        return ""
+
+    # Strip common structural prefixes
+    text = re.sub(r"^(场景|产出物|冲突|章末钩子)[：:]\s*", "", text).strip()
+    if not text:
+        return ""
+
+    # First sentence (up to first 。！？\n)
+    first_sent = re.split(r"[。！？\n]", text, maxsplit=1)[0].strip()
+    if not first_sent:
+        first_sent = text[:60]
+
+    # First clause (up to first ，, ；;)
+    first_clause = re.split(r"[，,；;]", first_sent, maxsplit=1)[0].strip()
+    candidate = first_clause or first_sent
+
+    if not candidate:
+        return text[:max_chars]
+    return candidate[:max_chars]
 
 
 def _infer_event_pov(text: str, known_characters: list[str], previous_pov: str) -> str:

@@ -10,6 +10,7 @@ from inkflow.cli import (
     main,
     _extract_chapter_2_events,
     _extract_chapter_events,
+    _derive_event_title,
     _format_jury_draft_score,
     _build_previous_context,
     _build_fact_manifest,
@@ -1973,3 +1974,54 @@ class TestPipelineE2E:
         ).fetchone()
         assert row["shot_status"] == "done_yellow"
         assert row["light_status"] == "yellow"
+
+
+class TestDeriveEventTitle:
+    """Tests for _derive_event_title: extract meaningful subtitle from event text."""
+
+    def test_empty_input(self):
+        assert _derive_event_title("") == ""
+        assert _derive_event_title(None) == ""
+
+    def test_strips_structural_prefix(self):
+        """Must strip conflict/hook prefix before deriving title."""
+        assert _derive_event_title("冲突：吕素琴打开柜子") == "吕素琴打开柜子"
+        assert _derive_event_title("章末钩子：异常样件没有销毁") == "异常样件没有销毁"
+
+    def test_extracts_first_clause(self):
+        """Should take the first clause (before first comma/semicolon)."""
+        assert _derive_event_title("吕素琴打开柜子，发现裂纹") == "吕素琴打开柜子"
+        assert _derive_event_title("抽检样件正常，但发现异常") == "抽检样件正常"
+
+    def test_extracts_first_sentence(self):
+        """Should take first sentence (before first period)."""
+        assert _derive_event_title("异常样件没有销毁。吕素琴藏进柜底") == "异常样件没有销毁"
+
+    def test_caps_length(self):
+        """Should truncate to max_chars."""
+        long_text = "这是一段非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的文本。后面还有内容"
+        result = _derive_event_title(long_text)
+        assert len(result) <= 10
+
+    def test_custom_max_chars(self):
+        result = _derive_event_title("这是一段比较长的文本内容", max_chars=6)
+        assert len(result) <= 6
+
+    def test_fallback_for_no_punctuation(self):
+        """Short text without punctuation should be used as-is."""
+        assert _derive_event_title("短标题") == "短标题"
+
+    def test_does_not_leak_structural_label(self):
+        """The whole point: no more '冲突1' or '章末钩子' as titles."""
+        # Simulating what _split_conflict_events returns
+        conflict_part = "吕素琴打开柜子，发现裂纹。"
+        hook_text = "异常样件没有销毁。吕素琴把它藏进柜底"
+
+        title1 = _derive_event_title(conflict_part)
+        title2 = _derive_event_title(hook_text)
+
+        assert title1 != "冲突1"
+        assert title1 != "冲突"
+        assert title2 != "章末钩子"
+        assert "吕素琴" in title1 or "柜子" in title1
+        assert "样件" in title2 or "销毁" in title2 or "藏" in title2
