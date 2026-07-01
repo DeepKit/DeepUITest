@@ -194,6 +194,7 @@ class OutlineEvaluator:
             evaluation2["score"] > evaluation["score"]
             and not evaluation2.get("parse_error")
             and not _looks_like_prompt_analysis(new_outline_text)
+            and not _outline_drift_too_large(outline_text, new_outline_text)
         ):
             self._update_contract(shot_id, new_outline_text)
             final_outline = new_outline_text
@@ -569,3 +570,24 @@ def _looks_like_prompt_analysis(text: str) -> bool:
     if not head:
         return True
     return any(marker in head for marker in _PROMPT_ANALYSIS_MARKERS)
+
+
+def _outline_drift_too_large(original: str, regenerated: str, threshold: float = 0.20) -> bool:
+    """Check if regenerated outline diverges too far from the original.
+
+    A regenerated outline that shares almost no content with the original
+    is likely a hallucination rather than a genuine improvement.
+    Uses character bigram overlap for CJK-friendly comparison.
+    Returns True when the overlap ratio is below *threshold*.
+    """
+    def _bigrams(text: str) -> set[str]:
+        cleaned = (text or "").replace(" ", "").replace("\n", "")
+        return {cleaned[i:i + 2] for i in range(len(cleaned) - 1)}
+
+    orig_bg = _bigrams(original)
+    regen_bg = _bigrams(regenerated)
+    if not orig_bg or not regen_bg:
+        return True
+    overlap = orig_bg & regen_bg
+    ratio = len(overlap) / min(len(orig_bg), len(regen_bg))
+    return ratio < threshold
