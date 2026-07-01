@@ -34,6 +34,7 @@ from inkflow.services.model_client import (
     ModelCallError,
 )
 from inkflow.services.audit_recorder import AuditRecorder
+from inkflow.services.exposition_gate import audit_exposition
 
 
 _SCORE_PROMPT = """\
@@ -68,7 +69,7 @@ DIMENSION_DESCRIPTIONS = {
     "hard_rule_compliance": (
         "硬规则是否通过？只判断能不能进入文学评审，不评价文采。"
         "重点检查：硬事实、must_land、POV、禁写项、提前揭示、前文冲突、"
-        "空文/重复/提示词残留。若有任一致命问题，应给 0-79 分。"
+        "空文/重复/提示词残留、议论性解释/系统机制说明。若有任一致命问题，应给 0-79 分。"
         "段落长度、方言点缀、感官密度、身体时刻开场属于风格/文学问题，"
         "不得作为硬规则清零依据。characters_alive 只表示角色存活状态，"
         "不是唯一允许出场名单。"
@@ -708,12 +709,16 @@ class JuryService:
                 violations.append(f"prompt_artifact:{marker}")
         if _has_excessive_repetition(text):
             violations.append("excessive_repetition")
+        exposition_audit = audit_exposition(text, strict=False)
+        for item in exposition_audit.get("hard_violations", [])[:5]:
+            violations.append(f"explanation:{item.get('code', 'unknown')}")
 
         score = 100 - min(80, len(violations) * 25)
         return {
             "passed": not violations,
             "score": score,
             "violations": violations,
+            "exposition_audit": exposition_audit,
         }
 
     def _build_rejected_score(
@@ -1121,6 +1126,13 @@ def _heuristic_score(text: str) -> int:
     """基于文本特征的启发式评分 (0-100)。仅在无 API 可用时使用。"""
     score = 70  # baseline
 
+    exposition_audit = audit_exposition(text, strict=False)
+    hard_explanations = len(exposition_audit.get("hard_violations", []))
+    if hard_explanations >= 3:
+        score -= 35
+    elif hard_explanations >= 1:
+        score -= 20
+
     # 惩罚：分析性语言
     analysis_keywords = ["以下是", "根据", "这段文字", "可以", "请告诉我", "如果",
                          "进一步", "讨论", "分析", "解读", "关键事件", "深层", "隐喻"]
@@ -1162,7 +1174,14 @@ def _heuristic_score(text: str) -> int:
 def _dimension_adjustment(dimension: str, text: str) -> int:
     """Small deterministic local bias per dimension for cheap jury mode."""
     if dimension == "hard_rule_compliance":
+        exposition_audit = audit_exposition(text, strict=False)
+        if exposition_audit.get("hard_violations"):
+            return -35
         return 15 if not any(k in text[:500] for k in ["以下是", "分析", "解读"]) else -25
+    if dimension in {"scene_specificity", "forbidden_expression"}:
+        exposition_audit = audit_exposition(text, strict=False)
+        if exposition_audit.get("hard_violations"):
+            return -20
     if dimension == "scene_specificity":
         markers = ["手机", "屏幕", "膝盖", "保鲜膜", "门", "茶", "U盘", "楼道", "雾"]
         return min(10, sum(2 for marker in markers if marker in text))

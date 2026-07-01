@@ -27,6 +27,7 @@ import click
 
 from inkflow import __version__
 from inkflow.services.model_client import ModelCallError
+from inkflow.services.exposition_gate import audit_exposition
 
 
 # ── Windows UTF-8 fix ──
@@ -1203,11 +1204,26 @@ def _evaluate_text_against_fact_manifest(
 
     forbidden = list(global_manifest.get("forbidden_phrases") or [])
     forbidden.extend(shot_manifest.get("forbidden_phrases") or [])
+    forbidden.extend(global_manifest.get("exposition_markers") or [])
     for marker in dict.fromkeys(str(item) for item in forbidden if item):
         if marker in head:
             violations.append({
                 "code": "forbidden_phrase",
                 "marker": marker,
+            })
+
+    if phase == "draft":
+        exposition_result = audit_exposition(
+            text,
+            forbidden_phrases=forbidden,
+            strict=False,
+        )
+        for item in exposition_result.get("hard_violations", [])[:6]:
+            violations.append({
+                "code": "exposition_dump",
+                "subcode": item.get("code"),
+                "marker": item.get("match"),
+                "context": item.get("context"),
             })
 
     authorized = str(shot_manifest.get("authorized_corpus") or "")
@@ -1251,6 +1267,9 @@ def _evaluate_text_against_fact_manifest(
         "passed": not violations,
         "score": score,
         "violations": violations,
+        "exposition_audit": (
+            exposition_result if phase == "draft" else None
+        ),
         "shot_manifest": {
             "shot": shot_manifest.get("shot"),
             "title": shot_manifest.get("title"),

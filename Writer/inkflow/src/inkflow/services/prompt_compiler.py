@@ -70,6 +70,9 @@ class PromptCompiler:
         # Layer 1: Style locks (always injected)
         parts.append(_build_style_locks(meta_contract))
 
+        # Layer 1: Exposition replacement rules
+        parts.append(_build_exposition_replacement_rules())
+
         # Layer 1: World knowledge
         parts.append(_build_world_knowledge(meta_contract))
 
@@ -176,6 +179,7 @@ class PromptCompiler:
             "\n\n---\n"
             "## 现在开始写\n\n"
             "写出这个场景的小说正文。不要分析，不要评论，不要解释。\n"
+            "主题、系统、资源分配和人物处境只能通过动作、物件、身体反应、对话和环境后果显出来。\n"
             "直接写出故事。第一个字就是小说的正文。"
         )
 
@@ -295,6 +299,22 @@ def _build_style_locks(meta_contract: dict) -> str:
         '这种细节必须来自角色的日常观察，不是叙述者的分析。'
     )
     return base + precision_rule
+
+
+def _build_exposition_replacement_rules() -> str:
+    """Build concrete anti-exposition instructions for writer models."""
+    return (
+        "## 显影规则（硬要求）\n"
+        "不要把主题、系统、资源分配、人物处境或阵营关系直接说出来。\n"
+        "写作时如果想写“这意味着、系统并不恶意、它只是、本质上、逻辑结构、资源分配、低效率、直接回报、闭环”，必须删除。\n"
+        "替代方式只能选以下五类：\n"
+        "- 动作：角色被迫停下、改路、排队、按下、收回手。\n"
+        "- 物件：屏幕通知、票根、胶带、临时单、杯沿、门禁灯发生变化。\n"
+        "- 身体：膝盖疼、手抖、呼吸变短、汗浸湿胶带。\n"
+        "- 对话：只让角色说当下要办的事，不解释制度原理。\n"
+        "- 环境后果：窗口关闭、号码过期、地图改线、队伍被改道。\n"
+        "系统只能作为环境出现：通知、屏幕、排队、拒绝、延迟、扣回、改派。不要解释系统为什么这样做。"
+    )
 
 
 def _build_world_knowledge(meta_contract: dict) -> str:
@@ -488,6 +508,10 @@ def _build_chapter_setup_context(chapter_setup: dict) -> list[str]:
         repair_instruction = exposition_gate.get("repair_instruction")
         if repair_instruction:
             parts.append(f"替代写法: {repair_instruction}")
+        parts.append(
+            "执行方式: 看见抽象词时立刻转成可见后果。"
+            "用屏幕通知、排队阻滞、物件变化、身体反应、沉默或短对话承载，不写制度解释。"
+        )
 
     chapter_hook = chapter_setup.get("chapter_hook") or {}
     if isinstance(chapter_hook, dict) and chapter_hook.get("required"):

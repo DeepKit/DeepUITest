@@ -261,6 +261,32 @@ class TestQualityController:
         assert row is not None
         assert row["passed"] == 1
 
+    def test_gate1_blocks_explanation_dump_before_l4(self, setup_run):
+        text = (
+            "研究员低头看着手里的样本。他忽然想起调度系统的评估模型。"
+            "那个看似公平的资源分配算法，把中心区和边缘区的人分成两套轨道。"
+            "系统并不恶意，它只是精确地计算，把所有非核心、低效率、"
+            "不产生直接回报的人力和资源筛出去。这个逻辑结构本质上是空的。"
+        )
+        setup_run.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d_explain', 'shot_01', 'run_01', '结构师', 0, ?, 'att_explain')",
+            (text,),
+        )
+        setup_run.commit()
+
+        qc = QualityController(setup_run, "run_01")
+        passed = qc.gate1_check("shot_01", ["d_explain"])
+
+        assert passed == []
+        row = setup_run.execute(
+            "SELECT gate1_result_json FROM writing_drafts WHERE draft_id = 'd_explain'"
+        ).fetchone()
+        result = json.loads(row["gate1_result_json"])
+        assert result["passed"] is False
+        assert any(v.startswith("explanation:") for v in result["violations"])
+
     def test_gate2_green(self, setup_run):
         qc = QualityController(setup_run, "run_01")
         verdict = {"winner_score": 90, "light_status": "green"}

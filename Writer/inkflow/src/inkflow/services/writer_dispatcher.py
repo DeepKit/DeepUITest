@@ -221,6 +221,7 @@ class WriterDispatcher:
             supplier, model_name = parse_model_ref(ref)
             providers_for_model = build_providers_for_model(ref, self.models_config)
             params = get_model_params(model_name, self.models_config)
+            adapted_prompt = prompt + _writer_model_adaptation(model_name)
 
             try:
                 client = create_model_client(
@@ -229,7 +230,7 @@ class WriterDispatcher:
                 request = ModelRequest(
                     operation="write_generate",
                     persona=f"赛道{track}",
-                    prompt=prompt,
+                    prompt=adapted_prompt,
                     model=model_name,
                     temperature=params.get("temperature", 0.8),
                     max_tokens=params.get("max_tokens", 16384),
@@ -496,6 +497,7 @@ class WriterDispatcher:
             supplier, model_name = parse_model_ref(ref)
             providers_for_model = build_providers_for_model(ref, self.models_config)
             params = get_model_params(model_name, self.models_config)
+            adapted_prompt = prompt + _writer_model_adaptation(model_name)
 
             try:
                 client = create_model_client(
@@ -504,7 +506,7 @@ class WriterDispatcher:
                 request = ModelRequest(
                     operation="write_generate",
                     persona=persona_name,
-                    prompt=prompt,
+                    prompt=adapted_prompt,
                     model=model_name,
                     temperature=temperature,
                     max_tokens=params.get("max_tokens", 16384),
@@ -630,3 +632,20 @@ class WriterDispatcher:
             (shot_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def _writer_model_adaptation(model_name: str) -> str:
+    """Return writer-only adaptation for models that tend to explain."""
+    lowered = (model_name or "").lower()
+    base = (
+        "\n\n## 模型适配：显影优先\n"
+        "只输出小说正文。不要写主题阐释、系统原理、资源分配分析或人物处境总结。\n"
+        "如果一句话里出现“系统/算法/模型/资源/效率/回报/逻辑/本质/意味着”，"
+        "先把这句话删掉，改成角色看见的通知、拿在手里的物件、身体反应、对话中断或环境后果。"
+    )
+    if any(token in lowered for token in ("mimo", "qwen", "kimi")):
+        return (
+            base
+            + "\n本模型容易把设定讲清楚；本次禁止讲清楚，只能让读者从场景里看出来。"
+        )
+    return base

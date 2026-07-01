@@ -300,6 +300,37 @@ class TestJuryScoreScale:
         assert result["all_passed_threshold"] is False
         assert result["min_passing_drafts"] == 2
 
+    def test_explanation_dump_is_rejected_by_hard_rule_before_literary_jury(
+        self, setup_run_with_draft,
+    ):
+        """Explanation-heavy draft must not become a high-literary winner."""
+        text = (
+            "研究员低头看着手里的样本。他忽然想起调度系统的评估模型。"
+            "那个看似公平的资源分配算法，把中心区和边缘区的人分成两套轨道。"
+            "系统并不恶意，它只是精确地计算，把所有非核心、低效率、"
+            "不产生直接回报的人力和资源筛出去。这个逻辑结构本质上是空的。"
+        )
+        setup_run_with_draft.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d_explain', 'shot_01', 'run_01', '结构师', 1, ?, 'att_explain')",
+            (text,),
+        )
+        setup_run_with_draft.commit()
+
+        config = {"jury_config": {"min_passing_drafts": 1}}
+        jury = JuryService(setup_run_with_draft, "run_01", config)
+        result = jury.score_candidates("shot_01", ["d_explain"])
+        draft_score = result["draft_scores"]["d_explain"]
+
+        assert result["winner_draft_id"] is None
+        assert draft_score["eligible"] is False
+        assert draft_score["failure_stage"] == "hard_rule"
+        assert any(
+            str(v).startswith("explanation:")
+            for v in draft_score["hard_rule"]["violations"]
+        )
+
     def test_remote_hard_rule_style_complaint_does_not_zero_eligibility(
         self, setup_run_with_draft, monkeypatch,
     ):

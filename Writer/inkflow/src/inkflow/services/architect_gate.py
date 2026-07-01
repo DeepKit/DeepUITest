@@ -38,6 +38,11 @@ from inkflow.utils.character_names import (
     find_deprecated_aliases,
 )
 from inkflow.services.audit_recorder import AuditRecorder
+from inkflow.services.exposition_gate import (
+    check_explanation_sentences,
+    check_narrator_intrusion,
+    check_system_voice,
+)
 
 
 # ── Closing-sentence audit patterns ──
@@ -565,26 +570,7 @@ class ArchitectGate:
         Returns:
             {violations: list, total_explanations: int}
         """
-        if not text or len(text) < 50:
-            return {"violations": [], "total_explanations": 0}
-
-        violations = []
-        for pattern in _EXPLANATION_PATTERNS:
-            for match in re.finditer(pattern, text):
-                # Get context around the match
-                start = max(0, match.start() - 20)
-                end = min(len(text), match.end() + 40)
-                violations.append({
-                    "pattern": pattern,
-                    "match": match.group(),
-                    "position": match.start(),
-                    "context": text[start:end],
-                })
-
-        return {
-            "violations": violations,
-            "total_explanations": len(violations),
-        }
+        return check_explanation_sentences(text)
 
     # ── D-25: Harm preview detection ──
 
@@ -677,27 +663,7 @@ class ArchitectGate:
         Returns:
             {violations: list, total_intrusions: int}
         """
-        if not text or len(text) < 50:
-            return {"violations": [], "total_intrusions": 0}
-
-        violations = []
-        for pattern in _NARRATOR_INTRUSION_PATTERNS:
-            for match in re.finditer(pattern, text):
-                start = max(0, match.start() - 30)
-                end = min(len(text), match.end() + 50)
-                violations.append({
-                    "pattern": pattern,
-                    "match": match.group(),
-                    "severity": "high",
-                    "position": match.start(),
-                    "context": text[start:end],
-                    "suggestion": "让角色的行为自己说话，叙述者不要替读者下定义",
-                })
-
-        return {
-            "violations": violations,
-            "total_intrusions": len(violations),
-        }
+        return check_narrator_intrusion(text)
 
     # ── OPT-7: System voice separation ──
 
@@ -713,45 +679,7 @@ class ArchitectGate:
             {direct: int, interpretive: int, ratio: float, warning: bool,
              direct_matches: list, interpretive_matches: list}
         """
-        if not text or len(text) < 100:
-            return {
-                "direct": 0, "interpretive": 0, "ratio": 0.0,
-                "warning": False,
-                "direct_matches": [], "interpretive_matches": [],
-            }
-
-        direct_matches = []
-        for pattern in _SYSTEM_DIRECT_PATTERNS:
-            for match in pattern.finditer(text):
-                direct_matches.append({
-                    "match": match.group()[:80],
-                    "position": match.start(),
-                })
-
-        interpretive_matches = []
-        for pattern in _SYSTEM_INTERPRETIVE_PATTERNS:
-            for match in pattern.finditer(text):
-                start = max(0, match.start() - 20)
-                end = min(len(text), match.end() + 40)
-                interpretive_matches.append({
-                    "match": match.group()[:60],
-                    "context": text[start:end],
-                    "position": match.start(),
-                })
-
-        direct_count = len(direct_matches)
-        interpretive_count = len(interpretive_matches)
-        total = direct_count + interpretive_count
-        ratio = interpretive_count / max(total, 1)
-
-        return {
-            "direct": direct_count,
-            "interpretive": interpretive_count,
-            "ratio": round(ratio, 2),
-            "warning": interpretive_count > direct_count and interpretive_count >= 2,
-            "direct_matches": direct_matches,
-            "interpretive_matches": interpretive_matches,
-        }
+        return check_system_voice(text)
 
     # ── Canonical names / factual expansion ──
 

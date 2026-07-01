@@ -22,6 +22,7 @@ from inkflow.models.enums import (
     RepairLayer,
 )
 from inkflow.services.audit_recorder import AuditRecorder
+from inkflow.services.exposition_gate import audit_exposition
 
 
 class QualityController:
@@ -40,6 +41,7 @@ class QualityController:
         - Empty or whitespace-only text
         - Excessive repetition (same phrase > 5 times in short text)
         - Minimum length (at least 50 chars)
+        - High-confidence explanation/exposition dump
 
         Returns:
             List of draft_ids that passed Gate 1.
@@ -67,9 +69,15 @@ class QualityController:
             if _has_excessive_repetition(text):
                 violations.append("excessive_repetition")
 
+            # Check 4: Explanation / exposition dump
+            exposition_audit = audit_exposition(text, strict=False)
+            for item in exposition_audit.get("hard_violations", [])[:3]:
+                violations.append(f"explanation:{item.get('code', 'unknown')}")
+
             gate1_result = {
                 "passed": len(violations) == 0,
                 "violations": violations,
+                "exposition_audit": exposition_audit,
             }
 
             if gate1_result["passed"]:
@@ -79,7 +87,8 @@ class QualityController:
                 "UPDATE writing_drafts SET gate1_result_json = ? WHERE draft_id = ?",
                 (json.dumps(gate1_result, ensure_ascii=False), draft_id),
             )
-            AuditRecorder(self.db, run_id=self.run_id).record_draft_eligibility(
+            audit = AuditRecorder(self.db, run_id=self.run_id)
+            audit.record_draft_eligibility(
                 draft_id=draft_id,
                 shot_id=shot_id,
                 gate_stage="gate1",
@@ -88,6 +97,19 @@ class QualityController:
                 reason={"violations": violations},
                 result=gate1_result,
             )
+            if not gate1_result["passed"]:
+                audit.record_failure_attribution(
+                    stage="gate1",
+                    failure_category="writer_drift",
+                    shot_id=shot_id,
+                    draft_id=draft_id,
+                    root_cause=gate1_result,
+                    evidence_refs={"attempt_id": draft["attempt_id"]},
+                    suggested_action=(
+                        "Gate1 前置淘汰；若 explanation 反复出现，优先收紧 prompt "
+                        "或切换更克制的 writer 模型。"
+                    ),
+                )
 
         self.db.commit()
         return passed

@@ -52,6 +52,22 @@ class TestPromptCompiler:
         assert "prefix_length" in result
         assert "分流" in result["prefix_text"]
 
+    def test_static_prefix_includes_exposition_replacement_rules(self, compiler):
+        result = compiler.compile_static_prefix(
+            {"identity": {"title": "分流"}, "narrative_voice": {},
+             "hard_boundaries": {}, "anti_reveal": {}, "world_knowledge": {},
+             "structure_rules": {}, "anti_patterns": {}, "style_locks": {},
+             "motif_system": {}, "creative_zones": {}},
+            "结构师",
+        )
+        prompt = result["prefix_text"]
+        assert "显影规则" in prompt
+        assert "动作" in prompt
+        assert "物件" in prompt
+        assert "身体" in prompt
+        assert "环境后果" in prompt
+        assert "不要解释系统为什么这样做" in prompt
+
     def test_compile_shot_prompt(self, compiler, setup_run):
         db = setup_run
         static_prefix = compiler.compile_static_prefix(
@@ -175,6 +191,7 @@ class TestPromptCompiler:
         assert "Shot Task Card" in prompt
         assert "玻璃里的保鲜膜" in prompt
         assert "外江向内侵蚀内江" in prompt
+        assert "屏幕通知、排队阻滞、物件变化、身体反应" in prompt
 
     def test_different_personas(self, compiler, setup_run):
         static_prefix = compiler.compile_static_prefix(
