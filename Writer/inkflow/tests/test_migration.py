@@ -324,6 +324,44 @@ class TestVersionTracking:
         finally:
             conn.close()
 
+    def test_migrate_v22_to_v23_creates_config_tables(self, tmp_dir):
+        """v23 migration should create 6 structured config tables."""
+        conn = sqlite3.connect(str(tmp_dir / "v22_config_enforce.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 22)
+            # Create a minimal project for FK references
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS projects "
+                "(project_id TEXT PRIMARY KEY, name TEXT UNIQUE, "
+                "root_path TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+            )
+            conn.execute(
+                "INSERT INTO projects (project_id, name) VALUES ('p1', '测试项目')"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v22 → v23" in item for item in result)
+            # Verify all 6 new tables exist
+            for table in [
+                "writing_project_identity",
+                "writing_hard_boundaries",
+                "writing_narrative_voice",
+                "writing_style_locks",
+                "writing_suspense_blueprint",
+                "writing_chapter_tension_arc",
+            ]:
+                row = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,)
+                ).fetchone()
+                assert row is not None, f"缺少表: {table}"
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""

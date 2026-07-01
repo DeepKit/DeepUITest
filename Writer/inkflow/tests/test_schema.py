@@ -56,6 +56,13 @@ ALL_TABLES = [
     "contract_versions",
     "story_content",
     "execution_records",
+    # v23: 配置项 DB 强制化
+    "writing_project_identity",
+    "writing_hard_boundaries",
+    "writing_narrative_voice",
+    "writing_style_locks",
+    "writing_suspense_blueprint",
+    "writing_chapter_tension_arc",
 ]
 
 # 预期索引
@@ -124,6 +131,13 @@ EXPECTED_INDEXES = [
     "idx_execution_records_run",
     # v9: L0 全书宪法 (ARCH-4)
     "idx_book_constitutions_project",
+    # v23: 配置项 DB 强制化
+    "idx_project_identity_project",
+    "idx_hard_boundaries_project",
+    "idx_narrative_voice_project",
+    "idx_style_locks_project",
+    "idx_suspense_blueprint_project",
+    "idx_tension_arc_blueprint",
 ]
 
 
@@ -668,3 +682,107 @@ class TestTreeArchitecture:
         ).fetchone()
         assert row is not None, "没有找到封版记录"
         assert row[0] == '封版本', f"期望封版版本，实际: {row[0]}"
+
+
+class TestV23ConfigEnforcement:
+    """v23: 配置项 DB 强制化 — 结构化表与 CHECK 约束"""
+
+    def test_v23_tables_exist(self, db):
+        """v23 新增 6 张结构化配置表"""
+        v23_tables = [
+            "writing_project_identity",
+            "writing_hard_boundaries",
+            "writing_narrative_voice",
+            "writing_style_locks",
+            "writing_suspense_blueprint",
+            "writing_chapter_tension_arc",
+        ]
+        for table in v23_tables:
+            row = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,)
+            ).fetchone()
+            assert row is not None, f"缺少表: {table}"
+
+    def test_suspense_blueprint_rejects_invalid_preset(self, db):
+        """suspense_blueprint.preset 必须在 5 个合法值中"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_suspense_blueprint "
+                "(blueprint_id, project_id, preset, global_question) "
+                "VALUES ('b1', 'p1', 'invalid_preset', '这个问题很关键需要解答')"
+            )
+
+    def test_suspense_blueprint_rejects_short_question(self, db):
+        """suspense_blueprint.global_question 长度必须 > 5"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_suspense_blueprint "
+                "(blueprint_id, project_id, preset, global_question) "
+                "VALUES ('b1', 'p1', 'whodunit', '短')"
+            )
+
+    def test_suspense_blueprint_accepts_valid(self, db):
+        """合法的 suspense_blueprint 可以正常插入"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        db.execute(
+            "INSERT INTO writing_suspense_blueprint "
+            "(blueprint_id, project_id, preset, global_question) "
+            "VALUES ('b1', 'p1', 'institutional_suspense', '白灯到底是什么？谁在决定代价？')"
+        )
+        row = db.execute(
+            "SELECT preset, global_question FROM writing_suspense_blueprint WHERE blueprint_id='b1'"
+        ).fetchone()
+        assert row[0] == "institutional_suspense"
+
+    def test_tension_arc_rejects_out_of_range(self, db):
+        """tension_target 必须在 0-100 之间"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        db.execute(
+            "INSERT INTO writing_suspense_blueprint "
+            "(blueprint_id, project_id, preset, global_question) "
+            "VALUES ('b1', 'p1', 'whodunit', '白灯到底是什么？谁在决定代价？')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_chapter_tension_arc "
+                "(arc_id, blueprint_id, chapter_key, tension_target, suspense_role) "
+                "VALUES ('a1', 'b1', 'v01.c01', 150, 'peak')"
+            )
+
+    def test_tension_arc_rejects_invalid_role(self, db):
+        """suspense_role 必须在 5 个合法值中"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        db.execute(
+            "INSERT INTO writing_suspense_blueprint "
+            "(blueprint_id, project_id, preset, global_question) "
+            "VALUES ('b1', 'p1', 'whodunit', '白灯到底是什么？谁在决定代价？')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_chapter_tension_arc "
+                "(arc_id, blueprint_id, chapter_key, tension_target, suspense_role) "
+                "VALUES ('a1', 'b1', 'v01.c01', 50, 'invalid_role')"
+            )
+
+    def test_narrative_voice_rejects_invalid_pov_mode(self, db):
+        """pov_mode 必须在合法枚举中"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_narrative_voice "
+                "(voice_id, project_id, pov_mode, pov_characters, tense, narrator_type) "
+                "VALUES ('v1', 'p1', 'invalid_pov', '[]', 'past', 'invisible')"
+            )
+
+    def test_project_identity_rejects_empty_title(self, db):
+        """title 不能为空字符串"""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_project_identity "
+                "(identity_id, project_id, title, author, era, total_chapters) "
+                "VALUES ('i1', 'p1', '', '作者', '1979', 10)"
+            )

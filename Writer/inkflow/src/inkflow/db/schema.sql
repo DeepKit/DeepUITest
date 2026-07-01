@@ -874,3 +874,81 @@ CREATE TABLE writing_anti_contract_reviews (
     created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_anti_contract_reviews_run ON writing_anti_contract_reviews(run_id);
+
+-- v23: 配置项 DB 强制化 — 元契约结构化表
+CREATE TABLE writing_project_identity (
+    identity_id     TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(project_id),
+    title           TEXT NOT NULL CHECK(length(title) > 0),
+    author          TEXT NOT NULL CHECK(length(author) > 0),
+    genre_tags      TEXT NOT NULL,
+    era             TEXT NOT NULL CHECK(length(era) > 0),
+    language        TEXT NOT NULL DEFAULT 'zh-CN',
+    total_chapters  INTEGER NOT NULL CHECK(total_chapters > 0),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_project_identity_project ON writing_project_identity(project_id);
+
+CREATE TABLE writing_hard_boundaries (
+    boundary_id         TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(project_id),
+    forbidden_phrases   TEXT NOT NULL DEFAULT '[]',
+    forbidden_topics    TEXT NOT NULL DEFAULT '[]',
+    deprecated_aliases  TEXT NOT NULL DEFAULT '{}',
+    world_rules         TEXT NOT NULL DEFAULT '[]',
+    characters_alive    TEXT NOT NULL DEFAULT '[]',
+    created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_hard_boundaries_project ON writing_hard_boundaries(project_id);
+
+CREATE TABLE writing_narrative_voice (
+    voice_id        TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(project_id),
+    pov_mode        TEXT NOT NULL CHECK(pov_mode IN (
+                        'first_person','third_limited','third_omniscient',
+                        'multi_pov','free_indirect')),
+    pov_characters  TEXT NOT NULL,
+    tense           TEXT NOT NULL CHECK(tense IN ('past','present','mixed')),
+    narrator_type   TEXT NOT NULL CHECK(narrator_type IN (
+                        'character','invisible','unreliable','choral')),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_narrative_voice_project ON writing_narrative_voice(project_id);
+
+CREATE TABLE writing_style_locks (
+    lock_id                 TEXT PRIMARY KEY,
+    project_id              TEXT NOT NULL REFERENCES projects(project_id),
+    max_paragraph_chars     INTEGER CHECK(max_paragraph_chars > 0),
+    max_sentence_chars      INTEGER CHECK(max_sentence_chars > 0),
+    dialogue_ratio_min      REAL CHECK(dialogue_ratio_min BETWEEN 0 AND 1),
+    dialogue_ratio_max      REAL CHECK(dialogue_ratio_max BETWEEN 0 AND 1),
+    sensory_density         TEXT CHECK(sensory_density IN ('sparse','normal','dense')),
+    anti_patterns           TEXT NOT NULL DEFAULT '[]',
+    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_style_locks_project ON writing_style_locks(project_id);
+
+CREATE TABLE writing_suspense_blueprint (
+    blueprint_id    TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(project_id),
+    preset          TEXT NOT NULL CHECK(preset IN (
+                        'literary_tension','institutional_suspense',
+                        'psychological_thriller','whodunit','slow_burn')),
+    global_question TEXT NOT NULL CHECK(length(global_question) > 5),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_suspense_blueprint_project ON writing_suspense_blueprint(project_id);
+
+CREATE TABLE writing_chapter_tension_arc (
+    arc_id          TEXT PRIMARY KEY,
+    blueprint_id    TEXT NOT NULL REFERENCES writing_suspense_blueprint(blueprint_id),
+    chapter_key     TEXT NOT NULL,
+    tension_target  INTEGER NOT NULL CHECK(tension_target BETWEEN 0 AND 100),
+    suspense_role   TEXT NOT NULL CHECK(suspense_role IN (
+                        'setup','escalation','peak','payoff','breather')),
+    reader_retention TEXT NOT NULL DEFAULT '',
+    main_engine     TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(blueprint_id, chapter_key)
+);
+CREATE INDEX idx_tension_arc_blueprint ON writing_chapter_tension_arc(blueprint_id);

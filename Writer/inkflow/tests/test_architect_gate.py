@@ -313,7 +313,8 @@ class TestArchitectGateL3:
         assert result["passed"] is False
         assert len(result["issues"]) > 0
 
-    def test_l3_fails_when_chapter_hook_is_closed(self, setup_run):
+    def test_l3_passes_but_warns_when_chapter_hook_is_closed(self, setup_run):
+        """B79: chapter_hook_weak is now a non-blocking warning, not a hard failure."""
         from inkflow.services.architect_gate import ArchitectGate
         db = setup_run
         chapter = "v01.c07"
@@ -328,9 +329,9 @@ class TestArchitectGateL3:
 
         result = gate.evaluate_l3(chapter)
 
-        assert result["passed"] is False
+        # B79: chapter_hook_weak is now non-blocking warning
+        assert result["passed"] is True
         assert result["chapter_hook"]["passed"] is False
-        assert any("chapter_hook_weak" in issue for issue in result["issues"])
 
     def test_l3_passes_when_chapter_hook_is_unfinished_action(self, setup_run):
         from inkflow.services.architect_gate import ArchitectGate
