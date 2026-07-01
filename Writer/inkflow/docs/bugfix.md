@@ -7,6 +7,52 @@
 
 ---
 
+## 第十一轮：《白灯法则》生产验证与管线修复（2026-07-01）
+
+### B76. 导出小标题泄漏结构标签（冲突1、章末钩子） ✅ 已修复
+- **严重性**: Important
+- **根因**: `_extract_bullet_chapter_events` 中冲突和章末钩子的 title 使用硬编码标签 `f"冲突{idx}"` 和 `"章末钩子"`，这些内部字段名直接泄漏到导出正文的小标题中。
+- **影响**: 读者看到的章节小标题是"冲突1"、"冲突2"、"章末钩子"等结构性标签，而非有意义的内容标题。
+- **修复**: 新增 `_derive_event_title()` 函数，从事件内容首句首分句提取 ≤10 字符短标题；冲突和钩子分别调用该函数派生标题，仅在函数返回空时回退到原编号。8 个单元测试覆盖。
+- **文件**: `cli.py`（`_derive_event_title` 新增 + `_extract_bullet_chapter_events` 修改）, `tests/test_cli.py`（TestDeriveEventTitle 8 个测试）
+
+### B77. 大纲评估器重新生成产生幻觉内容 ✅ 已修复
+- **严重性**: Critical
+- **根因**: 大纲评估器在评估不通过后重新生成大纲时，模型可能产生完全偏离原作世界观的内容（1979 年工厂故事 → "安保机器人"、"活体金属"等科幻内容）。原管线无条件接受重新生成的大纲并写回合约。
+- **影响**: shot 合约被幻觉内容污染，后续写手按错误大纲写作。
+- **修复**: 新增 `_outline_drift_too_large()` 函数，用 CJK character bigram overlap 检测新大纲与原始大纲的相似度；重叠率 < 20% 时拒绝更新合约，保留原始大纲。
+- **文件**: `outline_evaluator.py`（`_outline_drift_too_large` + `_balanced_json_candidates` + `_sanitize_regenerated_outline` + `_looks_like_prompt_analysis`）
+
+### B78. 大纲评估响应解析失败返回固定 50 分 ✅ 已修复
+- **严重性**: Important
+- **根因**: 大纲评估响应含推理前缀（`<think>...</think>`）时 JSON 解析失败，原逻辑返回固定 score=50，无法区分"低分"和"解析失败"。
+- **影响**: 解析失败的响应被当作有效评分进入后续流程，可能导致不必要的重新生成或错误通过。
+- **修复**: 新增 `_parse_json_object_from_text()` 提取首个合法 JSON 对象（含 brace-matching）；解析失败时返回 `parse_error: True` + 阈值分数，`evaluate_and_fix` 对 `parse_error` 直接放行不触发重新生成。
+- **文件**: `outline_evaluator.py`
+
+### B79. L3 门禁 chapter_hook_weak 假阴性 ✅ 已修复
+- **严重性**: Important
+- **根因**: `chapter_hook_weak` 检查只分析最后一句，当末句是感官描写时分类为 `sensory_detail`，即使前文有未完结动作也判为弱钩子。
+- **影响**: 实际有悬念的章节被错误标记为弱钩子，触发不必要的阻断。
+- **修复**: 改为非阻断 warning，不再加入 issues 列表。
+- **文件**: `architect_gate.py`
+
+### B80. L3 门禁 character_absence 假阳性（前几章） ✅ 已修复
+- **严重性**: Important
+- **根因**: `character_absence` 检查全书 POV 角色在当前章节是否出现，前几章（如第 1-2 章）大量角色尚未登场属正常现象，但被判定为缺席。
+- **影响**: 早期章节被错误阻断。
+- **修复**: 改为非阻断 warning。
+- **文件**: `architect_gate.py`
+
+### B81. `.models` 配置双源不一致 ⏳ 待修复
+- **严重性**: Important
+- **根因**: `.models` 文件中 `roles.jury` 和 `jury_config.models` 是独立的两个配置源，修改其中一个不会自动同步另一个。
+- **影响**: 手动修改 `.models` 时容易只改��处导致管线使用不同模型组合。
+- **修复方案**: 在配置加载时校验两个源的一致性，或在代码中统一为单一数据源。
+- **文件**: `utils/config.py`
+
+---
+
 ## 第十轮：v21/v22 全程审计与契约审计半重构（2026-06-29）
 
 ### B75. confirm-contract 人工确认即入库，缺少契约审计师复审 ✅ 已修复

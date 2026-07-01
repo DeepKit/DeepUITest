@@ -4,6 +4,34 @@
 
 ---
 
+## v3.23 《白灯法则》第 2 章生产验证与管线修复 (2026-07-01)
+
+本轮用《白灯法则》第 2 章做真实生产验证，发现并修复多个管线缺陷，同时完成悬疑约束架构决策。
+
+### 管线修复
+
+- **TITLE-FIX-1**：导出管线标题泄漏修复。`_extract_bullet_chapter_events` 中硬编码结构标签（`冲突1`、`章末钩子`）替换为 `_derive_event_title()` 从事件内容首句首分句提取有意义的短标题；8 个单元测试通过。
+- **OUTLINE-HALLUCINATION-1**：大纲评估器重新生成时产生幻觉（1979 年工厂故事变成科幻内容"安保机器人"）。新增 `_outline_drift_too_large()` 双字漂移检测（CJK character bigram overlap），更新合约时校验新大纲与原始大纲的重叠率 ≥ 20%。
+- **OUTLINE-PARSE-1**：大纲评估响应含推理前缀时解析失败，原返回固定 50 分。改为返回 `parse_error: True` 标记 + 阈值分数，不再把不可解析响应当作有效评分。
+- **L3-GATE-FP-1**：L3 门禁 `chapter_hook_weak` 假阴性（只看末句分类为 sensory_detail，忽略前文未完结动作）和 `character_absence` 假阳性（前几章 POV 角色缺席属正常）。改为非阻断 warning。
+- **L3-DENSITY-1**：L3 有标题 shot 最低字数从 450/500 下调为 350/400，适配短 shot 场景。
+
+### 模型配置调整
+
+- 《白灯法则》`.models` 配置：writer 主模型改为 `bailian/qwen3.7-plus`（避免 agnes-2.0-flash 写正文时出现 prompt  artifacts）；jury 主模型改为 `agnes/agnes-2.0-flash`；architect/repair 主模型改为 `deepseek/deepseek-v4-pro`（直连，避免 opencode 429 限流）。
+- 移除 `jury_config.models` 中的 opencode/deepseek-v4-flash。
+
+### 架构决策
+
+- 悬疑/紧张度约束方案讨论完成，决定采用 **DB 字段级线束**：所有 AI 生成的配置项必须有结构化 DB 表接收，DB NOT NULL + CHECK + FK 硬拦，AI 无法绕过。JSON blob 仅保留给日志/快照/审计。
+- 配置强制化方案已设计，待实施：新增 `writing_project_identity` / `writing_hard_boundaries` / `writing_narrative_voice` / `writing_style_locks` / `writing_suspense_blueprint` / `writing_chapter_tension_arc` 等结构化表。
+
+验证：
+
+- `rtk proxy python -m pytest tests/test_cli.py -v`：68 passed（含 8 个新增 TITLE-FIX 测试）。
+
+---
+
 ## v3.21/v3.22 全程审计与契约审计半重构 (2026-06-29)
 
 本轮结论：不完全推倒重来，改为半重构。保留现有 DB、Session、Contract、Prompt、Writer、Jury、Gate、Export 边界，新增统一审计层，让生产流程从 setup 到 review 可追因。
