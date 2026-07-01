@@ -1066,7 +1066,7 @@ class ArchitectGate:
             text = repo.get_shot_text(shot["shot_id"])
             chars = len(re.sub(r"\s+", "", text or ""))
             is_final = shot["shot_index"] == total
-            min_chars = 500 if is_final else 450
+            min_chars = 400 if is_final else 350
             if chars < min_chars:
                 violations.append({
                     "shot_id": shot["shot_id"],
