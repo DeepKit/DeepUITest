@@ -19,6 +19,7 @@ from inkflow.cli import (
     _jury_verdict_all_unavailable,
     _validate_chapter_run_preflight,
     _validate_contract_scope_for_chapter,
+    _generate_contract_draft,
 )
 from inkflow.models.enums import ShotStatus
 
@@ -387,6 +388,91 @@ class TestChapterEventExtraction:
 
         assert len(events) == 1
         assert events[0]["pov"] == "阿坤"
+
+    def test_extracts_bullet_outline_without_padded_chapter_number(self):
+        outline = """\
+### 第2章：装车
+
+- **产出物**：第十七批封装箱，共十二箱
+- **场景**：厂区仓库外，卡车已在等。许怀山在最后一箱的封条上签字
+- **冲突**：抽检样件正常，但吕素琴发现异常样件被归入"包装破损"；实际破损样件上的裂纹和湿热有关。她打开柜底，发现一份1978年的封存样件；旧案不是主线答案，只证明同源异常早就出现过
+- **章末钩子**：异常样件没有销毁。吕素琴把它藏进柜底，用油纸裹了三层
+
+### 第3章：雨季
+"""
+
+        events = _extract_chapter_events(
+            outline,
+            2,
+            known_characters=["许怀山", "吕素琴"],
+        )
+
+        assert len(events) >= 3
+        assert events[0]["title"] == "装车"
+        assert events[0]["pov"] == "许怀山"
+        assert events[-1]["pov"] == "吕素琴"
+        assert events[-1]["type_roles"] == ["hook"]
+        assert any("1978" in event["event"] for event in events)
+
+    def test_contract_draft_does_not_reuse_other_project_defaults(self, tmp_path):
+        import yaml
+
+        story_dir = tmp_path / "《白灯法则》"
+        story_dir.mkdir()
+        (story_dir / "07_人物设定表.md").write_text(
+            """# 人物设定表
+
+### 许怀山
+
+弧线：从相信流程，到发现流程只保护流程本身。
+
+### 吕素琴
+
+弧线：从沉默记录者，到愿意把原始记录交出去的人。
+""",
+            encoding="utf-8",
+        )
+        (story_dir / "04_写作宪法.md").write_text(
+            """# 写作宪法
+
+> 工业文明的终点，不是更快地制造一切，而是在能够制造一切之后，仍知道什么不能制造。
+
+不要用概念压读者。人物必须先做事，再表达观点。每章必须至少包含以下五项中的四项。
+""",
+            encoding="utf-8",
+        )
+        (story_dir / "24_分章大纲.md").write_text(
+            """# 分章大纲
+
+### 第2章：装车
+
+- **产出物**：第十七批封装箱，共十二箱
+- **场景**：厂区仓库外，卡车已在等。许怀山在最后一箱的封条上签字
+- **冲突**：抽检样件正常，但吕素琴发现异常样件被归入"包装破损"。她打开柜底，发现一份1978年的封存样件
+- **章末钩子**：异常样件没有销毁。吕素琴把它藏进柜底
+
+### 第3章：雨季
+""",
+            encoding="utf-8",
+        )
+
+        draft_path = story_dir / ".inkflow" / "contract-draft.yaml"
+        _generate_contract_draft(
+            "白灯法则",
+            story_dir,
+            [{"text": "1979年4月。地方军工配套厂。硫化车间。许怀山把绿笔插回胸前口袋。吕素琴看着湿热试验箱。"}],
+            draft_path,
+        )
+
+        text = draft_path.read_text(encoding="utf-8")
+        draft = yaml.safe_load(text)
+
+        assert "鱼嘴系统" not in text
+        assert "内江" not in text
+        assert "阿坤" not in text
+        assert draft["identity"]["setting"].startswith("1979年4月")
+        assert draft["chapter_2_events"][0]["pov"] == "许怀山"
+        assert any("1978" in event["event"] for event in draft["chapter_2_events"])
 
 
 class TestRun:

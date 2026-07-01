@@ -649,6 +649,27 @@ class TestJuryV4Config:
 
 
 class TestOutlineEvaluator:
+    def test_parse_evaluation_extracts_json_after_reasoning(self, setup_run):
+        evaluator = OutlineEvaluator(setup_run, "run_01", {})
+
+        result = evaluator._parse_evaluation_response(
+            '我们先分析一下。\n{"dimensions":{"completeness":90},'
+            '"score":88,"issues":[],"suggestions":["继续"]}'
+        )
+
+        assert result["score"] == 88
+        assert result["dimensions"]["completeness"] == 90
+        assert "parse_error" not in result
+
+    def test_parse_evaluation_failure_keeps_original_outline_viable(self, setup_run):
+        evaluator = OutlineEvaluator(setup_run, "run_01", {})
+
+        result = evaluator._parse_evaluation_response("我们需要仔细阅读用户输入。没有 JSON。")
+
+        assert result["score"] == evaluator.threshold
+        assert result["parse_error"] is True
+        assert "不可解析响应写回" in result["suggestions"][0]
+
     def test_call_model_uses_outline_limits(self, setup_run, monkeypatch):
         """Outline evaluation should not use writer-sized token/time limits."""
         import inkflow.services.outline_evaluator as oe

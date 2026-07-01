@@ -47,6 +47,8 @@ _EVALUATE_PROMPT = """\
 
 输出 JSON（不要其他内容）：
 {{"dimensions": {{"completeness": 分数, "conflict_clarity": 分数, "continuity": 分数, "creative_feasibility": 分数, "contract_alignment": 分数}}, "score": 整体分数, "issues": ["问题1"], "suggestions": ["建议1"]}}
+
+禁止输出思考过程、任务复述、解释文字、Markdown 标题。只允许输出一个 JSON 对象。
 """
 
 _REGENERATE_PROMPT = """\
@@ -65,6 +67,16 @@ _REGENERATE_PROMPT = """\
 
 请重新生成一个更好的场景大纲，直接输出大纲内容（不要解释）：
 """
+
+_PROMPT_ANALYSIS_MARKERS = (
+    "我们需要",
+    "用户要求",
+    "首先",
+    "需要仔细",
+    "评估反馈",
+    "原大纲是",
+    "任务是",
+)
 
 
 class OutlineEvaluator:
@@ -120,7 +132,7 @@ class OutlineEvaluator:
         history.append(evaluation)
         initial_score = evaluation["score"]
 
-        if evaluation["passed"]:
+        if evaluation["passed"] or evaluation.get("parse_error"):
             self._save_evaluation(shot_id, outline_text, evaluation, attempt=1)
             return {
                 "final_outline": outline_text,
@@ -145,6 +157,20 @@ class OutlineEvaluator:
             shot_id, outline_text, evaluation, meta_summary,
         )
         new_outline_text = new_outline["new_outline_text"]
+        if _looks_like_prompt_analysis(new_outline_text):
+            self._save_evaluation(
+                shot_id, outline_text, evaluation,
+                attempt=1, regenerated=True,
+                new_outline_text="",
+            )
+            return {
+                "final_outline": outline_text,
+                "initial_score": initial_score,
+                "final_score": initial_score,
+                "regenerated": True,
+                "evaluation_history": history,
+                "regeneration_rejected": True,
+            }
 
         # 重新评估
         evaluation2 = self.evaluate_outline(
@@ -164,7 +190,11 @@ class OutlineEvaluator:
         )
 
         # 如果新大纲更好，更新合约
-        if evaluation2["score"] > evaluation["score"]:
+        if (
+            evaluation2["score"] > evaluation["score"]
+            and not evaluation2.get("parse_error")
+            and not _looks_like_prompt_analysis(new_outline_text)
+        ):
             self._update_contract(shot_id, new_outline_text)
             final_outline = new_outline_text
         else:
@@ -234,7 +264,7 @@ class OutlineEvaluator:
         )
 
         return {
-            "new_outline_text": text.strip(),
+            "new_outline_text": _sanitize_regenerated_outline(text),
             "regeneration_note": f"由 {model_ref} 重新生成",
             "model_used": model_ref,
         }
@@ -349,17 +379,8 @@ class OutlineEvaluator:
 
     def _parse_evaluation_response(self, text: str) -> dict:
         """解析评估响应 JSON。"""
-        # 尝试提取 JSON
-        text = text.strip()
-        if "```" in text:
-            # 提取代码块中的 JSON
-            import re
-            match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-            if match:
-                text = match.group(1).strip()
-
-        try:
-            data = json.loads(text)
+        data = _parse_json_object_from_text(text)
+        if data is not None:
             score = int(data.get("score", 50))
             return {
                 "score": max(0, min(100, score)),
@@ -367,14 +388,14 @@ class OutlineEvaluator:
                 "issues": data.get("issues", []),
                 "suggestions": data.get("suggestions", []),
             }
-        except (json.JSONDecodeError, ValueError):
-            # 无法解析，给默认分
-            return {
-                "score": 50,
-                "dimensions": {},
-                "issues": ["评估响应无法解析"],
-                "suggestions": [],
-            }
+
+        return {
+            "score": self.threshold,
+            "dimensions": {"local_parse_fallback": self.threshold},
+            "issues": ["远端大纲评估响应无法解析，已使用本地结构兜底评分"],
+            "suggestions": ["保留原始契约大纲，不把不可解析响应写回 shot 合约"],
+            "parse_error": True,
+        }
 
     def _save_evaluation(
         self,
@@ -466,3 +487,85 @@ class OutlineEvaluator:
             (json.dumps(new_must_land, ensure_ascii=False), shot_id, self.run_id),
         )
         self.db.commit()
+
+
+def _parse_json_object_from_text(text: str) -> dict | None:
+    """Parse the first valid JSON object from model text.
+
+    Some reasoning models prepend analysis before the requested JSON. The
+    evaluator must not treat that as a bad outline or feed the analysis back
+    into regeneration.
+    """
+    import re
+
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text or "", flags=re.IGNORECASE).strip()
+    candidates: list[str] = []
+
+    for match in re.finditer(r"```(?:json)?\s*([\s\S]*?)```", text, flags=re.IGNORECASE):
+        candidates.append(match.group(1).strip())
+
+    candidates.append(text)
+    candidates.extend(_balanced_json_candidates(text))
+
+    for candidate in candidates:
+        candidate = candidate.strip()
+        if not candidate:
+            continue
+        try:
+            data = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
+def _balanced_json_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    starts = [idx for idx, char in enumerate(text or "") if char == "{"]
+    for start in starts[:8]:
+        depth = 0
+        in_string = False
+        escape = False
+        for idx in range(start, len(text)):
+            char = text[idx]
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    candidates.append(text[start:idx + 1])
+                    break
+    return candidates
+
+
+def _sanitize_regenerated_outline(text: str) -> str:
+    text = (text or "").strip()
+    if "```" in text:
+        import re
+        match = re.search(r"```(?:markdown|md|text)?\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
+        if match:
+            text = match.group(1).strip()
+    for marker in ("【大纲】", "大纲：", "## "):
+        idx = text.find(marker)
+        if idx > 0:
+            text = text[idx:].strip()
+            break
+    return text
+
+
+def _looks_like_prompt_analysis(text: str) -> bool:
+    head = (text or "").strip()[:260]
+    if not head:
+        return True
+    return any(marker in head for marker in _PROMPT_ANALYSIS_MARKERS)

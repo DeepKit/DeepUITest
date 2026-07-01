@@ -3602,26 +3602,46 @@ def _generate_contract_draft(
         if text:
             sample_text += text[:300] + "\n"
 
-    # Read outline
-    outline_text = ""
-    outline_path = story_dir / "04_逐章大纲.md"
-    if outline_path.exists():
-        outline_text = outline_path.read_text(encoding="utf-8")
+    outline_text = _read_outline_text(story_dir)
+    project_docs = _read_project_docs(
+        story_dir,
+        [
+            "00_创作目标.md",
+            "03_项目索引.md",
+            "04_写作宪法.md",
+            "06_世界观与核心设定.md",
+            "07_人物设定表.md",
+            "08_悬念与追读设计.md",
+            "09_写作风格指南.md",
+            "10_章节开写检查表.md",
+            "23_第一代工厂质感.md",
+            "25_跨章预埋追踪表.md",
+        ],
+    )
+    corpus = sample_text + "\n" + outline_text + "\n" + project_docs
+    setting = _derive_setting(sample_text, corpus)
+    pov_chars = _extract_project_characters(story_dir, sample_text + "\n" + outline_text)
 
     # Extract first-volume chapter events. confirm-contract already accepts
     # optional chapter_N_events fields; setup should not strand validation at c02.
     chapter_events_by_number = {
-        chapter_number: _extract_chapter_events(outline_text, chapter_number)
+        chapter_number: _extract_chapter_events(
+            outline_text,
+            chapter_number,
+            known_characters=pov_chars,
+        )
         for chapter_number in range(2, 9)
     }
     chapter_2_events = chapter_events_by_number.get(2, [])
 
     # Detect patterns from chapter 1
-    has_sensory = any(w in sample_text for w in ["膝盖", "螺丝刀", "灰", "湿", "保鲜膜", "露水", "茶", "雾"])
-    has_body = any(w in sample_text for w in ["拧", "麻", "疼", "抖", "划", "蹭", "撕"])
-    locations = _extract_locations(sample_text)
-    objects = _extract_objects(sample_text)
-    pov_chars = [n for n in ["阿坤", "白英", "苏然", "韩教授"] if n in sample_text]
+    has_sensory = any(w in sample_text for w in ["膝盖", "螺丝刀", "灰", "湿", "保鲜膜", "露水", "茶", "雾", "硫磺", "橡胶", "灯管"])
+    has_body = any(w in sample_text for w in ["拧", "麻", "疼", "抖", "划", "蹭", "撕", "烫", "汗", "停顿"])
+    locations = _extract_locations(corpus)
+    objects = _extract_objects(corpus)
+    world_rules = _extract_world_rules(project_docs)
+    motif_system = _extract_motif_system(project_docs, objects)
+    suspense_config = _extract_suspense_config(project_docs)
 
     # Build draft
     draft = {
@@ -3633,111 +3653,67 @@ def _generate_contract_draft(
 
         "identity": {
             "title": project,
-            "genre": "文学小说",
-            "setting": "成都，当代",
+            "genre": _derive_genre(project_docs),
+            "setting": setting,
             "pov_count": len(pov_chars),
             "pov_characters": pov_chars,
-            "character_arcs": "<<请填写: 各角色核心弧线, 如: 阿坤: 从被动承受到主动选择>>",
+            "character_arcs": _derive_character_arcs(story_dir, pov_chars),
         },
 
         "narrative_voice": {
-            "style": "现实主义 + 感官密度",
+            "style": _derive_style(project_docs),
             "sensory_density": "高" if has_sensory else "中",
             "body_moment": "是" if has_body else "否",
             "dialogue_ratio": "中",
-            "register": "文学性普通话 + 成都方言点缀",
-            "register_tone": "<<请填写: 叙事语气基调, 如: 冷静克制, 不煽情, 让事实本身说话>>",
+            "register": _derive_register(project_docs),
+            "register_tone": _derive_register_tone(project_docs),
         },
 
         "hard_boundaries": {
             "characters_alive": pov_chars,
-            "world_rules": [
-                "鱼嘴系统分流外卖/教育/医疗/住房/信用五领域",
-                "内江=三环以内核心服务圈；外江=三环以外低优先级分流圈；运行期外江口径向三环内侧侵蚀，吞入内江边缘街区，内江变小",
-                "系统不恶意，但代价在积累",
-            ],
-            "fixed_events": "<<请填写: 第 2 章中不可改变的事件, 如: 阿坤遇到拖行李箱的年轻人>>",
+            "world_rules": world_rules,
+            "fixed_events": _fixed_events_from_chapter_events(chapter_2_events),
         },
 
         "style_locks": {
             "opening": "身体时刻开场（感官冲击）",
             "ending": "动作/物件/沉默结尾，不总结",
             "sensory": "每段至少一处气味/声音/温度/湿度描写",
-            "dialect": "成都话点缀，不是普通话翻译",
+            "dialect": "只在项目文档明确要求时使用方言；默认使用克制、具体的现代汉语",
             "paragraph_length": "正文按镜头节奏自然分段；导出层负责短段排版，单个自然段宜控制在约 420 字以内，镜头转换可加分隔符",
         },
 
         "anti_patterns": {
             "avoid": [
                 "概念总结性结尾",
-                "系统被描绘为纯粹恶人",
+                "系统或组织被描绘为纯粹恶人",
                 "人物内心独白过长",
-                "成都写成旅游宣传",
-                "意象被解释（如'太阳神鸟象征XX'）",
+                "把地点写成旅游宣传",
+                "意象被解释成概念讲义",
+                "用大段理论解释替代场景、动作、物件和后果",
             ],
         },
 
         "world_knowledge": {
-            "locations": locations or ["成都城区"],
-            "key_objects": objects or ["保鲜膜", "头盔", "太阳神鸟", "盖碗茶"],
-            "time_period": "当代",
-            "season": "十二月（成都冬季）",
-            "weather": "灰白、湿冷、雾、雨",
+            "locations": locations or ["待从项目文档确认的主要场景"],
+            "key_objects": objects or ["待从项目文档确认的关键物件"],
+            "time_period": _derive_time_period(setting, corpus),
+            "season": _derive_season(corpus),
+            "weather": _derive_weather(corpus),
         },
 
-        "motif_system": {
-            "primary": ["膝盖/螺丝刀（损伤）", "都江堰分流（系统）", "金沙垃圾层（时间）"],
-            "secondary": ["盖碗茶", "太阳神鸟", "保鲜膜", "握空的手"],
-            "visual_markers": ["屏幕颜色边界（内江蓝/外江橙）", "系统之眼（摄像头/传感器）", "待评估（多场景重复）"],
-        },
+        "motif_system": motif_system,
 
         "creative_zones": {
-            "allowed_freedom": "对话细节、环境描写、次要人物互动、成都感官细节",
+            "allowed_freedom": "对话细节、环境描写、次要人物互动、镜头节奏和物件动作",
             "must_consult": "POV 角色核心情节走向、重要事件变更",
-            "chapter_2_scope": "严格执行 04_逐章大纲.md 第 2 章章级事件，只允许补充细节不允许改变走向",
-            "chapter_2_interpretation": "<<请填写: 第 2 章的创作诠释, 如: 这一章的核心情绪是什么? 希望读者感受到什么?>>",
+            "chapter_2_scope": "严格执行项目分章大纲第 2 章章级事件，只允许补充细节不允许改变走向",
+            "chapter_2_interpretation": _derive_chapter_interpretation(chapter_2_events, project_docs),
         },
 
-        "suspense_config": {
-            "# 悬疑引擎配置": None,
-            "# 前台抓手：读者第一秒追什么": None,
-            "# 信息差：读者知道但角色不知道的事": None,
-            "# 核心物件：每次出现读者理解不同": None,
-            "# 章末钩子：未完成动作，不能是感官收束": None,
-            "# 数字有体温：数字+具体的人或物": None,
-            "": None,
-            "reader_anchor": "<<请填写: 读者第一秒追什么？如: 阿坤的膝盖还能撑多久？系统会不会把他完全推到外江？>>",
-            "information_gap": [
-                "苏然发现了6%的边界外推，但阿坤、白英、韩教授都不知道——读者知道，角色不知道",
-                "骨片上的握空手势，韩教授在三星堆也见过类似图案——读者知道这个关联，但韩教授还没说出来",
-                "茶社对面的火锅店昨天还在营业，今天挂了'装修中'——读者知道城市在收缩，但白英还不知道这意味着什么",
-            ],
-            "core_objects": {
-                "骨片/握空的手": "背景→线索→证据：第一次是韩教授发现的刻痕，第二次读者意识到这手势在三星堆也出现过，第三次揭示它指向某种制度性的'放弃'",
-                "太阳神鸟": "从阿坤头盔上的褪色贴纸→白英茶社里学生临摹的蓝色画→苏然屏幕上的系统图标→金沙出土的金饰残片，四层理解",
-                "保鲜膜": "从阿坤的护膝工具→系统对身体的'包裹'和'隔离'→边界标记，意义逐层升级",
-                "34分": "阿坤跑了三年，膝盖跑废了，系统给了34分——这个数字在第2章就要出现，让读者知道它，但不知道它还会不会涨",
-            },
-            "chapter_hooks": [
-                "每章最后一句必须是未完成动作（物理中断/对话中断/决策悬置/感知突变），不能是感官收束或解释",
-                "不要让读者在章末感到'这一章结束了'，要感到'必须翻下一页才知道发生了什么'",
-                "至少每2章出现一次信息差——读者知道某件事，但POV角色不知道",
-            ],
-            "numbers_with_temperature": [
-                "37单 → 阿坤的膝盖（内江有37单，系统却让他去外江）",
-                "6% → 苏然的屏幕（边界线每年外推6%，这不是数字，是每年被推出去的人）",
-                "34分 → 阿坤的健康积分（三年膝盖换34分，够不够换一副护具？）",
-                "4个通知 → 白英的抽屉（去年是'建议优化'，今年是'建议转型'，明年是什么？）",
-            ],
-            "suspense_density": "制度悬疑——悬念不是'谁杀了人'，而是'为什么这个结构会逼出这样的处境'，以及'谁该负责'",
-        },
+        "suspense_config": suspense_config,
 
-        "chapter_2_events": chapter_2_events or [
-            {"shot": 1, "pov": "阿坤", "event": "<<请从大纲填写第 2 章第 1 shot 事件>>"},
-            {"shot": 2, "pov": "韩教授", "event": "<<请从大纲填写第 2 章第 2 shot 事件>>"},
-            {"shot": 3, "pov": "白英", "event": "<<请从大纲填写第 2 章第 3 shot 事件>>"},
-            {"shot": 4, "pov": "苏然", "event": "<<请从大纲填写第 2 章第 4 shot 事件>>"},
-        ],
+        "chapter_2_events": chapter_2_events or _fallback_chapter_events(pov_chars),
     }
 
     for chapter_number in range(3, 9):
@@ -3752,24 +3728,278 @@ def _generate_contract_draft(
     click.echo(f"契约草稿已生成: {draft_path}")
 
 
+def _read_outline_text(story_dir: Path) -> str:
+    """Read the project's chapter outline from common outline filenames."""
+    candidates = [
+        story_dir / "24_分章大纲.md",
+        story_dir / "04_逐章大纲.md",
+    ]
+    candidates.extend(sorted(story_dir.glob("*分章大纲*.md")))
+    candidates.extend(sorted(story_dir.glob("*逐章大纲*.md")))
+
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+    return ""
+
+
+def _read_project_docs(story_dir: Path, filenames: list[str]) -> str:
+    parts: list[str] = []
+    for name in filenames:
+        path = story_dir / name
+        if path.exists():
+            parts.append(path.read_text(encoding="utf-8"))
+    return "\n\n".join(parts)
+
+
+def _derive_setting(sample_text: str, corpus: str) -> str:
+    for raw in sample_text.splitlines()[:60]:
+        line = raw.strip().strip("#").strip()
+        if not line or len(line) > 80:
+            continue
+        if any(marker in line for marker in ["年", "厂", "车间", "城市", "月球", "当代", "未来"]):
+            return line
+    if "月球" in corpus and "工厂" in corpus:
+        return "工业科幻世界；具体年代、地点以项目设定为准"
+    return "以项目设定文件为准"
+
+
+def _derive_genre(project_docs: str) -> str:
+    if "科幻" in project_docs and "工业" in project_docs:
+        return "工业科幻长篇小说"
+    if "悬疑" in project_docs:
+        return "悬疑文学小说"
+    return "文学小说"
+
+
+def _derive_style(project_docs: str) -> str:
+    if "克制、冷静、具体" in project_docs:
+        return "克制、冷静、具体；场景优先"
+    if "现实主义" in project_docs:
+        return "现实主义 + 感官密度"
+    return "场景优先 + 感官密度"
+
+
+def _derive_register(project_docs: str) -> str:
+    if "方言" in project_docs:
+        return "文学性普通话；方言只按项目文档点缀"
+    return "克制、具体的现代汉语"
+
+
+def _derive_register_tone(project_docs: str) -> str:
+    if "不要用概念压读者" in project_docs:
+        return "克制冷静，不用概念压读者，用物件、动作、数字和后果让概念自己出现。"
+    return "冷静克制，不煽情，不替读者解释主题。"
+
+
+def _derive_time_period(setting: str, corpus: str) -> str:
+    import re
+
+    years = re.findall(r"(?:19|20)\d{2}年?", setting + "\n" + corpus[:4000])
+    if years:
+        return " / ".join(dict.fromkeys(years[:4]))
+    if "当代" in corpus:
+        return "当代"
+    if "未来" in corpus or "月球" in corpus:
+        return "未来"
+    return "以项目设定为准"
+
+
+def _derive_season(corpus: str) -> str:
+    for word in ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月", "雨季", "春", "夏", "秋", "冬"]:
+        if word in corpus:
+            return word
+    return "以章节场景为准"
+
+
+def _derive_weather(corpus: str) -> str:
+    hits = [word for word in ["湿热", "湿冷", "雨", "雾", "低压", "干燥", "高湿"] if word in corpus]
+    return "、".join(hits[:4]) if hits else "以章节场景为准"
+
+
+def _extract_project_characters(story_dir: Path, corpus: str) -> list[str]:
+    """Extract declared character names from the project character sheet."""
+    import re
+
+    names: list[str] = []
+    character_path = story_dir / "07_人物设定表.md"
+    if character_path.exists():
+        text = character_path.read_text(encoding="utf-8")
+        for raw in re.findall(r"^###\s+(.+?)\s*$", text, flags=re.MULTILINE):
+            name = re.split(r"[（(]", raw.strip(), maxsplit=1)[0].strip()
+            if not name or any(skip in name for skip in ["人物", "原则", "总表", "功能"]):
+                continue
+            if 2 <= len(name) <= 16 and name not in names:
+                names.append(name)
+
+    selected = [name for name in names if name in corpus]
+    if selected:
+        return selected[:12]
+
+    fallback_candidates = ["阿坤", "郑坤", "白英", "苏然", "韩教授"]
+    return [name for name in fallback_candidates if name in corpus]
+
+
+def _derive_character_arcs(story_dir: Path, pov_chars: list[str]) -> str:
+    import re
+
+    character_path = story_dir / "07_人物设定表.md"
+    if not character_path.exists() or not pov_chars:
+        return "角色弧线以项目人物设定表为准；每个 POV 必须有具体技能、私人错误、责任动作和变化方向。"
+
+    text = character_path.read_text(encoding="utf-8")
+    arcs: list[str] = []
+    for name in pov_chars:
+        section_match = re.search(
+            rf"^###\s+{re.escape(name)}(?:[（(].*?[）)])?\s*$([\s\S]*?)(?=^###\s+|\Z)",
+            text,
+            flags=re.MULTILINE,
+        )
+        if not section_match:
+            continue
+        section = section_match.group(1)
+        arc_match = re.search(r"弧线[：:]\s*(.+)", section)
+        if arc_match:
+            arcs.append(f"{name}: {arc_match.group(1).strip()}")
+    if arcs:
+        return "\n".join(arcs)
+    return "角色弧线以项目人物设定表为准；每个 POV 必须从具体压力走向明确责任动作。"
+
+
+def _extract_world_rules(project_docs: str) -> list[str]:
+    rules: list[str] = []
+    metadata_markers = (
+        "创建日期", "最后更新", "参赛目标", "截止日期", "赛道", "作者", "版本",
+        "文件", "用途", "优先级",
+    )
+    for line in project_docs.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("> "):
+            value = stripped[2:].strip()
+            if any(marker in value for marker in metadata_markers):
+                continue
+            if 8 <= len(value) <= 120 and value not in rules:
+                rules.append(value)
+        if len(rules) >= 4:
+            break
+
+    for marker in [
+        "白灯是工程成就，不是消极停工",
+        "人物不能只是哲学立场的传声筒",
+        "人物必须先做事，再表达观点",
+        "每章必须至少包含以下五项中的四项",
+    ]:
+        if marker in project_docs and marker not in rules:
+            rules.append(marker)
+
+    return rules[:6] or ["严格遵守项目设定文件中的世界规则、人物边界、时间线和已发生事件。"]
+
+
+def _extract_motif_system(project_docs: str, objects: list[str]) -> dict:
+    primary: list[str] = []
+    for marker in ["白灯", "空白栏", "责任令牌", "湿热记录本", "油纸", "工艺卡", "封存样件"]:
+        if marker in project_docs and marker not in primary:
+            primary.append(marker)
+    if not primary:
+        primary = objects[:4] or ["项目核心物件"]
+    secondary = [obj for obj in objects if obj not in primary][:6]
+    return {
+        "primary": primary[:6],
+        "secondary": secondary,
+        "visual_markers": primary[:4],
+    }
+
+
+def _extract_suspense_config(project_docs: str) -> dict:
+    reader_anchor = "本章具体异常为什么出现，谁会因此承担不可逆后果？"
+    for line in project_docs.splitlines():
+        stripped = line.strip()
+        if "最大悬念" in stripped or "核心悬念" in stripped:
+            reader_anchor = stripped.strip("#：: ")
+        elif stripped.startswith("> ") and ("为什么" in stripped or "谁" in stripped):
+            reader_anchor = stripped[2:].strip()
+            break
+
+    return {
+        "reader_anchor": reader_anchor,
+        "information_gap": [
+            "读者应比角色多知道或少知道一个关键事实，但不能提前解释机制。",
+            "异常先以物件、数字、动作出现，解释延后。",
+        ],
+        "core_objects": {
+            "关键物件": "同一物件每次出现都推动证据、责任或代价变化，不做象征解释。"
+        },
+        "chapter_hooks": [
+            "每章最后一句必须是物件、动作、沉默或状态改变，不能是解释性总结。",
+            "章末钩子要留下未完成动作、新证据、新问题或责任悬置。",
+        ],
+        "numbers_with_temperature": [
+            "数字必须绑定具体的人、物、时间压力或身体代价。",
+        ],
+        "suspense_density": "追读压力来自时间、数量、空间、责任和信息差的持续收紧。",
+    }
+
+
+def _derive_chapter_interpretation(chapter_events: list[dict], project_docs: str) -> str:
+    if chapter_events:
+        hook = next((event for event in reversed(chapter_events) if "钩子" in str(event.get("event", ""))), chapter_events[-1])
+        return (
+            "本章以具体物件、数字和责任动作推进既定大纲；"
+            f"章末必须把读者推向下一章的问题：{str(hook.get('event', ''))[:120]}"
+        )
+    if "追读" in project_docs:
+        return "本章必须按项目追读设计推进：先落物件和动作，再留下未完成问题。"
+    return "本章必须按项目大纲推进，保持场景优先和章末悬念。"
+
+
+def _fixed_events_from_chapter_events(chapter_events: list[dict]) -> str:
+    if not chapter_events:
+        return "待填写：第 2 章不可改变事件需要从项目分章大纲确认。"
+    events = [str(event.get("event", "")).strip() for event in chapter_events if event.get("event")]
+    return "\n".join(f"- {event}" for event in events)
+
+
+def _fallback_chapter_events(pov_chars: list[str]) -> list[dict]:
+    pov = pov_chars[0] if pov_chars else "待确认POV"
+    return [
+        {
+            "shot": 1,
+            "title": "待填写",
+            "pov": pov,
+            "event": "待填写：未能从项目分章大纲解析第 2 章事件，confirm 前必须由架构师补齐。",
+            "type_roles": ["hook"],
+        }
+    ]
+
+
 def _extract_locations(text: str) -> list[str]:
-    """Extract locations from chapter 1."""
-    locs = []
-    for loc in ["人民公园", "春熙路", "锦江区", "龙潭寺", "石板滩", "新都",
-                 "天府软件园", "金沙遗址", "望鹤茶社", "九眼桥", "都江堰"]:
-        if loc in text:
-            locs.append(loc)
-    return locs or ["成都城区"]
+    """Extract recurring locations from project text."""
+    known = [
+        "地方军工配套厂", "硫化车间", "地下质检室", "厂区仓库", "仓库外",
+        "月球", "白灯区", "楚火种工程区", "韩谷儿童舱",
+        "人民公园", "春熙路", "锦江区", "龙潭寺", "石板滩", "新都",
+        "天府软件园", "金沙遗址", "望鹤茶社", "九眼桥", "都江堰",
+    ]
+    locs = [loc for loc in known if loc in text]
+    return list(dict.fromkeys(locs))[:10]
 
 
 def _extract_objects(text: str) -> list[str]:
-    """Extract key recurring objects from chapter 1."""
+    """Extract key recurring objects from project text."""
     objs = []
-    for obj in ["保鲜膜", "头盔", "太阳神鸟", "盖碗茶", "竹椅", "泡菜坛",
-                 "薄荷", "螺丝刀", "护膝", "杯子"]:
+    for obj in [
+        "白灯", "空白栏", "责任令牌", "密封件", "封存样件", "湿热记录本",
+        "油纸", "工艺卡", "绿笔", "样件盒", "封条", "湿度表", "温度表",
+        "氧气泵", "舱门密封圈", "批号钢印", "保鲜膜", "头盔", "太阳神鸟",
+        "盖碗茶", "竹椅", "泡菜坛", "薄荷", "螺丝刀", "护膝", "杯子",
+    ]:
         if obj in text:
             objs.append(obj)
-    return objs[:8]
+    return list(dict.fromkeys(objs))[:10]
 
 
 def _extract_chapter_2_events(outline_text: str) -> list[dict]:
@@ -3777,55 +4007,235 @@ def _extract_chapter_2_events(outline_text: str) -> list[dict]:
     return _extract_chapter_events(outline_text, 2)
 
 
-def _extract_chapter_events(outline_text: str, chapter_number: int) -> list[dict]:
+def _extract_chapter_events(
+    outline_text: str,
+    chapter_number: int,
+    *,
+    known_characters: list[str] | None = None,
+) -> list[dict]:
     """Extract must-land events for a chapter from the outline."""
-    marker = f"第 {chapter_number:02d} 章"
-    if marker not in outline_text:
+    chapter_text, chapter_title = _extract_chapter_section(outline_text, chapter_number)
+    if not chapter_text:
         return []
 
-    idx = outline_text.find(marker)
-    next_marker = f"第 {chapter_number + 1:02d} 章"
-    end = outline_text.find(next_marker, idx)
-    if end == -1:
-        end = idx + 5000
-    chapter_text = outline_text[idx:end]
+    known_characters = known_characters or []
+    structured = _extract_structured_pov_events(chapter_text, known_characters)
+    if structured:
+        return structured
 
-    events = []
-    # Parse structured POV blocks
-    lines = chapter_text.split("\n")
+    bullet_events = _extract_bullet_chapter_events(
+        chapter_text,
+        chapter_title=chapter_title,
+        known_characters=known_characters,
+    )
+    if bullet_events:
+        return bullet_events
+
+    compact = _compact_event_text(chapter_text)
+    if compact:
+        pov = _infer_event_pov(compact, known_characters, "")
+        return [{"shot": 1, "title": chapter_title or "", "pov": pov, "event": compact[:500]}]
+    return []
+
+
+def _extract_chapter_section(outline_text: str, chapter_number: int) -> tuple[str, str]:
+    import re
+
+    heading_re = re.compile(
+        rf"(?m)^(?P<heading>\s*#{{1,6}}\s*第\s*0*{chapter_number}\s*章[^\n]*)$"
+    )
+    match = heading_re.search(outline_text)
+    if not match:
+        return "", ""
+
+    next_re = re.compile(
+        rf"(?m)^\s*#{{1,6}}\s*第\s*0*{chapter_number + 1}\s*章[^\n]*$"
+    )
+    next_match = next_re.search(outline_text, match.end())
+    end = next_match.start() if next_match else min(len(outline_text), match.end() + 6000)
+    heading = match.group("heading").strip()
+    title = heading
+    if "：" in heading:
+        title = heading.split("：", 1)[1].strip()
+    elif ":" in heading:
+        title = heading.split(":", 1)[1].strip()
+    title = title.strip("# ").strip()
+    return outline_text[match.start():end], title
+
+
+def _extract_structured_pov_events(
+    chapter_text: str,
+    known_characters: list[str],
+) -> list[dict]:
+    """Parse **角色线** style outline blocks."""
+    import re
+
+    events: list[dict] = []
     current_pov = ""
     current_event = ""
+    current_title = ""
 
-    for line in lines:
+    def flush() -> None:
+        nonlocal current_pov, current_event, current_title
+        if current_pov and current_event.strip():
+            events.append(
+                {
+                    "shot": len(events) + 1,
+                    "title": current_title,
+                    "pov": current_pov,
+                    "event": _compact_event_text(current_event)[:500],
+                }
+            )
+        current_pov = ""
+        current_event = ""
+        current_title = ""
+
+    for line in chapter_text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("**阿坤"):
-            if current_pov and current_event:
-                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
-            current_pov = "阿坤"
-            current_event = stripped
-        elif stripped.startswith("**韩教授"):
-            if current_pov and current_event:
-                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
-            current_pov = "韩教授"
-            current_event = stripped
-        elif stripped.startswith("**白英"):
-            if current_pov and current_event:
-                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
-            current_pov = "白英"
-            current_event = stripped
-        elif stripped.startswith("**苏然"):
-            if current_pov and current_event:
-                events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
-            current_pov = "苏然"
-            current_event = stripped
-        elif current_pov and stripped and not stripped.startswith("#"):
+        marker = re.match(r"^\*\*(?P<label>[^*]{1,32})\*\*[：:]?\s*(?P<body>.*)$", stripped)
+        if marker:
+            label = marker.group("label").strip()
+            name = re.sub(r"(POV|视角|线)$", "", label, flags=re.IGNORECASE).strip()
+            is_pov_marker = (
+                label.endswith("线")
+                or label.endswith("视角")
+                or label.upper().endswith("POV")
+                or name in known_characters
+            )
+            if is_pov_marker:
+                flush()
+                current_pov = name
+                current_title = label
+                current_event = marker.group("body").strip()
+                continue
+        if current_pov and stripped and not stripped.startswith("#"):
             current_event += " " + stripped
 
-    # Flush last
-    if current_pov and current_event:
-        events.append({"shot": len(events) + 1, "pov": current_pov, "event": current_event[:300]})
-
+    flush()
     return events
+
+
+def _extract_bullet_chapter_events(
+    chapter_text: str,
+    *,
+    chapter_title: str,
+    known_characters: list[str],
+) -> list[dict]:
+    """Parse chapter outlines that use bullet fields like 场景/冲突/章末钩子."""
+    import re
+
+    fields: list[tuple[str, str]] = []
+    current_key = ""
+    current_value = ""
+
+    def flush() -> None:
+        nonlocal current_key, current_value
+        if current_key and current_value.strip():
+            fields.append((current_key, _compact_event_text(current_value)))
+        current_key = ""
+        current_value = ""
+
+    for line in chapter_text.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^[-*]\s*\*\*(?P<key>[^*]{1,24})\*\*[：:]\s*(?P<value>.*)$", stripped)
+        if match:
+            flush()
+            current_key = match.group("key").strip()
+            current_value = match.group("value").strip()
+            continue
+        if current_key and stripped and not stripped.startswith("#") and not re.match(r"^[-*]\s*\*\*", stripped):
+            current_value += " " + stripped
+    flush()
+
+    if not fields:
+        return []
+
+    field_map = {key: value for key, value in fields}
+    events: list[dict] = []
+    previous_pov = ""
+    default_pov = _first_character_by_position(chapter_text, known_characters)
+
+    def add_event(title: str, text: str, *, role: str | None = None) -> None:
+        nonlocal previous_pov
+        text = _compact_event_text(text)
+        if not text:
+            return
+        pov = _infer_event_pov(text, known_characters, previous_pov or default_pov)
+        previous_pov = pov if pov != "unknown" else previous_pov
+        event = {"shot": len(events) + 1, "title": title, "pov": pov, "event": text}
+        if role:
+            event["type_roles"] = [role]
+        events.append(event)
+
+    output = field_map.get("产出物", "")
+    scene = field_map.get("场景", "")
+    if scene:
+        text = f"产出物：{output}。场景：{scene}" if output else f"场景：{scene}"
+        add_event(chapter_title or "场景", text)
+
+    conflict = field_map.get("冲突", "")
+    if conflict:
+        for idx, part in enumerate(_split_conflict_events(conflict), start=1):
+            add_event(f"冲突{idx}", f"冲突：{part}")
+
+    hook = field_map.get("章末钩子", "") or field_map.get("钩子", "")
+    if hook:
+        add_event("章末钩子", f"章末钩子：{hook}", role="hook")
+
+    if events:
+        return events
+
+    combined = "；".join(f"{key}：{value}" for key, value in fields if value)
+    add_event(chapter_title or "章节事件", combined, role="hook")
+    return events
+
+
+def _split_conflict_events(text: str) -> list[str]:
+    import re
+
+    pieces = [piece.strip() for piece in re.split(r"(?<=[。！？；;])", text) if piece.strip()]
+    if len(pieces) <= 1:
+        return [text]
+    events: list[str] = []
+    buffer = ""
+    for piece in pieces:
+        if not buffer:
+            buffer = piece
+        elif len(buffer) < 70:
+            buffer += piece
+        else:
+            events.append(buffer)
+            buffer = piece
+    if buffer:
+        events.append(buffer)
+    return events[:3]
+
+
+def _infer_event_pov(text: str, known_characters: list[str], previous_pov: str) -> str:
+    for name in known_characters:
+        if name and name in text:
+            return name
+    return previous_pov or "unknown"
+
+
+def _first_character_by_position(text: str, known_characters: list[str]) -> str:
+    positions = [
+        (text.find(name), name)
+        for name in known_characters
+        if name and name in text
+    ]
+    positions = [(pos, name) for pos, name in positions if pos >= 0]
+    if not positions:
+        return ""
+    return min(positions, key=lambda item: item[0])[1]
+
+
+def _compact_event_text(text: str) -> str:
+    import re
+
+    text = re.sub(r"\s+", " ", text or "").strip()
+    text = re.sub(r"^\*\*[^*]+\*\*[：:]?\s*", "", text)
+    return text
 
 
 def _yaml_dump_contract(draft: dict) -> str:
