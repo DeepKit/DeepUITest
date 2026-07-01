@@ -140,6 +140,7 @@ class TestCreateModelClient:
             ("kimi-k2.6", "opencode"),
             ("minimax-m3", "opencode"),
             ("mimo-v2.5-pro", "opencode"),
+            ("agnes-2.0-flash", "agnes"),
             ("gpt-5.5", "fccy"),
         ],
     )
@@ -229,7 +230,7 @@ class TestCreateModelClient:
 
         assert captured["headers"]["User-agent"] == "InkFlow/1.0 OpenAI-Compatible"
 
-    def test_openai_jury_rejects_reasoning_only_response(self, monkeypatch):
+    def test_openai_jury_accepts_reasoning_content_response(self, monkeypatch):
         class FakeResponse:
             def __enter__(self):
                 self.status = 200
@@ -251,12 +252,13 @@ class TestCreateModelClient:
             model_name="glm-5.2",
         )
 
-        with pytest.raises(ModelCallError, match="no jury content"):
-            client.generate(ModelRequest(
-                operation="jury_score",
-                persona="judge",
-                prompt="score",
-            ))
+        resp = client.generate(ModelRequest(
+            operation="jury_score",
+            persona="judge",
+            prompt="score",
+        ))
+
+        assert resp.text == "score 90"
 
     def test_openai_client_strips_think_blocks(self, monkeypatch):
         class FakeResponse:

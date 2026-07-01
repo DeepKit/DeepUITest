@@ -276,6 +276,12 @@ class TestConfig:
         assert jury["type_threshold"] == 90
         assert jury["min_passing_drafts"] == 3
 
+    def test_infer_supplier_supports_agnes(self):
+        """Agnes models should resolve to the agnes provider."""
+        from inkflow.utils.config import _infer_supplier
+
+        assert _infer_supplier("agnes-2.0-flash", {}) == "agnes"
+
 
 class TestLoadEnv:
     """M12: load_env coverage."""

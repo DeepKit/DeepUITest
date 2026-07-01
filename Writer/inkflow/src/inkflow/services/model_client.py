@@ -128,18 +128,6 @@ class OpenAIClient:
         msg = choice.get("message", {})
         text = msg.get("content", "")
         if not text or not text.strip():
-            if request.operation == "jury_score":
-                if self.db is not None:
-                    _record_model_error(
-                        self.db,
-                        request,
-                        self.model_name,
-                        "OpenAI API returned no jury content",
-                    )
-                raise ModelCallError(
-                    "OpenAI API returned no jury content",
-                    recoverable=True,
-                )
             # Fallback: reasoning models (step-3.7-flash) put output in reasoning_content
             text = msg.get("reasoning_content", "") or msg.get("reasoning", "")
         text = _clean_model_text(text)
@@ -631,6 +619,8 @@ _MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     "glm-5.2": ("opencode", "openai"),
     "mimo-v2.5-pro": ("opencode", "openai"),
     "mimo-v2.5": ("opencode", "openai"),
+    # Agnes AI (OpenAI-compatible)
+    "agnes-2.0-flash": ("agnes", "openai"),
     # DeepSeek (OpenAI)
     "deepseek-v4-pro": ("deepseek", "openai"),
     "deepseek-v4-flash": ("deepseek", "openai"),
