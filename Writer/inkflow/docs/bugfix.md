@@ -1,9 +1,9 @@
-# InkFlow v3.12 — Bug 记录
+# InkFlow v3.27 — Bug 记录
 
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地与第 3 章返工验证：新增/修复 B76-B92；开放实现任务见 `../tasks.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地与第 3 章返工验证：新增/修复 B76-B94；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -127,6 +127,20 @@
 - **影响**: `雨季`、`常规运输条件下的密封`、`许怀山回到工厂` 三个片段都从“雨不是落下来的，是压下来的 / 转运站月台”起笔；s02 生成过正确“露天堆放数日后微裂纹”候选，s03 生成过正确“车间门口异味”候选，但最终选择和 resume 编排把重复稿导出。
 - **修复**: L4 新增 `contract_scene` 检查，拦截“露天堆放/微裂纹/批号不清/回到工厂/车间门口/异常气味”等契约锚点缺失或开头场景错位；新增 `opening_repetition` 检查，拦截相邻完成 shot 的同句/高相似开头；`run --resume` 对已完成 shot 增加上游 revision 时间戳 stale 检测，上游重写后下游不再静默跳过。
 - **文件**: `architect_gate.py`, `cli.py`, `tests/test_architect_gate.py`, `tests/test_cli.py`
+
+### B93. titled shot 密度要求让 AI 自己数汉字，口径不稳定 ✅ 已修复
+- **严重性**: Important
+- **根因**: prompt 要求“至少写 400 个汉字”，但 AI 无法可靠自计字数；程序侧也用去空白字符数判断，和真实文本容量、导出文件大小不是同一口径。
+- **影响**: 正确场景可能写成摘要或梗概；模型以为满足字数，程序和人工审稿仍觉得场景太薄。
+- **修复**: prompt 改为 UTF-8 字符串大小要求，明确“你不需要精确计算字数”；L4/L3 titled shot density 改用 `len(text.encode("utf-8"))`，普通 titled shot `>=1200 bytes`，章末 titled shot `>=1500 bytes`。换算口径：1KB 约 340 个中文字符，1.2KB 约 400 个中文字符。
+- **文件**: `architect_gate.py`, `prompt_compiler.py`, `tests/test_architect_gate.py`, `tests/test_prompt_compiler.py`
+
+### B94. 章级缺少 distinct scene count，多个 shot 可整体坍缩成一个场景 ✅ 已修复
+- **严重性**: Critical
+- **根因**: B92 已能拦截相邻开头重复和契约场景错位，但 L3 没有整章层面的“多个 shot 必须多个场景”计数；如果多个候选都写得顺滑且场景桶一致，章节仍可能只靠文学分和局部 gate 前进。
+- **影响**: 用户要求的“多个片段/多个场景”可退化成一个场景的重复展开，尤其是 `v01.c03` 这种三个片段都被写回转运站的情况。
+- **修复**: L3 新增 `scene_diversity`：读取各 shot 当前正文，按确定性锚词形成 `transfer_station` / `open_storage` / `factory_workshop` 等 scene bucket；3 个以上 shot 要求至少 3 个 distinct fingerprint，并额外检查相邻 scene fingerprint 相似度。
+- **文件**: `architect_gate.py`, `tests/test_architect_gate.py`
 
 ---
 

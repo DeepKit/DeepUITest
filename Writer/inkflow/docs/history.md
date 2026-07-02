@@ -1,6 +1,30 @@
-# InkFlow v3.9 — 开发历史
+# InkFlow v3.27 — 开发历史
 
 > 记录已完成的修复和里程碑
+
+---
+
+## v3.27 多场景与 UTF-8 byte 容量门禁 (2026-07-02)
+
+本轮继续处理《白灯法则》`v01.c03` 三个片段雷同的问题，把“多个片段必须是多个场景”和“不要让 AI 自己数字数”下沉为程序不变量。
+
+### 完成项
+
+- L3 新增 `scene_diversity` 检查：3 个以上 shot 必须形成足够的 distinct scene fingerprint；若整章都落在 `transfer_station` / `open_storage` / `factory_workshop` 等同一场景桶，章节直接失败。
+- titled shot density 从“汉字数”改为 UTF-8 byte size：普通 titled shot `>= 1200 bytes`，章末 titled shot `>= 1500 bytes`；L4/L3 issues 均报告 `bytes<min_bytes`。
+- 写手 prompt 改为正文容量要求：`UTF-8 字符串大小不少于约 1.2KB`，并明确“你不需要精确计算字数”。
+- 回归测试新增：一章 3 个 shot 全落在转运站场景会被 L3 拦截；转运站 / 露天堆场 / 工厂车间三场景通过。
+- `TASKS.md` 收敛为 open-only 待办入口，已完成事项继续归档在本文件和 `docs/bugfix.md`。
+
+### 当前口径
+
+当前 `v01.c03` 旧导出仍不应 accept。下一步必须用 B92-B94 新门禁重跑第 3 章；winner 选择前置资格过滤和正确薄稿扩写仍是 P0 待办。
+
+### 验证
+
+- 语法检查：`architect_gate.py` + `prompt_compiler.py` 通过。
+- 目标测试：`tests/test_architect_gate.py` + `tests/test_prompt_compiler.py`，34 passed。
+- 全量回归：524 passed, 4 warnings。
 
 ---
 
