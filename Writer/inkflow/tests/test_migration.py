@@ -435,6 +435,83 @@ class TestVersionTracking:
         finally:
             conn.close()
 
+    def test_migrate_v25_to_v26_creates_and_backfills_fingerprints(self, tmp_dir):
+        """v26 migration 建指纹表并从 scene_contract 回填。"""
+        import json
+
+        conn = sqlite3.connect(str(tmp_dir / "v25_finger.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 25)
+            # 最小前置表满足 FK
+            conn.execute(
+                "CREATE TABLE writing_sessions ("
+                "session_id TEXT PRIMARY KEY, project_id TEXT, run_id TEXT NOT NULL UNIQUE, "
+                "status TEXT NOT NULL)"
+            )
+            conn.execute("INSERT INTO writing_sessions(session_id, run_id, status) VALUES ('s1','r1','active')")
+            conn.execute(
+                "CREATE TABLE writing_shots ("
+                "shot_id TEXT PRIMARY KEY, project_id TEXT, run_id TEXT NOT NULL, "
+                "layer_key TEXT NOT NULL, shot_index INTEGER NOT NULL, shot_status TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO writing_shots(shot_id, run_id, layer_key, shot_index, shot_status) "
+                "VALUES ('sh1','r1','c01',1,'pending')"
+            )
+            conn.execute(
+                "CREATE TABLE writing_shot_contracts ("
+                "contract_id TEXT PRIMARY KEY, project_id TEXT, run_id TEXT NOT NULL, "
+                "shot_id TEXT NOT NULL, layer_key TEXT NOT NULL, contract_status TEXT NOT NULL, "
+                "snapshot_hash TEXT NOT NULL, must_land_json JSON NOT NULL, "
+                "anti_write_json JSON NOT NULL, exit_to_json JSON, motif_tasks_json JSON, "
+                "pov_routing_json JSON, contract_json JSON NOT NULL, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+            )
+            conn.execute(
+                "INSERT INTO writing_shot_contracts(contract_id, run_id, shot_id, layer_key, "
+                "contract_status, snapshot_hash, must_land_json, anti_write_json, contract_json) "
+                "VALUES ('cid1','r1','sh1','c01','draft','h','{}','{}', ?)",
+                (json.dumps({"scene_contract": {"location": "转运站月台", "required_anchors": ["军列", "交接单"]}}),),
+            )
+            # v25 scene_contract 表（与 _create_v25_scene_contract_table 一致）
+            conn.execute(
+                "CREATE TABLE writing_shot_scene_contracts ("
+                "scene_contract_id TEXT PRIMARY KEY, contract_id TEXT NOT NULL, "
+                "scene_id TEXT NOT NULL CHECK(length(scene_id) > 0), "
+                "location TEXT NOT NULL CHECK(length(location) > 0), "
+                "time_position TEXT NOT NULL DEFAULT '', entry_point TEXT NOT NULL DEFAULT '', "
+                "entry_object TEXT NOT NULL DEFAULT '', required_anchors TEXT NOT NULL DEFAULT '[]', "
+                "forbidden_overlap TEXT NOT NULL DEFAULT '[]', information_delta TEXT NOT NULL DEFAULT '', "
+                "exit_state TEXT NOT NULL DEFAULT '', same_scene_continuation INTEGER NOT NULL DEFAULT 0, "
+                "min_utf8_bytes INTEGER NOT NULL DEFAULT 1200, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(contract_id))"
+            )
+            conn.execute(
+                "INSERT INTO writing_shot_scene_contracts(scene_contract_id, contract_id, scene_id, "
+                "location, time_position, entry_object, required_anchors) "
+                "VALUES ('sc1','cid1','scene.01','转运站月台','当日','军列', ?)",
+                (json.dumps(["军列", "交接单"]),),
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v25" in r and "v26" in r for r in result)
+            row = conn.execute(
+                "SELECT scene_bucket, event_anchors, source, time_jump, key_objects "
+                "FROM writing_shot_scene_fingerprints WHERE contract_id='cid1'"
+            ).fetchone()
+            assert row is not None
+            assert row["scene_bucket"] == "转运站月台"
+            assert json.loads(row["event_anchors"]) == ["军列", "交接单"]
+            assert row["source"] == "explicit"
+            assert row["time_jump"] == "当日"
+            assert "军列" in json.loads(row["key_objects"])
+        finally:
+            conn.close()
+
 
 class TestMigrationChain:
     """迁移链执行"""

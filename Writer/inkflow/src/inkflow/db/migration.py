@@ -1574,6 +1574,112 @@ def _create_v25_scene_contract_table(conn: sqlite3.Connection) -> None:
     )
 
 
+@register_migration(25, 26)
+def _migrate_v25_to_v26(conn: sqlite3.Connection) -> None:
+    """v26: Scene fingerprint — 场景指纹特征表，并回填已有 scene_contract。"""
+    _create_v26_fingerprint_table(conn)
+    _backfill_v26_fingerprints(conn)
+
+
+def _create_v26_fingerprint_table(conn: sqlite3.Connection) -> None:
+    """Create v26 scene fingerprint table (mirrors schema.sql)."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_shot_scene_fingerprints ("
+        "fingerprint_id   TEXT PRIMARY KEY, "
+        "contract_id      TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id), "
+        "scene_bucket     TEXT NOT NULL DEFAULT '', "
+        "time_jump        TEXT NOT NULL DEFAULT '', "
+        "key_objects      TEXT NOT NULL DEFAULT '[]', "
+        "event_anchors    TEXT NOT NULL DEFAULT '[]', "
+        "similarity_hash  TEXT NOT NULL DEFAULT '', "
+        "source           TEXT NOT NULL DEFAULT 'derived' "
+        "CHECK(source IN ('derived','fallback','explicit')), "
+        "created_at       TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(contract_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shot_scene_fingerprints_bucket "
+        "ON writing_shot_scene_fingerprints(scene_bucket)"
+    )
+
+
+def _normalize_bucket(location: str) -> str:
+    """Normalize a scene location into a comparable bucket string."""
+    import re
+    import unicodedata
+    s = (location or "").strip()
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    s = re.sub(r"\s+", "", s)
+    s = "".join(c.lower() if c.isascii() else c for c in s)
+    return s
+
+
+def _backfill_v26_fingerprints(conn: sqlite3.Connection) -> None:
+    """Backfill fingerprints from existing writing_shot_scene_contracts rows."""
+    import hashlib
+    import json
+
+    from inkflow.utils.ulid import generate as generate_ulid
+
+    rows = conn.execute(
+        "SELECT contract_id, location, time_position, entry_object, required_anchors "
+        "FROM writing_shot_scene_contracts"
+    ).fetchall()
+    for r in rows:
+        try:
+            location = (r["location"] or "").strip() if "location" in r.keys() else ""
+            time_position = (r["time_position"] or "").strip() if "time_position" in r.keys() else ""
+            entry_object = (r["entry_object"] or "").strip() if "entry_object" in r.keys() else ""
+            anchors_raw = r["required_anchors"] if "required_anchors" in r.keys() else "[]"
+            if isinstance(anchors_raw, str):
+                anchors = json.loads(anchors_raw or "[]")
+            elif isinstance(anchors_raw, (list, tuple)):
+                anchors = list(anchors_raw)
+            else:
+                anchors = []
+            anchors = [str(a).strip() for a in anchors if str(a).strip()]
+
+            bucket = _normalize_bucket(location)
+            key_objects: list[str] = []
+            seen: set[str] = set()
+            for obj in [entry_object, *anchors[:3]]:
+                if obj and obj not in seen:
+                    seen.add(obj)
+                    key_objects.append(obj)
+            hash_src = bucket + "|" + "|".join(sorted(anchors[:3]))
+            sim_hash = hashlib.sha1(hash_src.encode("utf-8")).hexdigest()[:10]
+
+            if location and entry_object:
+                source = "explicit"
+            elif location:
+                source = "derived"
+            else:
+                source = "fallback"
+
+            conn.execute(
+                "INSERT OR IGNORE INTO writing_shot_scene_fingerprints "
+                "(fingerprint_id, contract_id, scene_bucket, time_jump, key_objects, "
+                "event_anchors, similarity_hash, source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    generate_ulid(),
+                    r["contract_id"],
+                    bucket,
+                    time_position,
+                    json.dumps(key_objects, ensure_ascii=False),
+                    json.dumps(anchors, ensure_ascii=False),
+                    sim_hash,
+                    source,
+                ),
+            )
+        except Exception:
+            # 单条出错不阻断迁移
+            continue
+
+
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
