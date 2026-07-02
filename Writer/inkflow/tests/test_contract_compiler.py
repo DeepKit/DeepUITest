@@ -249,6 +249,81 @@ class TestShotContracts:
         assert "微裂纹" in row["required_anchors"]
         assert "转运站月台" in row["forbidden_overlap"]
 
+    def test_compile_shot_contracts_writes_scene_fingerprint(self, compiler):
+        """compile_shot_contracts 同时写 writing_shot_scene_fingerprints。"""
+        self._setup_session_and_shots(compiler.db)
+        mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)
+        contract = compiler.get_meta_contract()
+
+        shots = [{
+            "shot_id": "s1",
+            "shot_index": 1,
+            "layer_key": "v01.c02",
+            "must_land": {
+                "title": "常规运输条件下的密封",
+                "beats": "前线露天堆场出现微裂纹，批号无法确认。",
+            },
+            "scene_contract": {
+                "scene_id": "v01.c02.scene.01",
+                "location": "前线露天堆场",
+                "time_position": "雨停后三天",
+                "required_anchors": ["露天", "微裂纹", "批号"],
+                "entry_object": "微裂纹",
+                "forbidden_overlap": ["转运站月台"],
+                "min_utf8_bytes": 1200,
+                "fingerprint": {
+                    "scene_bucket": "前线露天堆场",
+                    "time_jump": "雨停后三天",
+                    "key_objects": ["微裂纹", "露天", "批号"],
+                    "event_anchors": ["露天", "微裂纹", "批号"],
+                    "similarity_hash": "abc123def4",
+                    "source": "explicit",
+                },
+            },
+        }]
+        cids = compiler.compile_shot_contracts("run_01", shots, contract["layers_json"])
+
+        row = compiler.db.execute(
+            "SELECT scene_bucket, event_anchors, source, time_jump, similarity_hash "
+            "FROM writing_shot_scene_fingerprints WHERE contract_id = ?",
+            (cids[0],),
+        ).fetchone()
+        assert row is not None
+        assert row["scene_bucket"] == "前线露天堆场"
+        assert json.loads(row["event_anchors"]) == ["露天", "微裂纹", "批号"]
+        assert row["source"] == "explicit"
+        assert row["time_jump"] == "雨停后三天"
+
+    def test_compile_shot_contracts_writes_fingerprint_when_missing(self, compiler):
+        """scene_contract 未带 fingerprint 时，_write_scene_fingerprint 现场计算。"""
+        self._setup_session_and_shots(compiler.db)
+        mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)
+        contract = compiler.get_meta_contract()
+
+        shots = [{
+            "shot_id": "s1",
+            "shot_index": 1,
+            "layer_key": "v01.c02",
+            "must_land": {"title": "t", "beats": "b"},
+            "scene_contract": {
+                "scene_id": "v01.c02.scene.01",
+                "location": "转运站月台",
+                "required_anchors": ["军列"],
+                "entry_object": "军列",
+                "min_utf8_bytes": 1200,
+            },
+        }]
+        cids = compiler.compile_shot_contracts("run_01", shots, contract["layers_json"])
+
+        row = compiler.db.execute(
+            "SELECT scene_bucket, source FROM writing_shot_scene_fingerprints "
+            "WHERE contract_id = ?",
+            (cids[0],),
+        ).fetchone()
+        assert row is not None
+        assert row["scene_bucket"] == "转运站月台"
+        assert row["source"] == "explicit"
+
     def test_get_shot_contract(self, compiler):
         self._setup_session_and_shots(compiler.db)
         mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)

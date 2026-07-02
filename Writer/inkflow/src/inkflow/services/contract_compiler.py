@@ -1064,6 +1064,38 @@ class ContractCompiler:
                 int(scene.get("min_utf8_bytes") or 1200),
             ),
         )
+        self._write_scene_fingerprint(contract_id, scene_contract, scene)
+
+    def _write_scene_fingerprint(
+        self, contract_id: str, scene_contract: dict | None, scene: dict
+    ) -> None:
+        """Write the v26 scene fingerprint row for a shot contract.
+
+        Prefers a pre-computed ``fingerprint`` on the original scene_contract
+        (produced by cli._derive_scene_contract); otherwise recomputes from the
+        normalized scene via cli._derive_fingerprint.
+        """
+        raw = scene_contract if isinstance(scene_contract, dict) else {}
+        fp = raw.get("fingerprint")
+        if not isinstance(fp, dict):
+            from inkflow.cli import _derive_fingerprint
+            fp = _derive_fingerprint(scene)
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_shot_scene_fingerprints "
+            "(fingerprint_id, contract_id, scene_bucket, time_jump, key_objects, "
+            "event_anchors, similarity_hash, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                generate_ulid(),
+                contract_id,
+                fp.get("scene_bucket", ""),
+                fp.get("time_jump", ""),
+                json.dumps(fp.get("key_objects") or [], ensure_ascii=False),
+                json.dumps(fp.get("event_anchors") or [], ensure_ascii=False),
+                fp.get("similarity_hash", ""),
+                fp.get("source", "derived"),
+            ),
+        )
 
 
 def _normalize_scene_contract(
