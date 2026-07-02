@@ -1208,6 +1208,61 @@ def _setup_fact_manifest_shot(setup_data: dict, shot_index: int) -> dict:
     return {}
 
 
+def _normalize_scene_bucket(location: str) -> str:
+    """Normalize a scene location into a comparable bucket string.
+
+    NFKC (全角→半角) + 去空白 + ASCII 小写。空 location 返回 ""，
+    gate 视为 unknown。
+    """
+    import unicodedata
+    s = (location or "").strip()
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    s = re.sub(r"\s+", "", s)
+    s = "".join(c.lower() if c.isascii() else c for c in s)
+    return s
+
+
+def _derive_fingerprint(scene_contract: dict) -> dict:
+    """Compute a scene fingerprint from a normalized scene_contract dict.
+
+    指纹字段：scene_bucket / time_jump / key_objects / event_anchors /
+    similarity_hash / source。与 writing_shot_scene_fingerprints 表一一对应。
+    """
+    import hashlib
+    location = str(scene_contract.get("location") or "").strip()
+    anchors = [str(a).strip() for a in (scene_contract.get("required_anchors") or []) if str(a).strip()]
+    entry_object = str(scene_contract.get("entry_object") or "").strip()
+    time_position = str(scene_contract.get("time_position") or "").strip()
+
+    bucket = _normalize_scene_bucket(location)
+    key_objects: list[str] = []
+    seen: set[str] = set()
+    for obj in [entry_object, *anchors[:3]]:
+        if obj and obj not in seen:
+            seen.add(obj)
+            key_objects.append(obj)
+    hash_src = bucket + "|" + "|".join(sorted(anchors[:3]))
+    sim_hash = hashlib.sha1(hash_src.encode("utf-8")).hexdigest()[:10]
+
+    if location and entry_object:
+        source = "explicit"
+    elif location:
+        source = "derived"
+    else:
+        source = "fallback"
+
+    return {
+        "scene_bucket": bucket,
+        "time_jump": time_position,
+        "key_objects": key_objects,
+        "event_anchors": anchors,
+        "similarity_hash": sim_hash,
+        "source": source,
+    }
+
+
 def _derive_scene_contract(event: dict, shot_index: int, total: int) -> dict:
     """Compile a prose event into a machine-checkable scene contract."""
     explicit = event.get("scene_contract")
@@ -1289,6 +1344,12 @@ def _derive_scene_contract(event: dict, shot_index: int, total: int) -> dict:
             or event.get("same_scene_continuation")
         ),
         "min_utf8_bytes": max(600, min_bytes),
+        "fingerprint": _derive_fingerprint({
+            "location": location,
+            "time_position": time_position,
+            "entry_object": entry_object,
+            "required_anchors": required,
+        }),
     }
 
 

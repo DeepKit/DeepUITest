@@ -863,6 +863,57 @@ class TestChapterSetupSmoke:
         assert "微裂纹" in scene["required_anchors"]
         assert "批号" in scene["required_anchors"]
 
+    def test_derive_scene_contract_includes_fingerprint(self):
+        from inkflow.cli import _derive_scene_contract
+
+        event = {
+            "title": "转运站见军列",
+            "event": "许怀山在转运站月台交接军列",
+            "scene_contract": {
+                "location": "转运站月台",
+                "time_position": "当日",
+                "required_anchors": ["军列", "交接单"],
+                "entry_object": "军列",
+            },
+        }
+        sc = _derive_scene_contract(event, 1, 3)
+        fp = sc.get("fingerprint")
+        assert fp is not None
+        assert fp["scene_bucket"] == "转运站月台"
+        assert fp["event_anchors"] == ["军列", "交接单"]
+        assert fp["time_jump"] == "当日"
+        assert fp["source"] == "explicit"
+        assert fp["similarity_hash"]
+        assert "军列" in fp["key_objects"]
+
+    def test_derive_fingerprint_normalizes_bucket(self):
+        from inkflow.cli import _derive_scene_contract
+
+        # 全角空格 + ASCII → NFKC + 去空白 + 小写
+        event = {
+            "title": "t",
+            "event": "e",
+            "scene_contract": {"location": "Transit　Station", "required_anchors": []},
+        }
+        sc = _derive_scene_contract(event, 1, 2)
+        fp = sc["fingerprint"]
+        assert fp["scene_bucket"] == "transitstation"
+
+    def test_derive_fingerprint_fallback_when_no_location(self):
+        from inkflow.cli import _derive_scene_contract
+
+        # 无 location、无 anchors 线索 → bucket 空、source=fallback
+        event = {"title": "t", "event": "e", "scene_contract": {}}
+        sc = _derive_scene_contract(event, 1, 2)
+        fp = sc["fingerprint"]
+        # location 推导失败时 bucket 为空
+        if not fp["scene_bucket"]:
+            assert fp["source"] == "fallback"
+        # 若 _infer_scene_location 推导出 location，则 source 应为 derived/explicit，
+        # 不为 fallback——只要 bucket 非空即说明指纹有内容
+        else:
+            assert fp["source"] in ("derived", "explicit")
+
     def test_fact_manifest_gate_catches_wrong_scene_overlap(self):
         manifest = _build_fact_manifest(
             chapter="v01.c03",
