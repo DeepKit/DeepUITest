@@ -4,6 +4,29 @@
 
 ---
 
+## v3.28 结构化场景指纹 SCENE-FINGERPRINT-1 (2026-07-02)
+
+把 `_check_chapter_scene_diversity` (L3) 从"正文硬编码词表反推场景"改为"读结构化指纹"，消除《白灯法则》专有词表依赖，让换项目时 gate 不再静默放行。设计见 `docs/superpowers/specs/2026-07-02-scene-fingerprint-design.md`。
+
+### 完成项
+
+1. **Schema v26** — 新增 `writing_shot_scene_fingerprints` 表：`scene_bucket` / `time_jump` / `key_objects` / `event_anchors` / `similarity_hash` / `source`，UNIQUE(contract_id) 一对一，`source` CHECK 枚举 `derived/fallback/explicit`。`SCHEMA_VERSION` 25→26。
+2. **Migration v25→v26** — `_migrate_v25_to_v26` 建指纹表并从已有 `writing_shot_scene_contracts` 回填（location→scene_bucket 经 `_normalize_bucket` 做 NFKC+去空白+ASCII 小写；required_anchors→event_anchors；entry_object 决定 source）。单条出错不阻断迁移。
+3. **cli 指纹计算** — `_derive_scene_contract` 返回 dict 新增 `fingerprint` 键；新增 `_normalize_scene_bucket` 与 `_derive_fingerprint`（scene_bucket/time_jump/key_objects/event_anchors/similarity_hash/source）。
+4. **ContractCompiler 写指纹表** — `compile_shot_contracts` 写完 scene_contract 后调 `_write_scene_fingerprint` 落库；优先用 cli 预计算的 fingerprint，缺失时从规范化 scene 现场计算。
+5. **architect_gate 读指纹** — `_check_chapter_scene_diversity` 优先读 `writing_shot_scene_fingerprints`，`_scenes_same` 判同场景（bucket 相等或 event_anchors Jaccard≥0.7）；指纹缺失回退 `_fallback_bucket_from_text`（原 `_scene_bucket` 改名，留兼容别名）。shots 查询补 `contract_id` 列。新增 `_scene_fingerprint_for_contract` 方法。
+
+### 验证
+
+- `tests/test_schema.py` 55 passed（含指纹表结构与 CHECK 约束）
+- `tests/test_migration.py` 16 passed（含 v25→v26 建表+回填）
+- `tests/test_cli.py` 76 passed（含 fingerprint 输出与 bucket 归一化）
+- `tests/test_contract_compiler.py` 17 passed（含指纹落库与缺失现场计算）
+- `tests/test_architect_gate.py` 26 passed（含指纹判定同场景/Jaccard/无指纹回退）
+- 全量 543 passed，0 failed
+
+---
+
 ## v3.27 多场景与 UTF-8 byte 容量门禁 (2026-07-02)
 
 本轮继续处理《白灯法则》`v01.c03` 三个片段雷同的问题，把“多个片段必须是多个场景”和“不要让 AI 自己数字数”下沉为程序不变量。

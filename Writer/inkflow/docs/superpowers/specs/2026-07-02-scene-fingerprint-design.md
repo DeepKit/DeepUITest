@@ -1,7 +1,7 @@
 # SCENE-FINGERPRINT-1 — 结构化场景指纹设计
 
 Date: 2026-07-02
-Status: Draft (brainstorming output)
+Status: Implemented (v3.28, SCHEMA_VERSION 26)
 Owner: InkFlow 主链路
 
 ## 1. 问题陈述
