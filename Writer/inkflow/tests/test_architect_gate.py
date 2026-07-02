@@ -87,6 +87,103 @@ class TestArchitectGateL4:
         assert result["shot_density"]["passed"] is False
         assert any("shot_too_thin" in issue for issue in result["hard_issues"])
 
+    def test_l4_rejects_factory_contract_that_opens_in_previous_scene(self, setup_l4):
+        db, gate, run_id = setup_l4
+        must_land = {
+            "title": "许怀山回到工厂",
+            "beats": (
+                "许怀山回到工厂，在车间门口站了很久。"
+                "他闻到空气里有种不该出现的气味——不是硫磺，不是橡胶。"
+            ),
+        }
+        db.execute(
+            "UPDATE writing_shot_contracts SET must_land_json = ? "
+            "WHERE shot_id = 'shot_01'",
+            (json.dumps(must_land, ensure_ascii=False),),
+        )
+        text = (
+            "雨不是落下来的，是压下来的。"
+            "许怀山站在转运站的月台边缘，军绿色的卡车停在十米外。"
+            "司机催他签字，纸张在雨水里发软。"
+            "卡车后斗里码着十二个木箱，封条上的红印泥被潮气泡出暗痕。"
+            "高启明站在驾驶室旁边，雨衣敞着怀，催他说司机还在等。"
+            "月台上的灯泡昏黄，水珠顺着铁皮棚边一串串落下来。"
+            "许怀山低头看那张交接单，合格两个字被雨水洇开了半笔。"
+            "他又看了一眼车厢，木箱之间的麻绳吸饱了水，勒进松木边缘。"
+            "远处的铁轨上有一列没有编号的军列，车门闭着，像一排沉默的铁柜。"
+            "雨水拍在车顶，柴油味从排气管口贴着地面散开。"
+            "他把单据折好，沿着湿滑的坡道往回走。"
+            "回到厂区大门时，硫化车间的铁门半开着。"
+            "空气里有种不该出现的气味，不是硫磺，不是橡胶。"
+            "高启明问他怎么了，他说没什么。"
+            "他伸手去推门，门把手冰冷。"
+        )
+        db.execute("UPDATE writing_drafts SET text = ? WHERE draft_id = 'd_01'", (text,))
+        db.commit()
+
+        result = gate.evaluate_l4(
+            "shot_01", "d_01",
+            {"passed": True, "score": 90, "light_status": "green"},
+        )
+
+        assert result["passed"] is False
+        assert "opening_not_factory_scene" in result["contract_scene"]["missing"]
+        assert any("contract_scene" in issue for issue in result["hard_issues"])
+
+    def test_l4_rejects_repeated_opening_from_previous_shot(self, setup_l4):
+        db, gate, run_id = setup_l4
+        previous_text = (
+            "雨不是落下来的，是压下来的。"
+            "许怀山站在转运站的月台边缘，卡车停在十米外。"
+            "他看见军列停在雨幕里，车厢没有编号。"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, "
+            "operation, text, text_hash_normalized, is_current, attempt_id) "
+            "VALUES ('rev_prev', 'shot_01', 'run_01', 'c1', 1, "
+            "'write_generate', ?, 'hash_prev', 1, 'att_prev')",
+            (previous_text,),
+        )
+        db.execute(
+            "UPDATE writing_shots SET shot_status = 'done_green', "
+            "light_status = 'green', current_revision_id = 'rev_prev' "
+            "WHERE shot_id = 'shot_01'"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+            "VALUES ('shot_02', 'proj_01', 'run_01', 'v01.c02', 2, 'pending')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c2', 'proj_01', 'run_01', 'shot_02', 'v01.c02', "
+            "'locked', 'h2', '{}', '{}', '{}')"
+        )
+        repeated_text = (
+            "雨不是落下来的，是压下来的。"
+            "许怀山站在转运站的月台边缘，军绿色的卡车停在十米外。"
+            "他手里捏着另一张单据，纸角已经卷起来。"
+        )
+        db.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES ('d_02', 'shot_02', 'run_01', '结构师', 0, ?, 'att_02')",
+            (repeated_text,),
+        )
+        db.commit()
+
+        result = gate.evaluate_l4(
+            "shot_02", "d_02",
+            {"passed": True, "score": 90, "light_status": "green"},
+        )
+
+        assert result["passed"] is False
+        assert result["opening_repetition"]["passed"] is False
+        assert any("opening_repetition" in issue for issue in result["hard_issues"])
+
     def test_l4_idempotent(self, setup_l4):
         db, gate, run_id = setup_l4
         gate2 = {"passed": True, "score": 88, "light_status": "green"}

@@ -408,6 +408,30 @@ def _chapter_completion_issues(db, run_id: str, chapter: str | None) -> list[str
     return issues
 
 
+def _shot_has_stale_previous_context(db, run_id: str, shot_id: str) -> bool:
+    """Return True when a completed shot predates a later upstream rewrite."""
+    row = db.execute(
+        "SELECT ws.layer_key, ws.shot_index, sr.created_at AS revision_created_at "
+        "FROM writing_shots ws "
+        "JOIN shot_revisions sr ON ws.current_revision_id = sr.revision_id "
+        "WHERE ws.run_id = ? AND ws.shot_id = ?",
+        (run_id, shot_id),
+    ).fetchone()
+    if not row or not row["revision_created_at"]:
+        return False
+    previous = db.execute(
+        "SELECT MAX(sr.created_at) AS latest_previous_revision_at "
+        "FROM writing_shots ws "
+        "JOIN shot_revisions sr ON ws.current_revision_id = sr.revision_id "
+        "WHERE ws.run_id = ? AND ws.layer_key = ? "
+        "AND ws.shot_index < ? "
+        "AND ws.shot_status IN ('done_green', 'done_yellow')",
+        (run_id, row["layer_key"], row["shot_index"]),
+    ).fetchone()
+    latest_previous = previous["latest_previous_revision_at"] if previous else None
+    return bool(latest_previous and latest_previous > row["revision_created_at"])
+
+
 def _latest_chapter_run(db, project_id: str, chapter: str) -> dict | None:
     row = db.execute(
         "SELECT ws.run_id, s.session_id, s.status, s.created_at "
@@ -2772,18 +2796,35 @@ def _run_project_inner(
             if shot_status_row and shot_status_row["shot_status"] in (
                 "done_green", "done_yellow",
             ):
-                click.echo(
-                    f"  ⏭ 已 ({shot_status_row['shot_status']}/"
-                    f"{shot_status_row['light_status']})，跳过"
-                )
-                audit.record_event(
-                    stage="run",
-                    event_type="shot_skipped_completed",
-                    status="skipped",
-                    shot_id=shot_id,
-                    payload={"shot_status": shot_status_row["shot_status"]},
-                )
-                continue
+                if _shot_has_stale_previous_context(db, run_id, shot_id):
+                    click.echo("  ♻ 上游片段已重写，当前片段上下文过期，重新生成")
+                    db.execute(
+                        "UPDATE writing_shots SET shot_status = 'redo', "
+                        "light_status = NULL, placeholder_type = 'redo_placeholder', "
+                        "updated_at = datetime('now') WHERE shot_id = ?",
+                        (shot_id,),
+                    )
+                    db.commit()
+                    audit.record_event(
+                        stage="run",
+                        event_type="shot_invalidated_stale_context",
+                        status="invalidated",
+                        shot_id=shot_id,
+                        payload={"previous_status": shot_status_row["shot_status"]},
+                    )
+                else:
+                    click.echo(
+                        f"  ⏭ 已 ({shot_status_row['shot_status']}/"
+                        f"{shot_status_row['light_status']})，跳过"
+                    )
+                    audit.record_event(
+                        stage="run",
+                        event_type="shot_skipped_completed",
+                        status="skipped",
+                        shot_id=shot_id,
+                        payload={"shot_status": shot_status_row["shot_status"]},
+                    )
+                    continue
 
             mgr.update_current_shot(session_id, shot_id)
             audit.record_event(

@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地与第 3 章返工验证：新增/修复 B76-B91；开放实现任务见 `../tasks.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地与第 3 章返工验证：新增/修复 B76-B92；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -120,6 +120,13 @@
 - **影响**: 多次返工后 report 显示 shot 总数、平均分、事实锚点膨胀。
 - **修复**: shot 计数、平均分、事实锚点都限定当前 run。
 - **文件**: `cli.py`, `tests/test_scope_report.py`
+
+### B92. 第 3 章相邻片段重复场景仍通过 L4/L3 ✅ 已修复
+- **严重性**: Critical
+- **根因**: `v01.c03` 契约事件有顺序差异，但缺少结构化场景入口硬约束；L4 只接收 jury/gate2 结果，没有检查 must_land 场景锚点是否在正文开头落地，也没有检查相邻 shot 开头重复。targeted redo 后，下游已完成 shot 不会因上游 current revision 变新而自动失效。
+- **影响**: `雨季`、`常规运输条件下的密封`、`许怀山回到工厂` 三个片段都从“雨不是落下来的，是压下来的 / 转运站月台”起笔；s02 生成过正确“露天堆放数日后微裂纹”候选，s03 生成过正确“车间门口异味”候选，但最终选择和 resume 编排把重复稿导出。
+- **修复**: L4 新增 `contract_scene` 检查，拦截“露天堆放/微裂纹/批号不清/回到工厂/车间门口/异常气味”等契约锚点缺失或开头场景错位；新增 `opening_repetition` 检查，拦截相邻完成 shot 的同句/高相似开头；`run --resume` 对已完成 shot 增加上游 revision 时间戳 stale 检测，上游重写后下游不再静默跳过。
+- **文件**: `architect_gate.py`, `cli.py`, `tests/test_architect_gate.py`, `tests/test_cli.py`
 
 ---
 

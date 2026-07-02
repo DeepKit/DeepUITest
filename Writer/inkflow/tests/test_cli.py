@@ -18,6 +18,7 @@ from inkflow.cli import (
     _evaluate_task_card_integrity,
     _jury_unavailable_detail,
     _jury_verdict_all_unavailable,
+    _shot_has_stale_previous_context,
     _validate_chapter_run_preflight,
     _validate_contract_scope_for_chapter,
     _generate_contract_draft,
@@ -892,6 +893,48 @@ class TestChapterSetupSmoke:
         assert {item["code"] for item in result["violations"]} == {
             "incomplete_outline_tail",
         }
+
+    def test_stale_previous_context_detects_downstream_after_upstream_rewrite(self, setup_run):
+        db = setup_run
+        db.execute(
+            "UPDATE writing_shots SET shot_status = 'done_green', "
+            "light_status = 'green', current_revision_id = 'rev_01' "
+            "WHERE shot_id = 'shot_01'"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, "
+            "operation, text, text_hash_normalized, is_current, attempt_id, created_at) "
+            "VALUES ('rev_01', 'shot_01', 'run_01', 'c1', 1, "
+            "'write_generate', '上游新正文。', 'hash_01', 1, 'att_01', "
+            "'2026-07-02 05:08:00')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, "
+            "light_status, current_revision_id) "
+            "VALUES ('shot_02', 'proj_01', 'run_01', 'v01.c02', 2, "
+            "'done_green', 'green', 'rev_02')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, contract_status, "
+            "snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c2', 'proj_01', 'run_01', 'shot_02', 'v01.c02', "
+            "'locked', 'h2', '{}', '{}', '{}')"
+        )
+        db.execute(
+            "INSERT INTO shot_revisions "
+            "(revision_id, shot_id, run_id, contract_id, revision_sequence, "
+            "operation, text, text_hash_normalized, is_current, attempt_id, created_at) "
+            "VALUES ('rev_02', 'shot_02', 'run_01', 'c2', 1, "
+            "'write_generate', '下游旧正文。', 'hash_02', 1, 'att_02', "
+            "'2026-07-02 03:56:00')"
+        )
+        db.commit()
+
+        assert _shot_has_stale_previous_context(db, "run_01", "shot_02") is True
+        assert _shot_has_stale_previous_context(db, "run_01", "shot_01") is False
 
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock

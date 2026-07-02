@@ -26,6 +26,7 @@ L4 now includes:
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import sqlite3
@@ -224,6 +225,24 @@ class ArchitectGate:
             issues.append(issue)
             hard_issues.append(issue)
 
+        contract_scene = self._check_contract_scene_anchors(text, contract)
+        if not contract_scene.get("passed", True):
+            issue = (
+                "contract_scene: "
+                + ", ".join(contract_scene.get("missing", [])[:3])
+            )
+            issues.append(issue)
+            hard_issues.append(issue)
+
+        opening_repetition = self._check_opening_repetition(shot_id, text)
+        if not opening_repetition.get("passed", True):
+            issue = (
+                "opening_repetition: "
+                + opening_repetition.get("reason", "repeated opening")
+            )
+            issues.append(issue)
+            hard_issues.append(issue)
+
         # Dual-helix check
         dual_helix = self._check_dual_helix(text)
 
@@ -381,6 +400,8 @@ class ArchitectGate:
             "name_consistency": name_consistency,
             "fact_expansion": fact_expansion,
             "shot_density": shot_density,
+            "contract_scene": contract_scene,
+            "opening_repetition": opening_repetition,
         }
 
         self._record_gate("L4", shot_id, result)
@@ -1110,6 +1131,104 @@ class ArchitectGate:
             "violations": violations,
         }
 
+    def _check_contract_scene_anchors(self, text: str, contract) -> dict:
+        """Reject drafts that satisfy style gates while ignoring scene anchors."""
+        if not contract:
+            return {"passed": True, "missing": []}
+        contract_text = ""
+        for field in ("must_land_json", "contract_json"):
+            raw = contract[field] if field in contract.keys() else None
+            if not raw:
+                continue
+            if isinstance(raw, str):
+                contract_text += raw
+            else:
+                contract_text += json.dumps(raw, ensure_ascii=False)
+        if not contract_text:
+            return {"passed": True, "missing": []}
+
+        compact = re.sub(r"\s+", "", text or "")
+        opening = compact[:220]
+        missing: list[str] = []
+
+        def has_any(target: str, terms: tuple[str, ...]) -> bool:
+            return any(term in target for term in terms)
+
+        if "露天" in contract_text and "堆放" in contract_text:
+            if not has_any(compact, ("露天", "堆放", "堆场", "货场", "泥地", "托盘", "防水布", "货堆")):
+                missing.append("missing_open_storage_scene")
+            if not has_any(opening, ("露天", "堆放", "堆场", "货场", "泥地", "托盘", "防水布", "货堆")):
+                missing.append("opening_not_open_storage_scene")
+        if "微裂纹" in contract_text or "裂纹" in contract_text:
+            if not has_any(compact, ("微裂纹", "裂纹", "裂痕", "细纹", "发丝般的裂")):
+                missing.append("missing_crack_anchor")
+        if "批号" in contract_text and ("无法确认" in contract_text or "不确认" in contract_text):
+            if not has_any(compact, ("批号", "编号", "喷码", "标签", "墨迹")):
+                missing.append("missing_batch_uncertainty_anchor")
+        if "回到工厂" in contract_text or "车间门口" in contract_text:
+            if not has_any(compact, ("回到工厂", "厂区", "工厂", "车间", "铁门")):
+                missing.append("missing_factory_return_scene")
+            if not has_any(opening, ("回到工厂", "厂区", "工厂", "车间", "铁门", "门口")):
+                missing.append("opening_not_factory_scene")
+        if "不该出现的气味" in contract_text or ("不是硫磺" in contract_text and "不是橡胶" in contract_text):
+            if not has_any(compact, ("不该出现的气味", "不是硫磺", "不是橡胶", "气味", "味道")):
+                missing.append("missing_abnormal_smell_anchor")
+
+        return {
+            "passed": not missing,
+            "missing": missing,
+        }
+
+    def _check_opening_repetition(self, shot_id: str, text: str) -> dict:
+        """Catch adjacent shots that restart with the same sentence or scene."""
+        row = self.db.execute(
+            "SELECT shot_index, layer_key FROM writing_shots "
+            "WHERE shot_id = ? AND run_id = ?",
+            (shot_id, self.run_id),
+        ).fetchone()
+        if not row or int(row["shot_index"] or 0) <= 1:
+            return {"passed": True}
+        current_first = _first_sentence(text)
+        current_prefix = _normalize_opening(text)
+        if not current_prefix:
+            return {"passed": True}
+        previous_rows = self.db.execute(
+            "SELECT ws.shot_index, sr.text FROM writing_shots ws "
+            "JOIN shot_revisions sr ON ws.current_revision_id = sr.revision_id "
+            "WHERE ws.run_id = ? AND ws.layer_key = ? "
+            "AND ws.shot_index < ? "
+            "AND ws.shot_status IN ('done_green', 'done_yellow') "
+            "ORDER BY ws.shot_index DESC LIMIT 2",
+            (self.run_id, row["layer_key"], row["shot_index"]),
+        ).fetchall()
+        for prev in previous_rows:
+            prev_first = _first_sentence(prev["text"])
+            if (
+                current_first
+                and prev_first
+                and current_first == prev_first
+                and len(current_first) >= 8
+            ):
+                return {
+                    "passed": False,
+                    "previous_shot_index": prev["shot_index"],
+                    "reason": f"same first sentence as s{prev['shot_index']:02d}",
+                }
+            prev_prefix = _normalize_opening(prev["text"])
+            if not prev_prefix:
+                continue
+            similarity = difflib.SequenceMatcher(
+                None, current_prefix, prev_prefix,
+            ).ratio()
+            if similarity >= 0.72:
+                return {
+                    "passed": False,
+                    "previous_shot_index": prev["shot_index"],
+                    "similarity": round(similarity, 3),
+                    "reason": f"opening too similar to s{prev['shot_index']:02d}",
+                }
+        return {"passed": True}
+
     def _check_single_titled_shot_density(self, shot_id: str, text: str) -> dict:
         """L4 version of titled-shot density for the current candidate."""
         row = self.db.execute(
@@ -1363,3 +1482,23 @@ class ArchitectGate:
             r["check_result_json"] = json.loads(r["check_result_json"])
             results.append(r)
         return results
+
+
+def _first_sentence(text: str) -> str:
+    """Return a compact first sentence for adjacent-shot repetition checks."""
+    if not text:
+        return ""
+    stripped = text.strip()
+    match = re.search(r"[。！？!?]", stripped)
+    if match:
+        return re.sub(r"\s+", "", stripped[:match.end()])
+    return re.sub(r"\s+", "", stripped[:80])
+
+
+def _normalize_opening(text: str, limit: int = 180) -> str:
+    """Normalize the opening passage enough for similarity comparison."""
+    if not text:
+        return ""
+    opening = re.sub(r"\s+", "", text.strip())[:limit]
+    opening = re.sub(r"[，,。！？!?；;：:“”\"'、（）()\[\]【】\-_—…·]", "", opening)
+    return opening
