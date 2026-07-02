@@ -539,13 +539,41 @@ def _build_task_card_context(task_card: dict) -> list[str]:
     pov = task_card.get("pov")
     if title:
         parts.append(f"标题: {title}")
-        parts.append("正文密度: 有标题的场景至少写 400 个汉字；必须是完整场景，不要写成摘要或梗概。")
+        parts.append(
+            "正文容量: 有标题的场景 UTF-8 字符串大小不少于约 1.2KB"
+            "（约 350-400 个中文字符）。你不需要精确计算字数；按完整场景写足动作、"
+            "物件、对话和环境后果，宁可略长，不要写成摘要或梗概。"
+        )
     if pov:
         parts.append(f"POV: {pov}")
     must_land = task_card.get("must_land")
     if must_land:
         parts.append("必须落地:")
         parts.append(str(must_land))
+    scene_contract = task_card.get("scene_contract") or {}
+    if isinstance(scene_contract, dict) and scene_contract:
+        parts.append("场景契约（必须执行）:")
+        for label, key in (
+            ("场景ID", "scene_id"),
+            ("地点", "location"),
+            ("时间位置", "time_position"),
+            ("入场点", "entry_point"),
+            ("入场物件", "entry_object"),
+            ("信息变化", "information_delta"),
+            ("出口状态", "exit_state"),
+        ):
+            value = scene_contract.get(key)
+            if value:
+                parts.append(f"- {label}: {value}")
+        required = scene_contract.get("required_anchors") or []
+        if required:
+            parts.append("- 必须出现的场景锚点: " + "、".join(str(item) for item in required))
+        forbidden = scene_contract.get("forbidden_overlap") or []
+        if forbidden:
+            parts.append("- 禁止复用的相邻场景元素: " + "、".join(str(item) for item in forbidden))
+        min_bytes = scene_contract.get("min_utf8_bytes")
+        if min_bytes:
+            parts.append(f"- 程序验收容量: UTF-8 字符串不少于 {min_bytes} bytes")
     hard_facts = task_card.get("hard_facts") or []
     if hard_facts:
         parts.append("硬事实:")

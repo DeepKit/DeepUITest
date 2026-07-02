@@ -215,6 +215,40 @@ class TestShotContracts:
         contract_ids = compiler.compile_shot_contracts("run_01", shots, contract["layers_json"])
         assert len(contract_ids) == 2
 
+    def test_compile_shot_contracts_writes_scene_contract(self, compiler):
+        self._setup_session_and_shots(compiler.db)
+        mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)
+        contract = compiler.get_meta_contract()
+
+        shots = [{
+            "shot_id": "s1",
+            "shot_index": 1,
+            "layer_key": "v01.c02",
+            "must_land": {
+                "title": "常规运输条件下的密封",
+                "beats": "前线露天堆场出现微裂纹，批号无法确认。",
+            },
+            "scene_contract": {
+                "scene_id": "v01.c02.scene.01",
+                "location": "前线露天堆场",
+                "time_position": "雨停后三天",
+                "required_anchors": ["露天", "微裂纹", "批号"],
+                "forbidden_overlap": ["转运站月台"],
+                "information_delta": "密封件出现异常且批号追踪断裂",
+                "min_utf8_bytes": 1200,
+            },
+        }]
+        cids = compiler.compile_shot_contracts("run_01", shots, contract["layers_json"])
+
+        row = compiler.db.execute(
+            "SELECT location, required_anchors, forbidden_overlap "
+            "FROM writing_shot_scene_contracts WHERE contract_id = ?",
+            (cids[0],),
+        ).fetchone()
+        assert row["location"] == "前线露天堆场"
+        assert "微裂纹" in row["required_anchors"]
+        assert "转运站月台" in row["forbidden_overlap"]
+
     def test_get_shot_contract(self, compiler):
         self._setup_session_and_shots(compiler.db)
         mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)

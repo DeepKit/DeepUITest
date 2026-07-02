@@ -1,4 +1,4 @@
-"""Verify all 45 business tables, CHECK constraints, UNIQUE constraints, and FK references."""
+"""Verify all business tables, CHECK constraints, UNIQUE constraints, and FK references."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 
-# ── 45 张业务表名（按 implementation-contract-v0.md + v21 auditability） ──
+# ── 业务表名（按 implementation-contract-v0.md + v21 auditability） ──
 
 ALL_TABLES = [
     "projects",
@@ -67,6 +67,7 @@ ALL_TABLES = [
     "writing_shot_must_land",
     "writing_shot_anti_write",
     "writing_shot_narrative_params",
+    "writing_shot_scene_contracts",
 ]
 
 # 预期索引
@@ -146,14 +147,15 @@ EXPECTED_INDEXES = [
     "idx_shot_must_land_contract",
     "idx_shot_anti_write_contract",
     "idx_shot_narrative_params_contract",
+    "idx_shot_scene_contracts_contract",
 ]
 
 
 class TestSchemaTables:
-    """验证所有 45 张业务表存在"""
+    """验证所有业务表存在"""
 
     def test_all_tables_exist(self, db):
-        """init_project_db() 应创建全部 45 张业务表"""
+        """init_project_db() 应创建全部业务表"""
         rows = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_schema_%' ORDER BY name"
         ).fetchall()
@@ -818,11 +820,12 @@ class TestV24ShotContractTables:
         )
 
     def test_v24_shot_tables_exist(self, db):
-        """v24 新增 3 张 shot 结构化表"""
+        """v24/v25 新增 shot 结构化表"""
         for table in [
             "writing_shot_must_land",
             "writing_shot_anti_write",
             "writing_shot_narrative_params",
+            "writing_shot_scene_contracts",
         ]:
             row = db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
@@ -863,6 +866,43 @@ class TestV24ShotContractTables:
         ).fetchone()
         assert row[0] == "雨中来客"
         assert row[1] == "阿坤"
+
+    def test_scene_contract_rejects_empty_location(self, db):
+        """scene contract location 不能为空"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_scene_contracts "
+                "(scene_contract_id, contract_id, scene_id, location) "
+                "VALUES ('sc1', 'c1', 'scene.01', '')"
+            )
+
+    def test_scene_contract_rejects_invalid_same_scene_flag(self, db):
+        """same_scene_continuation 必须是 0/1"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_scene_contracts "
+                "(scene_contract_id, contract_id, scene_id, location, same_scene_continuation) "
+                "VALUES ('sc1', 'c1', 'scene.01', '转运站月台', 2)"
+            )
+
+    def test_scene_contract_accepts_valid(self, db):
+        """合法 scene contract 可以正常插入"""
+        self._setup_contract(db)
+        db.execute(
+            "INSERT INTO writing_shot_scene_contracts "
+            "(scene_contract_id, contract_id, scene_id, location, required_anchors, "
+            "forbidden_overlap, min_utf8_bytes) "
+            "VALUES ('sc1', 'c1', 'scene.01', '转运站月台', ?, ?, 1200)",
+            ('["转运站","军列"]', '["露天堆场"]'),
+        )
+        row = db.execute(
+            "SELECT location, min_utf8_bytes FROM writing_shot_scene_contracts "
+            "WHERE scene_contract_id='sc1'"
+        ).fetchone()
+        assert row[0] == "转运站月台"
+        assert row[1] == 1200
 
     def test_narrative_params_rejects_invalid_phase(self, db):
         """narrative_phase 必须在合法枚举中"""

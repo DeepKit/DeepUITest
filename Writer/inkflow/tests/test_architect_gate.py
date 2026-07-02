@@ -333,6 +333,57 @@ class TestArchitectGateL3:
             )
         db.commit()
 
+    def test_l3_rejects_chapter_collapsed_to_one_scene(self, setup_run):
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c15"
+        run_id = "run_scene_collapsed"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "雨季第一天，许怀山站在转运站月台边，卡车的篷布往下滴水。"
+            "司机把交接单递给他，军列停在铁轨尽头，车厢没有编号。"
+            "他看见红印泥被雨水泡开，木箱之间的麻绳勒进松木边缘。",
+            "常规运输条件下的密封，仍从转运站月台开始。"
+            "许怀山接过另一张交接单，卡车后斗压着水痕，军列在雨里没有动。"
+            "司机催他签字，纸角贴在他的指腹上，像一层湿冷的皮。",
+            "许怀山回到工厂这一段，正文却又落回转运站月台。"
+            "卡车灯照着交接单，军列的铁皮车门闭着，司机在雨声里喊他的名字。"
+            "他低头看签字栏，墨水被雨水拖出一条灰线。",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+
+        result = gate.evaluate_l3(chapter)
+
+        assert result["passed"] is False
+        assert result["scene_diversity"]["passed"] is False
+        assert result["scene_diversity"]["distinct_count"] == 1
+        assert any("scene_diversity" in issue for issue in result["issues"])
+
+    def test_l3_accepts_distinct_chapter_scenes(self, setup_run):
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c16"
+        run_id = "run_scene_distinct"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "雨季第一天，许怀山站在转运站月台边，卡车的篷布往下滴水。"
+            "司机把交接单递给他，军列停在铁轨尽头，车厢没有编号。"
+            "他看见红印泥被雨水泡开，木箱之间的麻绳勒进松木边缘。",
+            "雨停后三天，前线露天堆场的泥地还没有干。"
+            "托盘垫在货堆下面，防水布边缘被风掀起，密封件表面有发丝般的微裂纹。"
+            "许怀山蹲下去看批号，墨迹被潮气泡散，已经无法确认。",
+            "许怀山回到工厂时，硫化车间的铁门半开着。"
+            "门口没有人说话，空气里有种不该出现的气味，不是硫磺，也不是橡胶。"
+            "他把手放在门把上，铁凉意从掌心往上爬。",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+
+        result = gate.evaluate_l3(chapter)
+
+        assert result["passed"] is True
+        assert result["scene_diversity"]["passed"] is True
+        assert result["scene_diversity"]["distinct_count"] == 3
+
     def test_l3_not_triggered_without_l4(self, setup_run):
         from inkflow.services.architect_gate import ArchitectGate
         db = setup_run

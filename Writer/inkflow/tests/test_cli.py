@@ -14,6 +14,8 @@ from inkflow.cli import (
     _format_jury_draft_score,
     _build_previous_context,
     _build_fact_manifest,
+    _build_shot_task_card,
+    _derive_scene_contract,
     _evaluate_text_against_fact_manifest,
     _evaluate_task_card_integrity,
     _jury_unavailable_detail,
@@ -845,6 +847,66 @@ class TestChapterSetupSmoke:
             for item in result["violations"]
         )
 
+    def test_scene_contract_is_derived_from_chapter_event(self):
+        scene = _derive_scene_contract(
+            {
+                "shot": 2,
+                "title": "常规运输条件下的密封",
+                "event": "雨停后三天，前线露天堆场的密封件出现微裂纹，批号无法确认。",
+            },
+            2,
+            3,
+        )
+
+        assert scene["location"] == "前线露天堆场"
+        assert scene["time_position"] == "前序运输后数日"
+        assert "微裂纹" in scene["required_anchors"]
+        assert "批号" in scene["required_anchors"]
+
+    def test_fact_manifest_gate_catches_wrong_scene_overlap(self):
+        manifest = _build_fact_manifest(
+            chapter="v01.c03",
+            layers={
+                "identity": {"pov_characters": ["许怀山"]},
+                "hard_boundaries": {"characters_alive": ["许怀山"]},
+                "world_knowledge": {},
+            },
+            chapter_events=[
+                {
+                    "shot": 2,
+                    "title": "常规运输条件下的密封",
+                    "pov": "许怀山",
+                    "event": "雨停后三天，前线露天堆场的密封件出现微裂纹，批号无法确认。",
+                    "scene_contract": {
+                        "scene_id": "scene.02",
+                        "location": "前线露天堆场",
+                        "required_anchors": ["露天", "微裂纹", "批号"],
+                        "forbidden_overlap": ["转运站", "月台", "交接单"],
+                    },
+                },
+            ],
+            exposition_gate={"forbidden_phrases": []},
+            suspense={},
+        )
+        setup_data = {
+            "schema": "inkflow.chapter_setup.v1",
+            "chapter": "v01.c03",
+            "fact_manifest": manifest,
+        }
+
+        result = _evaluate_text_against_fact_manifest(
+            "许怀山站在转运站月台边，司机把交接单递给他。雨水打湿了纸角。",
+            setup_data,
+            1,
+            phase="draft",
+        )
+
+        assert result["passed"] is False
+        codes = {item["code"] for item in result["violations"]}
+        assert "scene_forbidden_overlap" in codes
+        assert "scene_required_anchor_missing" in codes
+        assert "scene_location_missing_from_opening" in codes
+
     def test_task_card_integrity_catches_missing_required_fields(self):
         result = _evaluate_task_card_integrity(
             {
@@ -870,6 +932,7 @@ class TestChapterSetupSmoke:
         assert "missing_hard_facts" in codes
         assert "missing_hook_duty" in codes
         assert "missing_outline" in codes
+        assert "missing_scene_contract" in codes
 
     def test_task_card_integrity_catches_incomplete_outline_tail(self):
         result = _evaluate_task_card_integrity(
@@ -880,12 +943,20 @@ class TestChapterSetupSmoke:
                 "must_land": "密封件出现微裂纹。",
                 "hard_facts": [],
                 "hook_required": False,
+                "scene_contract": {
+                    "location": "前线露天堆场",
+                    "required_anchors": ["微裂纹"],
+                },
                 "outline": "许怀山没有回答高启明。他从工具袋中掏出一卷",
             },
             {
                 "shot": 2,
                 "hard_facts": [],
                 "hook_required": False,
+                "scene_contract": {
+                    "location": "前线露天堆场",
+                    "required_anchors": ["微裂纹"],
+                },
             },
         )
 
@@ -893,6 +964,28 @@ class TestChapterSetupSmoke:
         assert {item["code"] for item in result["violations"]} == {
             "incomplete_outline_tail",
         }
+
+    def test_shot_task_card_carries_scene_contract(self):
+        card = _build_shot_task_card(
+            chapter="v01.c03",
+            shot_index=2,
+            setup_shot={},
+            fact_manifest_shot={
+                "shot": 2,
+                "title": "常规运输条件下的密封",
+                "pov": "许怀山",
+                "must_land": "密封件出现微裂纹。",
+                "scene_contract": {
+                    "location": "前线露天堆场",
+                    "required_anchors": ["微裂纹", "批号"],
+                    "forbidden_overlap": ["转运站"],
+                },
+            },
+            outline_result={"final_outline": "许怀山在露天堆场发现微裂纹。"},
+        )
+
+        assert card["scene_contract"]["location"] == "前线露天堆场"
+        assert "批号" in card["scene_contract"]["required_anchors"]
 
     def test_stale_previous_context_detects_downstream_after_upstream_rewrite(self, setup_run):
         db = setup_run

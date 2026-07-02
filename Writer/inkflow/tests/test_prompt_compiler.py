@@ -188,7 +188,8 @@ class TestPromptCompiler:
         assert "系统并不恶意" in prompt
         assert "禁止长段系统议论" in prompt
         assert "最后一句必须是未完成动作" in prompt
-        assert "至少写 400 个汉字" in prompt
+        assert "UTF-8 字符串大小不少于约 1.2KB" in prompt
+        assert "你不需要精确计算字数" in prompt
         assert "Shot Task Card" in prompt
         assert "玻璃里的保鲜膜" in prompt
         assert "外江向内侵蚀内江" in prompt

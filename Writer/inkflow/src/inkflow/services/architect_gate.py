@@ -220,7 +220,7 @@ class ArchitectGate:
             issue = (
                 "shot_too_thin: "
                 f"s{shot_density['shot_index']:02d} {shot_density['title']} "
-                f"{shot_density['chars']}<{shot_density['min_chars']} chars"
+                f"{shot_density['bytes']}<{shot_density['min_bytes']} bytes"
             )
             issues.append(issue)
             hard_issues.append(issue)
@@ -230,6 +230,15 @@ class ArchitectGate:
             issue = (
                 "contract_scene: "
                 + ", ".join(contract_scene.get("missing", [])[:3])
+            )
+            issues.append(issue)
+            hard_issues.append(issue)
+
+        scene_contract = self._check_scene_contract_anchors(text, contract)
+        if not scene_contract.get("passed", True):
+            issue = (
+                "scene_contract: "
+                + ", ".join(scene_contract.get("missing", [])[:3])
             )
             issues.append(issue)
             hard_issues.append(issue)
@@ -401,6 +410,7 @@ class ArchitectGate:
             "fact_expansion": fact_expansion,
             "shot_density": shot_density,
             "contract_scene": contract_scene,
+            "scene_contract": scene_contract,
             "opening_repetition": opening_repetition,
         }
 
@@ -1016,8 +1026,13 @@ class ArchitectGate:
             issues.append(
                 "shot_too_thin: "
                 f"s{item['shot_index']:02d} {item['title']} "
-                f"{item['chars']}<{item['min_chars']} chars"
+                f"{item['bytes']}<{item['min_bytes']} bytes"
             )
+
+        # Check 4c: A multi-shot chapter must not collapse into one repeated scene.
+        scene_diversity = self._check_chapter_scene_diversity(shots)
+        for item in scene_diversity.get("violations", []):
+            issues.append(f"scene_diversity: {item['reason']}")
 
         # Check 5 (OPT-4): Character presence — warn if a POV character has zero shots
         # v24: Get POV characters from structured table first, fall back to layers_json
@@ -1067,6 +1082,7 @@ class ArchitectGate:
             "pov_coverage": pov_counts,
             "chapter_hook": chapter_hook,
             "shot_density": shot_density,
+            "scene_diversity": scene_diversity,
             "issues": issues,
         }
 
@@ -1117,17 +1133,105 @@ class ArchitectGate:
             text = repo.get_shot_text(shot["shot_id"])
             chars = len(re.sub(r"\s+", "", text or ""))
             is_final = shot["shot_index"] == total
-            min_chars = 400 if is_final else 350
-            if chars < min_chars:
+            byte_size = _utf8_size(text)
+            min_bytes = _min_scene_bytes(is_final)
+            if byte_size < min_bytes:
                 violations.append({
                     "shot_id": shot["shot_id"],
                     "shot_index": shot["shot_index"],
                     "title": title,
                     "chars": chars,
-                    "min_chars": min_chars,
+                    "min_chars": _approx_chinese_chars(min_bytes),
+                    "bytes": byte_size,
+                    "min_bytes": min_bytes,
                 })
         return {
             "passed": not violations,
+            "violations": violations,
+        }
+
+    def _check_chapter_scene_diversity(self, shots) -> dict:
+        """Reject chapters where several shots all land in the same scene."""
+        shot_count = len(shots)
+        repo = TextRepository(self.db)
+        scenes: list[dict] = []
+        violations: list[dict] = []
+
+        for shot in shots:
+            text = repo.get_shot_text(shot["shot_id"])
+            if not (text or "").strip():
+                continue
+            bucket = _scene_bucket(text)
+            opening = _normalize_opening(text)
+            fingerprint = bucket if bucket != "unknown" else opening[:90]
+            scenes.append({
+                "shot_id": shot["shot_id"],
+                "shot_index": shot["shot_index"],
+                "bucket": bucket,
+                "fingerprint": fingerprint,
+                "opening": _first_sentence(text)[:90],
+                "bytes": _utf8_size(text),
+            })
+
+        if shot_count < 3 or len(scenes) < 3:
+            return {
+                "passed": True,
+                "shot_count": shot_count,
+                "scene_count": len(scenes),
+                "distinct_count": 0,
+                "min_required": 0,
+                "scenes": scenes,
+                "violations": [],
+            }
+
+        fingerprints = [s["fingerprint"] for s in scenes if s["fingerprint"]]
+        distinct_count = len(set(fingerprints))
+        min_required = min(len(scenes), 3)
+        if distinct_count < min_required:
+            violations.append({
+                "type": "scene_count_low",
+                "reason": (
+                    f"only {distinct_count} distinct scene(s) for {len(scenes)} "
+                    f"shot(s), require >= {min_required}"
+                ),
+            })
+
+        buckets = [s["bucket"] for s in scenes]
+        known_buckets = [b for b in buckets if b != "unknown"]
+        if len(known_buckets) == len(scenes) and len(set(known_buckets)) == 1:
+            violations.append({
+                "type": "scene_bucket_collapsed",
+                "bucket": known_buckets[0],
+                "reason": f"all shots land in scene bucket '{known_buckets[0]}'",
+            })
+
+        for left, right in zip(scenes, scenes[1:]):
+            left_opening = left["fingerprint"]
+            right_opening = right["fingerprint"]
+            if not left_opening or not right_opening:
+                continue
+            similarity = difflib.SequenceMatcher(
+                None, left_opening, right_opening,
+            ).ratio()
+            if similarity >= 0.72:
+                violations.append({
+                    "type": "adjacent_scene_too_similar",
+                    "left": left["shot_index"],
+                    "right": right["shot_index"],
+                    "similarity": round(similarity, 3),
+                    "reason": (
+                        f"s{left['shot_index']:02d}/s{right['shot_index']:02d} "
+                        f"scene opening similarity {similarity:.2f}"
+                    ),
+                })
+
+        return {
+            "passed": not violations,
+            "shot_count": shot_count,
+            "scene_count": len(scenes),
+            "distinct_count": distinct_count,
+            "min_required": min_required,
+            "scenes": scenes,
             "violations": violations,
         }
 
@@ -1178,6 +1282,61 @@ class ArchitectGate:
             "passed": not missing,
             "missing": missing,
         }
+
+    def _check_scene_contract_anchors(self, text: str, contract) -> dict:
+        """Generic v25 scene-contract gate for source-level scene identity."""
+        scene = self._scene_contract_from_row(contract)
+        if not scene:
+            return {"passed": True, "missing": []}
+
+        compact = re.sub(r"\s+", "", text or "")
+        opening = compact[:260]
+        missing: list[str] = []
+
+        location = str(scene.get("location") or "")
+        if location and location != "待明确场景":
+            if not _scene_term_present(location, opening):
+                missing.append("opening_missing_scene_location")
+
+        entry_point = str(scene.get("entry_point") or "")
+        if entry_point and entry_point != location:
+            if not _scene_term_present(entry_point, opening):
+                missing.append("opening_missing_entry_point")
+
+        for marker in scene.get("required_anchors") or []:
+            marker = str(marker)
+            if marker and marker not in compact:
+                missing.append(f"missing_required_anchor:{marker}")
+                if len(missing) >= 8:
+                    break
+
+        for marker in scene.get("forbidden_overlap") or []:
+            marker = str(marker)
+            if marker and marker in compact:
+                missing.append(f"forbidden_overlap:{marker}")
+                if len(missing) >= 8:
+                    break
+
+        return {
+            "passed": not missing,
+            "missing": missing,
+            "scene_contract": scene,
+        }
+
+    def _scene_contract_from_row(self, contract) -> dict:
+        if not contract:
+            return {}
+        raw = contract["contract_json"] if "contract_json" in contract.keys() else None
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        scene = data.get("scene_contract") or {}
+        return scene if isinstance(scene, dict) else {}
 
     def _check_opening_repetition(self, shot_id: str, text: str) -> dict:
         """Catch adjacent shots that restart with the same sentence or scene."""
@@ -1252,15 +1411,18 @@ class ArchitectGate:
         ).fetchone()
         total = int(total_row["cnt"] or 0) if total_row else 0
         is_final = total > 0 and row["shot_index"] == total
-        min_chars = 400 if is_final else 350
         chars = len(re.sub(r"\s+", "", text or ""))
+        byte_size = _utf8_size(text)
+        min_bytes = _min_scene_bytes(is_final)
         return {
-            "passed": chars >= min_chars,
+            "passed": byte_size >= min_bytes,
             "shot_id": shot_id,
             "shot_index": row["shot_index"],
             "title": title,
             "chars": chars,
-            "min_chars": min_chars,
+            "min_chars": _approx_chinese_chars(min_bytes),
+            "bytes": byte_size,
+            "min_bytes": min_bytes,
         }
 
     @staticmethod
@@ -1502,3 +1664,80 @@ def _normalize_opening(text: str, limit: int = 180) -> str:
     opening = re.sub(r"\s+", "", text.strip())[:limit]
     opening = re.sub(r"[，,。！？!?；;：:“”\"'、（）()\[\]【】\-_—…·]", "", opening)
     return opening
+
+
+def _utf8_size(text: str | None) -> int:
+    """Return UTF-8 byte size; Chinese prose averages about 3 bytes per char."""
+    return len((text or "").encode("utf-8"))
+
+
+def _min_scene_bytes(is_final: bool) -> int:
+    """Minimum titled scene payload in UTF-8 bytes."""
+    return 1500 if is_final else 1200
+
+
+def _approx_chinese_chars(byte_size: int) -> int:
+    """Convert byte budget to a rough Chinese-character count for diagnostics."""
+    return round(byte_size / 3)
+
+
+def _scene_bucket(text: str | None) -> str:
+    """Classify the concrete scene entrance using deterministic anchor words."""
+    compact = re.sub(r"\s+", "", text or "")
+    if not compact:
+        return "unknown"
+
+    opening = compact[:260]
+    buckets = {
+        "transfer_station": (
+            "转运站", "月台", "卡车", "签字", "交接单", "军列",
+            "铁轨", "司机", "车厢",
+        ),
+        "open_storage": (
+            "露天", "堆放", "堆场", "货场", "泥地", "托盘",
+            "防水布", "货堆", "前线", "微裂纹", "裂纹", "批号",
+        ),
+        "factory_workshop": (
+            "回到工厂", "厂区", "工厂", "车间", "铁门", "硫化",
+            "门口", "不该出现的气味", "不是硫磺", "不是橡胶",
+        ),
+    }
+
+    scores: dict[str, int] = {}
+    for bucket, terms in buckets.items():
+        score = 0
+        for term in terms:
+            if term in opening:
+                score += 3
+            elif term in compact:
+                score += 1
+        scores[bucket] = score
+
+    bucket, score = max(scores.items(), key=lambda item: item[1])
+    return bucket if score > 0 else "unknown"
+
+
+def _scene_term_present(expected: str, target: str) -> bool:
+    if not expected:
+        return True
+    if expected in target:
+        return True
+    terms = _scene_anchor_terms(expected)
+    return any(term and term in target for term in terms)
+
+
+def _scene_anchor_terms(text: str) -> list[str]:
+    terms: list[str] = []
+    for term in (
+        "转运站", "月台", "军列", "交接单", "卡车", "签字", "司机",
+        "前线", "露天", "堆场", "货场", "防水布", "托盘", "微裂纹", "批号",
+        "工厂", "厂区", "车间", "铁门", "硫化", "气味", "硫磺", "橡胶",
+    ):
+        if term in (text or "") and term not in terms:
+            terms.append(term)
+    if not terms:
+        terms = [
+            item for item in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,8}", text or "")
+            if item
+        ][:4]
+    return terms

@@ -335,6 +335,10 @@ class ContractCompiler:
             "SELECT * FROM writing_shot_narrative_params WHERE contract_id = ?",
             (contract_id,),
         ).fetchone()
+        scene_row = self.db.execute(
+            "SELECT * FROM writing_shot_scene_contracts WHERE contract_id = ?",
+            (contract_id,),
+        ).fetchone()
 
         result = {}
 
@@ -406,6 +410,30 @@ class ContractCompiler:
                     "exit_to": cj.get("exit_to", ""),
                     "motif_tasks": cj.get("motif_tasks") or {},
                 }
+
+        if scene_row:
+            scene = dict(scene_row)
+            result["scene_contract"] = {
+                "scene_id": scene.get("scene_id", ""),
+                "location": scene.get("location", ""),
+                "time_position": scene.get("time_position", ""),
+                "entry_point": scene.get("entry_point", ""),
+                "entry_object": scene.get("entry_object", ""),
+                "required_anchors": json.loads(scene["required_anchors"]) if scene.get("required_anchors") else [],
+                "forbidden_overlap": json.loads(scene["forbidden_overlap"]) if scene.get("forbidden_overlap") else [],
+                "information_delta": scene.get("information_delta", ""),
+                "exit_state": scene.get("exit_state", ""),
+                "same_scene_continuation": bool(scene.get("same_scene_continuation")),
+                "min_utf8_bytes": scene.get("min_utf8_bytes", 1200),
+            }
+        else:
+            sc_row = self.db.execute(
+                "SELECT contract_json FROM writing_shot_contracts WHERE contract_id = ?",
+                (contract_id,),
+            ).fetchone()
+            if sc_row:
+                cj = json.loads(sc_row["contract_json"]) if sc_row["contract_json"] else {}
+                result["scene_contract"] = cj.get("scene_contract") or {}
 
         return result
 
@@ -803,6 +831,12 @@ class ContractCompiler:
                 # ARCH-2/3: Rhythm parameters
                 deviation_budget = shot.get("deviation_budget")
                 narrative_phase = shot.get("narrative_phase")
+                scene_contract = _normalize_scene_contract(
+                    shot.get("scene_contract"),
+                    shot_index=shot["shot_index"],
+                    layer_key=shot["layer_key"],
+                    must_land=must_land,
+                )
 
                 # Full contract = meta-contract layers + shot-specific
                 full_contract = {
@@ -824,6 +858,7 @@ class ContractCompiler:
                     # ARCH-2/3: Rhythm parameters
                     "deviation_budget": deviation_budget,
                     "narrative_phase": narrative_phase,
+                    "scene_contract": scene_contract,
                 }
 
                 self.db.execute(
@@ -849,7 +884,7 @@ class ContractCompiler:
                     sensory_pressure, dominant_sense, entry_mood,
                     deviation_budget, narrative_phase,
                     hard_facts, soft_constraints, reference,
-                    exit_to, motif_tasks,
+                    exit_to, motif_tasks, scene_contract,
                 )
 
                 contract_ids.append(contract_id)
@@ -904,6 +939,7 @@ class ContractCompiler:
         reference: str | None,
         exit_to: dict | None,
         motif_tasks: dict | None,
+        scene_contract: dict | None,
     ) -> None:
         """Write to v24 structured shot tables for DB-level enforcement.
 
@@ -1003,6 +1039,122 @@ class ContractCompiler:
             (generate_ulid(), contract_id, np_phase, np_sensory,
              np_budget, np_sense, np_mood, np_hf, np_sc, np_ref, np_exit, np_motif),
         )
+
+        # ═══ writing_shot_scene_contracts ═══
+        scene = _normalize_scene_contract(scene_contract, shot_index=0, layer_key="", must_land=must_land)
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_shot_scene_contracts "
+            "(scene_contract_id, contract_id, scene_id, location, time_position, "
+            "entry_point, entry_object, required_anchors, forbidden_overlap, "
+            "information_delta, exit_state, same_scene_continuation, min_utf8_bytes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                generate_ulid(),
+                contract_id,
+                scene["scene_id"],
+                scene["location"],
+                scene.get("time_position", ""),
+                scene.get("entry_point", ""),
+                scene.get("entry_object", ""),
+                json.dumps(scene.get("required_anchors") or [], ensure_ascii=False),
+                json.dumps(scene.get("forbidden_overlap") or [], ensure_ascii=False),
+                scene.get("information_delta", ""),
+                scene.get("exit_state", ""),
+                1 if scene.get("same_scene_continuation") else 0,
+                int(scene.get("min_utf8_bytes") or 1200),
+            ),
+        )
+
+
+def _normalize_scene_contract(
+    scene_contract: dict | None,
+    *,
+    shot_index: int,
+    layer_key: str,
+    must_land: dict | None,
+) -> dict:
+    """Normalize a scene contract into the v25 structured table shape."""
+    scene = scene_contract if isinstance(scene_contract, dict) else {}
+    must_land = must_land if isinstance(must_land, dict) else {}
+    event_text = " ".join(
+        str(value)
+        for value in (
+            must_land.get("title"),
+            must_land.get("event"),
+            must_land.get("event_text"),
+            must_land.get("beats"),
+        )
+        if value
+    )
+
+    def as_list(value) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, tuple):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return []
+
+    scene_id = str(scene.get("scene_id") or "").strip()
+    if not scene_id:
+        if layer_key and shot_index:
+            scene_id = f"{layer_key}.scene.{shot_index:02d}"
+        elif shot_index:
+            scene_id = f"scene.{shot_index:02d}"
+        else:
+            scene_id = "scene"
+
+    location = str(scene.get("location") or "").strip()
+    if not location:
+        location = _fallback_scene_location(event_text)
+
+    required = as_list(scene.get("required_anchors"))
+    if not required:
+        required = _fallback_required_anchors(event_text)
+
+    try:
+        min_bytes = int(scene.get("min_utf8_bytes") or 1200)
+    except (TypeError, ValueError):
+        min_bytes = 1200
+    min_bytes = max(600, min_bytes)
+
+    return {
+        "scene_id": scene_id,
+        "location": location,
+        "time_position": str(scene.get("time_position") or "").strip(),
+        "entry_point": str(scene.get("entry_point") or "").strip(),
+        "entry_object": str(scene.get("entry_object") or "").strip(),
+        "required_anchors": required,
+        "forbidden_overlap": as_list(scene.get("forbidden_overlap")),
+        "information_delta": str(scene.get("information_delta") or "").strip(),
+        "exit_state": str(scene.get("exit_state") or "").strip(),
+        "same_scene_continuation": bool(scene.get("same_scene_continuation")),
+        "min_utf8_bytes": min_bytes,
+    }
+
+
+def _fallback_scene_location(text: str) -> str:
+    compact = text or ""
+    if any(term in compact for term in ("转运站", "月台", "军列", "交接单", "卡车")):
+        return "转运站月台"
+    if any(term in compact for term in ("露天", "堆场", "货场", "防水布", "托盘", "前线")):
+        return "前线露天堆场"
+    if any(term in compact for term in ("工厂", "厂区", "车间", "铁门", "硫化")):
+        return "工厂车间门口"
+    return "待明确场景"
+
+
+def _fallback_required_anchors(text: str) -> list[str]:
+    anchors: list[str] = []
+    for term in (
+        "转运站", "月台", "军列", "交接单", "卡车",
+        "露天", "堆场", "防水布", "托盘", "微裂纹", "批号",
+        "工厂", "车间", "铁门", "不该出现的气味", "硫磺", "橡胶",
+    ):
+        if term in (text or "") and term not in anchors:
+            anchors.append(term)
+    return anchors[:8]
 
 
 def _chapter_num(chapter_key: str) -> int:

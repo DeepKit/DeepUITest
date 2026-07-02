@@ -1,5 +1,5 @@
 -- InkFlow v3.24 — Schema v24 (shot contract structured tables)
--- SCHEMA_VERSION: 24
+-- SCHEMA_VERSION: 25
 -- Generated from implementation-contract-v0.md; aligned 2026-06-29
 -- 48 business tables total (+ _schema_meta = 49 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -953,7 +953,7 @@ CREATE TABLE writing_chapter_tension_arc (
 );
 CREATE INDEX idx_tension_arc_blueprint ON writing_chapter_tension_arc(blueprint_id);
 
--- v24: Shot 契约结构化表 — 替代 must_land_json / anti_write_json / contract_json 中的 AI 写入字段
+-- v24/v25: Shot 契约结构化表 — 替代 must_land_json / anti_write_json / contract_json 中的 AI 写入字段
 CREATE TABLE writing_shot_must_land (
     must_land_id    TEXT PRIMARY KEY,
     contract_id     TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
@@ -997,3 +997,23 @@ CREATE TABLE writing_shot_narrative_params (
     UNIQUE(contract_id)
 );
 CREATE INDEX idx_shot_narrative_params_contract ON writing_shot_narrative_params(contract_id);
+
+-- v25: Scene contract — shot 必须是可区分、可检查的场景，而不是散文化事件
+CREATE TABLE writing_shot_scene_contracts (
+    scene_contract_id      TEXT PRIMARY KEY,
+    contract_id            TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+    scene_id               TEXT NOT NULL CHECK(length(scene_id) > 0),
+    location               TEXT NOT NULL CHECK(length(location) > 0),
+    time_position          TEXT NOT NULL DEFAULT '',
+    entry_point            TEXT NOT NULL DEFAULT '',
+    entry_object           TEXT NOT NULL DEFAULT '',
+    required_anchors       TEXT NOT NULL DEFAULT '[]',
+    forbidden_overlap      TEXT NOT NULL DEFAULT '[]',
+    information_delta      TEXT NOT NULL DEFAULT '',
+    exit_state             TEXT NOT NULL DEFAULT '',
+    same_scene_continuation INTEGER NOT NULL DEFAULT 0 CHECK(same_scene_continuation IN (0, 1)),
+    min_utf8_bytes         INTEGER NOT NULL DEFAULT 1200 CHECK(min_utf8_bytes > 0),
+    created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_scene_contracts_contract ON writing_shot_scene_contracts(contract_id);

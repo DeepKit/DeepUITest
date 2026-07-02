@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -1538,6 +1538,39 @@ def _create_v24_shot_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_shot_narrative_params_contract "
         "ON writing_shot_narrative_params(contract_id)"
+    )
+
+
+@register_migration(24, 25)
+def _migrate_v24_to_v25(conn: sqlite3.Connection) -> None:
+    """v25: Scene contract — shot 场景身份结构化。"""
+    _create_v25_scene_contract_table(conn)
+
+
+def _create_v25_scene_contract_table(conn: sqlite3.Connection) -> None:
+    """Create v25 shot scene contract table."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_shot_scene_contracts ("
+        "scene_contract_id      TEXT PRIMARY KEY, "
+        "contract_id            TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id), "
+        "scene_id               TEXT NOT NULL CHECK(length(scene_id) > 0), "
+        "location               TEXT NOT NULL CHECK(length(location) > 0), "
+        "time_position          TEXT NOT NULL DEFAULT '', "
+        "entry_point            TEXT NOT NULL DEFAULT '', "
+        "entry_object           TEXT NOT NULL DEFAULT '', "
+        "required_anchors       TEXT NOT NULL DEFAULT '[]', "
+        "forbidden_overlap      TEXT NOT NULL DEFAULT '[]', "
+        "information_delta      TEXT NOT NULL DEFAULT '', "
+        "exit_state             TEXT NOT NULL DEFAULT '', "
+        "same_scene_continuation INTEGER NOT NULL DEFAULT 0 CHECK(same_scene_continuation IN (0, 1)), "
+        "min_utf8_bytes         INTEGER NOT NULL DEFAULT 1200 CHECK(min_utf8_bytes > 0), "
+        "created_at             TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(contract_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shot_scene_contracts_contract "
+        "ON writing_shot_scene_contracts(contract_id)"
     )
 
 

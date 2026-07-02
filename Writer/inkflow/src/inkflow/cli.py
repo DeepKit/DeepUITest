@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -1131,6 +1132,7 @@ def _build_fact_manifest(
     total = len(chapter_events)
     shots: list[dict] = []
     for index, event in enumerate(chapter_events, start=1):
+        scene_contract = _derive_scene_contract(event, index, total)
         type_roles: list[str] = []
         if index == total:
             type_roles.append("hook")
@@ -1149,6 +1151,7 @@ def _build_fact_manifest(
                 "hard_facts": hard_facts,
                 "soft_constraints": soft_constraints,
                 "reference": reference,
+                "scene_contract": scene_contract,
                 "hard_boundaries": layers.get("hard_boundaries", {}),
                 "world_knowledge": layers.get("world_knowledge", {}),
             }
@@ -1160,6 +1163,7 @@ def _build_fact_manifest(
                 "pov": event.get("pov", "unknown"),
                 "must_land": event.get("event", ""),
                 "hard_facts": hard_facts,
+                "scene_contract": scene_contract,
                 "type_roles": type_roles,
                 "hook_required": index == total,
                 "authorized_corpus": authorized_corpus,
@@ -1202,6 +1206,150 @@ def _setup_fact_manifest_shot(setup_data: dict, shot_index: int) -> dict:
         shot = shots[shot_index - 1]
         return shot if isinstance(shot, dict) else {}
     return {}
+
+
+def _derive_scene_contract(event: dict, shot_index: int, total: int) -> dict:
+    """Compile a prose event into a machine-checkable scene contract."""
+    explicit = event.get("scene_contract")
+    if isinstance(explicit, dict) and explicit:
+        scene = dict(explicit)
+    else:
+        scene = {}
+
+    text = _flatten_contract_text({
+        "title": event.get("title", ""),
+        "event": event.get("event", ""),
+        "hard_facts": event.get("hard_facts") or [],
+        "scene": event.get("scene") or event.get("location") or "",
+    })
+
+    scene_id = str(scene.get("scene_id") or event.get("scene_id") or "").strip()
+    if not scene_id:
+        scene_id = f"scene.{shot_index:02d}"
+
+    location = str(
+        scene.get("location")
+        or event.get("location")
+        or event.get("scene_location")
+        or event.get("scene")
+        or ""
+    ).strip()
+    if not location:
+        location = _infer_scene_location(text)
+
+    time_position = str(
+        scene.get("time_position") or event.get("time_position") or ""
+    ).strip()
+    if not time_position:
+        time_position = _infer_scene_time_position(text, shot_index)
+
+    required = _normalize_string_list(
+        scene.get("required_anchors")
+        or event.get("required_anchors")
+        or event.get("must_show_objects")
+    )
+    if not required:
+        required = _infer_scene_anchors(text, location)
+
+    forbidden = _normalize_string_list(
+        scene.get("forbidden_overlap") or event.get("forbidden_overlap")
+    )
+
+    entry_object = str(
+        scene.get("entry_object") or event.get("entry_object") or ""
+    ).strip()
+    if not entry_object and required:
+        entry_object = required[0]
+
+    min_bytes = scene.get("min_utf8_bytes") or (1500 if shot_index == total else 1200)
+    try:
+        min_bytes = int(min_bytes)
+    except (TypeError, ValueError):
+        min_bytes = 1500 if shot_index == total else 1200
+
+    return {
+        "schema": "inkflow.scene_contract.v1",
+        "scene_id": scene_id,
+        "location": location,
+        "time_position": time_position,
+        "entry_point": str(
+            scene.get("entry_point") or event.get("entry_point") or location
+        ).strip(),
+        "entry_object": entry_object,
+        "required_anchors": required,
+        "forbidden_overlap": forbidden,
+        "information_delta": str(
+            scene.get("information_delta")
+            or event.get("information_delta")
+            or event.get("event", "")
+        ).strip(),
+        "exit_state": str(scene.get("exit_state") or event.get("exit_state") or "").strip(),
+        "same_scene_continuation": bool(
+            scene.get("same_scene_continuation")
+            or event.get("same_scene_continuation")
+        ),
+        "min_utf8_bytes": max(600, min_bytes),
+    }
+
+
+def _normalize_string_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        if value.strip().startswith("["):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except Exception:
+                pass
+        return [part.strip() for part in re.split(r"[,，、;；]", value) if part.strip()]
+    return []
+
+
+def _infer_scene_location(text: str) -> str:
+    if any(term in text for term in ("转运站", "月台", "交接单", "军列", "卡车")):
+        return "转运站月台"
+    if any(term in text for term in ("露天", "堆场", "货场", "防水布", "托盘", "前线", "微裂纹", "批号")):
+        return "前线露天堆场"
+    if any(term in text for term in ("回到工厂", "工厂", "厂区", "车间", "铁门", "硫化", "气味")):
+        return "工厂车间门口"
+    return "待明确场景"
+
+
+def _infer_scene_time_position(text: str, shot_index: int) -> str:
+    if any(term in text for term in ("雨停", "三天", "数日", "几天后")):
+        return "前序运输后数日"
+    if any(term in text for term in ("回到", "回厂", "回来")):
+        return "回厂后"
+    if any(term in text for term in ("雨季", "第一天", "当日")):
+        return "雨季当日"
+    return f"本章第 {shot_index} 个场景"
+
+
+def _infer_scene_anchors(text: str, location: str) -> list[str]:
+    anchors: list[str] = []
+    for term in (
+        "转运站", "月台", "军列", "交接单", "卡车", "签字",
+        "露天", "堆场", "防水布", "托盘", "微裂纹", "批号",
+        "工厂", "厂区", "车间", "铁门", "不该出现的气味", "硫磺", "橡胶",
+    ):
+        if term in text and term not in anchors:
+            anchors.append(term)
+    if not anchors and location and location != "待明确场景":
+        anchors.append(location)
+    return anchors[:8]
+
+
+def _scene_term_present(expected: str, target: str) -> bool:
+    if not expected:
+        return True
+    if expected in target:
+        return True
+    terms = _infer_scene_anchors(expected, expected)
+    return any(term and term in target for term in terms)
 
 
 def _evaluate_text_against_fact_manifest(
@@ -1261,6 +1409,32 @@ def _evaluate_text_against_fact_manifest(
                     "code": "unauthorized_fact_expansion",
                     "group": group,
                     "marker": marker,
+                })
+
+    scene_contract = shot_manifest.get("scene_contract") or {}
+    if isinstance(scene_contract, dict):
+        compact = re.sub(r"\s+", "", text)
+        head_compact = re.sub(r"\s+", "", head)
+        for marker in scene_contract.get("forbidden_overlap") or []:
+            marker = str(marker)
+            if marker and marker in compact:
+                violations.append({
+                    "code": "scene_forbidden_overlap",
+                    "marker": marker,
+                })
+        for marker in scene_contract.get("required_anchors") or []:
+            marker = str(marker)
+            if marker and marker not in compact:
+                violations.append({
+                    "code": "scene_required_anchor_missing",
+                    "marker": marker,
+                })
+        location = str(scene_contract.get("location") or "")
+        if phase == "draft" and location and location != "待明确场景":
+            if not _scene_term_present(location, head_compact):
+                violations.append({
+                    "code": "scene_location_missing_from_opening",
+                    "marker": location,
                 })
 
     if phase == "draft" and shot_manifest.get("hook_required"):
@@ -1359,6 +1533,11 @@ def _build_shot_task_card(
         ),
         "hook_required": bool(fact_manifest_shot.get("hook_required")),
         "forbidden_phrases": fact_manifest_shot.get("forbidden_phrases") or [],
+        "scene_contract": (
+            setup_shot.get("scene_contract")
+            or fact_manifest_shot.get("scene_contract")
+            or {}
+        ),
         "outline": outline_result.get("final_outline") or "",
         "outline_score": outline_result.get("final_score") or outline_result.get("initial_score"),
         "outline_passed": outline_result.get("final_passed", outline_result.get("passed")),
@@ -1379,6 +1558,14 @@ def _evaluate_task_card_integrity(
         violations.append({"code": "missing_hard_facts"})
     if fact_manifest_shot.get("hook_required") and not task_card.get("hook_required"):
         violations.append({"code": "missing_hook_duty"})
+    scene_contract = task_card.get("scene_contract")
+    if not isinstance(scene_contract, dict) or not scene_contract:
+        violations.append({"code": "missing_scene_contract"})
+    else:
+        if not str(scene_contract.get("location") or "").strip():
+            violations.append({"code": "missing_scene_location"})
+        if not scene_contract.get("required_anchors"):
+            violations.append({"code": "missing_scene_required_anchors"})
     outline = task_card.get("outline")
     if not outline:
         violations.append({"code": "missing_outline"})
@@ -1854,6 +2041,7 @@ def setup_project(project: str, chapter: str, force: bool):
     shots = []
     total = len(chapter_events)
     for index, event in enumerate(chapter_events, start=1):
+        scene_contract = _derive_scene_contract(event, index, total)
         roles = []
         if index == total:
             roles.append("hook")
@@ -1865,6 +2053,7 @@ def setup_project(project: str, chapter: str, force: bool):
             "title": event.get("title", f"Shot {index}"),
             "pov": event.get("pov", "unknown"),
             "must_land": event.get("event", ""),
+            "scene_contract": scene_contract,
             "type_roles": roles,
             "anti_patterns": [
                 "禁止把意象解释成主题",
@@ -2631,6 +2820,9 @@ def _run_project_inner(
             }
             if i < len(chapter_events):
                 ev = chapter_events[i]
+                scene_contract = _derive_scene_contract(
+                    ev, i + 1, len(chapter_events)
+                )
                 # Convert narrative event to bullet-point writing directive
                 event_text = ev.get("event", "")
                 import re as _re
@@ -2655,6 +2847,7 @@ def _run_project_inner(
                 title_line = f"## {title}\n\n" if title else ""
                 writing_directive = title_line + '\n'.join(f'- {p}' for p in key_points[:8])
                 shot_data["must_land"] = {"beats": writing_directive, "title": title}
+                shot_data["scene_contract"] = scene_contract
 
                 # Build anti_write: POV isolation constraint
                 this_pov = ev.get("pov", "unknown")
