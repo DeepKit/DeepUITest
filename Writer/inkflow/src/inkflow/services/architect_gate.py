@@ -212,6 +212,18 @@ class ArchitectGate:
         ).fetchone()
         text = draft["text"] if draft else ""
 
+        # Titled shots must already have real scene weight at L4. Waiting
+        # until L3 wastes a whole chapter pass before the thin shot is redone.
+        shot_density = self._check_single_titled_shot_density(shot_id, text)
+        if not shot_density.get("passed", True):
+            issue = (
+                "shot_too_thin: "
+                f"s{shot_density['shot_index']:02d} {shot_density['title']} "
+                f"{shot_density['chars']}<{shot_density['min_chars']} chars"
+            )
+            issues.append(issue)
+            hard_issues.append(issue)
+
         # Dual-helix check
         dual_helix = self._check_dual_helix(text)
 
@@ -368,6 +380,7 @@ class ArchitectGate:
             "system_voice": system_voice,             # OPT-7
             "name_consistency": name_consistency,
             "fact_expansion": fact_expansion,
+            "shot_density": shot_density,
         }
 
         self._record_gate("L4", shot_id, result)
@@ -1095,6 +1108,40 @@ class ArchitectGate:
         return {
             "passed": not violations,
             "violations": violations,
+        }
+
+    def _check_single_titled_shot_density(self, shot_id: str, text: str) -> dict:
+        """L4 version of titled-shot density for the current candidate."""
+        row = self.db.execute(
+            "SELECT ws.shot_id, ws.shot_index, ws.layer_key, "
+            "wsc.must_land_json, wsc.contract_json "
+            "FROM writing_shots ws "
+            "LEFT JOIN writing_shot_contracts wsc ON ws.shot_id = wsc.shot_id "
+            "AND wsc.run_id = ? "
+            "WHERE ws.shot_id = ? AND ws.run_id = ?",
+            (self.run_id, shot_id, self.run_id),
+        ).fetchone()
+        if not row:
+            return {"passed": True}
+        title = self._shot_title_from_row(row)
+        if not title:
+            return {"passed": True}
+        total_row = self.db.execute(
+            "SELECT COUNT(*) AS cnt FROM writing_shots "
+            "WHERE run_id = ? AND layer_key = ?",
+            (self.run_id, row["layer_key"]),
+        ).fetchone()
+        total = int(total_row["cnt"] or 0) if total_row else 0
+        is_final = total > 0 and row["shot_index"] == total
+        min_chars = 400 if is_final else 350
+        chars = len(re.sub(r"\s+", "", text or ""))
+        return {
+            "passed": chars >= min_chars,
+            "shot_id": shot_id,
+            "shot_index": row["shot_index"],
+            "title": title,
+            "chars": chars,
+            "min_chars": min_chars,
         }
 
     @staticmethod

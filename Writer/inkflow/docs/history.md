@@ -4,6 +4,38 @@
 
 ---
 
+## v3.25 《白灯法则》第 3 章返工验证硬化 (2026-07-02)
+
+本轮用真实项目《白灯法则》`v01.c03` 验证 CONFIG-ENFORCE 后的新门禁。验证过程中保留旧失败 run 审计，新开 run 并在同一 run 内针对 `s02` 迭代修复；最终 `v01.c03` 完成生成、L3 通过并自动导出。
+
+### 真实验证结果
+
+- 项目 DB 已备份：`.inkflow/inkflow.db.bak-v24-c03-before-targeted-redo-20260702`。
+- 最新完成 run：`01KWGE8XZPJZN41W5TTAKHAB5G`，`v01.c03 completed 3/3`。
+- 自动导出：`D:\_Progs\.Story\《白灯法则》\正文\白灯法则_v01.c03_导出.md`。
+- 本地 `.models` 调整：jury 增加 `deepseek/deepseek-v4-pro` 强模型兜底，用于低频高脑力评审；故事配置不进入 git。
+
+### 管线硬化
+
+- `confirm-contract` 结构化写入兼容 `chapter_hooks` list；Schema 预检允许长篇部分大纲中的未来 POV，同时继续拒绝未声明 shot POV。
+- `run` 结构化读取补 `json` import；B81 模型双源一致性比较改为 provider-normalized。
+- 大纲再生成增加半句尾巴检测，拒绝“掏出一卷”这类未落地 outline 写回；task card integrity 同步兜底。
+- prompt 编译从 `INSERT OR IGNORE` 改为 upsert，resume 时能刷新已存在 prompt；task card prompt 写入 titled shot 最低密度要求。
+- L4 前移 titled-shot density 检查，薄稿不再等到 L3 才失败。
+- exposition gate 修正 `说明书` 和对话内软解释标记误报。
+- Scope Report 限定当前 `run_id`，避免多次返工后混算旧 run。
+
+### 验证
+
+- 目标测试：新增/更新 B83-B91 覆盖。
+- 全量回归：519 passed, 4 warnings。
+
+### 当前口径
+
+第 3 章返工验证已跑通，但仍需人工审稿决定是否 `review --accept`。正式放量生产继续等待人工审稿结果和第 4 章生产前校准。
+
+---
+
 ## v3.24 CONFIG-ENFORCE 全线落地 (2026-07-02)
 
 本轮把“DB 字段级线束”从方案推进到运行链路：AI 生成的关键配置不再只停留在 JSON blob 中，必须写入结构化表并接受 DB 约束；`layers_json` 保留为审计快照和兼容 fallback。

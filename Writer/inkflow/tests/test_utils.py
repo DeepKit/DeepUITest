@@ -243,6 +243,42 @@ class TestConfig:
 
         assert jury["models"] == ["deepseek-v4-pro", "qwen3.7-plus"]
 
+    def test_jury_config_does_not_warn_for_same_provider_prefixed_model(self):
+        """B81: provider prefix and bare model name should compare equal."""
+        import warnings
+
+        config = {
+            "roles": {
+                "jury": {"primary_model": "agnes-2.0-flash"},
+            },
+            "jury_config": {
+                "models": ["agnes/agnes-2.0-flash"],
+            },
+        }
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            jury = get_jury_config(config)
+
+        assert jury["models"] == ["agnes/agnes-2.0-flash"]
+        assert not [w for w in caught if "B81" in str(w.message)]
+
+    def test_jury_config_warns_for_different_primary_model(self):
+        """B81: conflicting jury model sources should still be visible."""
+        config = {
+            "roles": {
+                "jury": {"primary_model": "agnes-2.0-flash"},
+            },
+            "jury_config": {
+                "models": ["deepseek/deepseek-v4-pro"],
+            },
+        }
+
+        with pytest.warns(UserWarning, match="B81"):
+            jury = get_jury_config(config)
+
+        assert jury["models"] == ["deepseek/deepseek-v4-pro"]
+
     def test_jury_config_deduplicates_dimensions(self):
         """literary_dimensions 中已有必需维度时不重复追加。"""
         config = {

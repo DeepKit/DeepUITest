@@ -19,6 +19,10 @@ class TestScopeReport:
             "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
             "VALUES ('s1', 'p1', 'run_01', 'active')"
         )
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s_old', 'p1', 'run_old', 'completed')"
+        )
         # Insert shots with different statuses
         for i, (status, light) in enumerate([
             ("done_green", "green"),
@@ -31,6 +35,11 @@ class TestScopeReport:
                 "VALUES (?, 'p1', 'run_01', 'v01.c02', ?, ?, ?)",
                 (f"sh{i}", i + 1, status, light),
             )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status, light_status) "
+            "VALUES ('sh_old', 'p1', 'run_old', 'v01.c02', 1, 'done_green', 'green')"
+        )
         db.commit()
 
         # Call the scope report function

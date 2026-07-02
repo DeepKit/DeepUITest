@@ -670,6 +670,44 @@ class TestOutlineEvaluator:
         assert result["parse_error"] is True
         assert "不可解析响应写回" in result["suggestions"][0]
 
+    def test_regenerated_outline_incomplete_tail_is_rejected(
+        self, setup_run, monkeypatch,
+    ):
+        evaluator = OutlineEvaluator(setup_run, "run_01", {})
+        calls = []
+
+        def fake_evaluate(shot_id, outline_text, meta_summary, previous_ending):
+            calls.append(outline_text)
+            if len(calls) == 1:
+                return {"score": 60, "passed": False, "issues": [], "suggestions": []}
+            return {"score": 90, "passed": True, "issues": [], "suggestions": []}
+
+        updated = []
+        monkeypatch.setattr(evaluator, "evaluate_outline", fake_evaluate)
+        monkeypatch.setattr(
+            evaluator,
+            "regenerate_outline",
+            lambda *args, **kwargs: {
+                "new_outline_text": "许怀山没有回答高启明。他从工具袋中掏出一卷",
+            },
+        )
+        monkeypatch.setattr(
+            evaluator, "_update_contract",
+            lambda shot_id, outline: updated.append((shot_id, outline)),
+        )
+
+        result = evaluator.evaluate_and_fix(
+            "shot_01",
+            {"must_land_json": {"beats": "许怀山发现密封件异常。"}},
+            {},
+        )
+
+        assert result["final_outline"] == calls[0]
+        assert result["final_outline"].endswith("许怀山发现密封件异常。")
+        assert result["regeneration_rejected"] is True
+        assert result["regeneration_rejected_reason"] == "incomplete_outline_tail"
+        assert updated == []
+
     def test_call_model_uses_outline_limits(self, setup_run, monkeypatch):
         """Outline evaluation should not use writer-sized token/time limits."""
         import inkflow.services.outline_evaluator as oe

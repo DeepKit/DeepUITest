@@ -19,6 +19,7 @@ P0 commands:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -1354,8 +1355,13 @@ def _evaluate_task_card_integrity(
         violations.append({"code": "missing_hard_facts"})
     if fact_manifest_shot.get("hook_required") and not task_card.get("hook_required"):
         violations.append({"code": "missing_hook_duty"})
-    if not task_card.get("outline"):
+    outline = task_card.get("outline")
+    if not outline:
         violations.append({"code": "missing_outline"})
+    else:
+        from inkflow.services.outline_evaluator import outline_has_incomplete_tail
+        if outline_has_incomplete_tail(str(outline)):
+            violations.append({"code": "incomplete_outline_tail"})
     return {
         "schema": "inkflow.task_card_integrity.v1",
         "passed": not violations,
@@ -4502,9 +4508,9 @@ def _print_scope_report(
     # Shot counts by status
     shot_rows = db.execute(
         "SELECT shot_status, light_status, COUNT(*) as cnt "
-        "FROM writing_shots WHERE project_id = ? AND layer_key = ? "
+        "FROM writing_shots WHERE project_id = ? AND run_id = ? AND layer_key = ? "
         "GROUP BY shot_status, light_status",
-        (project_id, chapter),
+        (project_id, run_id, chapter),
     ).fetchall()
 
     green = yellow = red = other = 0
@@ -4524,9 +4530,9 @@ def _print_scope_report(
         "SELECT AVG(jury_scores_json->>'winner_score') as avg_score "
         "FROM shot_revisions sr "
         "JOIN writing_shots ws ON sr.shot_id = ws.shot_id "
-        "WHERE ws.project_id = ? AND ws.layer_key = ? "
+        "WHERE ws.project_id = ? AND ws.run_id = ? AND ws.layer_key = ? "
         "AND sr.jury_scores_json IS NOT NULL",
-        (project_id, chapter),
+        (project_id, run_id, chapter),
     ).fetchone()
     avg_score = score_row["avg_score"] if score_row else None
 
@@ -4534,8 +4540,8 @@ def _print_scope_report(
     anchor_row = db.execute(
         "SELECT COUNT(*) as cnt FROM writing_fact_anchors fa "
         "JOIN writing_shots ws ON fa.shot_id = ws.shot_id "
-        "WHERE ws.project_id = ? AND ws.layer_key = ?",
-        (project_id, chapter),
+        "WHERE ws.project_id = ? AND ws.run_id = ? AND ws.layer_key = ?",
+        (project_id, run_id, chapter),
     ).fetchone()
     anchor_count = anchor_row["cnt"] if anchor_row else 0
 

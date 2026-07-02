@@ -870,6 +870,29 @@ class TestChapterSetupSmoke:
         assert "missing_hook_duty" in codes
         assert "missing_outline" in codes
 
+    def test_task_card_integrity_catches_incomplete_outline_tail(self):
+        result = _evaluate_task_card_integrity(
+            {
+                "schema": "inkflow.shot_task_card.v1",
+                "title": "常规运输条件下的密封",
+                "pov": "许怀山",
+                "must_land": "密封件出现微裂纹。",
+                "hard_facts": [],
+                "hook_required": False,
+                "outline": "许怀山没有回答高启明。他从工具袋中掏出一卷",
+            },
+            {
+                "shot": 2,
+                "hard_facts": [],
+                "hook_required": False,
+            },
+        )
+
+        assert result["passed"] is False
+        assert {item["code"] for item in result["violations"]} == {
+            "incomplete_outline_tail",
+        }
+
     def test_review_writes_chapter_review(self, runner, sample_project, tmp_dir):
         import unittest.mock as mock
         import inkflow.cli as cli

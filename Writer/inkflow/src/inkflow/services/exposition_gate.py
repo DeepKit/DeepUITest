@@ -25,7 +25,7 @@ CLOSING_EXPLANATION_PATTERNS = [
 GENERAL_EXPLANATION_PATTERNS = CLOSING_EXPLANATION_PATTERNS + [
     r"也许", r"或许", r"大概", r"可能意味着",
     r"仿佛在说", r"似乎在",
-    r"说明", r"表明", r"证明",
+    r"说明(?!书)", r"表明", r"(?<!身份)证明(?!书|材料|文件)",
 ]
 
 NARRATOR_INTRUSION_PATTERNS = [
@@ -148,6 +148,7 @@ def audit_exposition(
             text, violations, GENERAL_EXPLANATION_PATTERNS,
             code="explanation_marker", severity="medium",
             suggestion="删掉解释连接词，用可见动作承接。",
+            skip_dialogue=True,
         )
 
     violations = _dedupe(violations)
@@ -253,9 +254,12 @@ def _scan_patterns(
     code: str,
     severity: str,
     suggestion: str,
+    skip_dialogue: bool = False,
 ) -> None:
     for pattern in patterns:
         for match in re.finditer(pattern, text):
+            if skip_dialogue and _is_inside_dialogue(text, match.start()):
+                continue
             _add_violation(
                 violations,
                 code=code,
@@ -266,6 +270,16 @@ def _scan_patterns(
                 context=_context(text, match.start(), match.end()),
                 suggestion=suggestion,
             )
+
+
+def _is_inside_dialogue(text: str, position: int) -> bool:
+    prefix = text[:position]
+    return (
+        prefix.rfind("“") > prefix.rfind("”")
+        or prefix.rfind("「") > prefix.rfind("」")
+        or prefix.rfind("『") > prefix.rfind("』")
+        or prefix.count('"') % 2 == 1
+    )
 
 
 def _scan_sentence_density(text: str, violations: list[dict]) -> None:

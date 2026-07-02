@@ -239,7 +239,8 @@ def get_jury_config(models_config: dict) -> dict:
     elif jury_models and roles_jury_model:
         # Both are set — check consistency
         jury_first = jury_models[0] if jury_models else None
-        if jury_first and jury_first != roles_jury_model:
+        _, jury_first_model = parse_model_ref(jury_first) if jury_first else (None, None)
+        if jury_first_model and jury_first_model != roles_jury_model:
             import warnings
             warnings.warn(
                 f"B81: jury_config.models[0]='{jury_first}' differs from "

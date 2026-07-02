@@ -569,6 +569,8 @@ class ContractCompiler:
         # Extract per-chapter tension data from suspense_config or structure_rules
         sr = contract_data.get("structure_rules", {})
         chapter_hooks = contract_data.get("suspense_config", {}).get("chapter_hooks", {})
+        if not isinstance(chapter_hooks, dict):
+            chapter_hooks = {}
 
         # For each chapter_N_events, create a tension arc entry
         for key in sr:
@@ -666,24 +668,39 @@ class ContractCompiler:
             errors.append(f"suspense_blueprint.preset 非法值: {preset}")
 
         # Semantic completeness checks
-        # 1. POV coverage: every declared POV character should appear in at least one shot
+        # 1. Shot POVs must be declared. Full POV coverage is enforced only
+        #    when the contract has chapter events for the whole book; early
+        #    partial outlines can legitimately omit later-generation POVs.
         pov_chars = nv.get("pov_characters", ident.get("pov_characters", []))
         if isinstance(pov_chars, str):
             pov_chars = [c.strip() for c in pov_chars.split(",") if c.strip()]
         if pov_chars:
             sr = contract_data.get("structure_rules", {})
             shot_povs = set()
+            covered_chapters = set()
             for key in sr:
                 if not key.startswith("chapter_") or not key.endswith("_events"):
                     continue
+                try:
+                    covered_chapters.add(int(key[len("chapter_"):-len("_events")]))
+                except ValueError:
+                    pass
                 for ev in sr.get(key, []):
                     if isinstance(ev, dict):
                         pov = ev.get("pov", "")
                         if pov:
                             shot_povs.add(pov)
-            for pc in pov_chars:
-                if pc not in shot_povs:
-                    errors.append(f"角色 '{pc}' 在 POV 列表中但未在任何 shot 中出现")
+                            if pov not in pov_chars:
+                                errors.append(f"shot POV '{pov}' 未在 POV 角色列表中声明")
+            try:
+                total_chapters = int(ident.get("total_chapters") or 0)
+            except (ValueError, TypeError):
+                total_chapters = 0
+            has_full_outline = total_chapters > 1 and len(covered_chapters) >= total_chapters - 1
+            if has_full_outline:
+                for pc in pov_chars:
+                    if pc not in shot_povs:
+                        errors.append(f"角色 '{pc}' 在 POV 列表中但未在任何 shot 中出现")
 
         return errors
 

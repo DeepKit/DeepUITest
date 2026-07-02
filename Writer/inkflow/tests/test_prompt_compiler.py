@@ -188,10 +188,60 @@ class TestPromptCompiler:
         assert "系统并不恶意" in prompt
         assert "禁止长段系统议论" in prompt
         assert "最后一句必须是未完成动作" in prompt
+        assert "至少写 400 个汉字" in prompt
         assert "Shot Task Card" in prompt
         assert "玻璃里的保鲜膜" in prompt
         assert "外江向内侵蚀内江" in prompt
         assert "屏幕通知、排队阻滞、物件变化、身体反应" in prompt
+
+    def test_compile_shot_prompt_updates_existing_prompt(self, compiler, setup_run):
+        static_prefix = compiler.compile_static_prefix(
+            {"identity": {"title": "分流"}, "narrative_voice": {},
+             "hard_boundaries": {}, "anti_reveal": {}, "world_knowledge": {},
+             "structure_rules": {}, "anti_patterns": {}, "style_locks": {},
+             "motif_system": {}, "creative_zones": {}},
+            "意象师",
+        )
+
+        compiler.compile_shot_prompt(
+            "shot_01", "run_01", "意象师",
+            static_prefix,
+            {
+                "must_land": {"event": "旧事件"},
+                "anti_write": {},
+                "exit_to": None,
+                "task_card": {
+                    "title": "旧标题",
+                    "pov": "郑坤",
+                    "must_land": "旧事件",
+                    "outline": "旧大纲",
+                },
+            },
+        )
+        compiler.compile_shot_prompt(
+            "shot_01", "run_01", "意象师",
+            static_prefix,
+            {
+                "must_land": {"event": "新事件"},
+                "anti_write": {},
+                "exit_to": None,
+                "task_card": {
+                    "title": "新标题",
+                    "pov": "郑坤",
+                    "must_land": "新事件",
+                    "outline": "新大纲",
+                },
+            },
+        )
+
+        rows = setup_run.execute(
+            "SELECT assembled_prompt FROM writing_shot_prompts "
+            "WHERE run_id = 'run_01' AND shot_id = 'shot_01' AND writer_persona = '意象师'"
+        ).fetchall()
+
+        assert len(rows) == 1
+        assert "新标题" in rows[0]["assembled_prompt"]
+        assert "旧标题" not in rows[0]["assembled_prompt"]
 
     def test_different_personas(self, compiler, setup_run):
         static_prefix = compiler.compile_static_prefix(

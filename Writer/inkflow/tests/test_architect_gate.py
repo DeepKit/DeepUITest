@@ -62,6 +62,31 @@ class TestArchitectGateL4:
         assert row is not None
         assert row["status"] == "passed"
 
+    def test_l4_rejects_titled_shot_that_is_too_thin(self, setup_l4):
+        db, gate, run_id = setup_l4
+        db.execute(
+            "UPDATE writing_shot_contracts SET must_land_json = ? "
+            "WHERE shot_id = 'shot_01'",
+            (json.dumps({"title": "常规运输条件下的密封"}, ensure_ascii=False),),
+        )
+        db.execute(
+            "INSERT INTO writing_shots "
+            "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+            "VALUES ('shot_02', 'proj_01', 'run_01', 'v01.c02', 2, 'pending')"
+        )
+        text = "雨水砸在铁皮顶上。许怀山把密封件托在掌心。" * 12
+        db.execute("UPDATE writing_drafts SET text = ? WHERE draft_id = 'd_01'", (text,))
+        db.commit()
+
+        result = gate.evaluate_l4(
+            "shot_01", "d_01",
+            {"passed": True, "score": 90, "light_status": "green"},
+        )
+
+        assert result["passed"] is False
+        assert result["shot_density"]["passed"] is False
+        assert any("shot_too_thin" in issue for issue in result["hard_issues"])
+
     def test_l4_idempotent(self, setup_l4):
         db, gate, run_id = setup_l4
         gate2 = {"passed": True, "score": 88, "light_status": "green"}

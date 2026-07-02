@@ -184,11 +184,19 @@ class PromptCompiler:
         )
 
         self.db.execute(
-            "INSERT OR IGNORE INTO writing_shot_prompts "
+            "INSERT INTO writing_shot_prompts "
             "(prompt_id, shot_id, run_id, writer_persona, prompt_hash, "
             "static_prefix, static_prefix_length, dynamic_assembly_json, "
             "assembled_prompt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(run_id, shot_id, writer_persona) DO UPDATE SET "
+            "prompt_id = excluded.prompt_id, "
+            "prompt_hash = excluded.prompt_hash, "
+            "static_prefix = excluded.static_prefix, "
+            "static_prefix_length = excluded.static_prefix_length, "
+            "dynamic_assembly_json = excluded.dynamic_assembly_json, "
+            "assembled_prompt = excluded.assembled_prompt, "
+            "created_at = datetime('now')",
             (prompt_id, shot_id, run_id, writer_persona,
              snapshot_hash({"full": full_prompt}),
              static_prefix["prefix_text"],
@@ -531,6 +539,7 @@ def _build_task_card_context(task_card: dict) -> list[str]:
     pov = task_card.get("pov")
     if title:
         parts.append(f"标题: {title}")
+        parts.append("正文密度: 有标题的场景至少写 400 个汉字；必须是完整场景，不要写成摘要或梗概。")
     if pov:
         parts.append(f"POV: {pov}")
     must_land = task_card.get("must_land")

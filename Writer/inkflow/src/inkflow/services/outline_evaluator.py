@@ -171,6 +171,21 @@ class OutlineEvaluator:
                 "evaluation_history": history,
                 "regeneration_rejected": True,
             }
+        if outline_has_incomplete_tail(new_outline_text):
+            self._save_evaluation(
+                shot_id, outline_text, evaluation,
+                attempt=1, regenerated=True,
+                new_outline_text=new_outline_text,
+            )
+            return {
+                "final_outline": outline_text,
+                "initial_score": initial_score,
+                "final_score": initial_score,
+                "regenerated": True,
+                "evaluation_history": history,
+                "regeneration_rejected": True,
+                "regeneration_rejected_reason": "incomplete_outline_tail",
+            }
 
         # 重新评估
         evaluation2 = self.evaluate_outline(
@@ -570,6 +585,39 @@ def _looks_like_prompt_analysis(text: str) -> bool:
     if not head:
         return True
     return any(marker in head for marker in _PROMPT_ANALYSIS_MARKERS)
+
+
+def outline_has_incomplete_tail(text: str) -> bool:
+    """Return True for obvious dangling outline tails.
+
+    This catches task-card fragments like "掏出一卷" before they are fed to
+    writer models, while still allowing complete outlines without punctuation.
+    """
+    import re
+
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return True
+    tail = lines[-1]
+    tail = re.sub(r"^[\s#>*\-+]*(?:\d+[.)、]\s*)?", "", tail).strip()
+    tail = tail.rstrip("，,；;：:、")
+    if not tail:
+        return True
+    bare = tail.rstrip("。！？!?…」』”\"')")
+    if not bare:
+        return False
+
+    if re.search(
+        r"(?<!第)[一二两三四五六七八九十\d]+"
+        r"(?:个|只|张|卷|条|把|口|件|片|根|辆|箱|批|道|层|份|封|盏|块|枚|本|页|杯|袋|桶|支|双)$",
+        bare,
+    ):
+        return True
+    return bare.endswith((
+        "把", "将", "被", "向", "朝", "对", "给", "从", "在", "以",
+        "和", "与", "或", "及", "并", "而", "但", "却", "让", "使",
+        "一", "那", "这", "某",
+    ))
 
 
 def _outline_drift_too_large(original: str, regenerated: str, threshold: float = 0.20) -> bool:

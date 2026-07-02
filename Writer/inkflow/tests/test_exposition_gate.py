@@ -31,3 +31,44 @@ def test_system_resource_explanation_fails_exposition_gate():
     assert result["passed"] is False
     codes = {item["code"] for item in result["hard_violations"]}
     assert "hard_exposition" in codes or "abstract_exposition_sentence" in codes
+
+
+def test_strict_exposition_gate_allows_instruction_manual_object():
+    text = (
+        "许怀山把湿透的密封件放在木箱边上。常规运输条件。"
+        "说明书上这么写的。雨水顺着纸角往下滴，他没有再说话。"
+    )
+
+    result = audit_exposition(text, strict=True)
+
+    assert result["passed"] is True
+    assert result["violations"] == []
+
+
+def test_strict_exposition_gate_still_catches_explanation_connector():
+    text = (
+        "许怀山把湿透的密封件放在木箱边上。"
+        "这说明系统的检查流程本质上已经失效。"
+        "雨水顺着纸角往下滴，他没有再说话。"
+    )
+
+    result = audit_exposition(text, strict=True)
+
+    assert result["passed"] is False
+    assert any(
+        item["code"] == "explanation_marker"
+        for item in result["violations"]
+    )
+
+
+def test_strict_exposition_gate_ignores_soft_marker_inside_dialogue():
+    text = (
+        "高启明抹了一把脸上的雨水。"
+        "“说明书上写的常规，跟咱们这儿的常规，大概不是一回事。”"
+        "许怀山没有接话，只把密封件翻到裂纹那一面。"
+    )
+
+    result = audit_exposition(text, strict=True)
+
+    assert result["passed"] is True
+    assert result["violations"] == []

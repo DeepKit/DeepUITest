@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地：新增/修复 B76-B82；开放实现任务见 `../tasks.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地与第 3 章返工验证：新增/修复 B76-B91；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -57,6 +57,69 @@
 - **影响**: 新项目从 `ink init` 到 `ink confirm-contract` 的默认路径断裂，需要用户手工猜测新增字段。
 - **修复**: `init` 生成 `identity.author`、`identity.era`、`identity.language`、`identity.total_chapters`、`identity.genre_tags`；`write_meta_contract_structured()` 兼容旧 `identity.genre` 字符串并写入 `genre_tags`。
 - **文件**: `cli.py`, `contract_compiler.py`, `tests/test_cli.py`, `tests/test_contract_compiler.py`
+
+### B83. `suspense_config.chapter_hooks` 为 list 时结构化写入失败 ✅ 已修复
+- **严重性**: Important
+- **根因**: `write_meta_contract_structured()` 假定 `chapter_hooks` 是按章节索引的 dict；真实项目中该字段可能是全局 hook 要求 list。
+- **影响**: `confirm-contract` 在 v23 结构化写入阶段崩溃。
+- **修复**: 非 dict 的 `chapter_hooks` 按空 dict 处理，仍写入 tension arc 默认值。
+- **文件**: `contract_compiler.py`, `tests/test_contract_compiler.py`
+
+### B84. 部分大纲误要求所有未来 POV 已出现 ✅ 已修复
+- **严重性**: Important
+- **根因**: `validate_contract_schema()` 要求 `pov_characters` 中每个角色都出现在当前已写 chapter_events。
+- **影响**: 长篇前几章合法的未来 POV 会阻断 `confirm-contract`。
+- **修复**: shot POV 必须已声明；但“声明 POV 全覆盖”只在大纲覆盖全书时检查。
+- **文件**: `contract_compiler.py`, `tests/test_contract_compiler.py`
+
+### B85. `run` 结构化读取路径缺少 `json` import ✅ 已修复
+- **严重性**: Important
+- **根因**: `cli.py` 新增结构化表读取后在函数体使用 `json.loads()`，但模块顶层未导入 `json`。
+- **影响**: 真实 `run --resume` 进入 shot narrative params 读取时 `NameError` 崩溃。
+- **修复**: 顶层补 `import json`。
+- **文件**: `cli.py`
+
+### B86. B81 同一模型 provider 前缀比较误报警 ✅ 已修复
+- **严重性**: Minor
+- **根因**: `jury_config.models[0]='agnes/agnes-2.0-flash'` 与 `roles.jury.primary_model='agnes-2.0-flash'` 直接字符串比较。
+- **影响**: 同一模型被误判为双源冲突。
+- **修复**: 比较前用 `parse_model_ref()` 归一化为裸模型名；不同模型仍 warning。
+- **文件**: `utils/config.py`, `tests/test_utils.py`
+
+### B87. 大纲重生成可写回半句 task card ✅ 已修复
+- **严重性**: Critical
+- **根因**: 大纲评估器只做 hallucination drift 检测，未检查再生成文本是否句法落地。
+- **影响**: `s02` 被写入“许怀山……掏出一卷”这类半句，writer 忠实执行后反复生成截断结尾。
+- **修复**: 新增 `outline_has_incomplete_tail()`；大纲再生成和 task card integrity 都拒绝明显半句尾巴。
+- **文件**: `outline_evaluator.py`, `cli.py`, `tests/test_core_services.py`, `tests/test_cli.py`
+
+### B88. prompt cache 在 resume 中吞掉 prompt 修复 ✅ 已修复
+- **严重性**: Critical
+- **根因**: `compile_shot_prompt()` 使用 `INSERT OR IGNORE`，唯一键 `(run_id, shot_id, writer_persona)` 已存在时不会更新 assembled prompt。
+- **影响**: 代码或 task card 修复后，真实 run 仍继续使用旧 prompt。
+- **修复**: 改为 `ON CONFLICT ... DO UPDATE`，同一 run/shot/persona 二次编译会刷新 prompt 内容。
+- **文件**: `prompt_compiler.py`, `tests/test_prompt_compiler.py`
+
+### B89. exposition gate 对 `说明书` 和对话软标记误报 ✅ 已修复
+- **严重性**: Important
+- **根因**: strict explanation marker 把 `说明书` 中的“说明”当解释连接词；也扫描人物对话里的“大概”等软标记。
+- **影响**: L4 将物件名或自然对话误判为解释性叙述。
+- **修复**: `说明(?!书)` 等边界化；strict general marker 跳过引号内对话。
+- **文件**: `exposition_gate.py`, `tests/test_exposition_gate.py`
+
+### B90. titled shot 密度检查只在 L3 执行，返工成本过高 ✅ 已修复
+- **严重性**: Important
+- **根因**: 有标题 shot 的最低字数只在章级 L3 检查，薄稿先被 L4 封成 green。
+- **影响**: 整章生成后才因单个薄 shot 失败，造成反复整章/手工修复。
+- **修复**: L4 增加当前候选的 titled-shot density 检查；task card prompt 写入“至少 400 汉字”的生成约束。
+- **文件**: `architect_gate.py`, `prompt_compiler.py`, `tests/test_architect_gate.py`, `tests/test_prompt_compiler.py`
+
+### B91. Scope Report 混算同章旧 run ✅ 已修复
+- **严重性**: Minor
+- **根因**: `_print_scope_report()` 按 project+chapter 聚合，没有限定当前 `run_id`。
+- **影响**: 多次返工后 report 显示 shot 总数、平均分、事实锚点膨胀。
+- **修复**: shot 计数、平均分、事实锚点都限定当前 run。
+- **文件**: `cli.py`, `tests/test_scope_report.py`
 
 ---
 

@@ -57,6 +57,101 @@ class TestMetaContract:
         ).fetchone()
         assert json.loads(row["genre_tags"]) == ["文学小说"]
 
+    def test_structured_write_accepts_chapter_hooks_list(self, compiler):
+        contract_data = json.loads(json.dumps(SAMPLE_META_CONTRACT, ensure_ascii=False))
+        contract_data["identity"].update({
+            "author": "测试作者",
+            "era": "当代",
+            "total_chapters": 10,
+        })
+        contract_data["suspense_blueprint"] = {
+            "preset": "literary_tension",
+            "global_question": "谁会承担下一次代价？",
+        }
+        contract_data["suspense_config"] = {
+            "chapter_hooks": ["每章最后一句必须留下未完成动作。"],
+        }
+        contract_data["structure_rules"] = {
+            "chapter_2_events": [{"pov": "角色A", "event": "事件一"}],
+        }
+        mc_id = compiler.create_meta_contract(contract_data)
+
+        compiler.write_meta_contract_structured(mc_id, contract_data)
+
+        row = compiler.db.execute(
+            "SELECT COUNT(*) AS cnt FROM writing_chapter_tension_arc"
+        ).fetchone()
+        assert row["cnt"] == 1
+
+    def test_schema_validation_allows_future_pov_in_partial_outline(self, compiler):
+        contract_data = {
+            "identity": {
+                "title": "测试",
+                "author": "测试作者",
+                "era": "当代",
+                "total_chapters": 66,
+                "pov_characters": ["第一代A", "第一代B", "未来角色"],
+            },
+            "narrative_voice": {},
+            "style_locks": {},
+            "suspense_blueprint": {},
+            "structure_rules": {
+                "chapter_2_events": [
+                    {"pov": "第一代A", "event": "事件一"},
+                    {"pov": "第一代B", "event": "事件二"},
+                ],
+            },
+        }
+
+        assert compiler.validate_contract_schema(contract_data) == []
+
+    def test_schema_validation_rejects_undeclared_shot_pov(self, compiler):
+        contract_data = {
+            "identity": {
+                "title": "测试",
+                "author": "测试作者",
+                "era": "当代",
+                "total_chapters": 3,
+                "pov_characters": ["角色A"],
+            },
+            "narrative_voice": {},
+            "style_locks": {},
+            "suspense_blueprint": {},
+            "structure_rules": {
+                "chapter_2_events": [
+                    {"pov": "未声明角色", "event": "事件一"},
+                ],
+            },
+        }
+
+        errors = compiler.validate_contract_schema(contract_data)
+        assert any("未声明角色" in error for error in errors)
+
+    def test_schema_validation_enforces_full_outline_pov_coverage(self, compiler):
+        contract_data = {
+            "identity": {
+                "title": "测试",
+                "author": "测试作者",
+                "era": "当代",
+                "total_chapters": 3,
+                "pov_characters": ["角色A", "角色B", "缺席角色"],
+            },
+            "narrative_voice": {},
+            "style_locks": {},
+            "suspense_blueprint": {},
+            "structure_rules": {
+                "chapter_2_events": [
+                    {"pov": "角色A", "event": "事件一"},
+                ],
+                "chapter_3_events": [
+                    {"pov": "角色B", "event": "事件二"},
+                ],
+            },
+        }
+
+        errors = compiler.validate_contract_schema(contract_data)
+        assert any("缺席角色" in error for error in errors)
+
     def test_update_status(self, compiler):
         mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)
         compiler.confirm_contract(mc_id)
