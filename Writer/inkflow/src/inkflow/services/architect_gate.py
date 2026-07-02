@@ -959,7 +959,7 @@ class ArchitectGate:
         """
         shots = self.db.execute(
             "SELECT ws.shot_id, ws.shot_index, ws.shot_status, ws.light_status, "
-            "wsc.must_land_json, wsc.pov_routing_json, wsc.contract_json "
+            "wsc.contract_id, wsc.must_land_json, wsc.pov_routing_json, wsc.contract_json "
             "FROM writing_shots ws "
             "LEFT JOIN writing_shot_contracts wsc ON ws.shot_id = wsc.shot_id "
             "AND wsc.run_id = ? "
@@ -1151,7 +1151,12 @@ class ArchitectGate:
         }
 
     def _check_chapter_scene_diversity(self, shots) -> dict:
-        """Reject chapters where several shots all land in the same scene."""
+        """Reject chapters where several shots all land in the same scene.
+
+        v26: 优先读 writing_shot_scene_fingerprints(scene_bucket +
+        event_anchors Jaccard)作同场景判定;指纹缺失时回退到正文词表
+        (_fallback_bucket_from_text)。
+        """
         shot_count = len(shots)
         repo = TextRepository(self.db)
         scenes: list[dict] = []
@@ -1161,9 +1166,17 @@ class ArchitectGate:
             text = repo.get_shot_text(shot["shot_id"])
             if not (text or "").strip():
                 continue
-            bucket = _scene_bucket(text)
+            contract_id = shot["contract_id"] if "contract_id" in shot.keys() else None
+            fp = self._scene_fingerprint_for_contract(contract_id)
+            bucket = fp.get("scene_bucket", "") if fp else ""
+            fp_source = fp.get("source", "") if fp else ""
+            anchors = fp.get("event_anchors", []) if fp else []
+            if not bucket and not fp:
+                # 无结构化指纹 → 回退正文词表
+                bucket = _fallback_bucket_from_text(text)
+                fp_source = "fallback"
             opening = _normalize_opening(text)
-            fingerprint = bucket if bucket != "unknown" else opening[:90]
+            fingerprint = bucket if bucket and bucket != "unknown" else opening[:90]
             scenes.append({
                 "shot_id": shot["shot_id"],
                 "shot_index": shot["shot_index"],
@@ -1171,6 +1184,8 @@ class ArchitectGate:
                 "fingerprint": fingerprint,
                 "opening": _first_sentence(text)[:90],
                 "bytes": _utf8_size(text),
+                "anchors": anchors,
+                "fp_source": fp_source,
             })
 
         if shot_count < 3 or len(scenes) < 3:
@@ -1184,8 +1199,20 @@ class ArchitectGate:
                 "violations": [],
             }
 
-        fingerprints = [s["fingerprint"] for s in scenes if s["fingerprint"]]
-        distinct_count = len(set(fingerprints))
+        # distinct scene count via pairwise _scenes_same
+        representative: list[dict] = []
+        for s in scenes:
+            placed = False
+            for rep in representative:
+                if _scenes_same(
+                    {"scene_bucket": s["bucket"], "event_anchors": s["anchors"]},
+                    {"scene_bucket": rep["bucket"], "event_anchors": rep["anchors"]},
+                ):
+                    placed = True
+                    break
+            if not placed:
+                representative.append(s)
+        distinct_count = len(representative)
         min_required = min(len(scenes), 3)
         if distinct_count < min_required:
             violations.append({
@@ -1196,19 +1223,35 @@ class ArchitectGate:
                 ),
             })
 
-        buckets = [s["bucket"] for s in scenes]
-        known_buckets = [b for b in buckets if b != "unknown"]
-        if len(known_buckets) == len(scenes) and len(set(known_buckets)) == 1:
+        buckets = [s["bucket"] for s in scenes if s["bucket"] and s["bucket"] != "unknown"]
+        if len(buckets) == len(scenes) and len(set(buckets)) == 1:
             violations.append({
                 "type": "scene_bucket_collapsed",
-                "bucket": known_buckets[0],
-                "reason": f"all shots land in scene bucket '{known_buckets[0]}'",
+                "bucket": buckets[0],
+                "reason": f"all shots land in scene bucket '{buckets[0]}'",
             })
 
         for left, right in zip(scenes, scenes[1:]):
+            same = _scenes_same(
+                {"scene_bucket": left["bucket"], "event_anchors": left["anchors"]},
+                {"scene_bucket": right["bucket"], "event_anchors": right["anchors"]},
+            )
+            if not same:
+                continue
             left_opening = left["fingerprint"]
             right_opening = right["fingerprint"]
             if not left_opening or not right_opening:
+                # 同场景但无 opening 文本可比 → 仍记为相邻相似(场景层面重复)
+                violations.append({
+                    "type": "adjacent_scene_too_similar",
+                    "left": left["shot_index"],
+                    "right": right["shot_index"],
+                    "similarity": 1.0,
+                    "reason": (
+                        f"s{left['shot_index']:02d}/s{right['shot_index']:02d} "
+                        f"same scene (bucket/anchors)"
+                    ),
+                })
                 continue
             similarity = difflib.SequenceMatcher(
                 None, left_opening, right_opening,
@@ -1337,6 +1380,38 @@ class ArchitectGate:
             return {}
         scene = data.get("scene_contract") or {}
         return scene if isinstance(scene, dict) else {}
+
+    def _scene_fingerprint_for_contract(self, contract_id) -> dict:
+        """Fetch the v26 scene fingerprint row for a contract, or empty dict.
+
+        返回 {} 表示无结构化指纹，调用方应回退到正文词表。
+        """
+        if not contract_id:
+            return {}
+        row = self.db.execute(
+            "SELECT scene_bucket, time_jump, key_objects, event_anchors, "
+            "similarity_hash, source FROM writing_shot_scene_fingerprints "
+            "WHERE contract_id = ?",
+            (contract_id,),
+        ).fetchone()
+        if not row:
+            return {}
+        try:
+            anchors = json.loads(row["event_anchors"]) if row["event_anchors"] else []
+        except (json.JSONDecodeError, TypeError):
+            anchors = []
+        try:
+            key_objects = json.loads(row["key_objects"]) if row["key_objects"] else []
+        except (json.JSONDecodeError, TypeError):
+            key_objects = []
+        return {
+            "scene_bucket": row["scene_bucket"] or "",
+            "time_jump": row["time_jump"] or "",
+            "key_objects": key_objects,
+            "event_anchors": anchors,
+            "similarity_hash": row["similarity_hash"] or "",
+            "source": row["source"] or "derived",
+        }
 
     def _check_opening_repetition(self, shot_id: str, text: str) -> dict:
         """Catch adjacent shots that restart with the same sentence or scene."""
@@ -1681,8 +1756,8 @@ def _approx_chinese_chars(byte_size: int) -> int:
     return round(byte_size / 3)
 
 
-def _scene_bucket(text: str | None) -> str:
-    """Classify the concrete scene entrance using deterministic anchor words."""
+def _fallback_bucket_from_text(text: str | None) -> str:
+    """Fallback scene classification from prose; used only when no structured fingerprint exists."""
     compact = re.sub(r"\s+", "", text or "")
     if not compact:
         return "unknown"
@@ -1717,16 +1792,45 @@ def _scene_bucket(text: str | None) -> str:
     return bucket if score > 0 else "unknown"
 
 
+def _jaccard(a: list[str], b: list[str]) -> float:
+    """Jaccard similarity of two anchor lists (as sets)."""
+    sa = {x for x in (a or []) if x}
+    sb = {x for x in (b or []) if x}
+    if not sa and not sb:
+        return 0.0
+    union = sa | sb
+    if not union:
+        return 0.0
+    return len(sa & sb) / len(union)
+
+
+def _scenes_same(fp_a: dict, fp_b: dict) -> bool:
+    """Decide if two shots are the same scene via fingerprint + Jaccard.
+
+    同场景当且仅当:scene_bucket 双方非空且相等,或 event_anchors 双方非空
+    且 Jaccard >= 0.7。空 bucket(""/unknown)不视为相等。
+    """
+    bucket_a = (fp_a or {}).get("scene_bucket", "")
+    bucket_b = (fp_b or {}).get("scene_bucket", "")
+    if bucket_a and bucket_b and bucket_a != "unknown" and bucket_a == bucket_b:
+        return True
+    anchors_a = (fp_a or {}).get("event_anchors", [])
+    anchors_b = (fp_b or {}).get("event_anchors", [])
+    if anchors_a and anchors_b and _jaccard(anchors_a, anchors_b) >= 0.7:
+        return True
+    return False
+
+
 def _scene_term_present(expected: str, target: str) -> bool:
     if not expected:
         return True
     if expected in target:
         return True
-    terms = _scene_anchor_terms(expected)
+    terms = _fallback_anchors_from_text(expected)
     return any(term and term in target for term in terms)
 
 
-def _scene_anchor_terms(text: str) -> list[str]:
+def _fallback_anchors_from_text(text: str) -> list[str]:
     terms: list[str] = []
     for term in (
         "转运站", "月台", "军列", "交接单", "卡车", "签字", "司机",
@@ -1737,7 +1841,12 @@ def _scene_anchor_terms(text: str) -> list[str]:
             terms.append(term)
     if not terms:
         terms = [
-            item for item in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,8}", text or "")
+            item for item in re.findall(r"[一-鿿A-Za-z0-9]{2,8}", text or "")
             if item
         ][:4]
     return terms
+
+
+# 兼容别名:旧调用点仍可用旧名
+_scene_bucket = _fallback_bucket_from_text
+_scene_anchor_terms = _fallback_anchors_from_text

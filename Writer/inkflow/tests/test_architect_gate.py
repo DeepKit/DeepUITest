@@ -384,6 +384,122 @@ class TestArchitectGateL3:
         assert result["scene_diversity"]["passed"] is True
         assert result["scene_diversity"]["distinct_count"] == 3
 
+    def _create_chapter_with_fingerprints(self, db, chapter_key, run_id, project_id, texts, fingerprints):
+        """Chapter with revisions AND v26 scene fingerprints inserted."""
+        self._create_chapter_with_revisions(db, chapter_key, run_id, project_id, texts)
+        for i, fp in enumerate(fingerprints, start=1):
+            contract_id = f"{run_id}_contract_{i}"
+            db.execute(
+                "INSERT INTO writing_shot_scene_fingerprints "
+                "(fingerprint_id, contract_id, scene_bucket, time_jump, "
+                "key_objects, event_anchors, similarity_hash, source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    f"{run_id}_fp_{i}",
+                    contract_id,
+                    fp.get("scene_bucket", ""),
+                    fp.get("time_jump", ""),
+                    json.dumps(fp.get("key_objects", []), ensure_ascii=False),
+                    json.dumps(fp.get("event_anchors", []), ensure_ascii=False),
+                    fp.get("similarity_hash", ""),
+                    fp.get("source", "derived"),
+                ),
+            )
+        db.commit()
+
+    def test_l3_uses_fingerprints_to_detect_collapsed_scenes(self, setup_run):
+        """三个 shot 正文不同但指纹 scene_bucket 相同 → 判为同场景。"""
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c17"
+        run_id = "run_fp_collapsed"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "许怀山在转运站月台边,卡车滴水,交接单递过来。",
+            "另一段完全不同的正文,但指纹显示同一场景。",
+            "第三段正文,依然不同,但场景指纹相同。",
+        ]
+        fingerprints = [
+            {"scene_bucket": "转运站月台", "event_anchors": ["军列", "交接单"], "source": "explicit"},
+            {"scene_bucket": "转运站月台", "event_anchors": ["军列", "交接单"], "source": "explicit"},
+            {"scene_bucket": "转运站月台", "event_anchors": ["军列", "交接单"], "source": "explicit"},
+        ]
+        self._create_chapter_with_fingerprints(db, chapter, run_id, "proj_01", texts, fingerprints)
+
+        result = gate.evaluate_l3(chapter)
+
+        sd = result["scene_diversity"]
+        assert sd["passed"] is False
+        assert sd["distinct_count"] == 1
+        assert any(v["type"] == "scene_count_low" for v in sd["violations"])
+
+    def test_l3_uses_fingerprints_to_accept_distinct_scenes(self, setup_run):
+        """三个 shot 指纹 scene_bucket 各不相同 → 通过。"""
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c18"
+        run_id = "run_fp_distinct"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "转运站月台,交接单,军列。",
+            "前线露天堆场,微裂纹,批号。",
+            "工厂硫化车间,铁门,气味。",
+        ]
+        fingerprints = [
+            {"scene_bucket": "转运站月台", "event_anchors": ["军列", "交接单"], "source": "explicit"},
+            {"scene_bucket": "前线露天堆场", "event_anchors": ["微裂纹", "批号"], "source": "explicit"},
+            {"scene_bucket": "工厂硫化车间", "event_anchors": ["铁门", "气味"], "source": "explicit"},
+        ]
+        self._create_chapter_with_fingerprints(db, chapter, run_id, "proj_01", texts, fingerprints)
+
+        result = gate.evaluate_l3(chapter)
+
+        sd = result["scene_diversity"]
+        assert sd["passed"] is True
+        assert sd["distinct_count"] == 3
+
+    def test_l3_falls_back_to_text_when_no_fingerprint(self, setup_run):
+        """无指纹行时回退到正文词表判定(与旧行为一致)。"""
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c19"
+        run_id = "run_fp_missing"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = [
+            "许怀山站在转运站月台边,卡车滴水,交接单递过来,军列停着。",
+            "仍从转运站月台开始,交接单,卡车,军列,司机催签字。",
+            "回到正文又是转运站月台,卡车,交接单,军列,司机。",
+        ]
+        self._create_chapter_with_revisions(db, chapter, run_id, "proj_01", texts)
+
+        result = gate.evaluate_l3(chapter)
+
+        sd = result["scene_diversity"]
+        assert sd["passed"] is False
+        assert sd["distinct_count"] == 1
+
+    def test_l3_jaccard_catches_anchor_overlap(self, setup_run):
+        """scene_bucket 不同但 event_anchors Jaccard>=0.7 → 判同场景。"""
+        from inkflow.services.architect_gate import ArchitectGate
+        db = setup_run
+        chapter = "v01.c20"
+        run_id = "run_fp_jaccard"
+        gate = ArchitectGate(db, run_id, "proj_01")
+        texts = ["正文一。", "正文二。", "正文三。"]
+        # bucket 不同但 anchors 完全相同 → Jaccard=1.0 判同场景
+        fingerprints = [
+            {"scene_bucket": "转运站A", "event_anchors": ["军列", "交接单", "司机"], "source": "explicit"},
+            {"scene_bucket": "转运站B", "event_anchors": ["军列", "交接单", "司机"], "source": "explicit"},
+            {"scene_bucket": "转运站C", "event_anchors": ["军列", "交接单", "司机"], "source": "explicit"},
+        ]
+        self._create_chapter_with_fingerprints(db, chapter, run_id, "proj_01", texts, fingerprints)
+
+        result = gate.evaluate_l3(chapter)
+
+        sd = result["scene_diversity"]
+        assert sd["passed"] is False
+        assert sd["distinct_count"] == 1
+
     def test_l3_not_triggered_without_l4(self, setup_run):
         from inkflow.services.architect_gate import ArchitectGate
         db = setup_run
