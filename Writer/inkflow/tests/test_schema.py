@@ -68,6 +68,7 @@ ALL_TABLES = [
     "writing_shot_anti_write",
     "writing_shot_narrative_params",
     "writing_shot_scene_contracts",
+    "writing_shot_scene_fingerprints",
 ]
 
 # 预期索引
@@ -148,6 +149,7 @@ EXPECTED_INDEXES = [
     "idx_shot_anti_write_contract",
     "idx_shot_narrative_params_contract",
     "idx_shot_scene_contracts_contract",
+    "idx_shot_scene_fingerprints_bucket",
 ]
 
 
@@ -903,6 +905,34 @@ class TestV24ShotContractTables:
         ).fetchone()
         assert row[0] == "转运站月台"
         assert row[1] == 1200
+
+    def test_scene_fingerprints_table_structure(self, db):
+        """v26: writing_shot_scene_fingerprints 表结构与约束"""
+        self._setup_contract(db)
+        cols = {
+            r[1] for r in db.execute("PRAGMA table_info(writing_shot_scene_fingerprints)")
+        }
+        for name in (
+            "fingerprint_id", "contract_id", "scene_bucket", "time_jump",
+            "key_objects", "event_anchors", "similarity_hash", "source", "created_at",
+        ):
+            assert name in cols, f"missing column {name}"
+        ddl = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='writing_shot_scene_fingerprints'"
+        ).fetchone()[0]
+        assert "UNIQUE(contract_id)" in ddl
+        assert "'derived'" in ddl and "'fallback'" in ddl and "'explicit'" in ddl
+
+    def test_scene_fingerprints_rejects_invalid_source(self, db):
+        """source 必须在 derived/fallback/explicit 中"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_scene_fingerprints "
+                "(fingerprint_id, contract_id, scene_bucket, source) "
+                "VALUES ('fp1', 'c1', '转运站月台', 'bogus')"
+            )
 
     def test_narrative_params_rejects_invalid_phase(self, db):
         """narrative_phase 必须在合法枚举中"""

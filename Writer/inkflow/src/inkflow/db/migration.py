@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列

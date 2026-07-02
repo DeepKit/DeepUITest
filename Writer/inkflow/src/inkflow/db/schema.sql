@@ -1,5 +1,5 @@
--- InkFlow v3.24 — Schema v24 (shot contract structured tables)
--- SCHEMA_VERSION: 25
+-- InkFlow v3.26 — Schema v26 (shot contract structured tables)
+-- SCHEMA_VERSION: 26
 -- Generated from implementation-contract-v0.md; aligned 2026-06-29
 -- 48 business tables total (+ _schema_meta = 49 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
@@ -1017,3 +1017,18 @@ CREATE TABLE writing_shot_scene_contracts (
     UNIQUE(contract_id)
 );
 CREATE INDEX idx_shot_scene_contracts_contract ON writing_shot_scene_contracts(contract_id);
+
+-- v26: Scene fingerprint — 场景指纹特征，用于多样性比较与重复识别
+CREATE TABLE writing_shot_scene_fingerprints (
+    fingerprint_id   TEXT PRIMARY KEY,
+    contract_id      TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+    scene_bucket     TEXT NOT NULL DEFAULT '',
+    time_jump        TEXT NOT NULL DEFAULT '',
+    key_objects      TEXT NOT NULL DEFAULT '[]',
+    event_anchors    TEXT NOT NULL DEFAULT '[]',
+    similarity_hash  TEXT NOT NULL DEFAULT '',
+    source           TEXT NOT NULL DEFAULT 'derived' CHECK(source IN ('derived','fallback','explicit')),
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_scene_fingerprints_bucket ON writing_shot_scene_fingerprints(scene_bucket);
