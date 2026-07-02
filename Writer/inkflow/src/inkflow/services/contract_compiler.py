@@ -201,6 +201,492 @@ class ContractCompiler:
     def get_suspense_config(self) -> dict:
         return self._get_layers().get("suspense_config", {})
 
+    # ── v24: Structured table readers (CONFIG-ENFORCE-4) ──
+
+    def get_meta_contract_from_structured(self) -> dict | None:
+        """Build meta_contract dict from v23 structured tables.
+
+        Falls back to layers_json if structured tables are empty.
+        This is the preferred path for consumers (prompt_compiler, etc.).
+        """
+        pid = self.project_id
+
+        # Try structured tables first
+        ident_row = self.db.execute(
+            "SELECT * FROM writing_project_identity WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (pid,),
+        ).fetchone()
+        if ident_row is None:
+            # Fall back to layers_json
+            return self.get_meta_contract()
+
+        ident = dict(ident_row)
+        nv_row = self.db.execute(
+            "SELECT * FROM writing_narrative_voice WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (pid,),
+        ).fetchone()
+        hb_row = self.db.execute(
+            "SELECT * FROM writing_hard_boundaries WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (pid,),
+        ).fetchone()
+        sl_row = self.db.execute(
+            "SELECT * FROM writing_style_locks WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (pid,),
+        ).fetchone()
+        sb_row = self.db.execute(
+            "SELECT * FROM writing_suspense_blueprint WHERE project_id = ? "
+            "ORDER BY created_at DESC LIMIT 1", (pid,),
+        ).fetchone()
+
+        # Build identity dict
+        identity = {
+            "title": ident.get("title", ""),
+            "author": ident.get("author", ""),
+            "genre_tags": json.loads(ident["genre_tags"]) if ident.get("genre_tags") else [],
+            "era": ident.get("era", ""),
+            "language": ident.get("language", "zh-CN"),
+            "total_chapters": ident.get("total_chapters", 1),
+        }
+        # Restore pov_characters from hard_boundaries
+        if hb_row:
+            chars = json.loads(hb_row["characters_alive"]) if hb_row.get("characters_alive") else []
+            if isinstance(chars, list):
+                identity["pov_characters"] = chars
+
+        # Build narrative_voice dict
+        narrative_voice = {}
+        if nv_row:
+            nv = dict(nv_row)
+            narrative_voice = {
+                "pov_mode": nv.get("pov_mode", "third_limited"),
+                "pov_characters": json.loads(nv["pov_characters"]) if nv.get("pov_characters") else [],
+                "tense": nv.get("tense", "past"),
+                "narrator_type": nv.get("narrator_type", "invisible"),
+            }
+
+        # Build hard_boundaries dict
+        hard_boundaries = {}
+        if hb_row:
+            hb = dict(hb_row)
+            hard_boundaries = {
+                "forbidden_phrases": json.loads(hb["forbidden_phrases"]) if hb.get("forbidden_phrases") else [],
+                "forbidden_topics": json.loads(hb["forbidden_topics"]) if hb.get("forbidden_topics") else [],
+                "deprecated_aliases": json.loads(hb["deprecated_aliases"]) if hb.get("deprecated_aliases") else {},
+                "world_rules": json.loads(hb["world_rules"]) if hb.get("world_rules") else [],
+                "characters_alive": json.loads(hb["characters_alive"]) if hb.get("characters_alive") else [],
+            }
+
+        # Build style_locks dict
+        style_locks = {}
+        if sl_row:
+            sl = dict(sl_row)
+            style_locks = {
+                "max_paragraph_chars": sl.get("max_paragraph_chars"),
+                "max_sentence_chars": sl.get("max_sentence_chars"),
+                "dialogue_ratio_min": sl.get("dialogue_ratio_min"),
+                "dialogue_ratio_max": sl.get("dialogue_ratio_max"),
+                "sensory_density": sl.get("sensory_density", "normal"),
+                "anti_patterns": json.loads(sl["anti_patterns"]) if sl.get("anti_patterns") else [],
+            }
+
+        # Build suspense_blueprint dict
+        suspense_blueprint = {}
+        if sb_row:
+            sb = dict(sb_row)
+            suspense_blueprint = {
+                "preset": sb.get("preset", "literary_tension"),
+                "global_question": sb.get("global_question", ""),
+            }
+
+        # Get the layers_json for fields not yet in structured tables
+        # (anti_reveal, world_knowledge, motif_system, creative_zones, suspense_config, structure_rules)
+        layers = self._get_layers()
+
+        return {
+            "identity": identity,
+            "narrative_voice": narrative_voice or layers.get("narrative_voice", {}),
+            "hard_boundaries": hard_boundaries or layers.get("hard_boundaries", {}),
+            "anti_reveal": layers.get("anti_reveal", {}),
+            "world_knowledge": layers.get("world_knowledge", {}),
+            "structure_rules": layers.get("structure_rules", {}),
+            "anti_patterns": layers.get("anti_patterns", {}),
+            "style_locks": style_locks or layers.get("style_locks", {}),
+            "motif_system": layers.get("motif_system", {}),
+            "creative_zones": layers.get("creative_zones", {}),
+            "suspense_config": layers.get("suspense_config", {}),
+            "suspense_blueprint": suspense_blueprint or layers.get("suspense_blueprint", {}),
+        }
+
+    def get_shot_structured(self, contract_id: str) -> dict:
+        """Read shot contract from v24 structured tables.
+
+        Returns dict with keys: must_land, anti_write, narrative_params.
+        Falls back to JSON blob columns if structured tables are empty.
+        """
+        ml_row = self.db.execute(
+            "SELECT * FROM writing_shot_must_land WHERE contract_id = ?",
+            (contract_id,),
+        ).fetchone()
+        aw_row = self.db.execute(
+            "SELECT * FROM writing_shot_anti_write WHERE contract_id = ?",
+            (contract_id,),
+        ).fetchone()
+        np_row = self.db.execute(
+            "SELECT * FROM writing_shot_narrative_params WHERE contract_id = ?",
+            (contract_id,),
+        ).fetchone()
+
+        result = {}
+
+        if ml_row:
+            ml = dict(ml_row)
+            result["must_land"] = {
+                "title": ml.get("title", ""),
+                "beats": ml.get("beats", ""),
+                "event": ml.get("event_text", ""),
+            }
+            result["pov_routing"] = {
+                "pov_character": ml.get("pov_character", ""),
+            }
+        else:
+            # Fallback to JSON blob
+            sc_row = self.db.execute(
+                "SELECT must_land_json, pov_routing_json FROM writing_shot_contracts "
+                "WHERE contract_id = ?", (contract_id,),
+            ).fetchone()
+            if sc_row:
+                result["must_land"] = json.loads(sc_row["must_land_json"]) if sc_row["must_land_json"] else {}
+                result["pov_routing"] = json.loads(sc_row["pov_routing_json"]) if sc_row["pov_routing_json"] else {}
+
+        if aw_row:
+            aw = dict(aw_row)
+            result["anti_write"] = {
+                "pov_only": aw.get("pov_only", ""),
+                "forbidden": json.loads(aw["forbidden_words"]) if aw.get("forbidden_words") else [],
+                "forbidden_facts": json.loads(aw["forbidden_facts"]) if aw.get("forbidden_facts") else [],
+            }
+        else:
+            sc_row = self.db.execute(
+                "SELECT anti_write_json FROM writing_shot_contracts WHERE contract_id = ?",
+                (contract_id,),
+            ).fetchone()
+            if sc_row:
+                result["anti_write"] = json.loads(sc_row["anti_write_json"]) if sc_row["anti_write_json"] else {}
+
+        if np_row:
+            np_d = dict(np_row)
+            result["narrative_params"] = {
+                "narrative_phase": np_d.get("narrative_phase"),
+                "sensory_pressure": np_d.get("sensory_pressure"),
+                "deviation_budget": np_d.get("deviation_budget"),
+                "dominant_sense": np_d.get("dominant_sense"),
+                "entry_mood": np_d.get("entry_mood", ""),
+                "hard_facts": json.loads(np_d["hard_facts"]) if np_d.get("hard_facts") else [],
+                "soft_constraints": json.loads(np_d["soft_constraints"]) if np_d.get("soft_constraints") else [],
+                "reference": np_d.get("reference", ""),
+                "exit_to": np_d.get("exit_to", ""),
+                "motif_tasks": json.loads(np_d["motif_tasks"]) if np_d.get("motif_tasks") else {},
+            }
+        else:
+            sc_row = self.db.execute(
+                "SELECT contract_json FROM writing_shot_contracts WHERE contract_id = ?",
+                (contract_id,),
+            ).fetchone()
+            if sc_row:
+                cj = json.loads(sc_row["contract_json"]) if sc_row["contract_json"] else {}
+                result["narrative_params"] = {
+                    "narrative_phase": cj.get("narrative_phase"),
+                    "sensory_pressure": cj.get("sensory_pressure"),
+                    "deviation_budget": cj.get("deviation_budget"),
+                    "dominant_sense": cj.get("dominant_sense"),
+                    "entry_mood": cj.get("entry_mood", ""),
+                    "hard_facts": cj.get("hard_facts") or [],
+                    "soft_constraints": cj.get("soft_constraints") or [],
+                    "reference": cj.get("reference", ""),
+                    "exit_to": cj.get("exit_to", ""),
+                    "motif_tasks": cj.get("motif_tasks") or {},
+                }
+
+        return result
+
+    # ── Structured table writers (v23/v24 CONFIG-ENFORCE) ──
+
+    def write_meta_contract_structured(self, meta_contract_id: str, contract_data: dict) -> None:
+        """Write v23 structured meta-contract tables from contract_data.
+
+        This is the DB-level enforcement path. Each table has NOT NULL + CHECK
+        constraints so AI cannot silently skip fields.
+
+        Called by confirm-contract after create_meta_contract().
+        """
+        pid = self.project_id
+
+        # ═══ writing_project_identity ═══
+        ident = contract_data.get("identity", {})
+        title = ident.get("title", "") or ""
+        author = ident.get("author", "") or ""
+        raw_genres = ident.get("genre_tags")
+        if raw_genres is None:
+            raw_genres = ident.get("genre", [])
+        if isinstance(raw_genres, str):
+            raw_genres = [raw_genres] if raw_genres else []
+        elif not isinstance(raw_genres, list):
+            raw_genres = []
+        genre_tags = json.dumps(raw_genres, ensure_ascii=False)
+        era = ident.get("era", "") or ""
+        language = ident.get("language", "zh-CN") or "zh-CN"
+        total_chapters = ident.get("total_chapters", 1)
+        try:
+            total_chapters = int(total_chapters)
+            if total_chapters <= 0:
+                total_chapters = 1
+        except (ValueError, TypeError):
+            total_chapters = 1
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_project_identity "
+            "(identity_id, project_id, title, author, genre_tags, era, language, total_chapters) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (generate_ulid(), pid, title, author, genre_tags, era, language, total_chapters),
+        )
+
+        # ═══ writing_hard_boundaries ═══
+        hb = contract_data.get("hard_boundaries", {})
+        forbidden_phrases = json.dumps(hb.get("forbidden_phrases", []), ensure_ascii=False)
+        forbidden_topics = json.dumps(hb.get("forbidden_topics", []), ensure_ascii=False)
+        deprecated_aliases = json.dumps(hb.get("deprecated_aliases", {}), ensure_ascii=False)
+        world_rules_list = hb.get("world_rules", contract_data.get("world_knowledge", {}).get("rules", []))
+        world_rules = json.dumps(world_rules_list, ensure_ascii=False)
+        characters_alive = json.dumps(hb.get("characters_alive", ident.get("pov_characters", [])), ensure_ascii=False)
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_hard_boundaries "
+            "(boundary_id, project_id, forbidden_phrases, forbidden_topics, "
+            "deprecated_aliases, world_rules, characters_alive) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (generate_ulid(), pid, forbidden_phrases, forbidden_topics,
+             deprecated_aliases, world_rules, characters_alive),
+        )
+
+        # ═══ writing_narrative_voice ═══
+        nv = contract_data.get("narrative_voice", {})
+        pov_mode = nv.get("pov_mode", "third_limited")
+        valid_pov = ('first_person', 'third_limited', 'third_omniscient', 'multi_pov', 'free_indirect')
+        if pov_mode not in valid_pov:
+            pov_mode = "third_limited"
+        pov_chars = json.dumps(nv.get("pov_characters", ident.get("pov_characters", [])), ensure_ascii=False)
+        tense = nv.get("tense", "past")
+        if tense not in ('past', 'present', 'mixed'):
+            tense = "past"
+        narrator_type = nv.get("narrator_type", "invisible")
+        valid_narrator = ('character', 'invisible', 'unreliable', 'choral')
+        if narrator_type not in valid_narrator:
+            narrator_type = "invisible"
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_narrative_voice "
+            "(voice_id, project_id, pov_mode, pov_characters, tense, narrator_type) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (generate_ulid(), pid, pov_mode, pov_chars, tense, narrator_type),
+        )
+
+        # ═══ writing_style_locks ═══
+        sl = contract_data.get("style_locks", {})
+        max_para = sl.get("max_paragraph_chars")
+        max_sent = sl.get("max_sentence_chars")
+        dial_min = sl.get("dialogue_ratio_min")
+        dial_max = sl.get("dialogue_ratio_max")
+        sensory = sl.get("sensory_density", "normal")
+        if sensory not in ('sparse', 'normal', 'dense'):
+            sensory = "normal"
+        anti_pats = json.dumps(
+            contract_data.get("anti_patterns", {}).get("patterns",
+            sl.get("anti_patterns", [])), ensure_ascii=False
+        )
+
+        # Sanitize numeric values
+        def _safe_int(v):
+            if v is None: return None
+            try:
+                v = int(v)
+                return v if v > 0 else None
+            except (ValueError, TypeError):
+                return None
+        def _safe_ratio(v):
+            if v is None: return None
+            try:
+                v = float(v)
+                return v if 0 <= v <= 1 else None
+            except (ValueError, TypeError):
+                return None
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_style_locks "
+            "(lock_id, project_id, max_paragraph_chars, max_sentence_chars, "
+            "dialogue_ratio_min, dialogue_ratio_max, sensory_density, anti_patterns) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (generate_ulid(), pid, _safe_int(max_para), _safe_int(max_sent),
+             _safe_ratio(dial_min), _safe_ratio(dial_max), sensory, anti_pats),
+        )
+
+        # ═══ writing_suspense_blueprint ═══
+        sb = contract_data.get("suspense_blueprint", {})
+        preset = sb.get("preset", "literary_tension")
+        valid_presets = ('literary_tension', 'institutional_suspense',
+                         'psychological_thriller', 'whodunit', 'slow_burn')
+        if preset not in valid_presets:
+            preset = "literary_tension"
+        global_q = sb.get("global_question", "")
+        # Ensure minimum length > 5 for CHECK constraint
+        if not global_q or len(global_q) <= 5:
+            sc = contract_data.get("suspense_config", {})
+            # Try to derive from suspense_config
+            anchor = sc.get("reader_anchor", "")
+            if anchor and len(anchor) > 5:
+                global_q = anchor
+            else:
+                global_q = f"{title}的核心悬念"  # fallback from identity title
+        # Final safety: if still too short, pad
+        if len(global_q) <= 5:
+            global_q = f"{title}的核心悬念待解"
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_suspense_blueprint "
+            "(blueprint_id, project_id, preset, global_question) "
+            "VALUES (?, ?, ?, ?)",
+            (generate_ulid(), pid, preset, global_q),
+        )
+
+        # Get the blueprint_id we just inserted for FK reference
+        bp_row = self.db.execute(
+            "SELECT blueprint_id FROM writing_suspense_blueprint "
+            "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+            (pid,),
+        ).fetchone()
+        blueprint_id = bp_row["blueprint_id"] if bp_row else None
+
+        # ═══ writing_chapter_tension_arc ═══
+        # Extract per-chapter tension data from suspense_config or structure_rules
+        sr = contract_data.get("structure_rules", {})
+        chapter_hooks = contract_data.get("suspense_config", {}).get("chapter_hooks", {})
+
+        # For each chapter_N_events, create a tension arc entry
+        for key in sr:
+            if not key.startswith("chapter_") or not key.endswith("_events"):
+                continue
+            # Extract chapter key like "v01.c02" from "chapter_2_events"
+            import re
+            m = re.search(r'chapter_(\d+)_events', key)
+            if not m:
+                continue
+            ch_num = int(m.group(1))
+            chapter_key = f"v01.c{ch_num:02d}"
+
+            # Determine tension target and role from chapter_hooks or defaults
+            hook_info = chapter_hooks.get(f"chapter_{ch_num}", {})
+            tension = hook_info.get("tension_target", 50)
+            role = hook_info.get("suspense_role", "escalation")
+            valid_roles = ('setup', 'escalation', 'peak', 'payoff', 'breather')
+            if role not in valid_roles:
+                role = "escalation"
+            try:
+                tension = int(tension)
+                tension = max(0, min(100, tension))
+            except (ValueError, TypeError):
+                tension = 50
+
+            reader_retention = hook_info.get("reader_retention", "") or ""
+            main_engine = hook_info.get("main_engine", "") or ""
+
+            if blueprint_id:
+                self.db.execute(
+                    "INSERT OR REPLACE INTO writing_chapter_tension_arc "
+                    "(arc_id, blueprint_id, chapter_key, tension_target, suspense_role, "
+                    "reader_retention, main_engine) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (generate_ulid(), blueprint_id, chapter_key, tension, role,
+                     reader_retention, main_engine),
+                )
+
+        self.db.commit()
+
+    def validate_contract_schema(self, contract_data: dict) -> list[str]:
+        """Python-layer fast validation before DB INSERT.
+
+        Returns list of error messages. Empty list = all good.
+        Checks that values will pass DB CHECK constraints.
+        """
+        errors = []
+
+        # Identity checks
+        ident = contract_data.get("identity", {})
+        if not ident.get("title"):
+            errors.append("identity.title 不能为空")
+        if not ident.get("author"):
+            errors.append("identity.author 不能为空")
+        if not ident.get("era"):
+            errors.append("identity.era 不能为空")
+        tc = ident.get("total_chapters")
+        if tc is not None:
+            try:
+                if int(tc) <= 0:
+                    errors.append("identity.total_chapters 必须 > 0")
+            except (ValueError, TypeError):
+                errors.append("identity.total_chapters 必须是正整数")
+
+        # Narrative voice checks
+        nv = contract_data.get("narrative_voice", {})
+        pov_mode = nv.get("pov_mode", "third_limited")
+        if pov_mode not in ('first_person', 'third_limited', 'third_omniscient', 'multi_pov', 'free_indirect'):
+            errors.append(f"narrative_voice.pov_mode 非法值: {pov_mode}")
+        tense = nv.get("tense", "past")
+        if tense not in ('past', 'present', 'mixed'):
+            errors.append(f"narrative_voice.tense 非法值: {tense}")
+        narrator = nv.get("narrator_type", "invisible")
+        if narrator not in ('character', 'invisible', 'unreliable', 'choral'):
+            errors.append(f"narrative_voice.narrator_type 非法值: {narrator}")
+
+        # Style locks checks
+        sl = contract_data.get("style_locks", {})
+        for ratio_key in ('dialogue_ratio_min', 'dialogue_ratio_max'):
+            v = sl.get(ratio_key)
+            if v is not None:
+                try:
+                    fv = float(v)
+                    if not (0 <= fv <= 1):
+                        errors.append(f"style_locks.{ratio_key} 必须在 0-1 之间")
+                except (ValueError, TypeError):
+                    errors.append(f"style_locks.{ratio_key} 必须是数字")
+
+        # Suspense blueprint checks
+        sb = contract_data.get("suspense_blueprint", {})
+        preset = sb.get("preset", "literary_tension")
+        if preset not in ('literary_tension', 'institutional_suspense',
+                          'psychological_thriller', 'whodunit', 'slow_burn'):
+            errors.append(f"suspense_blueprint.preset 非法值: {preset}")
+
+        # Semantic completeness checks
+        # 1. POV coverage: every declared POV character should appear in at least one shot
+        pov_chars = nv.get("pov_characters", ident.get("pov_characters", []))
+        if isinstance(pov_chars, str):
+            pov_chars = [c.strip() for c in pov_chars.split(",") if c.strip()]
+        if pov_chars:
+            sr = contract_data.get("structure_rules", {})
+            shot_povs = set()
+            for key in sr:
+                if not key.startswith("chapter_") or not key.endswith("_events"):
+                    continue
+                for ev in sr.get(key, []):
+                    if isinstance(ev, dict):
+                        pov = ev.get("pov", "")
+                        if pov:
+                            shot_povs.add(pov)
+            for pc in pov_chars:
+                if pc not in shot_povs:
+                    errors.append(f"角色 '{pc}' 在 POV 列表中但未在任何 shot 中出现")
+
+        return errors
+
     # ── Contract revision history ──
 
     def record_revision(
@@ -339,6 +825,16 @@ class ContractCompiler:
                      json.dumps(pov_routing, ensure_ascii=False) if pov_routing else None,
                      json.dumps(full_contract, ensure_ascii=False)),
                 )
+
+                # v24: Write to structured shot tables for DB-level enforcement
+                self._write_shot_structured_tables(
+                    contract_id, must_land, anti_write, pov_routing,
+                    sensory_pressure, dominant_sense, entry_mood,
+                    deviation_budget, narrative_phase,
+                    hard_facts, soft_constraints, reference,
+                    exit_to, motif_tasks,
+                )
+
                 contract_ids.append(contract_id)
 
             self.db.execute("RELEASE SAVEPOINT compile_shot_contracts")
@@ -372,6 +868,124 @@ class ContractCompiler:
             (run_id,),
         )
         self.db.commit()
+
+    # ── v24: Structured shot table writers ──
+
+    def _write_shot_structured_tables(
+        self,
+        contract_id: str,
+        must_land: dict,
+        anti_write: dict,
+        pov_routing: dict | None,
+        sensory_pressure: str | None,
+        dominant_sense: str | None,
+        entry_mood: str | None,
+        deviation_budget: int | None,
+        narrative_phase: str | None,
+        hard_facts: list | None,
+        soft_constraints: list | None,
+        reference: str | None,
+        exit_to: dict | None,
+        motif_tasks: dict | None,
+    ) -> None:
+        """Write to v24 structured shot tables for DB-level enforcement.
+
+        This runs alongside the JSON blob writes. The structured tables
+        provide NOT NULL + CHECK constraints that AI cannot bypass.
+        """
+        # ═══ writing_shot_must_land ═══
+        ml_title = must_land.get("title", "") or ""
+        ml_beats_raw = must_land.get("beats", "")
+        if isinstance(ml_beats_raw, list):
+            ml_beats = "\n".join(str(b) for b in ml_beats_raw if b)
+        else:
+            ml_beats = str(ml_beats_raw) if ml_beats_raw else ""
+        ml_event = must_land.get("event", "") or must_land.get("event_text", "") or ""
+
+        # Ensure minimum content — if beats is empty, fall back to event; if event empty, fall back to beats
+        if not ml_beats.strip() and ml_event.strip():
+            ml_beats = ml_event
+        if not ml_event.strip() and ml_beats.strip():
+            ml_event = ml_beats
+        # Last resort: use title as both
+        if not ml_beats.strip():
+            ml_beats = ml_title or "untitled"
+        if not ml_event.strip():
+            ml_event = ml_title or "untitled"
+        if not ml_title.strip():
+            ml_title = ml_event[:20] or "untitled"
+
+        pov_char = ""
+        if pov_routing and isinstance(pov_routing, dict):
+            pov_char = pov_routing.get("pov_character", "") or ""
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_shot_must_land "
+            "(must_land_id, contract_id, title, beats, event_text, pov_character) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (generate_ulid(), contract_id, ml_title, ml_beats, ml_event, pov_char),
+        )
+
+        # ═══ writing_shot_anti_write ═══
+        aw_pov_only = ""
+        aw_forbidden_words = "[]"
+        aw_forbidden_facts = "[]"
+        if anti_write and isinstance(anti_write, dict):
+            aw_pov_only = anti_write.get("pov_only", "") or ""
+            fw = anti_write.get("forbidden", anti_write.get("forbidden_words", []))
+            if isinstance(fw, list):
+                aw_forbidden_words = json.dumps(fw, ensure_ascii=False)
+            elif isinstance(fw, str):
+                aw_forbidden_words = fw if fw.startswith("[") else json.dumps(
+                    [x.strip() for x in fw.split(",") if x.strip()], ensure_ascii=False
+                )
+            ff = anti_write.get("forbidden_facts", [])
+            if isinstance(ff, list):
+                aw_forbidden_facts = json.dumps(ff, ensure_ascii=False)
+            elif isinstance(ff, str):
+                aw_forbidden_facts = ff if ff.startswith("[") else "[]"
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_shot_anti_write "
+            "(anti_write_id, contract_id, pov_only, forbidden_words, forbidden_facts) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (generate_ulid(), contract_id, aw_pov_only, aw_forbidden_words, aw_forbidden_facts),
+        )
+
+        # ═══ writing_shot_narrative_params ═══
+        # Validate enum values — if invalid, set to None (let DB CHECK pass as NULL)
+        np_phase = narrative_phase if narrative_phase in (
+            'opening', 'rising', 'complication', 'crisis', 'climax', 'resolution'
+        ) else None
+        np_sensory = sensory_pressure if sensory_pressure in (
+            'low', 'normal', 'heightened', 'overwhelming'
+        ) else None
+        np_budget = deviation_budget
+        if np_budget is not None:
+            try:
+                np_budget = int(np_budget)
+                np_budget = max(0, min(100, np_budget))
+            except (ValueError, TypeError):
+                np_budget = None
+        np_sense = dominant_sense if dominant_sense in (
+            'visual', 'auditory', 'tactile', 'olfactory', 'gustatory', 'kinesthetic'
+        ) else None
+        np_mood = entry_mood or ""
+        np_hf = json.dumps(hard_facts, ensure_ascii=False) if isinstance(hard_facts, list) else "[]"
+        np_sc = json.dumps(soft_constraints, ensure_ascii=False) if isinstance(soft_constraints, list) else "[]"
+        np_ref = reference or ""
+        np_exit = json.dumps(exit_to, ensure_ascii=False) if isinstance(exit_to, dict) else (str(exit_to) if exit_to else "")
+        np_motif = json.dumps(motif_tasks, ensure_ascii=False) if isinstance(motif_tasks, dict) else "{}"
+
+        self.db.execute(
+            "INSERT OR REPLACE INTO writing_shot_narrative_params "
+            "(params_id, contract_id, narrative_phase, sensory_pressure, "
+            "deviation_budget, dominant_sense, entry_mood, hard_facts, "
+            "soft_constraints, reference, exit_to, motif_tasks) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (generate_ulid(), contract_id, np_phase, np_sensory,
+             np_budget, np_sense, np_mood, np_hf, np_sc, np_ref, np_exit, np_motif),
+        )
 
 
 def _chapter_num(chapter_key: str) -> int:

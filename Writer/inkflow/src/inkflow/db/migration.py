@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 
 # 当前 schema 版本（每次修改 schema 时 +1）
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 # 迁移链：(from_version, to_version, migration_function)
 # 按 from_version 升序排列
@@ -1462,6 +1462,82 @@ def _create_v23_config_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tension_arc_blueprint "
         "ON writing_chapter_tension_arc(blueprint_id)"
+    )
+
+
+@register_migration(23, 24)
+def _migrate_v23_to_v24(conn: sqlite3.Connection) -> None:
+    """v24: Shot 契约结构化表 — 新增 writing_shot_must_land / writing_shot_anti_write / writing_shot_narrative_params。
+
+    替代 writing_shot_contracts 中 must_land_json / anti_write_json / contract_json 的 AI 写入部分。
+    所有字段 NOT NULL + CHECK 约束，AI 无法绕过。
+    """
+    _create_v24_shot_tables(conn)
+
+
+def _create_v24_shot_tables(conn: sqlite3.Connection) -> None:
+    """Create all v24 shot-level structured tables."""
+
+    # ═══ Shot must_land ═══
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_shot_must_land ("
+        "must_land_id    TEXT PRIMARY KEY, "
+        "contract_id     TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id), "
+        "title           TEXT NOT NULL CHECK(length(title) > 0), "
+        "beats           TEXT NOT NULL CHECK(length(beats) > 0), "
+        "event_text      TEXT NOT NULL CHECK(length(event_text) > 0), "
+        "pov_character   TEXT NOT NULL DEFAULT '', "
+        "created_at      TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(contract_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shot_must_land_contract "
+        "ON writing_shot_must_land(contract_id)"
+    )
+
+    # ═══ Shot anti_write ═══
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_shot_anti_write ("
+        "anti_write_id   TEXT PRIMARY KEY, "
+        "contract_id     TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id), "
+        "pov_only        TEXT NOT NULL DEFAULT '', "
+        "forbidden_words TEXT NOT NULL DEFAULT '[]', "
+        "forbidden_facts TEXT NOT NULL DEFAULT '[]', "
+        "created_at      TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(contract_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shot_anti_write_contract "
+        "ON writing_shot_anti_write(contract_id)"
+    )
+
+    # ═══ Shot narrative params ═══
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS writing_shot_narrative_params ("
+        "params_id           TEXT PRIMARY KEY, "
+        "contract_id         TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id), "
+        "narrative_phase     TEXT CHECK(narrative_phase IN ("
+                                "'opening','rising','complication','crisis','climax','resolution')), "
+        "sensory_pressure    TEXT CHECK(sensory_pressure IN ("
+                                "'low','normal','heightened','overwhelming')), "
+        "deviation_budget    INTEGER CHECK(deviation_budget BETWEEN 0 AND 100), "
+        "dominant_sense      TEXT CHECK(dominant_sense IN ("
+                                "'visual','auditory','tactile','olfactory','gustatory','kinesthetic')), "
+        "entry_mood          TEXT NOT NULL DEFAULT '', "
+        "hard_facts          TEXT NOT NULL DEFAULT '[]', "
+        "soft_constraints    TEXT NOT NULL DEFAULT '[]', "
+        "reference           TEXT NOT NULL DEFAULT '', "
+        "exit_to             TEXT NOT NULL DEFAULT '', "
+        "motif_tasks         TEXT NOT NULL DEFAULT '{}', "
+        "created_at          TEXT NOT NULL DEFAULT (datetime('now')), "
+        "UNIQUE(contract_id)"
+        ")"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shot_narrative_params_contract "
+        "ON writing_shot_narrative_params(contract_id)"
     )
 
 

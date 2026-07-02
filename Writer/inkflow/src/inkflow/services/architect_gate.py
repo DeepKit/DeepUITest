@@ -687,17 +687,31 @@ class ArchitectGate:
         """Detect deprecated character aliases in generated prose."""
         if not text:
             return {"violations": [], "aliases": {}}
-        row = self.db.execute(
-            "SELECT layers_json FROM writing_meta_contract "
+        # v24: Try structured table first, fall back to layers_json
+        layers = {}
+        hb_row = self.db.execute(
+            "SELECT deprecated_aliases FROM writing_hard_boundaries "
             "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
             (self.project_id,),
         ).fetchone()
-        layers = {}
-        if row:
+        if hb_row:
             try:
-                layers = json.loads(row["layers_json"] or "{}")
+                da = json.loads(hb_row["deprecated_aliases"] or "{}")
+                if da:
+                    layers = {"hard_boundaries": {"deprecated_aliases": da}}
             except (json.JSONDecodeError, TypeError):
-                layers = {}
+                pass
+        if not layers:
+            row = self.db.execute(
+                "SELECT layers_json FROM writing_meta_contract "
+                "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+                (self.project_id,),
+            ).fetchone()
+            if row:
+                try:
+                    layers = json.loads(row["layers_json"] or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    layers = {}
         aliases = deprecated_aliases_for_layers(layers)
         hits = find_deprecated_aliases(text, aliases)
         return {
@@ -972,18 +986,30 @@ class ArchitectGate:
             )
 
         # Check 5 (OPT-4): Character presence — warn if a POV character has zero shots
-        # Get POV characters from the meta-contract
-        meta_contract_row = self.db.execute(
-            "SELECT layers_json FROM writing_meta_contract "
+        # v24: Get POV characters from structured table first, fall back to layers_json
+        pov_characters = []
+        nv_row = self.db.execute(
+            "SELECT pov_characters FROM writing_narrative_voice "
             "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
             (self.project_id,),
         ).fetchone()
-        if meta_contract_row:
+        if nv_row:
             try:
-                layers = json.loads(meta_contract_row["layers_json"])
-                pov_characters = layers.get("identity", {}).get("pov_characters", [])
-            except (json.JSONDecodeError, KeyError):
+                pov_characters = json.loads(nv_row["pov_characters"] or "[]")
+            except (json.JSONDecodeError, TypeError):
                 pov_characters = []
+        if not pov_characters:
+            meta_contract_row = self.db.execute(
+                "SELECT layers_json FROM writing_meta_contract "
+                "WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+                (self.project_id,),
+            ).fetchone()
+            if meta_contract_row:
+                try:
+                    layers = json.loads(meta_contract_row["layers_json"])
+                    pov_characters = layers.get("identity", {}).get("pov_characters", [])
+                except (json.JSONDecodeError, KeyError):
+                    pov_characters = []
 
             if pov_characters:
                 absent_in_chapter = [c for c in pov_characters if c not in pov_counts]

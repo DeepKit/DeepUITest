@@ -363,6 +363,79 @@ class TestVersionTracking:
             conn.close()
 
 
+    def test_migrate_v23_to_v24_creates_shot_tables(self, tmp_dir):
+        """v24 migration should create 3 structured shot contract tables."""
+        conn = sqlite3.connect(str(tmp_dir / "v23_shot_tables.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            ensure_meta_table(conn)
+            set_schema_version(conn, 23)
+            # Create prerequisite tables for FK references
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS projects "
+                "(project_id TEXT PRIMARY KEY, name TEXT UNIQUE, "
+                "root_path TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+            )
+            conn.execute(
+                "INSERT INTO projects (project_id, name) VALUES ('p1', '测试项目')"
+            )
+            conn.execute(
+                "CREATE TABLE writing_sessions ("
+                "session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO writing_sessions "
+                "(session_id, project_id, run_id, status) "
+                "VALUES ('s1', 'p1', 'run_01', 'active')"
+            )
+            conn.execute(
+                "CREATE TABLE writing_shots ("
+                "shot_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL, layer_key TEXT NOT NULL, "
+                "shot_index INTEGER NOT NULL, shot_status TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO writing_shots "
+                "(shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+                "VALUES ('sh1', 'p1', 'run_01', 'v01.c01', 1, 'pending')"
+            )
+            conn.execute(
+                "CREATE TABLE writing_shot_contracts ("
+                "contract_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+                "run_id TEXT NOT NULL, shot_id TEXT NOT NULL, "
+                "layer_key TEXT NOT NULL, contract_status TEXT NOT NULL, "
+                "snapshot_hash TEXT NOT NULL, must_land_json JSON NOT NULL, "
+                "anti_write_json JSON NOT NULL, exit_to_json JSON, "
+                "motif_tasks_json JSON, pov_routing_json JSON, "
+                "contract_json JSON NOT NULL, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+            )
+            conn.execute(
+                "INSERT INTO writing_shot_contracts "
+                "(contract_id, project_id, run_id, shot_id, layer_key, "
+                "contract_status, snapshot_hash, must_land_json, anti_write_json, contract_json) "
+                "VALUES ('c1', 'p1', 'run_01', 'sh1', 'v01.c01', 'draft', 'h', '{}', '{}', '{}')"
+            )
+
+            result = migrate_if_needed(conn)
+
+            assert get_schema_version(conn) == SCHEMA_VERSION
+            assert any("v23 → v24" in item for item in result)
+            for table in [
+                "writing_shot_must_land",
+                "writing_shot_anti_write",
+                "writing_shot_narrative_params",
+            ]:
+                row = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()
+                assert row is not None, f"缺少表: {table}"
+        finally:
+            conn.close()
+
+
 class TestMigrationChain:
     """迁移链执行"""
 

@@ -162,11 +162,18 @@ def _accepted_review_join(accepted_only: bool) -> str:
     )
 
 def _resolve_title(db: sqlite3.Connection) -> str:
+    # v24: Try structured table first
+    row = db.execute(
+        "SELECT title FROM writing_project_identity ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if row and row["title"]:
+        return row["title"]
+
     row = db.execute("SELECT name FROM projects LIMIT 1").fetchone()
     if row:
         return row["name"]
 
-    # Fallback: try meta-contract
+    # Fallback: try meta-contract layers_json
     row = db.execute(
         "SELECT layers_json FROM writing_meta_contract "
         "ORDER BY created_at DESC LIMIT 1"

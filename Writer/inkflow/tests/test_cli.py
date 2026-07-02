@@ -472,6 +472,11 @@ class TestChapterEventExtraction:
         assert "内江" not in text
         assert "阿坤" not in text
         assert draft["identity"]["setting"].startswith("1979年4月")
+        assert draft["identity"]["author"] == "未署名"
+        assert "1979" in draft["identity"]["era"]
+        assert draft["identity"]["language"] == "zh-CN"
+        assert draft["identity"]["total_chapters"] == 3
+        assert draft["identity"]["genre_tags"] == [draft["identity"]["genre"]]
         assert draft["chapter_2_events"][0]["pov"] == "许怀山"
         assert any("1978" in event["event"] for event in draft["chapter_2_events"])
 
@@ -556,6 +561,9 @@ class TestInitSmoke:
             content = draft_path.read_text(encoding="utf-8")
             assert "P0 只生成第 2 章" not in content
             assert "500-800 字/段落" not in content
+            assert "author:" in content
+            assert "era:" in content
+            assert "total_chapters:" in content
 
 
 class TestChapterSetupSmoke:
@@ -1028,7 +1036,11 @@ class TestConfirmContract:
         draft_path.write_text("""\
 identity:
   title: 测试
+  author: 测试作者
   genre: 文学小说
+  era: 当代
+  language: zh-CN
+  total_chapters: 10
   setting: 测试城
   pov_count: 2
   pov_characters:

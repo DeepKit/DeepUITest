@@ -1991,7 +1991,17 @@ def confirm_contract(project: str):
         "motif_system": draft.get("motif_system", {}),
         "creative_zones": creative,
         "suspense_config": draft.get("suspense_config", {}),
-        "suspense_blueprint": draft.get("suspense_blueprint", {}),
+        "suspense_blueprint": draft.get("suspense_blueprint", {}) or _extract_suspense_blueprint(
+            _read_project_docs(story_dir, [
+                "01_项目概要.md",
+                "02_类型与调性.md",
+                "03_核心冲突.md",
+                "04_人物关系.md",
+                "05_世界规则.md",
+                "06_分章大纲.md",
+                "24_分章大纲.md",
+            ])
+        ),
     }
 
     from inkflow.utils.character_names import (
@@ -2061,7 +2071,17 @@ def confirm_contract(project: str):
     if audit_report["warning_count"]:
         click.echo(f"  警告: {audit_report['warning_count']} 项，详见 {audit_path}")
 
+    # v24: Schema validation — fast-fail before DB INSERT
     compiler = ContractCompiler(db, project_id)
+    schema_errors = compiler.validate_contract_schema(contract_data)
+    if schema_errors:
+        db.close()
+        err_lines = "\n".join(f"  - {e}" for e in schema_errors)
+        raise click.ClickException(
+            f"契约 Schema 验证失败（DB 约束预检）:\n{err_lines}\n"
+            "请修正 contract-draft.yaml 后重新运行 confirm-contract。"
+        )
+
     existing = compiler.get_meta_contract()
 
     if existing:
@@ -2070,6 +2090,14 @@ def confirm_contract(project: str):
 
     mc_id = compiler.create_meta_contract(contract_data)
     click.echo(f"元契约已创建: {mc_id[:12]}...")
+
+    # v24: Write structured meta-contract tables for DB-level enforcement
+    try:
+        compiler.write_meta_contract_structured(mc_id, contract_data)
+        click.echo("结构化配置表已写入 (v23 六表)")
+    except Exception as e:
+        click.echo(f"警告: 结构化配置表写入失败: {e}")
+        click.echo("layers_json 仍然可用，但 DB 约束保护未启用。")
 
     # Transition to confirmed
     contract = compiler.get_meta_contract()
@@ -2864,13 +2892,22 @@ def _run_project_inner(
             )
 
             # 构建前文上下文：仅同 POV 角色，简短摘要
-            pov_routing = sc.get("pov_routing_json") or {}
-            if isinstance(pov_routing, str):
-                import json as _json
-                pov_routing = _json.loads(pov_routing) if pov_routing else {}
-            elif not isinstance(pov_routing, dict):
-                pov_routing = {}
-            pov_character = pov_routing.get("pov_character")
+            # v24: Try structured tables first, fall back to JSON blob
+            pov_character = None
+            ml_row = db.execute(
+                "SELECT pov_character FROM writing_shot_must_land "
+                "WHERE contract_id = ?", (sc.get("contract_id"),),
+            ).fetchone()
+            if ml_row and ml_row["pov_character"]:
+                pov_character = ml_row["pov_character"]
+            else:
+                pov_routing = sc.get("pov_routing_json") or {}
+                if isinstance(pov_routing, str):
+                    import json as _json
+                    pov_routing = _json.loads(pov_routing) if pov_routing else {}
+                elif not isinstance(pov_routing, dict):
+                    pov_routing = {}
+                pov_character = pov_routing.get("pov_character")
             previous_shots = _build_previous_context(
                 db, run_id, baseline_shots, i, pov_character=pov_character,
                 project_id=project_id, book_run_id=book_run_id,
@@ -2879,11 +2916,29 @@ def _run_project_inner(
             # D-25: 获取当前活跃的信息差
             active_gaps = info_gap_tracker.get_active_gaps()
 
-            # ARCH-1/2/3: Extract rhythm + three-layer fields from contract_json
-            cj = sc.get("contract_json", "{}")
-            if isinstance(cj, str):
-                import json as _json2
-                cj = _json2.loads(cj) if cj else {}
+            # ARCH-1/2/3: Extract rhythm + three-layer fields from structured tables or contract_json
+            # v24: Try structured tables first
+            np_row = db.execute(
+                "SELECT * FROM writing_shot_narrative_params "
+                "WHERE contract_id = ?", (sc.get("contract_id"),),
+            ).fetchone()
+            if np_row:
+                np_d = dict(np_row)
+                cj = {
+                    "deviation_budget": np_d.get("deviation_budget"),
+                    "narrative_phase": np_d.get("narrative_phase"),
+                    "sensory_pressure": np_d.get("sensory_pressure"),
+                    "dominant_sense": np_d.get("dominant_sense"),
+                    "entry_mood": np_d.get("entry_mood", ""),
+                    "hard_facts": json.loads(np_d["hard_facts"]) if np_d.get("hard_facts") else [],
+                    "soft_constraints": json.loads(np_d["soft_constraints"]) if np_d.get("soft_constraints") else [],
+                    "reference": np_d.get("reference", ""),
+                }
+            else:
+                cj = sc.get("contract_json", "{}")
+                if isinstance(cj, str):
+                    import json as _json2
+                    cj = _json2.loads(cj) if cj else {}
 
             # ARCH: Override rhythm params from chapter_rhythm_map if available
             rhythm_budget = cj.get("deviation_budget")
@@ -2948,9 +3003,40 @@ def _run_project_inner(
                 quality_controller.smart_redo(shot_id, 0)
                 continue
 
+            # v24: Build must_land/anti_write from structured tables or JSON fallback
+            ml_data = sc.get("must_land_json", {})
+            if isinstance(ml_data, str):
+                ml_data = json.loads(ml_data) if ml_data else {}
+            aw_data = sc.get("anti_write_json", {})
+            if isinstance(aw_data, str):
+                aw_data = json.loads(aw_data) if aw_data else {}
+
+            # Override from structured tables if available
+            ml_struct = db.execute(
+                "SELECT title, beats, event_text FROM writing_shot_must_land "
+                "WHERE contract_id = ?", (sc.get("contract_id"),),
+            ).fetchone()
+            if ml_struct:
+                ml_data = {
+                    "title": ml_struct["title"],
+                    "beats": ml_struct["beats"],
+                    "event": ml_struct["event_text"],
+                }
+            aw_struct = db.execute(
+                "SELECT pov_only, forbidden_words, forbidden_facts "
+                "FROM writing_shot_anti_write WHERE contract_id = ?",
+                (sc.get("contract_id"),),
+            ).fetchone()
+            if aw_struct:
+                aw_data = {
+                    "pov_only": aw_struct["pov_only"] or "",
+                    "forbidden": json.loads(aw_struct["forbidden_words"]) if aw_struct["forbidden_words"] else [],
+                    "forbidden_facts": json.loads(aw_struct["forbidden_facts"]) if aw_struct["forbidden_facts"] else [],
+                }
+
             shot_context_payload = {
-                "must_land": sc.get("must_land_json", {}),
-                "anti_write": sc.get("anti_write_json", {}),
+                "must_land": ml_data,
+                "anti_write": aw_data,
                 "exit_to": sc.get("exit_to_json"),
                 # ARCH-1: Three-layer deviation taxonomy
                 "hard_facts": cj.get("hard_facts"),
@@ -3620,6 +3706,8 @@ def _generate_contract_draft(
     )
     corpus = sample_text + "\n" + outline_text + "\n" + project_docs
     setting = _derive_setting(sample_text, corpus)
+    time_period = _derive_time_period(setting, corpus)
+    genre = _derive_genre(project_docs)
     pov_chars = _extract_project_characters(story_dir, sample_text + "\n" + outline_text)
 
     # Extract first-volume chapter events. confirm-contract already accepts
@@ -3653,7 +3741,12 @@ def _generate_contract_draft(
 
         "identity": {
             "title": project,
-            "genre": _derive_genre(project_docs),
+            "author": _derive_author(project_docs),
+            "genre": genre,
+            "genre_tags": [genre],
+            "era": time_period,
+            "language": "zh-CN",
+            "total_chapters": _derive_total_chapters(outline_text),
             "setting": setting,
             "pov_count": len(pov_chars),
             "pov_characters": pov_chars,
@@ -3697,7 +3790,7 @@ def _generate_contract_draft(
         "world_knowledge": {
             "locations": locations or ["待从项目文档确认的主要场景"],
             "key_objects": objects or ["待从项目文档确认的关键物件"],
-            "time_period": _derive_time_period(setting, corpus),
+            "time_period": time_period,
             "season": _derive_season(corpus),
             "weather": _derive_weather(corpus),
         },
@@ -3774,6 +3867,57 @@ def _derive_genre(project_docs: str) -> str:
     if "悬疑" in project_docs:
         return "悬疑文学小说"
     return "文学小说"
+
+
+def _derive_author(project_docs: str) -> str:
+    import re
+
+    for raw in project_docs.splitlines():
+        line = raw.strip()
+        match = re.match(r"^[>*#\s-]*(?:作者|Author)[：:]\s*(.+)$", line, flags=re.IGNORECASE)
+        if match:
+            value = match.group(1).strip()
+            if value:
+                return value
+    return "未署名"
+
+
+def _derive_total_chapters(outline_text: str) -> int:
+    import re
+
+    numbers: list[int] = []
+    for match in re.findall(r"第\s*([0-9一二三四五六七八九十百]+)\s*章", outline_text or ""):
+        if match.isdigit():
+            numbers.append(int(match))
+            continue
+        converted = _chinese_chapter_number(match)
+        if converted is not None:
+            numbers.append(converted)
+    return max(numbers) if numbers else 1
+
+
+def _chinese_chapter_number(text: str) -> int | None:
+    digits = {
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9,
+    }
+    text = (text or "").strip()
+    if not text:
+        return None
+    if text == "十":
+        return 10
+    if "百" in text:
+        return None
+    if text.startswith("十"):
+        suffix = text[1:]
+        return 10 + digits.get(suffix, 0)
+    if text.endswith("十"):
+        prefix = text[:-1]
+        return digits.get(prefix, 0) * 10 or None
+    if "十" in text:
+        prefix, suffix = text.split("十", 1)
+        return digits.get(prefix, 0) * 10 + digits.get(suffix, 0)
+    return digits.get(text)
 
 
 def _derive_style(project_docs: str) -> str:
@@ -3933,15 +4077,76 @@ def _extract_suspense_config(project_docs: str) -> dict:
         "core_objects": {
             "关键物件": "同一物件每次出现都推动证据、责任或代价变化，不做象征解释。"
         },
-        "chapter_hooks": [
-            "每章最后一句必须是物件、动作、沉默或状态改变，不能是解释性总结。",
-            "章末钩子要留下未完成动作、新证据、新问题或责任悬置。",
-        ],
+        "chapter_hooks": _extract_chapter_hooks_from_outline(project_docs),
         "numbers_with_temperature": [
             "数字必须绑定具体的人、物、时间压力或身体代价。",
         ],
         "suspense_density": "追读压力来自时间、数量、空间、责任和信息差的持续收紧。",
     }
+
+
+def _extract_suspense_blueprint(project_docs: str) -> dict:
+    """Extract suspense_blueprint from project docs.
+
+    Maps keywords to one of the 5 presets:
+    - literary_tension: 文学性, 氛围, 情绪 (default)
+    - institutional_suspense: 制度, 机构, 体制
+    - psychological_thriller: 心理, 精神, 意识
+    - whodunit: 谁, 凶手, 真相
+    - slow_burn: 缓慢, 渐进, 日常
+    """
+    import re
+
+    # Detect preset from keywords
+    preset = "literary_tension"  # default
+    if any(kw in project_docs for kw in ["制度", "机构", "体制", "排号", "窗口"]):
+        preset = "institutional_suspense"
+    elif any(kw in project_docs for kw in ["心理", "精神", "意识流", "内心"]):
+        preset = "psychological_thriller"
+    elif any(kw in project_docs for kw in ["凶手", "谁是", "真相", "推理"]):
+        preset = "whodunit"
+    elif any(kw in project_docs for kw in ["缓慢", "渐进", "日常", "平淡"]):
+        preset = "slow_burn"
+
+    # Extract global question
+    global_question = ""
+    for line in project_docs.splitlines():
+        stripped = line.strip()
+        if "核心悬念" in stripped or "最大悬念" in stripped:
+            global_question = re.sub(r"^[#*\s]*[:：]?\s*", "", stripped)
+            global_question = re.sub(r"^(核心悬念|最大悬念)[：:]\s*", "", global_question)
+            break
+    if not global_question or len(global_question) <= 5:
+        for line in project_docs.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("> ") and len(stripped) > 10:
+                global_question = stripped[2:].strip()
+                break
+    if not global_question or len(global_question) <= 5:
+        global_question = "故事的核心问题是什么？谁在承担代价？"
+
+    return {
+        "preset": preset,
+        "global_question": global_question,
+    }
+
+
+def _extract_chapter_hooks_from_outline(project_docs: str) -> list:
+    """Extract chapter hook descriptions from the outline text."""
+    import re
+    hooks = []
+    for line in project_docs.splitlines():
+        stripped = line.strip()
+        if re.match(r"(章末钩子|钩子)[：:]", stripped):
+            hook_text = re.sub(r"^(章末钩子|钩子)[：:]\s*", "", stripped)
+            if hook_text and len(hook_text) > 3:
+                hooks.append(hook_text)
+    if not hooks:
+        hooks = [
+            "每章最后一句必须是物件、动作、沉默或状态改变，不能是解释性总结。",
+            "章末钩子要留下未完成动作、新证据、新问题或责任悬置。",
+        ]
+    return hooks
 
 
 def _derive_chapter_interpretation(chapter_events: list[dict], project_docs: str) -> str:

@@ -220,8 +220,36 @@ def get_jury_config(models_config: dict) -> dict:
         jury_cfg.get("literary_dimensions"),
         JURY_LITERARY_DIMENSIONS,
     )
+
+    # B81: Reconcile jury models — jury_config.models takes precedence,
+    # but if roles.jury.primary_model is set and jury_config.models is not,
+    # use roles.jury as the source. Warn if both exist and differ.
+    jury_models = jury_cfg.get("models") or None
+    roles_jury_model = None
+    roles = models_config.get("roles", {})
+    role_jury = roles.get("jury", {})
+    if role_jury:
+        ref = role_jury.get("primary_model")
+        if ref:
+            _, roles_jury_model = parse_model_ref(ref)
+
+    if jury_models is None and roles_jury_model:
+        # Only roles.jury is set — use it as jury models source
+        jury_models = [roles_jury_model]
+    elif jury_models and roles_jury_model:
+        # Both are set — check consistency
+        jury_first = jury_models[0] if jury_models else None
+        if jury_first and jury_first != roles_jury_model:
+            import warnings
+            warnings.warn(
+                f"B81: jury_config.models[0]='{jury_first}' differs from "
+                f"roles.jury.primary_model='{roles_jury_model}'. "
+                f"Using jury_config.models as authority.",
+                stacklevel=2,
+            )
+
     return {
-        "models": jury_cfg.get("models") or ["local-default"],
+        "models": jury_models or ["local-default"],
         "hard_dimensions": hard_dimensions,
         "literary_dimensions": literary_dimensions,
         "dimensions": hard_dimensions + literary_dimensions,

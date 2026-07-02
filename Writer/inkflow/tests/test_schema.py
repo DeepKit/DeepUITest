@@ -63,6 +63,10 @@ ALL_TABLES = [
     "writing_style_locks",
     "writing_suspense_blueprint",
     "writing_chapter_tension_arc",
+    # v24: Shot 契约结构化表
+    "writing_shot_must_land",
+    "writing_shot_anti_write",
+    "writing_shot_narrative_params",
 ]
 
 # 预期索引
@@ -138,6 +142,10 @@ EXPECTED_INDEXES = [
     "idx_style_locks_project",
     "idx_suspense_blueprint_project",
     "idx_tension_arc_blueprint",
+    # v24: Shot 契约结构化表
+    "idx_shot_must_land_contract",
+    "idx_shot_anti_write_contract",
+    "idx_shot_narrative_params_contract",
 ]
 
 
@@ -786,3 +794,134 @@ class TestV23ConfigEnforcement:
                 "(identity_id, project_id, title, author, era, total_chapters) "
                 "VALUES ('i1', 'p1', '', '作者', '1979', 10)"
             )
+
+
+class TestV24ShotContractTables:
+    """v24: Shot 契约结构化表 — CHECK 约束验证"""
+
+    def _setup_contract(self, db):
+        """Create prerequisite rows for shot contract table tests."""
+        db.execute("INSERT INTO projects (project_id, name) VALUES ('p1', '测试')")
+        db.execute(
+            "INSERT INTO writing_sessions (session_id, project_id, run_id, status) "
+            "VALUES ('s1', 'p1', 'run_01', 'active')"
+        )
+        db.execute(
+            "INSERT INTO writing_shots (shot_id, project_id, run_id, layer_key, shot_index, shot_status) "
+            "VALUES ('sh1', 'p1', 'run_01', 'v01.c01', 1, 'pending')"
+        )
+        db.execute(
+            "INSERT INTO writing_shot_contracts "
+            "(contract_id, project_id, run_id, shot_id, layer_key, "
+            "contract_status, snapshot_hash, must_land_json, anti_write_json, contract_json) "
+            "VALUES ('c1', 'p1', 'run_01', 'sh1', 'v01.c01', 'draft', 'h1', '{}', '{}', '{}')"
+        )
+
+    def test_v24_shot_tables_exist(self, db):
+        """v24 新增 3 张 shot 结构化表"""
+        for table in [
+            "writing_shot_must_land",
+            "writing_shot_anti_write",
+            "writing_shot_narrative_params",
+        ]:
+            row = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            assert row is not None, f"缺少表: {table}"
+
+    def test_must_land_rejects_empty_title(self, db):
+        """must_land.title 不能为空"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_must_land "
+                "(must_land_id, contract_id, title, beats, event_text) "
+                "VALUES ('ml1', 'c1', '', 'beats', 'event')"
+            )
+
+    def test_must_land_rejects_empty_beats(self, db):
+        """must_land.beats 不能为空"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_must_land "
+                "(must_land_id, contract_id, title, beats, event_text) "
+                "VALUES ('ml1', 'c1', '标题', '', 'event')"
+            )
+
+    def test_must_land_accepts_valid(self, db):
+        """合法的 must_land 可以正常插入"""
+        self._setup_contract(db)
+        db.execute(
+            "INSERT INTO writing_shot_must_land "
+            "(must_land_id, contract_id, title, beats, event_text, pov_character) "
+            "VALUES ('ml1', 'c1', '雨中来客', '阿坤推开玻璃门', '阿坤第一次进入白灯', '阿坤')"
+        )
+        row = db.execute(
+            "SELECT title, pov_character FROM writing_shot_must_land WHERE must_land_id='ml1'"
+        ).fetchone()
+        assert row[0] == "雨中来客"
+        assert row[1] == "阿坤"
+
+    def test_narrative_params_rejects_invalid_phase(self, db):
+        """narrative_phase 必须在合法枚举中"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_narrative_params "
+                "(params_id, contract_id, narrative_phase) "
+                "VALUES ('np1', 'c1', 'invalid_phase')"
+            )
+
+    def test_narrative_params_rejects_invalid_sense(self, db):
+        """dominant_sense 必须在合法枚举中"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_narrative_params "
+                "(params_id, contract_id, dominant_sense) "
+                "VALUES ('np1', 'c1', 'telepathic')"
+            )
+
+    def test_narrative_params_rejects_out_of_range_budget(self, db):
+        """deviation_budget 必须在 0-100 之间"""
+        self._setup_contract(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO writing_shot_narrative_params "
+                "(params_id, contract_id, deviation_budget) "
+                "VALUES ('np1', 'c1', 150)"
+            )
+
+    def test_narrative_params_accepts_valid(self, db):
+        """合法的 narrative_params 可以正常插入"""
+        self._setup_contract(db)
+        db.execute(
+            "INSERT INTO writing_shot_narrative_params "
+            "(params_id, contract_id, narrative_phase, sensory_pressure, "
+            "deviation_budget, dominant_sense, entry_mood) "
+            "VALUES ('np1', 'c1', 'rising', 'heightened', 60, 'auditory', '紧张')"
+        )
+        row = db.execute(
+            "SELECT narrative_phase, deviation_budget FROM writing_shot_narrative_params "
+            "WHERE params_id='np1'"
+        ).fetchone()
+        assert row[0] == "rising"
+        assert row[1] == 60
+
+    def test_anti_write_defaults(self, db):
+        """anti_write 默认值应正确"""
+        self._setup_contract(db)
+        db.execute(
+            "INSERT INTO writing_shot_anti_write "
+            "(anti_write_id, contract_id) "
+            "VALUES ('aw1', 'c1')"
+        )
+        row = db.execute(
+            "SELECT pov_only, forbidden_words, forbidden_facts "
+            "FROM writing_shot_anti_write WHERE anti_write_id='aw1'"
+        ).fetchone()
+        assert row[0] == ""
+        assert row[1] == "[]"
+        assert row[2] == "[]"

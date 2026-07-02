@@ -1,10 +1,10 @@
-# InkFlow v3.22 Phase 1 实现契约 v1.9
+# InkFlow v3.24 Phase 1 实现契约 v1.10
 
 > 作用：冻结 P0 阻塞项，并记录当前实现已落地的 DDL / 状态机 / CLI / 模型调用协议。
-> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层 + Schema v22 contract audit stage + Schema v21 全程审计底座 + contract-first 第一版）
-> 日期：2026-06-17；最近对齐：2026-06-29
-> 当前范围：DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v22）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase 与完整 prompt/response、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排、契约审计师两轮复审、全程审计事件与失败归因、fact manifest、outline fact gate、shot task card、draft hard fact gate
-> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity、book_run 编排层、契约审计师两轮复审与 contract-first 第一版已落地；但第 3 章返工和第 4 章首跑尚未用新门禁验证，正式正文仍以每章人工 accepted 为准。
+> 状态：实现对齐版（P0 闭环 + D-25 + ARCH-4/5/10/11/12/13 + CREATIVE-1/2/3 + 分层裁判 + accepted canonical 状态机 + run attempt shot identity + book_run 编排层 + Schema v24 shot 契约结构化表 + Schema v23 元契约结构化表 + Schema v22 contract audit stage + Schema v21 全程审计底座 + contract-first 第一版）
+> 日期：2026-06-17；最近对齐：2026-07-02
+> 当前范围：DB3 DDL（48 张业务表 + `_schema_meta` 元表，Schema v24）、状态机/枚举、CLI 命令面、模型调用 JSON 协议、`idempotency_key` 格式、并发控制、Prompt Caching 降级策略、polish 精修链路、留白创意评审策略、模型审计 phase 与完整 prompt/response、分层裁判 hard/type/literary 维度、章节 accepted canonical 状态、logical shot / run attempt shot 身份拆分、全书/整卷批处理编排、契约审计师两轮复审、全程审计事件与失败归因、fact manifest、outline fact gate、shot task card、draft hard fact gate、CONFIG-ENFORCE 结构化配置表
+> 当前 P0：以《分流》为单书样本，导入第 1 章 locked human baseline；第 2/3 章链路已验证。canonical accepted truth source、accepted-only export、run attempt shot identity、book_run 编排层、契约审计师两轮复审、contract-first 第一版与 CONFIG-ENFORCE 已落地；但第 3 章返工和第 4 章首跑尚未用新门禁验证，正式正文仍以每章人工 accepted 为准。
 
 ---
 
@@ -21,7 +21,9 @@ D:\_Progs\.Story\《分流》
   → init 多轮交互形成 contract-draft.yaml 并确认元契约
   → setup --chapter 编译单章生产前校准包
   → setup 编译 fact_manifest / hard fact pack
+  → confirm-contract 将关键元契约字段写入结构化 DB 表
   → run --chapter 先做大纲硬门禁，再编译 shot task card 并逐 shot 生成目标章节
+  → shot 契约关键字段写入结构化 DB 表，消费端优先读表
   → Gate1 后、jury 前执行 draft hard fact gate，不合格稿不得进入文学 PK
   → draft eligibility gate + jury + L4/L3 gate + revision + checkpoint
   → review --chapter 写入章节级 canonical 状态
@@ -98,6 +100,28 @@ Schema v22 不新增业务表，只扩展 `writing_audit_events.stage`，加入 
 2. 哪些草稿被 Gate1、hard/type/literary jury、Gate2、L4/L3 接受或拒绝。
 3. 失败属于 contract/setup、大纲、task card、writer 漂移、gate 误判、jury/model 基础设施失败中的哪一类。
 4. 人类 review 对该 run 的最终判断是什么，是否进入 accepted canonical。
+
+### 0.4 CONFIG-ENFORCE 协议（Schema v23/v24）
+
+AI 生成的关键配置字段必须写入结构化 DB 表，不能只存在于 `layers_json`、`must_land_json`、`anti_write_json` 或 `contract_json`。JSON 字段保留为审计快照、旧库兼容和迁移 fallback；新消费端必须优先读取结构化表。
+
+| 层级 | 结构化表 | 权威字段 |
+|------|----------|----------|
+| 元契约 | `writing_project_identity` | title / author / genre_tags / era / language / total_chapters |
+| 元契约 | `writing_hard_boundaries` | forbidden_phrases / forbidden_topics / deprecated_aliases / world_rules / characters_alive |
+| 元契约 | `writing_narrative_voice` | pov_mode / pov_characters / tense / narrator_type |
+| 元契约 | `writing_style_locks` | paragraph/sentence limits / dialogue ratio / sensory_density / anti_patterns |
+| 元契约 | `writing_suspense_blueprint` / `writing_chapter_tension_arc` | suspense preset / global question / chapter tension targets |
+| Shot 契约 | `writing_shot_must_land` | title / beats / event_text / pov_character |
+| Shot 契约 | `writing_shot_anti_write` | pov_only / forbidden_words / forbidden_facts |
+| Shot 契约 | `writing_shot_narrative_params` | narrative_phase / sensory_pressure / deviation_budget / hard_facts / soft_constraints / reference / exit_to / motif_tasks |
+
+执行规则：
+
+1. `confirm-contract` 先跑契约审计师，再执行 `validate_contract_schema()` 预检，最后写入元契约结构化表。
+2. `compile_shot_contracts()` 写 `writing_shot_contracts` 的同时写入 v24 三张 shot 结构化表。
+3. `architect_gate`、`exporter`、`run` prompt 组装等消费端优先读结构化表，缺表/缺行时才回退 JSON。
+4. DB 使用 NOT NULL / CHECK / FK 约束承接 AI 输出，Python 预检只负责更早、更可读地失败。
 
 ## 1. CLI 命令面（冻结为 `ink <verb>`）
 
@@ -237,8 +261,11 @@ best_failed_candidate | redo_placeholder | permanent_red
 
 ---
 
-## 3. DB3 DDL（45 张业务表 + `_schema_meta` 元表，Schema v22）
+## 3. DB3 DDL（48 张业务表 + `_schema_meta` 元表，Schema v24）
 
+> v24 变更（2026-07-02，CONFIG-ENFORCE shot 契约结构化）：新增 `writing_shot_must_land` / `writing_shot_anti_write` / `writing_shot_narrative_params`，承接 shot 级 AI 写入字段。
+> v23 变更（2026-07-01，CONFIG-ENFORCE 元契约结构化）：新增 `writing_project_identity` / `writing_hard_boundaries` / `writing_narrative_voice` / `writing_style_locks` / `writing_suspense_blueprint` / `writing_chapter_tension_arc`。
+> v22 变更（2026-06-29，contract audit stage）：`writing_audit_events.stage` 增加 `contract`，用于契约审计师复审事件。
 > v21 变更（2026-06-29，全程审计半重构）：新增 `writing_audit_events` / `writing_setup_snapshots` / `writing_draft_eligibility` / `writing_failure_attributions`；`model_attempts` 新增完整 prompt/response 文本字段。
 > v20 变更（2026-06-28，book_run 编排层）：新增 `writing_book_runs` / `writing_book_run_chapters`，记录全书/整卷批处理、逐章 run 状态、失败原因和返工入口。同一 book_run 已完成的前序 draft 章节可作为后续章节临时上下文；正式导出仍只认 accepted canonical。
 > v19 变更（2026-06-28，run attempt shot identity）：`writing_shots` 新增 `logical_shot_id`；生产 run 的 `shot_id` 改为 `{logical_shot_id}@{run_id}`；同一 run 内 `logical_shot_id` 唯一，章节重写创建新的 attempt shot，避免复用旧 run 正文。
@@ -361,6 +388,48 @@ CREATE TABLE writing_meta_contract (
 );
 ```
 
+#### CONFIG-ENFORCE 元契约结构化表（Schema v23）
+
+```sql
+CREATE TABLE writing_project_identity (
+  identity_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  title TEXT NOT NULL CHECK(length(title) > 0),
+  author TEXT NOT NULL CHECK(length(author) > 0),
+  genre_tags TEXT NOT NULL,
+  era TEXT NOT NULL CHECK(length(era) > 0),
+  language TEXT NOT NULL DEFAULT 'zh-CN',
+  total_chapters INTEGER NOT NULL CHECK(total_chapters > 0),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_project_identity_project ON writing_project_identity(project_id);
+
+CREATE TABLE writing_hard_boundaries (
+  boundary_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  forbidden_phrases TEXT NOT NULL DEFAULT '[]',
+  forbidden_topics TEXT NOT NULL DEFAULT '[]',
+  deprecated_aliases TEXT NOT NULL DEFAULT '{}',
+  world_rules TEXT NOT NULL DEFAULT '[]',
+  characters_alive TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_hard_boundaries_project ON writing_hard_boundaries(project_id);
+
+CREATE TABLE writing_narrative_voice (
+  voice_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id),
+  pov_mode TEXT NOT NULL CHECK (pov_mode IN ('first_person','third_limited','third_omniscient','multi_pov','free_indirect')),
+  pov_characters TEXT NOT NULL,
+  tense TEXT NOT NULL CHECK (tense IN ('past','present','mixed')),
+  narrator_type TEXT NOT NULL CHECK (narrator_type IN ('character','invisible','unreliable','choral')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_narrative_voice_project ON writing_narrative_voice(project_id);
+```
+
+同组还包括 `writing_style_locks`、`writing_suspense_blueprint`、`writing_chapter_tension_arc`。完整 DDL 以 `src/inkflow/db/schema.sql` 为准；约束原则相同：关键枚举使用 CHECK，必填字段 NOT NULL，章节张力使用 0-100 范围约束。
+
 #### `writing_book_constitutions`（v9 新增，ARCH-4 L0 全书宪法）
 
 ```sql
@@ -441,6 +510,51 @@ CREATE TABLE writing_shot_contracts (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(run_id, shot_id)
 );
+```
+
+#### CONFIG-ENFORCE Shot 契约结构化表（Schema v24）
+
+```sql
+CREATE TABLE writing_shot_must_land (
+  must_land_id TEXT PRIMARY KEY,
+  contract_id TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+  title TEXT NOT NULL CHECK(length(title) > 0),
+  beats TEXT NOT NULL CHECK(length(beats) > 0),
+  event_text TEXT NOT NULL CHECK(length(event_text) > 0),
+  pov_character TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_must_land_contract ON writing_shot_must_land(contract_id);
+
+CREATE TABLE writing_shot_anti_write (
+  anti_write_id TEXT PRIMARY KEY,
+  contract_id TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+  pov_only TEXT NOT NULL DEFAULT '',
+  forbidden_words TEXT NOT NULL DEFAULT '[]',
+  forbidden_facts TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_anti_write_contract ON writing_shot_anti_write(contract_id);
+
+CREATE TABLE writing_shot_narrative_params (
+  params_id TEXT PRIMARY KEY,
+  contract_id TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+  narrative_phase TEXT CHECK(narrative_phase IN ('opening','rising','complication','crisis','climax','resolution')),
+  sensory_pressure TEXT CHECK(sensory_pressure IN ('low','normal','heightened','overwhelming')),
+  deviation_budget INTEGER CHECK(deviation_budget BETWEEN 0 AND 100),
+  dominant_sense TEXT CHECK(dominant_sense IN ('visual','auditory','tactile','olfactory','gustatory','kinesthetic')),
+  entry_mood TEXT NOT NULL DEFAULT '',
+  hard_facts TEXT NOT NULL DEFAULT '[]',
+  soft_constraints TEXT NOT NULL DEFAULT '[]',
+  reference TEXT NOT NULL DEFAULT '',
+  exit_to TEXT NOT NULL DEFAULT '',
+  motif_tasks TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_narrative_params_contract ON writing_shot_narrative_params(contract_id);
 ```
 
 #### `writing_run_snapshots`
@@ -851,7 +965,7 @@ CREATE INDEX idx_book_run_chapters_status
   ON writing_book_run_chapters(status);
 ```
 
-### 3.3 核心业务表索引（含 v21 新增表）
+### 3.3 核心业务表索引（含 v24 新增表）
 
 ```
 projects
@@ -868,6 +982,11 @@ writing_chapter_reviews  -- v18 accepted canonical
 writing_book_runs / writing_book_run_chapters  -- v20 book_run orchestration
 writing_audit_events / writing_setup_snapshots  -- v21 auditability
 writing_draft_eligibility / writing_failure_attributions  -- v21 eligibility/attribution
+writing_project_identity / writing_hard_boundaries  -- v23 meta-contract structured config
+writing_narrative_voice / writing_style_locks  -- v23 voice/style structured config
+writing_suspense_blueprint / writing_chapter_tension_arc  -- v23 suspense structured config
+writing_shot_must_land / writing_shot_anti_write  -- v24 shot structured config
+writing_shot_narrative_params  -- v24 shot narrative parameters
 writing_information_gaps / writing_chapter_rhythms  -- v6/v7 新增
 ```
 
@@ -1059,7 +1178,7 @@ repair:
 
 通过条件：默认 `quality_threshold=80`，也可用 10 分制配置（如 `8.5` 自动换算为 85）。默认 `min_passing_drafts=2`，过线候选稿少于 2 个时触发重写，避免“矮子里拔高个”。
 
-配置兼容规则：旧 `.models` 的 `jury_config.dimensions` 不再注入新文学 9 维，避免旧合规维度污染文学均分；新配置若需调整文学维度，使用 `jury_config.literary_dimensions`。
+配置兼容规则：旧 `.models` 的 `jury_config.dimensions` 不再注入新文学 9 维，避免旧合规维度污染文学均分；新配置若需调整文学维度，使用 `jury_config.literary_dimensions`。`roles.jury.primary_model` 与 `jury_config.models` 同时存在且不一致时发出 warning，并以 `jury_config.models` 为权威；只设置 `roles.jury.primary_model` 时可作为 jury 模型来源。
 
 章节生产准入规则：`ink setup --chapter` 生成的 setup 包必须匹配当前目标章节和当前元契约；`ink run --chapter` 在创建 session 前检查 setup 包的 `source_contract.meta_contract_id`、shot 数和当前 `chapter_N_events`。若元契约还含“只生成第 N 章”这类旧章节限定，或保留旧段落锁 `500-800 字/段落，3-4 段/shot`，生产必须在 setup/run 前失败，不能拖到远端 jury 阶段表现为全 0。契约确认、setup 和 run 还必须通过角色名 canonical gate；例如正式角色已是 `郑坤` 时，旧称 `阿坤` 不得继续留在契约、setup 包或新正文中。
 

@@ -63,6 +63,9 @@ class TestCliHappyPath:
             draft_path = story_dir / ".inkflow" / "contract-draft.yaml"
             import yaml
             draft = yaml.safe_load(draft_path.read_text(encoding="utf-8"))
+            draft["identity"]["author"] = "测试作者"
+            draft["identity"]["era"] = "当代"
+            draft["identity"]["total_chapters"] = 10
             draft["identity"]["pov_count"] = 4
             draft["identity"]["pov_characters"] = ["阿坤", "韩教授", "白英", "苏然"]
             draft["identity"]["character_arcs"] = "四条 POV 线都围绕外江侵蚀内江展开，各自从误认到看见代价。"

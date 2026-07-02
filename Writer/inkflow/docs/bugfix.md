@@ -3,7 +3,7 @@
 > 记录开发过程中发现和修复的 bug
 > ARCH-13（2026-06-24）补充：`shot_revisions.is_current` 字段语义更新为"封版标记"（见 B19 注）
 > ARCH-4（2026-06-24）：Schema v8→v9，新增 `writing_book_constitutions` 表 + `writing_meta_contract.constitution_version_id` 指针列
-> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；开放实现任务见 `../tasks.md`
+> 2026-06-26/27 VAL/QUAL/JURY 修复：新增 B43-B54；2026-06-29 contract-first 设计缺陷归因：新增 B65-B69；2026-07-02 CONFIG-ENFORCE 全线落地：新增/修复 B76-B82；开放实现任务见 `../tasks.md`
 
 ---
 
@@ -44,12 +44,19 @@
 - **修复**: 改为非阻断 warning。
 - **文件**: `architect_gate.py`
 
-### B81. `.models` 配置双源不一致 ⏳ 待修复
+### B81. `.models` 配置双源不一致 ✅ 已修复
 - **严重性**: Important
 - **根因**: `.models` 文件中 `roles.jury` 和 `jury_config.models` 是独立的两个配置源，修改其中一个不会自动同步另一个。
-- **影响**: 手动修改 `.models` 时容易只改��处导致管线使用不同模型组合。
-- **修复方案**: 在配置加载时校验两个源的一致性，或在代码中统一为单一数据源。
-- **文件**: `utils/config.py`
+- **影响**: 手动修改 `.models` 时容易只改一处，导致管线使用不同模型组合。
+- **修复**: `get_jury_config()` 统一校验两处配置；若仅设置 `roles.jury.primary_model` 则作为 jury 模型来源；若两处同时存在且不一致，则发出 warning，并以 `jury_config.models` 为权威。
+- **文件**: `utils/config.py`, `tests/test_utils.py`
+
+### B82. CONFIG-ENFORCE 后 `init` 生成的契约草稿缺少 DB 必填身份字段 ✅ 已修复
+- **严重性**: Important
+- **根因**: v23 `writing_project_identity` 要求 `author`、`era`、`total_chapters` 等字段非空，但 `_generate_contract_draft()` 仍只生成旧的 `title/genre/setting/pov_count` 形态；测试夹具手工补字段，真实新项目会在 `confirm-contract` 的 Schema 预检或 DB 写入阶段失败。
+- **影响**: 新项目从 `ink init` 到 `ink confirm-contract` 的默认路径断裂，需要用户手工猜测新增字段。
+- **修复**: `init` 生成 `identity.author`、`identity.era`、`identity.language`、`identity.total_chapters`、`identity.genre_tags`；`write_meta_contract_structured()` 兼容旧 `identity.genre` 字符串并写入 `genre_tags`。
+- **文件**: `cli.py`, `contract_compiler.py`, `tests/test_cli.py`, `tests/test_contract_compiler.py`
 
 ---
 

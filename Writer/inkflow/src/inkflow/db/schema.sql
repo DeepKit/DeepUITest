@@ -1,7 +1,7 @@
--- InkFlow v3.22 — Schema v22 (contract audit stage)
--- SCHEMA_VERSION: 22
+-- InkFlow v3.24 — Schema v24 (shot contract structured tables)
+-- SCHEMA_VERSION: 24
 -- Generated from implementation-contract-v0.md; aligned 2026-06-29
--- 45 business tables total (+ _schema_meta = 46 SQLite user tables), ordered by FK dependency
+-- 48 business tables total (+ _schema_meta = 49 SQLite user tables), ordered by FK dependency
 -- v5→v6: 新增 writing_information_gaps 表 (D-25 悬疑引擎)
 -- v6→v7: 新增 writing_chapter_rhythms 表 (AI 架构师 L1 章级节奏)
 -- v7→v8: 新增 tree_nodes / contract_versions / story_content / execution_records (ARCH-12 三棵树架构)
@@ -952,3 +952,48 @@ CREATE TABLE writing_chapter_tension_arc (
     UNIQUE(blueprint_id, chapter_key)
 );
 CREATE INDEX idx_tension_arc_blueprint ON writing_chapter_tension_arc(blueprint_id);
+
+-- v24: Shot 契约结构化表 — 替代 must_land_json / anti_write_json / contract_json 中的 AI 写入字段
+CREATE TABLE writing_shot_must_land (
+    must_land_id    TEXT PRIMARY KEY,
+    contract_id     TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+    title           TEXT NOT NULL CHECK(length(title) > 0),
+    beats           TEXT NOT NULL CHECK(length(beats) > 0),
+    event_text      TEXT NOT NULL CHECK(length(event_text) > 0),
+    pov_character   TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_must_land_contract ON writing_shot_must_land(contract_id);
+
+CREATE TABLE writing_shot_anti_write (
+    anti_write_id   TEXT PRIMARY KEY,
+    contract_id     TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+    pov_only        TEXT NOT NULL DEFAULT '',
+    forbidden_words TEXT NOT NULL DEFAULT '[]',
+    forbidden_facts TEXT NOT NULL DEFAULT '[]',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_anti_write_contract ON writing_shot_anti_write(contract_id);
+
+CREATE TABLE writing_shot_narrative_params (
+    params_id           TEXT PRIMARY KEY,
+    contract_id         TEXT NOT NULL REFERENCES writing_shot_contracts(contract_id),
+    narrative_phase     TEXT CHECK(narrative_phase IN (
+                            'opening','rising','complication','crisis','climax','resolution')),
+    sensory_pressure    TEXT CHECK(sensory_pressure IN (
+                            'low','normal','heightened','overwhelming')),
+    deviation_budget    INTEGER CHECK(deviation_budget BETWEEN 0 AND 100),
+    dominant_sense      TEXT CHECK(dominant_sense IN (
+                            'visual','auditory','tactile','olfactory','gustatory','kinesthetic')),
+    entry_mood          TEXT NOT NULL DEFAULT '',
+    hard_facts          TEXT NOT NULL DEFAULT '[]',
+    soft_constraints    TEXT NOT NULL DEFAULT '[]',
+    reference           TEXT NOT NULL DEFAULT '',
+    exit_to             TEXT NOT NULL DEFAULT '',
+    motif_tasks         TEXT NOT NULL DEFAULT '{}',
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(contract_id)
+);
+CREATE INDEX idx_shot_narrative_params_contract ON writing_shot_narrative_params(contract_id);

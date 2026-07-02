@@ -4,6 +4,32 @@
 
 ---
 
+## v3.24 CONFIG-ENFORCE 全线落地 (2026-07-02)
+
+本轮把“DB 字段级线束”从方案推进到运行链路：AI 生成的关键配置不再只停留在 JSON blob 中，必须写入结构化表并接受 DB 约束；`layers_json` 保留为审计快照和兼容 fallback。
+
+### 核心实现
+
+- Schema v23 已落地 6 张元契约结构化表：`writing_project_identity`、`writing_hard_boundaries`、`writing_narrative_voice`、`writing_style_locks`、`writing_suspense_blueprint`、`writing_chapter_tension_arc`。
+- Schema v24 新增 3 张 shot 契约结构化表：`writing_shot_must_land`、`writing_shot_anti_write`、`writing_shot_narrative_params`，承接 `must_land_json`、`anti_write_json`、`contract_json` 中 AI 写入的核心字段。
+- `confirm-contract` 增加 `validate_contract_schema()` 预检，通过后写入结构化元契约表；Python 层快速失败，DB 层用 NOT NULL / CHECK / FK 硬拦。
+- `ContractCompiler.compile_shot_contracts()` 在保留原 JSON 字段的同时写入 v24 三张 shot 表。
+- 消费端改为优先读取结构化表：`architect_gate` 读角色/别名边界，`exporter` 读项目标题，`run` prompt 读 shot must_land / anti_write / narrative params；没有结构化行时回退旧 JSON。
+- `init` 生成的 `contract-draft.yaml` 补齐 `identity.author`、`identity.era`、`identity.language`、`identity.total_chapters`、`identity.genre_tags`，避免新建项目在 v23 约束下无法确认契约。
+- `.models` 修复 B81：`get_jury_config()` 校验 `roles.jury.primary_model` 与 `jury_config.models`，冲突时 warning，并以 `jury_config.models` 为权威。
+- 从项目文档自动提取 `suspense_blueprint` 和章末钩子 fallback，减少悬疑配置留空。
+
+### 当前口径
+
+CONFIG-ENFORCE 已完成代码路径和测试覆盖。正式放量生产仍不打开；下一步用《白灯法则》第 3 章返工验证新门禁，再决定第 4 章首跑。
+
+### 验证
+
+- 目标测试：13 passed
+- 全量回归：506 passed, 4 warnings
+
+---
+
 ## v3.23 《白灯法则》第 2 章生产验证与管线修复 (2026-07-01)
 
 本轮用《白灯法则》第 2 章做真实生产验证，发现并修复多个管线缺陷，同时完成悬疑约束架构决策。

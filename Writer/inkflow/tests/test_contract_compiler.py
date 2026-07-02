@@ -40,6 +40,23 @@ class TestMetaContract:
         layers = contract["layers_json"]
         assert layers["identity"]["title"] == "分流"
 
+    def test_structured_identity_accepts_legacy_genre(self, compiler):
+        contract_data = json.loads(json.dumps(SAMPLE_META_CONTRACT, ensure_ascii=False))
+        contract_data["identity"].update({
+            "author": "测试作者",
+            "era": "当代",
+            "total_chapters": 10,
+        })
+        mc_id = compiler.create_meta_contract(contract_data)
+
+        compiler.write_meta_contract_structured(mc_id, contract_data)
+
+        row = compiler.db.execute(
+            "SELECT genre_tags FROM writing_project_identity WHERE project_id = ?",
+            ("proj_01",),
+        ).fetchone()
+        assert json.loads(row["genre_tags"]) == ["文学小说"]
+
     def test_update_status(self, compiler):
         mc_id = compiler.create_meta_contract(SAMPLE_META_CONTRACT)
         compiler.confirm_contract(mc_id)
