@@ -1,6 +1,29 @@
-# InkFlow v3.27 — 开发历史
+# InkFlow v3.29 — 开发历史
 
 > 记录已完成的修复和里程碑
+
+---
+
+## v3.29 winner 前置场景资格过滤 JURY-WINNER-ELIGIBILITY-1 (2026-07-03)
+
+`JuryService._select_winner` 早有 `eligible` 过滤入口，但成功路径无条件把 `eligible=True`，只 `hard_rule`/`type_gate`/`jury_unavailable` 三类失败会标 `eligible=False`。**场景契约硬规则缺位**：draft 把 `scene_contract.location` 写错、触发 `forbidden_overlap`、或与同 shot 另一候选正文场景雷同，仍可凭高分当 winner。InkFlow.txt 第 7550 行把本任务列为 SCENE-FINGERPRINT-1 之后的下一个 P0。
+
+### 完成项
+
+1. **scene_contract 硬规则** — `JuryService._check_scene_contract_eligibility(shot_id, draft_text)` 查 `writing_shot_scene_contracts`，判 `location` 出现在正文开头、`required_anchors` 全在正文、`forbidden_overlap` 不在正文。失败 → `failure_stage="scene_contract"` + `eligible=False`，在 literary 评分**之前**拦截（不浪费 LLM 调用）。无 scene_contract 行 → 放行（向后兼容）。
+2. **同 shot 正文雷同去重** — `_check_intra_shot_scene_duplicates` 从每个 eligible draft 正文开头用通用 CJK/字母数字正则抽 anchors（不依赖《白灯法则》专有词表），两两 Jaccard≥0.7 判同，留分最高者，其余 `failure_stage="scene_contract_duplicate"`。
+3. **审计通道** — `_build_rejection_summary` 新增 `scene_contract`/`scene_contract_duplicate` 两个 label 分支；`_record_draft_eligibility_audit` 对 scene stage 映射到现有 `gate_stage="hard_rule"` 枚举（schema CHECK 未含 scene_contract，细分靠 `reason_json.failure_summary.label`）；`_build_rejected_score` 新增 `scene_violations` 参数。
+4. **自包含小工具** — `_jaccard`/`_scenes_same`/`_scene_term_present` 复制自 `architect_gate` 同名函数（注释标注同源），jury 不跨服务导入私有函数。`_scene_term_present` 用纯子串匹配（jury 硬规则严格判定，不依赖 fallback 词表）。
+
+### 范围决定
+
+- 纳入：draft 不符自己 scene_contract / 同 shot draft 正文雷同 / hard_rule 违反（现有）。
+- 不做：跨 shot winner 串行去重（L3 `scene_diversity` 已在章节层兜底；跨 shot 会破坏 jury 的 per-shot 独立性）。
+
+### 验证
+
+- `tests/test_jury_scoring.py` 27 passed（含新增 7 个场景资格测试：location/anchor/forbidden/passes/no-contract/duplicate/distinct）
+- 全量 550 passed，0 failed
 
 ---
 

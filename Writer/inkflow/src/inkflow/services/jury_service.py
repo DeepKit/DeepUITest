@@ -37,6 +37,41 @@ from inkflow.services.audit_recorder import AuditRecorder
 from inkflow.services.exposition_gate import audit_exposition
 
 
+# ── 场景判定小工具(与 architect_gate 同源;jury 自包含,避免跨服务导入私有函数)──
+
+
+def _jaccard(a: list[str], b: list[str]) -> float:
+    """Jaccard similarity of two anchor lists (as sets)."""
+    sa = {x for x in (a or []) if x}
+    sb = {x for x in (b or []) if x}
+    if not sa and not sb:
+        return 0.0
+    union = sa | sb
+    if not union:
+        return 0.0
+    return len(sa & sb) / len(union)
+
+
+def _scenes_same(fp_a: dict, fp_b: dict) -> bool:
+    """同场景当且仅当:scene_bucket 双方非空且相等,或 event_anchors Jaccard>=0.7。"""
+    bucket_a = (fp_a or {}).get("scene_bucket", "")
+    bucket_b = (fp_b or {}).get("scene_bucket", "")
+    if bucket_a and bucket_b and bucket_a != "unknown" and bucket_a == bucket_b:
+        return True
+    anchors_a = (fp_a or {}).get("event_anchors", [])
+    anchors_b = (fp_b or {}).get("event_anchors", [])
+    if anchors_a and anchors_b and _jaccard(anchors_a, anchors_b) >= 0.7:
+        return True
+    return False
+
+
+def _scene_term_present(expected: str, target: str) -> bool:
+    """纯子串匹配(jury 硬规则严格判定,不依赖项目专有 fallback 词表)。"""
+    if not expected:
+        return True
+    return expected in target
+
+
 _SCORE_PROMPT = """\
 你是一位严格的文学评审。请从「{dimension_display}」维度评价以下小说正文。
 
@@ -342,6 +377,18 @@ class JuryService:
                 )
                 continue
 
+            # 场景契约硬规则:不符 shot 的 scene_contract → 不入选(避免浪费 literary 评分)
+            scene_check = self._check_scene_contract_eligibility(shot_id, draft_text)
+            if not scene_check["passed"]:
+                self.db.commit()
+                draft_scores[draft_id] = self._build_rejected_score(
+                    scores, dimension_scores, hard_gate, "scene_contract",
+                    type_means=type_means,
+                    jury_failures=jury_failures,
+                    scene_violations=scene_check["violations"],
+                )
+                continue
+
             literary_scores, literary_failures = self._score_dimension_group(
                 shot_id=shot_id,
                 draft_id=draft_id,
@@ -403,6 +450,23 @@ class JuryService:
 
         score_key = "creative_score" if creative_review else "literary_score"
         review_mode = "creative_blank" if creative_review else "typed_literary"
+
+        # 同 shot 候选正文场景雷同 → 只留分最��者,其余标不入选
+        duplicate_losers = self._check_intra_shot_scene_duplicates(
+            draft_scores, shot_id, score_key,
+        )
+        for did in duplicate_losers:
+            ds = draft_scores[did]
+            ds["eligible"] = False
+            ds["failure_stage"] = "scene_contract_duplicate"
+            ds["failure_summary"] = self._build_rejection_summary(
+                "scene_contract_duplicate",
+                ds.get("hard_rule", {}),
+                ds.get("dimension_means", {}),
+                ds.get("type_dimension_means", {}),
+                [],
+            )
+
         self._record_draft_eligibility_audit(
             shot_id=shot_id,
             draft_scores=draft_scores,
@@ -463,6 +527,11 @@ class JuryService:
                 passed = False
             elif stage == "jury_unavailable":
                 gate_stage = "jury_unavailable"
+                passed = False
+            elif stage in ("scene_contract", "scene_contract_duplicate"):
+                # scene_contract 失败归入 hard_rule 粗分类(DB gate_stage CHECK 枚举未含
+                # scene_contract);细分靠 reason_json.failure_summary.label。
+                gate_stage = "hard_rule"
                 passed = False
             else:
                 gate_stage = "literary_jury"
@@ -731,12 +800,15 @@ class JuryService:
         type_means: dict[str, float] | None = None,
         jury_failures: list[dict] | None = None,
         missing_dimensions: list[str] | None = None,
+        scene_violations: list[str] | None = None,
     ) -> dict:
         dimension_means = {
             dim: round(sum(values) / len(values), 2)
             for dim, values in dimension_scores.items()
             if values
         }
+        if scene_violations is not None:
+            hard_gate = {**hard_gate, "scene_violations": scene_violations}
         return {
             "trimmed_mean": 0,
             "literary_score": 0,
@@ -813,11 +885,136 @@ class JuryService:
                 "reasons": reasons,
             }
 
+        if stage == "scene_contract":
+            reasons: list[str] = []
+            for v in (hard_gate.get("scene_violations") or [])[:3]:
+                reasons.append(str(v))
+            if not reasons:
+                reasons.append("场景契约不符")
+            return {
+                "stage": stage,
+                "label": "场景契约不符",
+                "reasons": reasons,
+            }
+
+        if stage == "scene_contract_duplicate":
+            return {
+                "stage": stage,
+                "label": "场景雷同",
+                "reasons": ["同 shot 候选场景指纹雷同,保留分高者"],
+            }
+
         return {
             "stage": stage,
             "label": "未入选",
             "reasons": [stage],
         }
+
+    def _check_scene_contract_eligibility(
+        self, shot_id: str, draft_text: str,
+    ) -> dict:
+        """检查 draft 正文是否符该 shot 的 scene_contract。
+
+        无 scene_contract 行 → 放行(向后兼容)。
+        有 scene_contract → 判 location/required_anchors/forbidden_overlap。
+        """
+        row = self.db.execute(
+            "SELECT sc.location, sc.required_anchors, sc.forbidden_overlap "
+            "FROM writing_shot_contracts c "
+            "JOIN writing_shot_scene_contracts sc ON sc.contract_id = c.contract_id "
+            "WHERE c.shot_id = ? LIMIT 1",
+            (shot_id,),
+        ).fetchone()
+        if not row:
+            return {"passed": True, "reason": "no_scene_contract", "violations": []}
+
+        compact = re.sub(r"\s+", "", draft_text or "")
+        opening = compact[:260]
+        violations: list[str] = []
+
+        location = row["location"] or ""
+        if location and location != "待明确场景":
+            if not _scene_term_present(location, opening):
+                violations.append("location_missing_from_opening")
+
+        try:
+            required_anchors = json.loads(row["required_anchors"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            required_anchors = []
+        for anchor in required_anchors:
+            if anchor and not _scene_term_present(str(anchor), compact):
+                violations.append(f"required_anchor_missing:{anchor}")
+
+        try:
+            forbidden_overlap = json.loads(row["forbidden_overlap"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            forbidden_overlap = []
+        for marker in forbidden_overlap:
+            if marker and _scene_term_present(str(marker), compact):
+                violations.append(f"forbidden_overlap:{marker}")
+
+        return {
+            "passed": not violations,
+            "violations": violations,
+            "scene": {
+                "location": location,
+                "required_anchors": required_anchors,
+                "forbidden_overlap": forbidden_overlap,
+            },
+        }
+
+    def _check_intra_shot_scene_duplicates(
+        self, draft_scores: dict[str, dict], shot_id: str, score_key: str,
+    ) -> list[str]:
+        """同 shot 候选正文场景雷同 → 只留分最高者,返回应标不入选的 draft_id 列表。
+
+        从每个 eligible draft 的正文开头用通用正则抽 anchors(不依赖项目专有词表),
+        两两 Jaccard>=0.7 判同。仅当最高分 draft 与其他 draft 判同时才标后者不入选。
+        """
+        eligible_ids = [
+            did for did, ds in draft_scores.items() if ds.get("eligible", False)
+        ]
+        if len(eligible_ids) < 2:
+            return []
+
+        # 抽取每个 eligible draft 的正文 anchors
+        anchors_by_draft: dict[str, list[str]] = {}
+        for did in eligible_ids:
+            row = self.db.execute(
+                "SELECT text FROM writing_drafts WHERE draft_id = ?", (did,)
+            ).fetchone()
+            if not row:
+                continue
+            text = re.sub(r"\s+", "", (row["text"] or ""))[:260]
+            terms = [
+                item for item in re.findall(
+                    r"[一-鿿A-Za-z0-9]{2,8}", text,
+                ) if item
+            ][:6]
+            if terms:
+                anchors_by_draft[did] = terms
+
+        if len(anchors_by_draft) < 2:
+            return []
+
+        ranked = sorted(
+            eligible_ids,
+            key=lambda did: draft_scores[did].get(score_key, 0),
+            reverse=True,
+        )
+        keep_id = ranked[0]
+        if keep_id not in anchors_by_draft:
+            return []
+
+        keep_anchors = anchors_by_draft[keep_id]
+        losers: list[str] = []
+        for did in ranked[1:]:
+            if did not in anchors_by_draft:
+                continue
+            if _jaccard(keep_anchors, anchors_by_draft[did]) >= 0.7:
+                losers.append(did)
+        return losers
+
 
     def _low_hard_rule_scores_are_advisory(
         self,

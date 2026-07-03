@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from inkflow.models.enums import LightStatus
@@ -510,3 +512,184 @@ class TestJuryScoreScale:
             failure["model_ref"] == "deepseek/deepseek-v4-flash"
             for failure in draft_score["jury_failures"]
         )
+
+
+class TestSceneContractEligibility:
+    """JURY-WINNER-ELIGIBILITY-1: winner 选择前置场景资格过滤。"""
+
+    @staticmethod
+    def _insert_scene_contract(
+        db, *, location="前线露天堆场",
+        required_anchors=None, forbidden_overlap=None,
+    ):
+        db.execute(
+            "INSERT INTO writing_shot_scene_contracts "
+            "(scene_contract_id, contract_id, scene_id, location, "
+            " required_anchors, forbidden_overlap, min_utf8_bytes) "
+            "VALUES ('sc1', 'c1', 'sc_01', ?, ?, ?, 1200)",
+            (location, json.dumps(required_anchors or []),
+             json.dumps(forbidden_overlap or [])),
+        )
+        db.commit()
+
+    def _make_draft(self, db, draft_id, text, *, attempt_id="att_sc"):
+        db.execute(
+            "INSERT INTO writing_drafts "
+            "(draft_id, shot_id, run_id, writer_persona, writer_index, text, attempt_id) "
+            "VALUES (?, 'shot_01', 'run_01', '意象师', 0, ?, ?)",
+            (draft_id, text, attempt_id),
+        )
+        db.commit()
+
+    def test_scene_contract_location_missing_rejects_draft(
+        self, setup_run_with_draft,
+    ):
+        """高分但正文开头无 scene_contract.location → eligible=False。"""
+        self._insert_scene_contract(setup_run_with_draft, location="前线露天堆场")
+        self._make_draft(
+            setup_run_with_draft, "d_sc1",
+            "许怀山在转运站月台上来回踱步。军列还没有进站的迹象。"
+            "他把交接单翻了一遍，批号模糊不清。微裂纹在密封件边缘扩散。",
+        )
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates("shot_01", ["d_sc1"], score_override=90)
+        ds = result["draft_scores"]["d_sc1"]
+
+        assert ds["eligible"] is False
+        assert ds["failure_stage"] == "scene_contract"
+        assert "location_missing_from_opening" in ds["hard_rule"]["scene_violations"]
+        assert result["winner_draft_id"] is None
+
+    def test_scene_contract_required_anchor_missing_rejects_draft(
+        self, setup_run_with_draft,
+    ):
+        self._insert_scene_contract(
+            setup_run_with_draft,
+            location="前线露天堆场", required_anchors=["微裂纹", "批号"],
+        )
+        # 正文有 location、有 批号,但无 微裂纹
+        self._make_draft(
+            setup_run_with_draft, "d_sc2",
+            "许怀山在前线露天堆场清点物资。批号清楚的箱子码在铁门边。"
+            "他签字确认后让司机把卡车开走,一切如常。",
+        )
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates("shot_01", ["d_sc2"], score_override=90)
+        ds = result["draft_scores"]["d_sc2"]
+
+        assert ds["eligible"] is False
+        assert ds["failure_stage"] == "scene_contract"
+        assert any(
+            v.startswith("required_anchor_missing:微裂纹")
+            for v in ds["hard_rule"]["scene_violations"]
+        )
+
+    def test_scene_contract_forbidden_overlap_rejects_draft(
+        self, setup_run_with_draft,
+    ):
+        self._insert_scene_contract(
+            setup_run_with_draft,
+            location="前线露天堆场", forbidden_overlap=["转运站"],
+        )
+        self._make_draft(
+            setup_run_with_draft, "d_sc3",
+            "许怀山在前线露天堆场检查密封件。微裂纹在边缘隐约可见。"
+            "但他忽然想起上次在转运站见过的同类批次,心里一紧。",
+        )
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates("shot_01", ["d_sc3"], score_override=90)
+        ds = result["draft_scores"]["d_sc3"]
+
+        assert ds["eligible"] is False
+        assert ds["failure_stage"] == "scene_contract"
+        assert any(
+            v.startswith("forbidden_overlap:转运站")
+            for v in ds["hard_rule"]["scene_violations"]
+        )
+
+    def test_scene_contract_passes_when_location_and_anchors_present(
+        self, setup_run_with_draft,
+    ):
+        self._insert_scene_contract(
+            setup_run_with_draft,
+            location="前线露天堆场",
+            required_anchors=["微裂纹"], forbidden_overlap=["转运站"],
+        )
+        self._make_draft(
+            setup_run_with_draft, "d_sc4",
+            "许怀山在前线露天堆场蹲下。密封件边缘的微裂纹像发丝一样扩散。"
+            "他用放大镜细看,批号清晰。这批货不能发出。",
+        )
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates("shot_01", ["d_sc4"], score_override=90)
+        ds = result["draft_scores"]["d_sc4"]
+
+        assert ds["eligible"] is True
+        assert result["winner_draft_id"] == "d_sc4"
+
+    def test_no_scene_contract_still_passes(self, setup_run_with_draft):
+        """无 scene_contract 行 → 放行(向后兼容)。"""
+        self._make_draft(
+            setup_run_with_draft, "d_sc5",
+            "许怀山在某个地方做着某件事,场景未在契约中指定。",
+        )
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates("shot_01", ["d_sc5"], score_override=85)
+        ds = result["draft_scores"]["d_sc5"]
+
+        assert ds["eligible"] is True
+        assert result["winner_draft_id"] == "d_sc5"
+
+    def test_intra_shot_duplicate_scenes_only_keep_highest(
+        self, setup_run_with_draft,
+    ):
+        """同 shot 两 draft 正文 anchors Jaccard>=0.7 → 留分高者,低者 scene_contract_duplicate。"""
+        # 两 draft 正文高度雷同(相同场景词)
+        text_a = (
+            "许怀山在前线露天堆场蹲下。密封件边缘的微裂纹像发丝一样扩散。"
+            "他用放大镜细看,批号清晰。这批货不能发出。他记下编号。"
+        )
+        text_b = (
+            "许怀山在前线露天堆场蹲下。密封件边缘的微裂纹像发丝一样扩散。"
+            "他用放大镜细看,批号清晰。这批货不能发出。他叹了口气。"
+        )
+        self._make_draft(setup_run_with_draft, "d_hi", text_a)
+        self._make_draft(setup_run_with_draft, "d_lo", text_b)
+        # 不建 scene_contract 行,避免 location 检查先拦;单测去重逻辑
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        # d_hi 给 92,d_lo 给 88 → d_hi 留, d_lo 标雷同
+        result = jury.score_candidates(
+            "shot_01", ["d_hi", "d_lo"],
+            score_overrides={
+                "d_hi": {"literary": 92},
+                "d_lo": {"literary": 88},
+            },
+        )
+        ds_hi = result["draft_scores"]["d_hi"]
+        ds_lo = result["draft_scores"]["d_lo"]
+
+        assert ds_hi["eligible"] is True
+        assert ds_lo["eligible"] is False
+        assert ds_lo["failure_stage"] == "scene_contract_duplicate"
+        assert result["winner_draft_id"] == "d_hi"
+
+    def test_intra_shot_distinct_scenes_both_pass(self, setup_run_with_draft):
+        """同 shot 两 draft 正文场景明显不同 → 都可入选(不误杀)。"""
+        self._make_draft(
+            setup_run_with_draft, "d_x",
+            "夜雨敲窗。老人在灯下读信,信纸上的字迹已经模糊。他合上信封。",
+        )
+        self._make_draft(
+            setup_run_with_draft, "d_y",
+            "清晨的码头。汽笛声划破薄雾。水手们正在解开缆绳,准备启航。",
+        )
+        jury = JuryService(setup_run_with_draft, "run_01", {})
+        result = jury.score_candidates(
+            "shot_01", ["d_x", "d_y"],
+            score_overrides={
+                "d_x": {"literary": 80},
+                "d_y": {"literary": 78},
+            },
+        )
+        assert result["draft_scores"]["d_x"]["eligible"] is True
+        assert result["draft_scores"]["d_y"]["eligible"] is True
