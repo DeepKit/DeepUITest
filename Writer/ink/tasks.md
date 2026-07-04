@@ -536,15 +536,15 @@ def test_sensitive_data_not_leaked_to_llm(db, test_shot):
 
 Pre-M0 全部通过后才开始以下任务。
 
-- [ ] 落地 40 张生产表、1 个 `v_current_text` 视图、2 个关键 trigger、全部索引和 FK。
-- [ ] 实现 DB 连接与迁移入口，默认开启 `PRAGMA foreign_keys=ON`，业务时间统一 `now_utc_iso()`。
-- [ ] 实现 schema/dataclass 代码生成器，生成契约 DTO、项目配置 DTO、质量报告 DTO。
-- [ ] 实现 `ProjectConfigValidator`：模型池唯一性、非空字符串、writer/jury 隔离、容量下限、质量阈值底线。
-- [ ] 实现 `TextRepository` 最小闭环：`read_current_text`、`write_revision`、`is_hard_sealed`，并阻断外部直接访问 `writing_shot_revisions`。
-- [ ] 实现状态机更新入口，阻断非 `state_machine` 直接更新 `writing_shots.status`。
-- [ ] 实现 `LLMGateway` 空壳与 mock provider，阻断业务代码直连供应商 SDK，并写入 AI 调用审计表。
-- [ ] 接入字段消费 lint、SQL 访问 lint、状态更新 lint、LLM 访问 lint。
-- [ ] 建立 `invariant-traceability.md` 到测试文件的追踪检查，禁止里程碑只写占位测试。
+- [x] 落地 40 张生产表、1 个 `v_current_text` 视图、2 个关键 trigger、全部索引和 FK。
+- [x] 实现 DB 连接与迁移入口，默认开启 `PRAGMA foreign_keys=ON`，业务时间统一 `now_utc_iso()`。
+- [x] 实现 schema/dataclass 代码生成器，生成契约 DTO、项目配置 DTO、质量报告 DTO。
+- [x] 实现 `ProjectConfigValidator`：模型池唯一性、非空字符串、writer/jury 隔离、容量下限、质量阈值底线。
+- [x] 实现 `TextRepository` 最小闭环：`read_current_text`、`write_revision`、`is_hard_sealed`，并阻断外部直接访问 `writing_shot_revisions`。
+- [x] 实现状态机更新入口，阻断非 `state_machine` 直接更新 `writing_shots.status`。
+- [x] 实现 `LLMGateway` 空壳与 mock provider，阻断业务代码直连供应商 SDK，并写入 AI 调用审计表。
+- [x] 接入字段消费 lint、SQL 访问 lint、状态更新 lint、LLM 访问 lint。
+- [x] 建立 `invariant-traceability.md` 到测试文件的追踪检查，禁止里程碑只写占位测试。
 
 ---
 
