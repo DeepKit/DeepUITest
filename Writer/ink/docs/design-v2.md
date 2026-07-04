@@ -41,6 +41,57 @@
 - 不沿用旧 cli.py 的编排逻辑（重写编排层）
 - 不做双轨并行/迁移（从 0 构建，不管旧系统）
 - 不讨论工期/时间计划（不在本文件及下游文档记录时间）
+- 当前版本不做多用户/多租户/团队协作权限模型；产品形态先定位为单作者本地生产工具。
+
+### 0.4a 参数化原则（运营参数 vs 架构不变量）
+
+**原则**：凡是"改变后系统行为变化但正确性不变"的值，都应该是 `writing_projects` 表中的运营参数，运行时可调，不改代码。"改变后系统正确性也变了"的值（状态机转移矩阵、铁律、DB CHECK 绝对底线）保持硬编码。
+
+**运营参数**（全部在 `writing_projects` 表，`init` 时设定，之后可 `UPDATE`）：
+- 产稿参数：`draft_count`, `creative_shot_extra`, `writer_model_pool`, `jury_model_pool`, `jury_model_pool_min`, `min_eligible_outlines`, `min_eligible_candidates`, `redo_candidate_count`, `escalated_jury_count`
+- 质量运营阈值（原 `quality_bar` JSON，已拆为 `writing_projects` 独立字段以支持 DB 层约束）：`shot_quality_floor`（默认 80）, `dimension_floor`（默认 65）, `chapter_quality_floor`（默认 75）, `book_quality_floor`（默认 75）, `judge_disagreement_max`（默认 25）, `reader_pull_floor`（默认 75）, `blind_review_min_passes`（默认 2）
+- 熔断预算：`max_calls_per_shot`（默认 8）, `max_total_llm_calls`（默认 40）, `consecutive_failure_circuit_break`（默认 3）
+- soft gate 升级阈值：`soft_gate_redo_n`（默认 2）, `soft_gate_fail_n`（默认 3）
+- 自动重试（A'+A'' 机制）：`auto_retry_on_hard_failure`（默认 TRUE）, `max_retries_per_gate`（默认 2）, `retry_strategy`（默认 'change_model'）
+- 大纲与容量：`outline_drift_threshold`（默认 0.20）, `capacity_floor_titled_shot`（默认 1200）, `capacity_floor_chapter_end`（默认 1500）
+- 多样性与场景：`scene_fingerprint_min_diversity`（默认 3）, `suspense_shot_min_intensity`（默认 5）
+- 归档与恢复：`prompt_archive_size_bytes`（默认 65536）, `checkpoint_max_retention`（默认 3）
+- 篇级检测：`chapter_rolling_check_interval`（默认 5）
+
+**架构不变量**（硬编码，不可参数化）：
+- shot_status 合法转移矩阵（14 态穷举）
+- `is_winner=1 → quality_gate_passed=1`（DB CHECK）
+- `hard_quality_override=0`（DB CHECK）
+- 信息差 6 态转移合法性（DB CHECK）
+- `v_current_text` 每 shot 恰一行（DB VIEW）
+- text_repository 三重隔离（代码 + CI lint）
+- 字段消费 AST lint（CI lint）
+- 基础裁判数 = 3、12 维评分、5 persona（设计常量）；分歧升级裁判数由 `writing_projects.escalated_jury_count` 参数化
+
+**DB CHECK 绝对底线 vs 运营阈值**：
+`jury_aggregates` 等表的 CHECK 约束（如 `final_score >= 80`）是**绝对底线**——任何项目的运营阈值不得低于此。运营阈值已拆为 `writing_projects` 表的独立字段（`shot_quality_floor`、`dimension_floor` 等），并在 `writing_projects` 表级 CHECK 约束中保证运营阈值不低于 DB 绝对底线。应用层直接读取 `writing_projects` 表的运营阈值执行。这样既允许项目提高标准，又防止项目误设过低阈值导致质量失控。
+
+### 0.4b 自动重试机制（A'+A'' 机制，减少编辑工作量）
+
+**设计目标**：尽量不让编辑在 hard quality failure 时介入。系统自动重试，直到预算耗尽才上报。
+
+**机制**：
+- 当 hard gate 或 quality floor 失败时，若 `auto_retry_on_hard_failure=TRUE`，系统自动重试。
+- 每次重试按 `retry_strategy` 调整策略：
+  - `change_model`：换不同写手模型重新产稿
+  - `adjust_intensity`：调整 persona 5 维强度配比
+  - `relax_soft`：放宽 soft_constraints（仅限 deviant 或重试后期）
+- 每层 gate 最多重试 `max_retries_per_gate` 次。
+- 重试预算受 `max_total_llm_calls` 约束，耗尽后转 `failed`。
+- `failed` 状态才上报编辑，动作是项目级资源决策（换模型池 / 调阈值 / 放弃该 shot），不是审美判断。
+
+**编辑工作量**：accept 路径上编辑零动作。reject 也是按钮级操作。只有 `failed` 才需要编辑介入——且频率应该是罕见事件。
+
+### 0.4c 战略实现边界（2026-07-04 决策）
+
+- **实现路线**：生产内核优先。M0/M1 必须先做实 schema、lint、状态机、LLMGateway、text_repository、resume 等防错机制；随后用 1 章质量证明校准，再扩展到 M2-M6 全流程。
+- **数据库路线**：SQLite 先行，但 repository、DDL、事务和时间格式按未来 PostgreSQL 迁移预留；需要数据库层 RLS/advisory lock 时再迁移。
+- **质量门禁策略**：M4-M6 验收期从严；稳定后低风险项可以参数化调节，但 hard gate、quality floor、human accept 不可覆盖硬失败这些架构不变量不得降级。
 
 ### 0.5 质量证明与系统边界
 
@@ -90,7 +141,7 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 - 传递链每个环节用 **pydantic schema 定义** → 代码生成 `@dataclass(frozen=True)`（字段必填，无默认值除非语义允许）
 - **强制字段消费检查**（两道防线）：
   1. **生成器产出强类型访问器 API**：每个上游 dataclass 生成一个 `unpack()` 方法，返回所有字段的解构元组（如 `must_land, anti_write, scene = shot_contract.unpack()`）。消费端**必须**用 `unpack()` 或具名属性访问（`ast.Attribute` 节点），**禁止** `getattr(x, "field")` / `vars(x)` / `x.__dict__` / `dataclasses.asdict(x)` / `**spread` 等动态访问。
-  2. **AST lint 校验显式消费**：CI 扫描所有 import 了 generated dataclass 的模块（基于"类型可达性"，而非硬编码目录——`contract/` `contract_compiler/` `writers/` `jury/` `gates/` `pipeline/` 全部纳入），断言每个上游 dataclass 的每个字段都被 `ast.Attribute` 节点引用。未引用 = 编译失败。
+  2. **AST lint 校验显式消费**：动态访问禁令全代码库生效；“每个上游字段都必须被消费”的强检查只作用于契约边界函数（contract compiler、prompt compiler、gate input builder、jury input builder、shot 级 orchestrator 入口）或显式标注 `@requires_full_field_consumption` 的函数。普通 helper 不应直接接收 generated dataclass；需要部分字段时用收窄 DTO 或显式字段参数。边界函数未引用字段 = 编译失败。
 - `pyright --strict` 全量启用，任何类型不匹配 = 编译不过
 - **dataclass 是 DB 的只读投影，不是新的真相源**（见铁律 2）
 
@@ -101,13 +152,13 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 **病根**：旧系统的 `outline_evaluator._update_contract` 只 UPDATE JSON blob 列，但 CLI 从结构化表读 beats 覆盖 blob——写 A 读 B，大纲再生无效循环。这是"传递层多个真相源互相覆盖"的病。
 
 **铁律**：
-- 每个编排 orchestrator 的**入口签名只收 `(shot_id, run_id)`**，**物理上禁止传上游 dataclass**——这样跨步骤复用不可能发生
-- orchestrator 入口**从 DB 重新加载**自己需要的 dataclass
+- shot 级 orchestrator 的**入口签名只收 `(shot_id, run_id)`**，**物理上禁止传上游 dataclass**——这样跨步骤复用不可能发生
+- chapter/book/import/export 等非 shot 级 orchestrator 可以收自己的业务 ID（如 `project_id, chapter_id, run_id`），但同样禁止传上游 dataclass，入口必须从 DB 重新加载所需投影
 - **一个契约信号只存一处**：结构化表是真相源，JSON blob 仅作审计快照，永不被消费端读取
 - **契约核心字段必须结构化**：`must_land`/`anti_write`/`scene_contract`/`persona_assignment`/`soft_constraints` 拆为 5 张独立表（见 §7.1），每字段独立列 + NOT NULL + CHECK，消费端从结构化列读，可建索引。旧系统已结构化过，新系统不倒退。
 - **"写操作必须带完整上下文校验"的可执行定义**：任何写操作（落 draft、写 jury 分、封版 revision）的函数签名必须收 `(shot_id, run_id, ...)` + 从 DB reload 当前 shot 状态 + 校验状态机允许该写（如：drafting 状态才允许落 draft，jury_scoring 状态才允许写 score）。**不信任入参 dataclass 的"已处理"状态**——入参只携带待写内容，合法性由 DB 当前状态判定。lint 校验写操作函数体内含 `SELECT status FROM writing_shots WHERE shot_id=?` 调用。
 
-**为什么是物理隔离而非约定**：铁律 2 靠开发者自律会退化（最自然的写法是传上游 dataclass）。入口签名只收 `(shot_id, run_id)` 是物理约束——类型系统层面就无法传 dataclass，不需要靠纪律。
+**为什么是物理隔离而非约定**：铁律 2 靠开发者自律会退化（最自然的写法是传上游 dataclass）。shot 级入口签名只收 `(shot_id, run_id)` 是物理约束；非 shot 级入口只收业务 ID，不收 dataclass，同样避免跨步骤复用。
 
 ### 铁律 3：兜底必须显式 `degraded` 标记，不参与质量判定
 
@@ -136,8 +187,8 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 
 同一 shot 的同一 soft gate 连续失败次数 N：
 - **N=1**：阻断封板，标记问题，不 redo
-- **N=2**：仍失败 → 触发**该 shot 局部重写**（换模型产 ≥2 篇新候选，重新走硬门槛+评分+soft gate，与原 winner 候选池一起重新评分选优）
-- **N=3**：仍失败 → 按 gate 类别分流：
+- **N=soft_gate_redo_n（默认 2）**：仍失败 → 触发**该 shot 局部重写**（换模型产 >= `redo_candidate_count`（默认 2）篇新候选，重新走硬门槛+评分+soft gate，与原 winner 候选池一起重新评分选优）
+- **N=soft_gate_fail_n（默认 3）**：仍失败 → 按 gate 类别分流：
   - 非质量 SOFT：可降级为 diagnostic 放行，问题记审计并注入下一 shot 上下文。
   - `QUALITY_BLOCKING`：转 `failed` 或要求 `revise/reject` 新建 run；不得 hard seal、不得 accepted、不得 export。
 
@@ -152,8 +203,9 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 **多 soft gate 叠加的预算保护**：同一 shot 多个 soft gate 同时触发 N=2，合并为 1 次局部重写（不是每个 gate 各产 2 篇），`retry_budget` 按 shot 汇总 LLM 调用。
 
 **两层 LLM 熔断预算（评审 P0-5，B59 拆分）**：
-1. **重试失败熔断 `MAX_CALLS_PER_SHOT=8`**（B59 原义）：同类失败连续 3 次熔断，失败类型切换归零，单 call_type 调用 ≤ 8。
-2. **shot 总调用硬上限 `MAX_TOTAL_LLM_CALLS=40`**（P0-5 新增）：整个 shot 生命周期所有 LLM 调用总和上限，防类型分散绕过第 1 层。耗尽 → `transition(status,'failed')` 终态，不自动重试（需新建 run）。
+1. **重试失败熔断 `max_calls_per_shot`（默认 8）**（B59 原义）：同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断，失败类型切换归零，单 call_type 调用 ≤ `max_calls_per_shot`。
+2. **shot 总调用硬上限 `max_total_llm_calls`（默认 40）**（P0-5 新增）：整个 shot 生命周期所有 LLM 调用总和上限，防类型分散绕过第 1 层。耗尽 → `transition(status,'failed')` 终态，不自动重试（需新建 run）。
+以上参数均在 `writing_projects` 表，运行时可调不改代码。
 总调用计数落 `writing_shots.llm_call_count` + `llm_call_breakdown`（JSON）；连续失败计数落 `writing_llm_failure_streaks`，每次调用明细落 `writing_ai_call_attempts`，运行时状态变化落 `writing_runtime_events`。`LLMCallBudget` 无状态读 DB。详见 implementation-contract §3.3。
 
 ### 铁律 5：正文真相源物理隔离
@@ -175,10 +227,10 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 **病根**：旧系统和早期设计都可能出现"烂稿里选最高分"、"软维度欠账注入后文"、"人工 accept 覆盖质量失败"的问题。对生产写作而言，"最高分"不等于"可发表"，"已审计"也不等于"已达标"。
 
 **铁律**：
-- MetaContract 必须包含项目级 `QualityBar` 与 `StyleQualityProfile`：目标读者、文体标杆、正例片段、反例片段、禁止俗套、水文模式、语言/对白/悬疑/母题密度目标、shot/chapter/book 三层阈值。
-- `QualityBar` 必须包含盲评与继续阅读阈值；没有盲评策略、`would_continue_reading` 目标和目标读者定义，不得 `confirm-contract`。
+- `writing_projects` 必须包含项目级质量阈值字段：`shot_quality_floor`、`dimension_floor`、`chapter_quality_floor`、`book_quality_floor`、`judge_disagreement_max`、`reader_pull_floor`、`blind_review_min_passes`。
+- `MetaContract.style_quality_profile` 必须包含目标读者、文体标杆、正例片段、反例片段、禁止俗套、水文模式、语言/对白/悬疑/母题密度目标、盲评策略、继续阅读目标、protected_roughness 与 voice_anti_samples；没有这些质量锚点不得 `confirm-contract`。
 - 所有质量报告必须标注 `evidence_class`（`ES`/`SEMI_ES`/`NES`）与 `defect_class`（`destructive`/`productive`/`neutral`），并给出证据位置、失败原因和可执行修复指令。
-- 3 裁判评分后先跑 **quality floor**，再选 winner：`final_score` 低于项目阈值、任一核心维度低于阈值、裁判分歧过大、合格候选不足 2 篇，均不得 winner。
+- 3 裁判评分后先跑 **quality floor**，再选 winner：`final_score` 低于项目阈值、任一核心维度低于阈值、裁判分歧过大、合格候选不足 `min_eligible_candidates`（默认 2）篇，均不得 winner。
 - winner 后必须进入 `polish_revision`：只允许局部润色，不允许新增事实；polish 后重新过 hard gates、quality floor、chapter review，才能 soft seal。
 - `polish_revision` 必须保护 `productive_deviations`：不得删除有效粗粝、角色声线、留白、非常规节奏；中性偏离只能标记给人类 review，不得自动磨平。
 - 章级 7 维全部是 accept 前硬门禁；允许记录问题注入下一章，但注入不能替代本章质量达标。
@@ -310,7 +362,7 @@ draft（草稿）→ confirmed（确认）→ locked（锁定）
 
 ```
 1. 读契约（MetaContract）
-2. 生成 ≥2 份合格大纲（每份先过合格线，不合格重来）
+2. 生成 >= `min_eligible_outlines`（默认 2）份合格大纲（每份先过合格线，不合格重来）
 3. 大纲 PK，选优 → 定为 ShotContract 的 must_land
 4. 由 must_land 生成写作契约（TaskCard），契约指定该 shot 的 persona + 5 维强度配比
 5. 写手池按"同 persona + 同 prompt + 换写手模型"产 X 篇候选
@@ -325,7 +377,7 @@ draft（草稿）→ confirmed（确认）→ locked（锁定）
 10. 对余下 ≥2 篇做 3 裁判 × 12 维文学评分
 11. 低分维度硬筛选（任一核心维度低于项目阈值的 draft 直接淘汰，不允许降权后胜出）
 12. 余下去 1 高 1 低取 median；裁判分歧超过阈值则升级 5 裁判或人工复核，不得直接 winner
-13. 通过 quality floor 后才选 winner：`final_score >= shot_quality_floor` 且合格候选 ≥2
+13. 通过 quality floor 后才选 winner：`final_score >= shot_quality_floor` 且合格候选 >= `min_eligible_candidates`
 14. winner 进入 `polish_revision`：局部润色，不新增事实；polish 后重新过 hard gates + quality floor
 15. shot 级软封版（仅 polish 后质量达标的 winner 可 soft seal）
 16. 一章所有 shot 完成 → 章级审核（7 维全部是 accept 前硬门禁）
@@ -398,7 +450,7 @@ pending → active → reinforced → revealed → resolved → (new gap)
 **第一道硬门槛**（产稿后即时，规则为主，快）：
 1. 契约合规：must_land 的事件/beat 是否全部出现（规则：关键词/事件标记匹配 + 模型核验）
 2. 禁区检查：forbidden_words / forbidden_facts 是否被违反（规则：字符串匹配 + 语义改写检测用模型）
-3. 容量下限：UTF-8 bytes ≥ 阈值（纯规则，titled shot ≥1200，章末 ≥1500）
+3. 容量下限：UTF-8 bytes ≥ 阈值（纯规则，titled shot ≥ `capacity_floor_titled_shot`（默认 1200），章末 ≥ `capacity_floor_chapter_end`（默认 1500），参数在 `writing_projects` 可调）
 4. 基础可读：句长/标点/重复率（纯规则，机械门槛，和文学层"质感"区分——治双重惩罚）
 
 **第二道硬门槛**（文学评分前资格，模型为主，准）：
@@ -478,16 +530,16 @@ final_score = Σ(dimension_score[d] × weight[d])   # weight 已归一化，和�
 5. quality floor 硬门禁：
    - `final_score >= shot_quality_floor`（默认 80）
    - 每个核心维度 median >= `dimension_floor`（默认 65；项目可提高，不可低于默认）
-   - 任一维度 3 裁判最高分与最低分差 <= `judge_disagreement_max`（默认 25），否则升级 5 裁判或人工复核
-   - 合格候选数 >= 2；不足则补写，耗尽预算则该 shot `failed`
+   - 任一维度 3 裁判最高分与最低分差 <= `judge_disagreement_max`（默认 25），否则开启新的 `jury_round` 并升级到 `escalated_jury_count`（默认 5）裁判，或进入人工复核
+   - 合格候选数 >= `min_eligible_candidates`（默认 2）；不足则补写，耗尽预算则该 shot `failed`
    - `would_continue_reading_score >= reader_pull_floor`；盲评未通过不得 winner
    - `destructive` 缺陷为 0；`neutral` 缺陷可进入人工 review；`productive` 偏离必须被保护而非扣成硬失败
 6. 加权平均分最高且通过 quality floor = winner；未通过 quality floor 的 draft 不得 `is_winner=1`
 7. winner 进入 `polish_revision`，局部润色后重新执行 hard gates + quality floor；polish 不得新增事实、改变 must_land、改变 POV、磨平 `productive_deviations`
 
 **DB schema**（见 implementation-contract §2.4）：
-- `writing_jury_raw_scores`：1 行/裁判×draft，12 维各一列（3 裁判全填，无稀疏 NULL）
-- `writing_jury_aggregates`：1 行/draft，存 median 后的 12 维得分 + weight_used + final_score + quality_gate_passed + judge_disagreement_max + is_winner
+- `writing_jury_raw_scores`：1 行/裁判×draft×jury_round，12 维各一列（每个裁判全填，无稀疏 NULL；基础轮 3 裁判，分歧升级轮可为 `escalated_jury_count`）
+- `writing_jury_aggregates`：1 行/draft，存所采用 jury_round 的 12 维聚合得分 + weight_used + final_score + quality_gate_passed + judge_disagreement_max + is_winner
 
 ### 6.3 章级审核（7 维）
 
@@ -540,11 +592,11 @@ final_score = Σ(dimension_score[d] × weight[d])   # weight 已归一化，和�
 
 **第 1 层：项目元数据（3 张）**
 1. `writing_projects` — 项目元信息（含 X 全局参数、persona 池配置、写手模型池、裁判模型池、N 篇级检测间隔；model_pool 加 CHECK 约束 `json_array_length(pool) >= draft_count`）
-2. `writing_meta_contracts` — 元契约（identity/narrative_voice/hard_boundaries/style_locks/world_knowledge/motif_system/creative_zones/quality_bar/style_quality_profile）
+2. `writing_meta_contracts` — 元契约（identity/narrative_voice/hard_boundaries/style_locks/world_knowledge/motif_system/creative_zones/style_quality_profile；质量阈值已迁移至 writing_projects 表独立字段）
 3. `writing_chapter_specs` — 章节节奏契约（每章的节奏曲线目标）
 
 **第 2 层：契约链（9 张）** — shot 契约核心字段拆为 5 张结构化表
-4. `writing_outline_specs` — 大纲评估结果（evaluated_outline_text + drift_score；**drift_rejected 派生自 drift_score < 0.20，不存列**；is_winner 加唯一约束保证大纲 PK 只选一个 winner）
+4. `writing_outline_specs` — 大纲评估结果（evaluated_outline_text + drift_score；**drift_rejected 派生自 drift_score < writing_projects.outline_drift_threshold（默认 0.20），不存列**；is_winner 加唯一约束保证大纲 PK 只选一个 winner）
 5. `writing_shot_contracts` — shot 契约主表（shot_id + 契约状态 draft/confirmed/locked + 逻辑指针，不存核心字段 blob）
 6. `writing_shot_must_land` — 必须落地（event/beat/info 释放，结构化列）
 7. `writing_shot_anti_write` — 禁区（forbidden_facts/forbidden_words/pov_only，结构化列）
@@ -581,7 +633,7 @@ final_score = Σ(dimension_score[d] × weight[d])   # weight 已归一化，和�
 28. `writing_ai_call_attempts` — 每次 AI 调用的幂等审计（call_type/model/prompt_hash/response_hash/token/error/retry_of）
 29. `writing_runtime_events` — 状态机、gate、human decision、resume、export 的事件时间线
 30. `writing_llm_failure_streaks` — `(shot_id, call_type, failure_type)` 连续失败计数权威源
-31. `writing_session_checkpoints` — 崩溃恢复 checkpoint，按 session/phase/shot 记录，最多保留最近 3 个稳定点
+31. `writing_session_checkpoints` — 崩溃恢复 checkpoint，含 `payload_checksum`（SHA-256）检测损坏，按 session/phase/shot 记录，最多保留最近 N 个稳定点（`checkpoint_max_retention`，默认 3）
 32. `writing_human_decisions` — setup confirm、contract confirm、accept/revise/reject/abort 的 actor/reason/前置条件审计；accept 必须写 quality_report_json，且不可覆盖硬质量失败
 
 **第 7 层：契约可审计性与事实锚点（4 张）**
@@ -645,7 +697,7 @@ ink/src/ink/
 │   ├── chapter_hook.py    # soft（3 级状态机）
 │   ├── exposition_drift.py # soft
 │   └── intent_drift.py    # diagnostic
-├── pipeline/              # 编排层（orchestrator 入口只收 shot_id+run_id）
+├── pipeline/              # 编排层（shot 级入口只收 shot_id+run_id；非 shot 级入口只收业务 ID）
 │   ├── outline_orchestrator.py
 │   ├── write_orchestrator.py
 │   ├── jury_orchestrator.py
@@ -659,7 +711,7 @@ ink/src/ink/
 └── cli.py                 # 薄壳 < 500 行
 ```
 
-**orchestrator 物理隔离**（铁律 2）：所有 `pipeline/*_orchestrator.py` 的入口签名只收 `(shot_id, run_id)`，禁止传上游 dataclass。入口从 DB 重新加载所需 dataclass。
+**orchestrator 物理隔离**（铁律 2）：shot 级 `pipeline/*_orchestrator.py` 入口只收 `(shot_id, run_id)`；chapter/book/import/export 入口只收自己的业务 ID。所有 orchestrator 都禁止传上游 dataclass，入口从 DB 重新加载所需投影。
 
 ---
 

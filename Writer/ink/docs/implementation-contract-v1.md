@@ -25,7 +25,7 @@
 
 ```python
 # contract/schemas/meta_contract.py
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from typing import Literal
 
 class ProjectIdentity(BaseModel):
@@ -65,14 +65,10 @@ class MotifSystem(BaseModel):
 class CreativeZones(BaseModel):
     zones: tuple[str, ...]               # 允许创意偏离的场景/shot 类型
 
-class QualityBar(BaseModel):
-    shot_quality_floor: int              # winner 最低 final_score，默认 80，不得低于 80
-    dimension_floor: int                 # 12 维任一核心维度最低分，默认 65，不得低于 65
-    chapter_quality_floor: int           # 章级 7 维最低分，默认 75，不得低于 75
-    book_quality_floor: int              # 篇级 6 维最低分，默认 75，不得低于 75
-    judge_disagreement_max: int          # 同维 3 裁判最高-最低最大分差，默认 25
-    reader_pull_floor: int               # would_continue_reading 最低分，默认 75，不得低于 75
-    blind_review_min_passes: int         # 盲评最少通过数，默认 2，不得低于 1
+# QualityBar 已迁移至 writing_projects 表作为独立字段（shot_quality_floor、dimension_floor、
+# chapter_quality_floor、book_quality_floor、judge_disagreement_max、reader_pull_floor、
+# blind_review_min_passes），支持 DB 层约束和索引。MetaContract 应用层直接从 writing_projects
+# 读取这些字段，不再需要独立的 QualityBar 类。
 
 class StyleQualityProfile(BaseModel):
     target_readers: tuple[str, ...]       # 目标读者
@@ -118,23 +114,61 @@ class MetaContract(BaseModel):
     world_knowledge: WorldKnowledge
     motif_system: MotifSystem
     creative_zones: CreativeZones
-    quality_bar: QualityBar              # 质量硬门禁阈值
+    # quality_bar 已迁移至 writing_projects 表（见 §2.1），通过 MetaContract 的
+    # 应用层逻辑从 writing_projects 读取，不再作为 JSON 字段存储
     style_quality_profile: StyleQualityProfile  # 项目级"什么叫好"的锚点
-    draft_count: int                      # X 全局参数（默认 3，需 <= len(writer_model_pool)）
-    creative_shot_extra: int              # 创意 shot 加成（默认 3）
-    chapter_rolling_check_interval: int   # 篇级检测间隔 N（默认 5）
-    writer_model_pool: tuple[str, ...]    # 写手模型池
-    jury_model_pool: tuple[str, ...]      # 裁判模型池（独立于写手池，>=3 个保证 3 裁判异模型；配置层校验与 writer_model_pool 隔离；若必须重叠则 dispatch 时按 draft 动态排除写手模型）
-
-    @field_validator("draft_count")
-    @classmethod
-    def check_pool_size(cls, v, info):
-        # X <= len(writer_model_pool)，否则候选方差不足（评审 #25）
-        pool = info.data.get("writer_model_pool", ())
-        if pool and v > len(pool):
-            raise ValueError(f"draft_count({v}) 必须 <= writer_model_pool 大小({len(pool)})")
-        return v
 ```
+
+#### ProjectConfig（项目完整配置投影）
+
+运营参数只在 `writing_projects` 表；`MetaContract` 不复制这些字段。应用层通过 `ProjectConfig` 组合读取：
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class WritingProject:
+    project_id: int
+    code: str
+    title: str
+    draft_count: int
+    creative_shot_extra: int
+    writer_model_pool: tuple[str, ...]
+    jury_model_pool: tuple[str, ...]
+    jury_model_pool_min: int
+    min_eligible_outlines: int
+    min_eligible_candidates: int
+    redo_candidate_count: int
+    escalated_jury_count: int
+    shot_quality_floor: int
+    dimension_floor: int
+    chapter_quality_floor: int
+    book_quality_floor: int
+    judge_disagreement_max: int
+    reader_pull_floor: int
+    blind_review_min_passes: int
+    max_calls_per_shot: int
+    max_total_llm_calls: int
+    consecutive_failure_circuit_break: int
+    soft_gate_redo_n: int
+    soft_gate_fail_n: int
+    auto_retry_on_hard_failure: bool
+    max_retries_per_gate: int
+    retry_strategy: Literal["change_model", "adjust_intensity", "relax_soft"]
+
+@dataclass(frozen=True)
+class ProjectConfig:
+    project: WritingProject
+    meta_contract: MetaContract
+    chapter_specs: tuple["ChapterSpec", ...]
+```
+
+`ProjectConfigValidator` 负责 DB CHECK 难以表达的配置校验：
+- `writer_model_pool` / `jury_model_pool` 必须是非空唯一字符串数组。
+- 默认要求两池无交集。
+- 如果允许模型池重叠，排除当前 draft 的 `writer_model` 后仍必须有至少 3 个 jury model。
+- `draft_count <= len(writer_model_pool)`；`jury_model_pool_min >= 3`。
+- `StyleQualityProfile` 必须含 `target_readers`、`reader_pull_target`、`blind_review_policy`、`protected_roughness`、`voice_anti_samples`。
 
 #### ShotContract（shot 契约，核心字段对应 5 张结构化表）
 
@@ -185,7 +219,7 @@ class OutlineSpec(BaseModel):
     shot_contract_id: int
     evaluated_outline_text: str
     drift_score: float
-    is_winner: bool                       # 大纲 PK 选优（drift_rejected 派生自 drift_score < 0.20，不存列）
+    is_winner: bool                       # 大纲 PK 选优（drift_rejected 派生自 drift_score < writing_projects.outline_drift_threshold，不存列）
 
 class TaskCard(BaseModel):
     task_card_id: int
@@ -239,10 +273,13 @@ class JuryInput(BaseModel):
 - **禁止**动态访问：lint 扫描 AST，遇 `getattr(x, ...)` / `vars(x)` / `x.__dict__` / `dataclasses.asdict(x)` / `**x` 一律报错
 
 **防线 2 — 字段消费可达性扫描**：
-1. 扫描**所有 import 了 generated dataclass 的模块**（基于"类型可达性"，而非硬编码目录——`contract/` `contract_compiler/` `writers/` `jury/` `gates/` `pipeline/` 全部纳入）
-2. 对每个函数签名里出现的上游 dataclass 类型，提取其所有字段名
-3. 断言每个字段名被 `ast.Attribute` 节点引用（`x.field` 形式），**不再用"字段名出现在源码字符串中"的词法匹配**（治误报：字段名出现在注释/f-string/log 文本里不算消费；治漏报：动态访问会被防线 1 拦截）
-4. 未引用 = 报错，列出 `函数名 → 未消费字段名`
+1. 动态访问禁令扫描所有 import 了 generated dataclass 的模块。
+2. “全字段消费”只扫描契约边界函数：`contract_compiler/*`、`prompt_compiler/*`、gate input builder、jury input builder、shot 级 orchestrator 入口，以及显式标注 `@requires_full_field_consumption` 的函数。
+3. 对这些边界函数签名里的上游 dataclass 类型，提取其所有字段名。
+4. 断言每个字段名被 `ast.Attribute` 节点引用（`x.field` 形式），**不再用"字段名出现在源码字符串中"的词法匹配**（治误报：字段名出现在注释/f-string/log 文本里不算消费；治漏报：动态访问会被防线 1 拦截）。
+5. 未引用 = 报错，列出 `函数名 → 未消费字段名`。
+
+普通 helper 不应直接接收 generated dataclass；如果只需要部分字段，调用方先转换为收窄 DTO 或传显式字段参数。这样 lint 检查的是契约边界的完整消费，不逼迫内部函数写 `_ = field` 式假消费。
 
 **示例**：
 ```python
@@ -271,28 +308,144 @@ def compile_prompt(prompt_spec: PromptSpec) -> str:
 
 **CI 集成**：pre-commit + CI 强制运行，未过 = 构建失败。
 
+### 1.5 参数化原则（运营参数 vs 架构不变量）
+
+**原则**：凡是"改变后系统行为变化但正确性不变"的值，都应该是 `writing_projects` 表中的运营参数，运行时可调，不改代码。"改变后系统正确性也变了"的值（状态机转移矩阵、铁律、DB CHECK 绝对底线）保持硬编码。
+
+**运营参数**（全部在 `writing_projects` 表，`init` 时设定，之后可 `UPDATE`）：
+
+| 参数 | 默认值 | 说明 | 来源 |
+|------|--------|------|------|
+| `draft_count` | 3 | X 全局候选稿数 | 已有 |
+| `creative_shot_extra` | 3 | 创意 shot 额外候选数 | 已有 |
+| `chapter_rolling_check_interval` | 5 | 篇级检测间隔（每 N 章跑一次） | 已有 |
+| `writer_model_pool` | — | 写手模型池 | 已有 |
+| `jury_model_pool` | — | 裁判模型池 | 已有 |
+| `shot_quality_floor` | 80 | winner 最低 final_score | 已有，QualityBar |
+| `dimension_floor` | 65 | 12 维任一核心维度最低分 | 已有，QualityBar |
+| `chapter_quality_floor` | 75 | 章级 7 维最低分 | 已有，QualityBar |
+| `book_quality_floor` | 75 | 篇级 6 维最低分 | 已有，QualityBar |
+| `judge_disagreement_max` | 25 | 同维裁判最高-最低最大分差 | 已有，QualityBar |
+| `reader_pull_floor` | 75 | would_continue_reading 最低分 | 已有，QualityBar |
+| `blind_review_min_passes` | 2 | 盲评最少通过数 | 已有，QualityBar |
+| `max_calls_per_shot` | 8 | 单 shot 单类型 LLM 调用上限（第一层熔断） | **新增**，原硬编码 |
+| `max_total_llm_calls` | 40 | 单 shot 全生命周期 LLM 调用总上限（第二层熔断） | **新增**，原硬编码 |
+| `consecutive_failure_circuit_break` | 3 | 同类失败连续 N 次触发熔断 | **新增**，原硬编码 |
+| `soft_gate_redo_n` | 2 | soft gate 连续失败 N 次触发局部重写 | **新增**，原硬编码 |
+| `soft_gate_fail_n` | 3 | soft gate 连续失败 N 次，质量类转 failed | **新增**，原硬编码 |
+| `outline_drift_threshold` | 0.20 | 大纲 CJK bigram overlap 低于此值拒绝 | **新增**，原硬编码于 B77 |
+| `capacity_floor_titled_shot` | 1200 | titled shot 容量下限（UTF-8 bytes） | **新增**，原硬编码于 B93 |
+| `capacity_floor_chapter_end` | 1500 | 章末 shot 容量下限（UTF-8 bytes） | **新增**，原硬编码于 B93 |
+| `prompt_archive_size_bytes` | 65536 | prompt 超此大小归档到独立文件 | **新增**，原硬编码 64KB |
+| `checkpoint_max_retention` | 3 | checkpoint 保留最近几个稳定点 | **新增**，原硬编码 |
+| `scene_fingerprint_min_diversity` | 3 | L3 场景指纹多样性最低要求 | **新增**，原硬编码 |
+| `suspense_shot_min_intensity` | 5 | 悬疑 shot 悬疑维度最低强度 | **新增**，原硬编码 |
+| `auto_retry_on_hard_failure` | TRUE | hard gate / quality floor 失败后是否自动重试（A'+A'' 机制） | **新增** |
+| `max_retries_per_gate` | 2 | 每层 gate 自动重试最大次数 | **新增** |
+| `retry_strategy` | 'change_model' | 重试策略：change_model / adjust_intensity / relax_soft | **新增** |
+
+**架构不变量**（硬编码，不可参数化）：
+
+| 不变量 | 值 | 为什么不能参数化 |
+|--------|---|----------------|
+| shot_status 合法转移矩阵 | 14 态穷举 | 改变 = 改变状态机语义 |
+| `is_winner=1 → quality_gate_passed=1` | DB CHECK | 改变 = 允许质量不达标 winner |
+| `hard_quality_override=0` | DB CHECK | 改变 = 允许人工覆盖硬失败（见设计讨论） |
+| 信息差 6 态转移合法性 | DB CHECK | 改变 = 改变信息差语义 |
+| `v_current_text` 每 shot 恰一行 | DB VIEW | 改变 = 破坏正文唯一性 |
+| text_repository 三重隔离 | 代码 + CI lint | 改变 = 破坏铁律 5 |
+| 字段消费 AST lint | CI lint | 改变 = 破坏铁律 1 |
+| 基础裁判数 = 3 | 设计常量 | 改变 = 改变基础评分算法；分歧升级裁判数由 `escalated_jury_count` 参数化 |
+| 12 维评分 | 设计常量 | 改变 = 改变评分体系 |
+| 5 persona | 设计常量 | 改变 = 改变产稿机制 |
+
+**DB CHECK 绝对底线 vs 运营阈值**：
+
+`jury_aggregates` 等表的 CHECK 约束（如 `final_score >= 80`）是**绝对底线**——任何项目的运营阈值不得低于此。运营阈值已拆为 `writing_projects` 表的独立字段（`shot_quality_floor`、`dimension_floor`、`chapter_quality_floor`、`book_quality_floor`、`judge_disagreement_max`、`reader_pull_floor`、`blind_review_min_passes`），并在 `writing_projects` 表级 CHECK 约束中保证运营阈值不低于 DB 绝对底线。应用层直接读取 `writing_projects` 表的运营阈值执行。这样既允许项目提高标准，又防止项目误设过低阈值导致质量失控。
+
 ---
 
 ## 2. DB schema（40 张生产表 DDL）
+
+**时间字段约定**：所有 `created_at`、`updated_at`、`evaluated_at`、`started_at`、`finished_at`、`sealed_at` 等 `TEXT` 时间字段统一使用 UTC ISO 8601：`YYYY-MM-DDTHH:MM:SS.sssZ`。应用层只能通过 `now_utc_iso()` 写入业务时间；DDL 不依赖 SQLite 本地时间函数。
 
 ### 2.1 第 1 层：项目元数据（3 张）
 
 ```sql
 -- 1. writing_projects
+-- 运营参数全部在此表，运行时可调不改代码（见 §1.5 参数化原则）
 CREATE TABLE writing_projects (
     project_id INTEGER PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     meta_contract_id INTEGER,                         -- 当前元契约指针；不做 FK，避免 projects/meta_contracts 循环级联
-    draft_count INTEGER NOT NULL DEFAULT 3,          -- X 全局参数
-    creative_shot_extra INTEGER NOT NULL DEFAULT 3,
-    chapter_rolling_check_interval INTEGER NOT NULL DEFAULT 5,
+
+    -- ── 产稿参数 ──
+    draft_count INTEGER NOT NULL DEFAULT 3,          -- X 全局候选稿数
+    creative_shot_extra INTEGER NOT NULL DEFAULT 3,  -- 创意 shot 额外候选数
     writer_model_pool TEXT NOT NULL,                 -- JSON array
     jury_model_pool TEXT NOT NULL,                   -- JSON array
+    jury_model_pool_min INTEGER NOT NULL DEFAULT 3,  -- 裁判模型池最少数量（DB CHECK 用）
+    min_eligible_outlines INTEGER NOT NULL DEFAULT 2,  -- 大纲生成最少合格数
+    min_eligible_candidates INTEGER NOT NULL DEFAULT 2,  -- jury 候选不足此数触发补写
+    redo_candidate_count INTEGER NOT NULL DEFAULT 2,    -- N=2 局部重写时产几篇新候选
+    escalated_jury_count INTEGER NOT NULL DEFAULT 5,    -- 裁判分歧超阈值时升级到几个裁判
+
+    -- ── 熔断预算参数（原硬编码，现运营可调） ──
+    max_calls_per_shot INTEGER NOT NULL DEFAULT 8,          -- 单 shot 单类型 LLM 调用上限
+    max_total_llm_calls INTEGER NOT NULL DEFAULT 40,        -- 单 shot 全生命周期 LLM 调用总上限
+    consecutive_failure_circuit_break INTEGER NOT NULL DEFAULT 3,  -- 同类失败连续 N 次熔断
+
+    -- ── soft gate 升级阈值参数（原硬编码，现运营可调） ──
+    soft_gate_redo_n INTEGER NOT NULL DEFAULT 2,            -- soft gate 连续失败 N 次触发局部重写
+    soft_gate_fail_n INTEGER NOT NULL DEFAULT 3,            -- soft gate 连续失败 N 次，质量类转 failed
+
+    -- ── 自动重试参数（A'+A'' 机制） ──
+    auto_retry_on_hard_failure INTEGER NOT NULL DEFAULT 1 CHECK (auto_retry_on_hard_failure IN (0,1)),
+    max_retries_per_gate INTEGER NOT NULL DEFAULT 2,        -- 每层 gate 自动重试最大次数
+    retry_strategy TEXT NOT NULL DEFAULT 'change_model'
+        CHECK (retry_strategy IN ('change_model','adjust_intensity','relax_soft')),
+
+    -- ── 大纲与容量参数 ──
+    outline_drift_threshold REAL NOT NULL DEFAULT 0.20,     -- 大纲 CJK bigram overlap 拒绝阈值
+    capacity_floor_titled_shot INTEGER NOT NULL DEFAULT 1200,  -- titled shot 容量下限 UTF-8 bytes
+    capacity_floor_chapter_end INTEGER NOT NULL DEFAULT 1500,  -- 章末 shot 容量下限 UTF-8 bytes
+
+    -- ── 多样性与场景参数 ──
+    scene_fingerprint_min_diversity INTEGER NOT NULL DEFAULT 3,  -- L3 场景指纹多样性最低要求
+    suspense_shot_min_intensity INTEGER NOT NULL DEFAULT 5,      -- 悬疑 shot 悬疑维度最低强度
+
+    -- ── 归档与恢复参数 ──
+    prompt_archive_size_bytes INTEGER NOT NULL DEFAULT 65536,  -- prompt 超此大小归档到独立文件
+    checkpoint_max_retention INTEGER NOT NULL DEFAULT 3,       -- checkpoint 保留最近几个稳定点
+
+    -- ── 质量阈值参数（原 quality_bar JSON，拆为独立字段以支持 DB 层约束） ──
+    shot_quality_floor INTEGER NOT NULL DEFAULT 80,           -- winner 最低 final_score，DB 绝对底线 80
+    dimension_floor INTEGER NOT NULL DEFAULT 65,              -- 12 维任一核心维度最低分，DB 绝对底线 65
+    chapter_quality_floor INTEGER NOT NULL DEFAULT 75,        -- 章级 7 维最低分，DB 绝对底线 75
+    book_quality_floor INTEGER NOT NULL DEFAULT 75,           -- 篇级 6 维最低分，DB 绝对底线 75
+    judge_disagreement_max INTEGER NOT NULL DEFAULT 25,       -- 同维 3 裁判最高-最低最大分差，DB 绝对底线 25
+    reader_pull_floor INTEGER NOT NULL DEFAULT 75,            -- would_continue_reading 最低分
+    blind_review_min_passes INTEGER NOT NULL DEFAULT 2,       -- 盲评最少通过数
+
+    -- ── 篇级检测参数 ──
+    chapter_rolling_check_interval INTEGER NOT NULL DEFAULT 5,
+
     created_at TEXT NOT NULL,
-    -- 评审 #27：DB 层保证 draft_count <= pool 大小，N4 裁判池隔离
+
+    CHECK (shot_quality_floor >= 80),                          -- 运营阈值不得低于 DB 绝对底线
+    CHECK (dimension_floor >= 65),
+    CHECK (chapter_quality_floor >= 75),
+    CHECK (book_quality_floor >= 75),
+    CHECK (judge_disagreement_max <= 25),                     -- 分差阈值不得高于绝对底线（越小越严格）
+    CHECK (blind_review_min_passes BETWEEN 1 AND 3),
+
+    -- CHECK 约束：DB 只做 JSON/长度底线；元素类型、去重、两池交集由 ProjectConfigValidator 校验
+    CHECK (json_valid(writer_model_pool) AND json_type(writer_model_pool) = 'array'),
+    CHECK (json_valid(jury_model_pool) AND json_type(jury_model_pool) = 'array'),
     CHECK (json_array_length(writer_model_pool) >= draft_count),
-    CHECK (json_array_length(jury_model_pool) >= 3)
+    CHECK (json_array_length(jury_model_pool) >= jury_model_pool_min),
+    CHECK (jury_model_pool_min >= 3)
 );
 
 -- 2. writing_meta_contracts
@@ -306,7 +459,7 @@ CREATE TABLE writing_meta_contracts (
     world_knowledge TEXT NOT NULL,                   -- JSON
     motif_system TEXT NOT NULL,                      -- JSON
     creative_zones TEXT NOT NULL,                    -- JSON
-    quality_bar TEXT NOT NULL,                       -- JSON：shot/chapter/book 质量硬门禁阈值
+    -- quality_bar 已迁移至 writing_projects 表作为独立字段（支持 DB 层约束和索引）
     style_quality_profile TEXT NOT NULL,             -- JSON：目标读者、文体标杆、正/反例、禁用俗套、密度目标
     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','confirmed','locked')),
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
@@ -335,7 +488,7 @@ CREATE TABLE writing_outline_specs (
     shot_contract_id INTEGER,
     evaluated_outline_text TEXT NOT NULL,
     drift_score REAL NOT NULL,
-    -- drift_rejected 派生自 drift_score < 0.20，不再存列（评审 #23："一个信号只存一处"）
+    -- drift_rejected 派生自 drift_score < writing_projects.outline_drift_threshold，不再存列（评审 #23："一个信号只存一处"）
     is_winner INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (shot_contract_id) REFERENCES writing_shot_contracts(shot_contract_id) ON DELETE CASCADE
@@ -406,7 +559,8 @@ CREATE TABLE writing_shot_persona_assignment (
     CHECK (json_extract(intensity, '$.对话') IS NOT NULL AND json_extract(intensity, '$.对话') BETWEEN 0 AND 10),
     CHECK (json_extract(intensity, '$.结构') IS NOT NULL AND json_extract(intensity, '$.结构') BETWEEN 0 AND 10),
     CHECK (json_extract(intensity, '$.悬疑') IS NOT NULL AND json_extract(intensity, '$.悬疑') BETWEEN 0 AND 10),
-    -- is_suspense_shot=1 要求悬疑强度 >= 5（悬疑 shot 的悬疑维度不能为 0-4）
+    -- is_suspense_shot=1 要求悬疑强度 >= writing_projects.suspense_shot_min_intensity（默认 5，运营可调）
+    -- 注意：此 CHECK 为绝对底线 5，实际阈值由应用层从 writing_projects 读取后执行
     CHECK (is_suspense_shot = 0 OR json_extract(intensity, '$.悬疑') >= 5),
     FOREIGN KEY (shot_contract_id) REFERENCES writing_shot_contracts(shot_contract_id) ON DELETE CASCADE
 );
@@ -436,13 +590,13 @@ CREATE TABLE writing_prompt_snapshots (
     task_card_id INTEGER NOT NULL,
     persona TEXT NOT NULL,
     full_prompt_text TEXT NOT NULL,
-    prompt_size_bytes INTEGER NOT NULL,              -- 评审 #31：超阈值迁移到独立文件
+    prompt_size_bytes INTEGER NOT NULL,              -- 评审 #31：超 writing_projects.prompt_archive_size_bytes 时迁到独立文件
     relaxed_soft INTEGER NOT NULL DEFAULT 0,         -- 仅 deviant
     superseded_at TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (task_card_id) REFERENCES writing_shot_task_cards(task_card_id) ON DELETE CASCADE
 );
--- prompt 归档策略：prompt_size_bytes > 64KB 时 full_prompt_text 迁到 prompts/{prompt_id}.txt，列存路径
+-- prompt 归档策略：prompt_size_bytes > writing_projects.prompt_archive_size_bytes 时 full_prompt_text 迁到 prompts/{prompt_id}.txt，列存路径
 -- supersede 历史保留：旧 prompt 不删，superseded_at 标记，供审计回溯
 ```
 
@@ -468,8 +622,8 @@ CREATE TABLE writing_shots (
     soft_fail_counts_snapshot TEXT NOT NULL DEFAULT '{}', -- JSON 审计快照；业务不得读取，权威源是 writing_soft_gate_counters
     redo_in_progress INTEGER NOT NULL DEFAULT 0,     -- 评审 #6：N=2 局部重写子状态标记
     resume_point TEXT,                               -- 评审 #17：结构化 JSON {phase, chapter_id, dimension_index}
-    llm_call_count INTEGER NOT NULL DEFAULT 0,       -- 评审 P0-5：shot 内 LLM 总调用计数（两层熔断第 2 层，MAX_TOTAL=40）
-    llm_call_breakdown TEXT NOT NULL DEFAULT '{}',   -- 评审 P0-5：JSON {call_type: count}，第 1 层按类型计数（MAX_PER_TYPE=8）
+    llm_call_count INTEGER NOT NULL DEFAULT 0,       -- 评审 P0-5：shot 内 LLM 总调用计数（上限 = writing_projects.max_total_llm_calls）
+    llm_call_breakdown TEXT NOT NULL DEFAULT '{}',   -- 评审 P0-5：JSON {call_type: count}，单类型上限 = writing_projects.max_calls_per_shot
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,                        -- 评审 #28：状态机变更时间
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
@@ -557,6 +711,7 @@ CREATE TABLE writing_shot_revisions (
     FOREIGN KEY (run_id) REFERENCES writing_runs(run_id) ON DELETE CASCADE,
     FOREIGN KEY (source_revision_id) REFERENCES writing_shot_revisions(revision_id)
 );
+CREATE UNIQUE INDEX uq_revisions_one_current ON writing_shot_revisions(shot_id) WHERE is_current = 1;
 CREATE INDEX idx_revisions_current ON writing_shot_revisions(shot_id, is_current) WHERE is_current = 1;
 CREATE INDEX idx_revisions_seq ON writing_shot_revisions(shot_id, revision_sequence);
 
@@ -607,17 +762,21 @@ CREATE TABLE writing_draft_eligibility (
 );
 CREATE INDEX idx_eligibility_draft ON writing_draft_eligibility(draft_id);
 
--- 20. writing_jury_raw_scores（3 裁判原始分，方案 B：3 裁判全评 12 维，无稀疏 NULL）
--- 评审 P0-4 修订：UNIQUE 从 (draft_id, judge_role) 改为 (draft_id, judge_model)——
--- judge_role 只是 prompt 主视角标签，不是裁判身份标识；(draft_id, judge_role) 不能阻止
--- 同一 judge_model 对同一 draft 评两次分（自评/重复评分防线形同虚设）。
--- 真正由 DB 保证的不变量："同一 draft 同一 judge_model 恰好一行"。
--- "judge_model 不等于该 draft 的 writer_model" 是跨表约束，必须由 literary_jury.dispatch
--- 在同一事务内动态排除并 post-write JOIN 审计，不能伪装成单表 UNIQUE/CHECK。
+-- 20. writing_jury_raw_scores（裁判原始分）
+-- 基础轮 jury_round=1：3 裁判全评 12 维，无稀疏 NULL。
+-- 分歧升级轮 jury_round>1：可使用 writing_projects.escalated_jury_count（默认 5）个裁判重评。
+-- judge_role 只是 prompt 主视角标签，不是裁判身份标识；同一 role 可在升级轮重复。
+-- 真正由 DB 保证的不变量："同一 draft 同一 jury_round 同一 judge_model/slot 只能一行"。
+-- "judge_model 不等于该 draft 的 writer_model" 是跨表约束：
+-- 1) literary_jury.dispatch 按 draft 动态排除；
+-- 2) SQLite trigger 在落库时兜底阻断；
+-- 3) post-write JOIN 审计作为测试门禁。
 CREATE TABLE writing_jury_raw_scores (
     raw_score_id INTEGER PRIMARY KEY,
     draft_id INTEGER NOT NULL,
     shot_contract_id INTEGER NOT NULL,
+    jury_round INTEGER NOT NULL DEFAULT 1 CHECK (jury_round >= 1),  -- 1=基础 3 裁判；>1=分歧升级重评
+    judge_slot INTEGER NOT NULL CHECK (judge_slot >= 1),            -- 该轮第几个裁判，基础轮为 1..3，升级轮为 1..escalated_jury_count
     judge_model TEXT NOT NULL,                       -- 裁判模型（身份标识）
     judge_role TEXT NOT NULL CHECK (judge_role IN ('text','literary','cross_shot')),
     -- 12 维分数（0-100），3 裁判全填（方案 B），NOT NULL + CHECK 区间（评审 medium）
@@ -634,16 +793,38 @@ CREATE TABLE writing_jury_raw_scores (
     chapter_continuity INTEGER NOT NULL CHECK (chapter_continuity BETWEEN 0 AND 100),       -- 章续衔接
     creative_boundary INTEGER NOT NULL CHECK (creative_boundary BETWEEN 0 AND 100),         -- 创意边界（裁判3 参考 deviant_reference）
     evaluated_at TEXT NOT NULL,
-    -- 不变量：同一 draft 同一 judge_model 恰好一行（防重复评分，评审 P0-4）
-    UNIQUE (draft_id, judge_model),
-    -- 同 draft 同 role 也唯一（防误配两裁判同一主视角，3 role 应由 3 裁判各占其一）
-    UNIQUE (draft_id, judge_role),
+    -- 不变量：同一 draft 同一 jury_round 内，同一 slot/model 只能出现一次（防重复评分，评审 P0-4）
+    UNIQUE (draft_id, jury_round, judge_slot),
+    UNIQUE (draft_id, jury_round, judge_model),
     FOREIGN KEY (draft_id) REFERENCES writing_drafts(draft_id) ON DELETE CASCADE,
     FOREIGN KEY (shot_contract_id) REFERENCES writing_shot_contracts(shot_contract_id) ON DELETE CASCADE
 );
--- 应用层断言（literary_jury.dispatch 落库后校验，DB 层 CHECK 无法表达"恰好 3 行 3 不同 model"）：
--- SELECT count(*)=3 AND count(DISTINCT judge_model)=3 FROM writing_jury_raw_scores WHERE draft_id=?
-CREATE INDEX idx_jury_raw_draft ON writing_jury_raw_scores(draft_id, judge_model);
+-- 应用层断言（literary_jury.dispatch 落库后校验，DB 层 CHECK 无法表达"每轮恰好 N 行"）：
+-- 基础轮：jury_round=1 必须 count(*)=3 且 count(DISTINCT judge_model)=3，judge_slot=1..3。
+-- 升级轮：jury_round>1 必须 count(*)=writing_projects.escalated_jury_count，且模型去重。
+CREATE INDEX idx_jury_raw_draft ON writing_jury_raw_scores(draft_id, jury_round, judge_model);
+
+CREATE TRIGGER trg_jury_raw_no_self_judge_insert
+BEFORE INSERT ON writing_jury_raw_scores
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1 FROM writing_drafts d
+    WHERE d.draft_id = NEW.draft_id AND d.writer_model = NEW.judge_model
+)
+BEGIN
+    SELECT RAISE(ABORT, 'judge_model must differ from writer_model');
+END;
+
+CREATE TRIGGER trg_jury_raw_no_self_judge_update
+BEFORE UPDATE OF draft_id, judge_model ON writing_jury_raw_scores
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1 FROM writing_drafts d
+    WHERE d.draft_id = NEW.draft_id AND d.writer_model = NEW.judge_model
+)
+BEGIN
+    SELECT RAISE(ABORT, 'judge_model must differ from writer_model');
+END;
 
 -- 21. writing_jury_aggregates（评分聚合，1 行/draft）
 CREATE TABLE writing_jury_aggregates (
@@ -651,6 +832,8 @@ CREATE TABLE writing_jury_aggregates (
     shot_id TEXT NOT NULL,
     draft_id INTEGER NOT NULL UNIQUE,
     shot_contract_id INTEGER NOT NULL,
+    jury_round_used INTEGER NOT NULL DEFAULT 1 CHECK (jury_round_used >= 1), -- 聚合采用的 raw score 轮次；分歧升级后使用最新升级轮
+    judge_count INTEGER NOT NULL DEFAULT 3 CHECK (judge_count >= 3),         -- 该轮参与聚合的裁判数，基础轮 3，升级轮 escalated_jury_count
     -- 12 维中位数得分（3 样本去 1 高 1 低剩 1 个 = median，P0-1 诚实声明：trimmed mean 退化为 median）
     scene_visual_median REAL NOT NULL CHECK (scene_visual_median BETWEEN 0 AND 100),
     rhythm_pacing_median REAL NOT NULL CHECK (rhythm_pacing_median BETWEEN 0 AND 100),
@@ -671,15 +854,15 @@ CREATE TABLE writing_jury_aggregates (
     judge_disagreement_max REAL NOT NULL DEFAULT 0 CHECK (judge_disagreement_max BETWEEN 0 AND 100),
     is_winner INTEGER NOT NULL DEFAULT 0,
     evaluated_at TEXT NOT NULL,
-    -- 默认硬门禁：项目可提高阈值，但不得低于这里的全局底线。
-    CHECK (quality_gate_passed = 0 OR final_score >= 80),
-    CHECK (quality_gate_passed = 0 OR judge_disagreement_max <= 25),
+    -- 绝对底线 CHECK：项目运营阈值（writing_projects 表对应字段）不得低于此，由应用层取 max(项目阈值, 绝对底线) 执行。
+    CHECK (quality_gate_passed = 0 OR final_score >= 80),          -- 绝对底线，运营阈值见 writing_projects.shot_quality_floor
+    CHECK (quality_gate_passed = 0 OR judge_disagreement_max <= 25),  -- 绝对底线，运营阈值见 writing_projects.judge_disagreement_max
     CHECK (quality_gate_passed = 0 OR (
         scene_visual_median >= 65 AND rhythm_pacing_median >= 65 AND dialogue_subtext_median >= 65 AND
         suspense_tension_median >= 65 AND language_texture_median >= 65 AND emotional_progression_median >= 65 AND
         character_believability_median >= 65 AND structure_landing_median >= 65 AND reading_fluency_median >= 65 AND
         motif_theme_fit_median >= 65 AND chapter_continuity_median >= 65 AND creative_boundary_median >= 65
-    )),
+    )),  -- 绝对底线 65，运营阈值见 writing_projects.dimension_floor
     CHECK (is_winner = 0 OR quality_gate_passed = 1),
     FOREIGN KEY (shot_id) REFERENCES writing_shots(shot_id) ON DELETE CASCADE,
     FOREIGN KEY (draft_id) REFERENCES writing_drafts(draft_id) ON DELETE CASCADE,
@@ -707,14 +890,14 @@ CREATE TABLE writing_chapter_reviews (
     blocking_issues TEXT NOT NULL DEFAULT '[]',      -- JSON：任一硬质量失败项
     review_notes TEXT,
     reviewed_at TEXT NOT NULL,
-    -- accepted 要求 7 维非 NULL、全部 >= 默认 chapter_quality_floor(75)、质量门禁通过。
+    -- accepted 要求 7 维非 NULL、全部 >= 绝对底线 75（运营阈值见 writing_projects.chapter_quality_floor）、质量门禁通过。
     CHECK (status != 'accepted' OR (
         quality_gate_passed = 1 AND
         chapter_continuity_hard IS NOT NULL AND pov_consistency IS NOT NULL AND character_consistency IS NOT NULL AND
         chapter_hook_soft IS NOT NULL AND rhythm_curve IS NOT NULL AND motif_density IS NOT NULL AND info_gap_lifecycle IS NOT NULL AND
         chapter_continuity_hard >= 75 AND pov_consistency >= 75 AND character_consistency >= 75 AND
         chapter_hook_soft >= 75 AND rhythm_curve >= 75 AND motif_density >= 75 AND info_gap_lifecycle >= 75
-    )),
+    )),  -- 绝对底线 75，运营阈值见 writing_projects.chapter_quality_floor
     UNIQUE (project_id, chapter_id, run_id),   -- accepted canonical 唯一索引
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
     FOREIGN KEY (run_id) REFERENCES writing_runs(run_id) ON DELETE CASCADE
@@ -840,7 +1023,7 @@ CREATE TABLE writing_book_check_results (
         theme_sublimation IS NOT NULL AND global_rhythm_curve IS NOT NULL AND foreshadow_recovery IS NOT NULL AND
         longline_suspense_closure >= 75 AND character_arc_completeness >= 75 AND motif_echo_density >= 75 AND
         theme_sublimation >= 75 AND global_rhythm_curve >= 75 AND foreshadow_recovery >= 75
-    )),
+    )),  -- 绝对底线 75，运营阈值见 writing_projects.book_quality_floor
     UNIQUE (project_id, check_sequence),
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
 );
@@ -910,14 +1093,20 @@ CREATE TABLE writing_llm_failure_streaks (
 );
 
 -- 31. writing_session_checkpoints（崩溃恢复 checkpoint）
+-- 崩溃恢复幂等性设计（见 §3.8）：
+-- 1. checkpoint 写入必须原子（事务内完成 payload + checksum 一起写入）
+-- 2. 恢复时先校验 checksum，不匹配则视为损坏，回退到上一个有效 checkpoint
+-- 3. checkpoint_max_retention 控制保留数量，避免无限增长
 CREATE TABLE writing_session_checkpoints (
     checkpoint_id INTEGER PRIMARY KEY,
     session_id INTEGER NOT NULL,
     run_id INTEGER,
     shot_id TEXT,
     phase TEXT NOT NULL,
-    checkpoint_payload TEXT NOT NULL,                -- JSON
+    checkpoint_payload TEXT NOT NULL,                -- JSON：恢复所需的状态快照
+    payload_checksum TEXT NOT NULL,                  -- SHA-256(checkpoint_payload)，用于检测部分写入/损坏
     created_at TEXT NOT NULL,
+    CHECK (shot_id IS NULL OR shot_id LIKE '%@%'),   -- NULL 表示 session/phase 级 checkpoint
     FOREIGN KEY (session_id) REFERENCES writing_sessions(session_id) ON DELETE CASCADE,
     FOREIGN KEY (run_id) REFERENCES writing_runs(run_id) ON DELETE CASCADE,
     FOREIGN KEY (shot_id) REFERENCES writing_shots(shot_id) ON DELETE CASCADE
@@ -1069,6 +1258,7 @@ CREATE TABLE writing_import_decisions (
 ### 2.8 索引清单（评审 #29：补全）
 
 关键 FK 列 + 高频查询列建显式索引；低频审计指针不机械建索引，避免写放大。SQLite 自动唯一索引也计入 DDL 烟测，但本节只列显式索引与关键唯一索引：
+- `writing_shot_revisions(shot_id) WHERE is_current = 1` 唯一索引（每 shot 最多一个 current）
 - `writing_shot_revisions(shot_id, is_current) WHERE is_current = 1`（封版读取）
 - `writing_shot_revisions(shot_id, revision_sequence)`（未封版读 MAX）
 - `writing_chapter_reviews` 的 accepted canonical 唯一索引
@@ -1143,9 +1333,39 @@ CREATE TABLE writing_import_decisions (
 
 ## 3. 模块接口契约
 
+### 3.0 错误类型层级
+
+所有业务异常统一定义在 `src/ink/errors.py`，模块不得各自发明根异常。
+
+```python
+class InkError(Exception): ...
+
+class StateError(InkError): ...
+class IllegalTransitionError(StateError): ...
+class TerminalStateError(StateError): ...
+
+class ConcurrencyError(InkError): ...
+class ConcurrentModificationError(ConcurrencyError): ...
+
+class QualityError(InkError): ...
+class QualityGateFailedError(QualityError): ...
+class QualityFloorNotMetError(QualityError): ...
+class ProductiveDeviationLostError(QualityError): ...
+
+class DataError(InkError): ...
+class ShotNotFoundError(DataError): ...
+class SessionMismatchError(DataError): ...
+
+class ConfigError(InkError): ...
+class ModelPoolValidationError(ConfigError): ...
+
+class LLMError(InkError): ...
+class LLMUnavailableError(LLMError): ...
+```
+
 ### 3.1 orchestrator 物理隔离（铁律 2）
 
-所有 `pipeline/*_orchestrator.py` 的入口签名**只收 `(shot_id, run_id)`**，禁止传上游 dataclass：
+shot 级 `pipeline/*_orchestrator.py` 的入口签名**只收 `(shot_id, run_id)`**，禁止传上游 dataclass：
 
 ```python
 # 正确
@@ -1168,12 +1388,16 @@ def produce_drafts(shot_contract: ShotContract, prompt_spec: PromptSpec) -> list
 3. 校验状态机允许该写（如 `drafting` 才允许落 draft，`jury_scoring` 才允许写 score）
 4. lint 断言写操作函数体含 `SELECT status` 调用
 
-**orchestrator 清单**：
+非 shot 级 orchestrator 可以收自己的业务 ID（如 `project_id, chapter_id, run_id`），但同样禁止传上游 dataclass，入口必须从 DB reload 所需投影。
+
+**shot 级 orchestrator 清单**：
 - `outline_orchestrator.evaluate_and_select(shot_id, run_id) -> OutlineSpec`
 - `write_orchestrator.produce_drafts(shot_id, run_id) -> list[DraftSpec]`（含 deviant 1 篇）
 - `hard_gate_orchestrator.run_both_gates(shot_id, run_id) -> list[DraftSpec]`（2 道门槛）
 - `jury_orchestrator.score_and_select_winner(shot_id, run_id) -> DraftSpec`
 - `gate_orchestrator.run_soft_gates(shot_id, run_id) -> GateResult`（含 3 级状态机）
+
+**非 shot 级 orchestrator 清单**：
 - `chapter_review_orchestrator.review_chapter(project_id, chapter_id, run_id) -> ChapterReview`
 - `book_rolling_check_orchestrator.run_rolling_check(project_id, up_to_chapter) -> BookCheckResult`
 
@@ -1190,9 +1414,10 @@ class TextRepository:
         ...
 
     def write_revision(self, shot_id: str, run_id: int, text: str,
-                       seal: Literal['shot_soft','chapter_hard']) -> int:
-        """写正文，seal='shot_soft' 不设 is_current（软封版，后续可被新 revision 覆盖），
-        seal='chapter_hard' 设 is_current=1（硬封版，同时把同 shot 旧行 is_current 置 0）。
+                       source_revision_id: int | None = None,
+                       seal: Literal['none','shot_soft','chapter_hard'] = 'none') -> int:
+        """写正文，seal='none' 只追加 revision；seal='shot_soft' 不设 is_current（软封版，后续可被新 revision 覆盖）；
+        seal='chapter_hard' 设 is_current=1（硬封版，事务内先把同 shot 旧行 is_current 置 0，再设置目标 revision）。
         返回 revision_id。v_current_text 的 ROW_NUMBER 保证读时只取一行。"""
         ...
 
@@ -1222,25 +1447,32 @@ class SoftGateCounter:
         ...
 
     def get_level(self, project_id: int, logical_shot_id: str, gate_name: str) -> Literal[1, 2, 3]:
-        """从 DB 读 N，映射到 1/2/3 级。无 n 参数（旧设计收 n 是错的）。"""
+        """从 DB 读 N，映射到 1/2/3 级。无 n 参数（旧设计收 n 是错的）。
+        升级阈值 soft_gate_redo_n（默认 2）/ soft_gate_fail_n（默认 3）从 writing_projects 读取。"""
         # N=1: 阻断不 redo
-        # N=2: 触发局部重写（产 >=2 篇新候选）
-        # N=3: 非质量 SOFT 可降级；QUALITY_BLOCKING 转 revise_required/failed，不放行
+        # N=soft_gate_redo_n: 触发局部重写（产 >=2 篇新候选）
+        # N=soft_gate_fail_n: 非质量 SOFT 可降级；QUALITY_BLOCKING 转 revise_required/failed，不放行
         ...
 
 class LLMCallBudget:
     """shot 级 LLM 调用两层熔断（B59，评审 P0-5 拆分）。
-    第 1 层：同类失败连续 3 次熔断 / 单类型调用 ≤ MAX_PER_TYPE=8。
-    第 2 层：shot 总调用 ≤ MAX_TOTAL=40，防类型分散绕过第 1 层。
+    第 1 层：同类失败连续 consecutive_failure_circuit_break 次熔断 / 单类型调用 ≤ max_calls_per_shot。
+    第 2 层：shot 总调用 ≤ max_total_llm_calls，防类型分散绕过第 1 层。
+    阈值从 writing_projects 读取，运行时可调不改代码。
     总量计数落 writing_shots.llm_call_count + llm_call_breakdown。
     连续失败计数落 writing_llm_failure_streaks。
     每次调用落 writing_ai_call_attempts，运行状态落 writing_runtime_events。"""
 
-    MAX_CALLS_PER_SHOT = 8     # 第 1 层：单 call_type 上限（B59 原义）
-    MAX_TOTAL_LLM_CALLS = 40   # 第 2 层：shot 总调用硬上限（P0-5 新增）
-    CONSECUTIVE_FAIL_THRESHOLD = 3  # 同类失败连续 3 次熔断
+    # 以下默认值仅为示例，实际从 writing_projects 读取
+    # max_calls_per_shot = 8     # 第 1 层：单 call_type 上限（B59 原义）
+    # max_total_llm_calls = 40   # 第 2 层：shot 总调用硬上限（P0-5 新增）
+    # consecutive_failure_circuit_break = 3  # 同类失败连续 N 次熔断
 
     CallType = Literal['draft', 'polish', 'gate2', 'jury', 'chapter_review', 'book_check']
+
+    def __init__(self, project_id: int):
+        """从 writing_projects 加载阈值。"""
+        ...
 
     def record_call(self, shot_id: str, call_type: CallType,
                     success: bool, failure_type: str | None = None) -> None:
@@ -1254,18 +1486,58 @@ class LLMCallBudget:
 
     def check_circuit(self, shot_id: str) -> tuple[bool, str | None]:
         """返回 (allow, reason)。
-        - llm_call_count >= MAX_TOTAL_LLM_CALLS → (False, 'total_exceeded')，调 transition(status,'failed')
-        - 某 (call_type, failure_type) 连续失败 >= 3 → (False, 'consecutive_fail')，熔断该类型
-        - 某 call_type 调用数 >= MAX_CALLS_PER_SHOT → (False, 'per_type_exceeded')
+        - llm_call_count >= max_total_llm_calls → (False, 'total_exceeded')，调 transition(status,'failed')
+        - 某 (call_type, failure_type) 连续失败 >= consecutive_failure_circuit_break → (False, 'consecutive_fail')，熔断该类型
+        - 某 call_type 调用数 >= max_calls_per_shot → (False, 'per_type_exceeded')
         - 否则 (True, None)。"""
         ...
 ```
 
 **P0-5 集成测试（M1 必补）**：
-- 同类失败连续 3 次熔断（第 4 次调 record_call 前 check_circuit 返回 False）
+- 同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断（第 4 次调 record_call 前 check_circuit 返回 False）
 - 失败类型切换归零连续计数
-- 总调用达 40 次转 failed 终态（transition 合法，任一非终态 → failed）
+- 总调用达 `max_total_llm_calls`（默认 40）次转 failed 终态（transition 合法，任一非终态 → failed）
 - 计数崩溃恢复：record_call 落库后进程崩，重启 check_circuit 读到正确 count
+- 阈值参数化测试：UPDATE writing_projects 修改阈值后，check_circuit 读取新值生效，不改代码
+
+### 3.3b 自动重试机制（A'+A'' 机制，减少编辑工作量）
+
+```python
+# pipeline/auto_retry.py（或集成在 gate_orchestrator / jury_orchestrator 内）
+class AutoRetryHandler:
+    """hard gate / quality floor 失败后的自动重试处理。
+    参数从 writing_projects 读取：
+    - auto_retry_on_hard_failure: 是否启用
+    - max_retries_per_gate: 每层 gate 最多重试次数
+    - retry_strategy: 重试策略
+    """
+
+    RetryStrategy = Literal['change_model', 'adjust_intensity', 'relax_soft']
+
+    def handle_failure(self, shot_id: str, run_id: int,
+                       failed_gate: str, failure_detail: dict) -> RetryResult:
+        """
+        1. 检查 auto_retry_on_hard_failure 是否启用
+        2. 检查 max_retries_per_gate 是否还有余量
+        3. 检查 max_total_llm_calls 是否还有预算
+        4. 按 retry_strategy 调整参数：
+           - change_model: 从 writer_model_pool 选不同模型重新产稿
+           - adjust_intensity: 微调 persona 5 维强度配比（±1）
+           - relax_soft: 放宽 soft_constraints（仅限 deviant 或重试后期）
+        5. 记录重试到 writing_runtime_events 和 writing_failure_attributions
+        6. 返回 RetryResult(should_retry=True, new_params=...) 或 (should_retry=False, reason='budget_exhausted')
+        """
+        ...
+```
+
+**编辑工作量**：accept 路径上编辑零动作。系统自动重试直到预算耗尽。只有 `failed` 状态才上报编辑，动作是项目级资源决策（换模型池 / 调阈值 / 放弃该 shot），不是审美判断。
+
+**参数化测试（M4 必补）**：
+- `auto_retry_on_hard_failure=TRUE` 时，quality floor 失败后自动重试，重试成功则 winner 正常产生
+- `auto_retry_on_hard_failure=FALSE` 时，quality floor 失败后直接转 failed
+- `max_retries_per_gate` 达到后停止重试，转 failed
+- `retry_strategy='change_model'` 时，每次重试使用不同写手模型
+- 重试预算耗尽后转 failed，编辑介入
 
 ### 3.3a LLMGateway（所有 AI 调用唯一入口）
 
@@ -1302,7 +1574,7 @@ def produce_drafts(shot_id: str, run_id: int) -> list[DraftSpec]:
     ...
 ```
 
-### 3.5 literary_jury（3 裁判全评 12 维，方案 B，评审 #4 修订 / P0-1 / P0-4）
+### 3.5 literary_jury（基础 3 裁判全评 12 维；分歧升级轮支持 5 裁判，评审 #4 修订 / P0-1 / P0-4）
 
 ```python
 # jury/literary_jury.py
@@ -1327,25 +1599,27 @@ def weight_map(intensity_5d: dict[str, int]) -> dict[str, float]:
 
 def score_and_select_winner(shot_id: str, run_id: int) -> DraftSpec:
     """
-    方案 B：3 裁判都评全部 12 维，每维去 1 高 1 低取中位数（3 样本 trimmed mean 退化为 median，
-    评审 P0-1 已诚实声明），再按契约 5 维强度加权。
-    - 裁判模型池从 writing_projects.jury_model_pool 读（>=3 个异模型）
+    方案 B：基础轮（jury_round=1）3 裁判都评全部 12 维，每维去 1 高 1 低取中位数
+    （3 样本 trimmed mean 退化为 median，评审 P0-1 已诚实声明），再按契约 5 维强度加权。
+    若 judge_disagreement_max 超阈值，则开启升级轮（jury_round>1），使用 escalated_jury_count 个裁判重评，
+    jury_aggregates 使用升级轮结果。
+    - 裁判模型池从 writing_projects.jury_model_pool 读（基础轮排除 writer_model 后 >=3 个异模型；升级轮排除 writer_model 后 >= escalated_jury_count 个异模型）
     - **按 draft 动态排除写手模型（评审 P0-4）**：为每个 draft 选 3 裁判时，
       从 jury_model_pool 中排除产出该 draft 的 writing_drafts.writer_model，
       保证"裁判模型 ≠ 产出该 draft 的写手模型"（粒度按 draft，非按 shot）。
       配置层优先要求两池无交集；若供应商有限导致两池有重叠，则必须保证排除该 draft 的 writer_model 后仍至少 3 个 jury model。
-    - 3 裁判各有"主视角"（prompt 强调主视角维度详细 reasoning，非主视角快速评分）：
+    - 基础轮 3 裁判各有"主视角"（prompt 强调主视角维度详细 reasoning，非主视角快速评分）：
       * 裁判1（text 主视角）: 画面/节奏/对话/悬疑
       * 裁判2（literary 主视角）: 语言/情感/人物/结构
       * 裁判3（cross_shot 主视角）: 可读/母题/章续/创意边界
-    - 但 3 裁判都填全部 12 维（NOT NULL + CHECK 0-100），保证每维有 3 个分数
-    - 落库后应用层断言：每 draft 恰 3 行 raw_scores 且 3 个不同 judge_model（DB CHECK 无法表达"恰好 3 行"，post-write 校验）
+    - 每个裁判都填全部 12 维（NOT NULL + CHECK 0-100），基础轮每维有 3 个分数，升级轮每维有 escalated_jury_count 个分数
+    - 落库后应用层断言：每 draft 每 jury_round 行数等于该轮裁判数且 judge_model 去重（DB CHECK 无法表达"恰好 N 行"，post-write 校验）
     - 低分维度硬筛选（某维 3 裁判均分 < dimension_floor 的 draft 淘汰，不允许降权后胜出）
-    - 每维去 1 高 1 低 → 中位数（3 样本退化为 median，aggregates 列名 *_median 反映真实算法）
+    - 基础轮每维去 1 高 1 低 → 中位数（3 样本退化为 median，aggregates 列名 *_median 反映真实算法）；升级轮用同样的 trim 策略按裁判数取中位/截尾均值
     - 12 维按 weight_map(intensity_5d) 加权 → final_score
-    - quality floor 硬门禁：final_score >= shot_quality_floor、所有核心维度 >= dimension_floor、judge_disagreement_max <= 阈值、合格候选 >=2
+    - quality floor 硬门禁：final_score >= shot_quality_floor、所有核心维度 >= dimension_floor、judge_disagreement_max <= 阈值或升级轮通过、合格候选 >=2
     - 只有通过 quality floor 的最高分 draft 可 is_winner=1；否则补写，耗尽预算则 shot failed
-    - raw 分落 jury_raw_scores（UNIQUE(draft_id,judge_model) 防重复；writer_model != judge_model 由 dispatch 动态排除 + JOIN 审计），median+质量门禁+加权结果落 jury_aggregates
+    - raw 分落 jury_raw_scores（UNIQUE(draft_id,jury_round,judge_model) 防重复；writer_model != judge_model 由 dispatch 动态排除 + trigger + JOIN 审计），median+质量门禁+加权结果落 jury_aggregates
     - 创意 shot 的 creative_boundary 维度：裁判3 参考 JuryInput.deviant_reference 评分
     """
     ...
@@ -1507,6 +1781,140 @@ class ResumeManager:
 - 同 session 内多 shot 并发**不支持**（gate_orchestrator 串行设计），若强行并发跑会破坏 N 计数/redo 状态机一致性。
 - 跨 session 的同 logical shot 并发（两个 run 同时跑同一章）允许，但 N 计数绑 logical_shot_id 会有竞态——`SoftGateCounter` 的 `UPDATE ... SET count=count+1` 是原子累加，但"读 N 决策"与"写 N"非原子，极端情况两 run 同时读到 N=1 同时写 N=2 都触发 N=2 动作。缓解：N=2 动作幂等（局部重写产新 draft，重复触发只是多产几篇候选，jury 仍选最优）；质量类 N=3 不降级放行，重复触发只会重复产生 blocking failure attribution。
 
+### 3.8 checkpoint 崩溃恢复幂等性设计（评审 P1，新增）
+
+**设计目标**：保证崩溃恢复的可靠性和一致性，避免因 checkpoint 损坏导致恢复失败或数据不一致。
+
+**核心机制**：
+
+```python
+# core/checkpoint_manager.py
+class CheckpointManager:
+    """Checkpoint 写入与恢复，保证幂等性和完整性。"""
+
+    def save_checkpoint(self, session_id: int, phase: str, payload: dict,
+                       run_id: int = None, shot_id: str = None) -> int:
+        """原子写入 checkpoint（payload + checksum 同事务）。
+
+        1. 序列化 payload 为 JSON
+        2. 计算 SHA-256(payload_json)
+        3. 在同一事务内 INSERT payload + checksum
+        4. 清理旧 checkpoint（保留 checkpoint_max_retention 个）
+        """
+        payload_json = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        checksum = hashlib.sha256(payload_json.encode('utf-8')).hexdigest()
+
+        with db.transaction():
+            checkpoint_id = db.execute("""
+                INSERT INTO writing_session_checkpoints
+                (session_id, run_id, shot_id, phase, checkpoint_payload, payload_checksum, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, run_id, shot_id, phase, payload_json, checksum, now()))
+
+            # 清理旧 checkpoint，保留最近 N 个
+            retention = db.fetchone("""
+                SELECT checkpoint_max_retention FROM writing_projects
+                WHERE project_id = (SELECT project_id FROM writing_sessions WHERE session_id = ?)
+            """, (session_id,))[0]
+
+            db.execute("""
+                DELETE FROM writing_session_checkpoints
+                WHERE session_id = ? AND checkpoint_id NOT IN (
+                    SELECT checkpoint_id FROM writing_session_checkpoints
+                    WHERE session_id = ? ORDER BY created_at DESC LIMIT ?
+                )
+            """, (session_id, session_id, retention))
+
+        return checkpoint_id
+
+    def load_latest_valid_checkpoint(self, session_id: int) -> tuple[int, dict] | None:
+        """加载最新的有效 checkpoint（校验 checksum）。
+
+        1. 按 created_at DESC 遍历 checkpoint
+        2. 对每个 checkpoint 计算 payload_checksum，与存储值比对
+        3. 匹配则返回 (checkpoint_id, payload)
+        4. 不匹配则记录 runtime_event（CHECKPOINT_CORRUPTED），继续检查下一个
+        5. 全部损坏则返回 None，触发从头恢复
+        """
+        checkpoints = db.fetchall("""
+            SELECT checkpoint_id, checkpoint_payload, payload_checksum, phase
+            FROM writing_session_checkpoints
+            WHERE session_id = ?
+            ORDER BY created_at DESC
+        """, (session_id,))
+
+        for cp in checkpoints:
+            computed = hashlib.sha256(cp.checkpoint_payload.encode('utf-8')).hexdigest()
+            if computed == cp.payload_checksum:
+                payload = json.loads(cp.checkpoint_payload)
+                return (cp.checkpoint_id, payload)
+            else:
+                # 记录损坏事件
+                db.execute("""
+                    INSERT INTO writing_runtime_events
+                    (project_id, session_id, event_type, event_payload, created_at)
+                    VALUES (?, ?, 'CHECKPOINT_CORRUPTED', ?, ?)
+                """, (
+                    db.fetchone("SELECT project_id FROM writing_sessions WHERE session_id=?", (session_id,))[0],
+                    session_id,
+                    json.dumps({"checkpoint_id": cp.checkpoint_id, "expected": cp.payload_checksum, "actual": computed}),
+                    now_utc_iso()
+                ))
+
+        return None  # 全部损坏，从头恢复
+```
+
+**幂等性保证**：
+
+1. **写入幂等**：checkpoint 写入靠 `(session_id, phase, created_at)` 唯一标识，重复写入只是新增一行，不影响已有数据。
+2. **恢复幂等**：`ResumeManager` 的 `RESUME_MAP` 保证同一状态多次恢复结果一致（§3.6）。
+3. **损坏检测**：payload_checksum 检测部分写入、磁盘错误、内存损坏等情况。
+
+**恢复流程**：
+
+```python
+def resume_session(session_id: int):
+    """崩溃恢复完整流程。"""
+    cp_mgr = CheckpointManager()
+    resume_mgr = ResumeManager()
+
+    # 1. 尝试加载最新有效 checkpoint
+    result = cp_mgr.load_latest_valid_checkpoint(session_id)
+
+    if result:
+        checkpoint_id, payload = result
+        # 2. 从 checkpoint 恢复
+        phase = payload['phase']
+        shot_id = payload.get('shot_id')
+        run_id = payload.get('run_id')
+        logger.info(f"Resuming from checkpoint {checkpoint_id}, phase={phase}")
+    else:
+        # 3. 无有效 checkpoint，从头扫描 shot_status
+        logger.warning("No valid checkpoint found, scanning shot_status")
+        phase = None
+        shot_id = None
+        run_id = None
+
+    # 4. 扫描所有 shot，按 RESUME_MAP 恢复
+    shots = db.fetchall("""
+        SELECT s.shot_id, s.status, s.run_id
+        FROM writing_shots s
+        JOIN writing_runs r ON r.run_id = s.run_id
+        WHERE r.session_id = ?
+    """, (session_id,))
+
+    for shot in shots:
+        action = resume_mgr.RESUME_MAP.get(shot.status, 'skip')
+        if action != 'skip':
+            resume_mgr.execute_resume_action(shot.shot_id, shot.run_id, action)
+```
+
+**审计与监控**：
+
+- `CHECKPOINT_CORRUPTED` 事件记录到 `writing_runtime_events`，便于事后分析
+- `checkpoint_max_retention` 控制存储大小，默认保留最近 3 个 checkpoint
+- 建议生产环境监控 checkpoint 损坏率，超过阈值告警
+
 ---
 
 ## 4. pyright strict + 字段消费 lint + SQL lint 配置
@@ -1534,11 +1942,13 @@ sql_access_lint = true
 - python -m ink.codegen.generate           # 生成 dataclass + unpack() 访问器
 - python -m ink.codegen.field_usage_lint   # AST 字段消费检查（ast.Attribute 节点）
 - python -m ink.codegen.sql_access_lint    # sqlparse SQL 访问检查（text_repository 物理隔离）
+- python -m ink.codegen.state_update_lint  # 只有 state_machine 可更新 writing_shots.status
+- python -m ink.codegen.llm_access_lint    # 只有 LLMGateway 可调用供应商 SDK
 - pyright --strict                         # 类型检查
 - pytest                                   # 测试
 ```
 
-**四项都过 = 构建通过**。任一失败 = 阻塞合并。
+**全部通过 = 构建通过**。任一失败 = 阻塞合并。
 
 ### 4.3 sql_access_lint 边界（评审 medium 细化）
 

@@ -18,6 +18,8 @@
 | INV-CONTRACT-001 | B28/B48/B67/B87/B92 | dataclass 上游字段必须被消费，不得动态访问 | `test_field_usage_lint_*` + `field_usage_lint` | M0 |
 | INV-SQL-001 | B19 | 非 `core/text_repository.py` 不得直接访问 `writing_shot_revisions` | `test_sql_access_lint_*` | M0 |
 | INV-DDL-001 | 评审 P0 | 40 张生产表 DDL 必须在内存 SQLite 执行成功 | `test_schema_executes_all_ddl` | M0 |
+| INV-CONFIG-001 | D1/P0-4 | 模型池必须是非空唯一字符串数组；默认写手池与裁判池无交集，重叠时排除 writer 后仍有 3 个 jury model | `test_project_config_validator_model_pools` | M0 |
+| INV-TIME-001 | D5 | 所有业务时间字段统一 UTC ISO 8601 `YYYY-MM-DDTHH:MM:SS.sssZ` | `test_now_utc_iso_format` | M0 |
 | INV-STATE-001 | P0-2 | 14 态状态机只允许矩阵内转移，winner 必须经 polish_revision，终态无出边 | `test_state_machine_matrix` | M1 |
 | INV-STATE-002 | P0-2 | 禁止除 `core/state_machine.py` 外直接 `UPDATE writing_shots SET status` | `state_update_lint` | M0 |
 | INV-REVISION-001 | B19 | `v_current_text` 每 shot 恰一行，封版行优先 | `test_v_current_text_single_row` | M0 |
@@ -25,8 +27,8 @@
 | INV-RUN-001 | B62/B61 | logical_shot_id、run_id、accepted、is_current 四维正交 | `test_four_axis_isolation` | M1 |
 | INV-SOFT-001 | N2 | soft gate N 计数唯一权威源是 `writing_soft_gate_counters` | `test_soft_gate_counter_db_authority` | M1 |
 | INV-SOFT-002 | N2 | N=2 翻盘只允许在 `winner_selected`；进入 `polish_revision`/`soft_sealed` 后新建 run | `test_soft_gate_redo_before_polish_only` | M1 |
-| INV-LLM-001 | B59 | 同类失败连续 3 次熔断，失败类型切换归零 | `test_llm_failure_streaks` | M1 |
-| INV-LLM-002 | P0-5 | shot 总 AI 调用达到上限转 `failed` | `test_total_llm_budget_transitions_failed` | M1 |
+| INV-LLM-001 | B59 | 同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断，失败类型切换归零 | `test_llm_failure_streaks` | M1 |
+| INV-LLM-002 | P0-5 | shot 总 AI 调用达到 `max_total_llm_calls`（默认 40）上限转 `failed` | `test_total_llm_budget_transitions_failed` | M1 |
 | INV-LLM-003 | 运行时评审 | 所有 AI 调用必须经 `LLMGateway` 并落 attempt | `llm_access_lint` + `test_ai_attempt_written` | M0/M1 |
 | INV-QUALITY-001 | 质量铁律 | `final_score < shot_quality_floor` 的 draft 不得 winner | `test_winner_requires_quality_floor` | M4 |
 | INV-QUALITY-002 | 质量铁律 | 任一核心维度低于 `dimension_floor` 不得 `quality_gate_passed` / soft seal | `test_dimension_floor_blocks_winner` | M4 |
@@ -39,6 +41,9 @@
 | INV-QUALITY-009 | 质量证明 | 盲评未通过或 `would_continue_reading_score` 低于阈值不得 `quality_gate_passed` / accepted | `test_blind_review_and_reader_pull_required` | M4/M5 |
 | INV-QUALITY-010 | 文学活力保护 | `productive_deviations` / `protected_roughness` 不得被 polish 自动删除或磨平 | `test_polish_preserves_productive_deviations` | M4/M5 |
 | INV-QUALITY-011 | 模型层级 | 文学体验评审、盲评排序、边界复核、返工指导、polish 不得降级到非 smart 模型 | `test_smart_model_required_tasks_block_on_unavailable_smart` | M4 |
+| INV-JURY-SELF-001 | D3/P0-4 | DB trigger 阻断 `judge_model = writer_model` 的 raw score 写入，JOIN 审计为空 | `test_jury_raw_scores_no_self_judge_trigger` | M0/M4 |
+| INV-JURY-ROUND-001 | 专家审查 P0 | `writing_jury_raw_scores` 必须支持基础 3 裁判和分歧升级 `jury_round`；不得用 role 唯一约束限死 3 行 | `test_jury_raw_scores_supports_escalation_round` | Pre-M0/M0 |
+| INV-CHECKPOINT-001 | D2 | checkpoint `shot_id` 允许 NULL；非 NULL 时必须是 attempt shot id 并满足 FK | `test_checkpoint_shot_id_null_and_fk_semantics` | M0/M1 |
 | INV-HUMAN-001 | B44/B61 | setup/contract/review/import 人工动作必须写 human decision | `test_human_decision_required` | M5 |
 | INV-AUDIT-001 | D-23 | failure attribution 必须能关联 contract clause | `test_failure_attribution_clause_link` | M5 |
 | INV-RECOVERY-001 | D-14 | 每个稳定阶段写 checkpoint，崩溃恢复不覆盖已封板文本 | `test_resume_from_checkpoints` | M1 |
@@ -61,7 +66,7 @@
 | D-14 crash recovery checkpoints | `writing_session_checkpoints` + `ResumeManager` | INV-RECOVERY-001 |
 | D-19 fact anchors | `writing_fact_anchors` + hard_gate2 fact anchor | INV-FACT-001 |
 | D-23 contract auditability | `writing_contract_clauses` / `writing_contract_changelog` / failure attribution | INV-AUDIT-001 |
-| Q-01 high quality hard gate | `quality_bar` / `style_quality_profile` / `quality_gate_passed` / `quality_report_json` | INV-QUALITY-001..011 |
+| Q-01 high quality hard gate | `writing_projects` 质量阈值字段（`shot_quality_floor` 等）/ `style_quality_profile` / `quality_gate_passed` / `quality_report_json` | INV-QUALITY-001..011 |
 
 ## 5. P1 不变量
 
@@ -72,7 +77,7 @@
 | INV-JURY-001 | 3 裁判全评 12 维，raw 与 aggregate 分离 | `test_jury_three_models_all_dimensions` | M4 |
 | INV-JURY-002 | 裁判模型不得等于该 draft 的 writer_model | `test_no_self_judging` | M4 |
 | INV-PROMPT-001 | prompt 二次编译旧行打 superseded_at，新行保留 | `test_prompt_supersede_keeps_history` | M2 |
-| INV-OUTLINE-001 | drift_score < 0.20 拒绝 | `test_outline_drift_threshold` | M2 |
+| INV-OUTLINE-001 | drift_score < `outline_drift_threshold`（默认 0.20）拒绝 | `test_outline_drift_threshold` | M2 |
 | INV-OUTLINE-002 | task card 半句拒绝 | `test_outline_incomplete_tail` | M2 |
 | INV-FACT-001 | fact anchor 违约/幻觉阻断 hard gate2 | `test_fact_anchor_gate` | M4 |
 | INV-BOOK-001 | 第 N 章触发篇级滚动检测 | `test_book_rolling_check_interval` | M6 |

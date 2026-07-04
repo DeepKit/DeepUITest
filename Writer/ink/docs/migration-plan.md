@@ -1,6 +1,6 @@
-# 实施计划 — 从 0 构建完整生产版 M0-M6
+# 实施计划 — Pre-M0 + M0-M6 从 0 构建完整生产版
 
-> **状态**：v2（2026-07-04，质量硬门禁修订），对应 `design-v2.md`
+> **状态**：v3（2026-07-04，Pre-M0 开工门禁修订），对应 `design-v2.md`
 > **定位**：**从 0 构建完整生产版**，不基于旧 `inkflow/` 改造。无工期、无双轨并行、无旧系统迁移、无 MVP 裁剪。
 > **原则**：旧系统仅作"领域知识参考库"，取其踩坑结晶与领域设计，弃其架构病土壤。每个里程碑完成后对照 `pitfall-checklist.md` 逐条核对。
 
@@ -36,7 +36,31 @@
 - 质量门禁必须保护文学活力：`productive` 偏离不得被 `polish_revision` 自动磨平；`neutral` 偏离必须进入人工 review。
 - 每个里程碑完成定义见 `invariant-traceability.md`。
 
+### 0.6 战略边界
+- 实现路线采用“生产内核优先”：M0/M1 先把 schema、lint、状态机、LLMGateway、text_repository、resume 做实，再用 1 章质量证明校准，之后扩展到 M2-M6。
+- 产品形态先定位为单作者本地生产工具；多用户权限、租户隔离、团队协作锁不进入当前版本。
+- 数据库 SQLite 先行，但 DDL、repository、事务边界、UTC 时间格式按未来 PostgreSQL 迁移预留。
+- 质量门禁在 M4-M6 验收期从严；稳定后低风险项可参数化调节，hard gate 与 human accept 不可覆盖硬失败保持不可降级。
+- 默认 CI 使用 mock LLM；真实 LLM 只进入手动或 nightly 验收，用于记录成本、耗时、失败率和质量证明。
+
 ---
+
+## Pre-M0. 开工门禁收口
+
+这不是业务开发阶段，而是把专家审查发现的可执行性条件在开发前清掉。Pre-M0 未完成，不进入 M0 正常开发。
+
+### 必须完成
+- DDL 文本可直接抽取为单一 `schema.sql`，在内存 SQLite 执行成功。
+- `writing_projects` 的列定义和表级 CHECK 顺序合法。
+- `writing_jury_raw_scores` 支持基础 3 裁判和分歧升级 `jury_round`，不再用旧 judge role 唯一约束限死 3 行。
+- orchestrator 入口规则统一：shot 级只收 `(shot_id, run_id)`；chapter/book/import/export 入口只收业务 ID；所有入口禁止传上游 dataclass。
+- resume 示例 SQL 与 schema 一致：通过 `writing_runs.session_id` JOIN `writing_shots`。
+- 字段消费 lint 边界明确：动态访问全局禁；全字段消费只检查契约边界函数和显式标注函数。
+- `tasks.md` 的 P0 决策纳入版本控制或同步进正式文档。
+
+### 验收
+- `test_schema_executes_all_ddl` 先作为 Pre-M0 第一个测试落地。
+- 文档检索无未决策标记、旧 shot orchestrator session 参数、shot 表按 session 直查、runtime event 旧时间字段写入。
 
 ## M0. 基础设施层
 
@@ -48,7 +72,8 @@
    - 建 40 张生产表的 DDL（契约/执行/评审/悬疑/篇级检测/运行审计/人工决策/导入账本）
    - shot 契约核心字段拆 5 张结构化表（must_land/anti_write/scene_contract/persona_assignment/soft_constraints）
    - jury 评分拆 raw_scores + aggregates 2 张表（方案 B）
-   - 建 CHECK 约束（含 `draft_count <= pool`、`jury_pool >= 3`、信息差 6 态枚举、winner 必须 quality_gate_passed、accepted 必须章级 7 维达标）、FK ON DELETE CASCADE、唯一索引（is_winner、accepted canonical、jury winner）
+   - 建 CHECK 约束（含 JSON pool 底线、`draft_count <= pool`、`jury_pool >= jury_model_pool_min`（默认 3）、信息差 6 态枚举、winner 必须 quality_gate_passed、accepted 必须章级 7 维达标）、FK ON DELETE CASCADE、唯一索引（is_winner、accepted canonical、jury winner、每 shot 最多一个 current revision）
+   - 建 `writing_jury_raw_scores` 自评阻断 trigger：`judge_model` 不得等于该 draft 的 `writer_model`
    - 建 DB VIEW `v_current_text`（封版逻辑封装，必须投影 revision_id/source_revision_id）
    - 建 `writing_ai_call_attempts`、`writing_runtime_events`、`writing_llm_failure_streaks`
    - 建 `writing_human_decisions`（含 quality_report_json 与 hard_quality_override=0）、`writing_session_checkpoints`
@@ -74,12 +99,18 @@
 
 ### 验证清单
 - [ ] 40 张生产表 DDL 在内存 SQLite 执行成功，CHECK/FK/索引/VIEW 齐全
+- [ ] 所有时间字段按 UTC ISO 8601 `YYYY-MM-DDTHH:MM:SS.sssZ` 由 `now_utc_iso()` 写入
+- [ ] **`writing_projects` 表包含所有运营参数列**：质量阈值字段（`shot_quality_floor`, `dimension_floor`, `chapter_quality_floor`, `book_quality_floor`, `judge_disagreement_max`, `reader_pull_floor`, `blind_review_min_passes`）+ 熔断预算字段 + 其他运营参数（参数化原则 §1.5）
+- [ ] `writer_model_pool` / `jury_model_pool` DB 底线 CHECK 通过；元素类型、去重、交集由 `ProjectConfigValidator` 测试覆盖
 - [ ] 契约 5 张拆表 + jury 2 张拆表结构正确
-- [ ] MetaContract 含 QualityBar / StyleQualityProfile；quality_bar/style_quality_profile 落 `writing_meta_contracts`
-- [ ] QualityBar 含 `reader_pull_floor`、`blind_review_min_passes`；StyleQualityProfile 含 `reader_pull_target`、`blind_review_policy`、`protected_roughness`、`voice_anti_samples`
+- [ ] `writing_meta_contracts` 不含 `quality_bar`（已迁移至 `writing_projects` 独立字段）；`StyleQualityProfile` 含 `reader_pull_target`、`blind_review_policy`、`protected_roughness`、`voice_anti_samples`
+- [ ] **DB CHECK 绝对底线 vs 运营阈值分离验证**：jury_aggregates CHECK 约束（`final_score >= 80`, `dimension >= 65`）为绝对底线；`writing_projects` 表级 CHECK 保证运营阈值不低于绝对底线；应用层直接读取 `writing_projects` 运营阈值执行
 - [ ] `quality_report_json` schema 校验：缺 `evidence_class`、缺 `defect_class`、缺盲评/继续阅读字段均失败
 - [ ] DDL 阻断：`is_winner=1 AND quality_gate_passed=0`、`accepted` 章级任一维低于 75、`book_check quality_gate_passed=1 AND blocking_issue_count>0` 全部失败
 - [ ] **soft_gate_counters 拆表 + persona intensity 5 维 CHECK + information_gaps 转移 CASE CHECK + chapter_reviews 7 维 CHECK(0-100) + eligibility 8 维 CHECK（medium）**
+- [ ] `writing_jury_raw_scores` 自评 trigger 阻断 `judge_model = writer_model`；JOIN 审计查询为空
+- [ ] `writing_shot_revisions` partial unique index 阻止同 shot 多个 `is_current=1`
+- [ ] `writing_session_checkpoints.shot_id` 允许 NULL；非 NULL 时必须含 run 后缀并满足 FK
 - [ ] **ON DELETE CASCADE 矩阵：从属子表级联、审计指针（source_revision_id/shots.shot_contract_id）不级联（见 implementation-contract §2.9）**
 - [ ] `python -m ink.codegen.generate` 生成 7 个 dataclass + unpack 访问器
 - [ ] `field_usage_lint` 对故意漏字段的测试用例报错；对 `getattr`/`vars` 动态访问报错
@@ -104,7 +135,7 @@
    - `shot_id = {logical}@{run}` 隔离（B62）
    - session/run/attempt 三层（B44）
 2. `core/retry_budget.py`
-   - `LLMCallBudget`：每 shot ≤ 8 次 LLM 调用熔断（B59）
+   - `LLMCallBudget`：每 shot ≤ `max_calls_per_shot`（默认 8）次 LLM 调用熔断（B59）；总调用 ≤ `max_total_llm_calls`（默认 40）
    - `SoftGateCounter`：soft gate 3 级状态机（N1/N2/N3）（铁律 4）；质量类 N=3 转 QUALITY_BLOCKING，不降级放行
    - 连续失败计数权威源为 `writing_llm_failure_streaks`
    - soft gate N 计数权威源为 `writing_soft_gate_counters`
@@ -122,7 +153,7 @@
    - 上游 `source_revision_id` stale 检测（B92）
    - `resume_point` 结构化 JSON `{phase, chapter_id, dimension_index}`（评审 #17）
    - resume 显式绑定 session_id（B44）
-   - 读取 `writing_session_checkpoints`，每个稳定阶段最多保留最近 3 个 checkpoint
+   - 读取 `writing_session_checkpoints`，每个稳定阶段最多保留最近 `checkpoint_max_retention`（默认 3）个 checkpoint
 5. `core/text_repository.py`（完整实现）
    - `read_current_text`：封版规则（B19）
    - `write_revision`：软封版 / 硬封版
@@ -132,7 +163,7 @@
 
 ### 验证清单
 - [ ] shot_id 隔离测试：同 logical 不同 run 不串
-- [ ] retry_budget 测试：第 3 次熔断，类型切换归零，8 次/类型上限，**40 次总量上限转 failed 终态（P0-5）**，计数落 DB 崩溃恢复
+- [ ] retry_budget 测试：第 `consecutive_failure_circuit_break`（默认 3）次熔断，类型切换归零，`max_calls_per_shot`（默认 8）次/类型上限，**`max_total_llm_calls`（默认 40）次总量上限转 failed 终态（P0-5）**，计数落 DB 崩溃恢复；阈值从 `writing_projects` 读取，改参数不改代码
 - [ ] LLMGateway 测试：所有调用落 ai_call_attempts/runtime_events；直接 SDK 调用被 lint 拦截
 - [ ] soft gate 3 级测试：N=1 阻断、N=2 产 ≥2 篇局部重写、非质量 N=3 可降级；质量类 N=3 转 QUALITY_BLOCKING 不放行
 - [ ] N 计数崩溃恢复测试：DB 权威、无状态读、跨 run 累积不归零
@@ -140,6 +171,12 @@
 - [ ] redo_in_progress 崩溃恢复测试：无候选重跑重写、有候选无评分重跑评分
 - [ ] resume 测试：上游 stale 不 skip、显式 session_id、resume_point 结构化定位
 - [ ] checkpoint 测试：drafting/jury/soft_gate/chapter_review 崩溃后从 checkpoint 恢复，不覆盖已封板文本
+- [ ] **checkpoint 幂等性测试（P1）**：
+  - [ ] checkpoint 写入后 payload_checksum 正确（SHA-256 匹配）
+  - [ ] 模拟 payload 损坏后恢复时跳过损坏 checkpoint，回退到上一个有效 checkpoint
+  - [ ] 所有 checkpoint 都损坏时从头扫描 shot_status 恢复
+  - [ ] CHECKPOINT_CORRUPTED 事件正确记录到 writing_runtime_events
+  - [ ] checkpoint_max_retention 正确清理旧 checkpoint（保留最近 N 个）
 - [ ] text_repository 测试：封版前读 MAX、封版后读 is_current、无直查后门
 - [ ] **shot 状态机 14 态转移矩阵测试（P0-2）**：非法转移抛 IllegalTransitionError、终态 hard_sealed/failed 无出边抛 TerminalStateError、failed 不 `→pending` 需新建 run；winner_selected 必须经 polish_revision 才能 soft_sealed
 - [ ] **乐观锁 CAS 测试（P0-2）**：并发改同 shot status 抛 ConcurrentModificationError（affected_rows=0 检测）、不自动重试
@@ -164,9 +201,9 @@
    - 加载器是 DB 的只读投影（铁律 2）
 3. `pipeline/outline_orchestrator.py`
    - `evaluate_and_select(shot_id, run_id) -> OutlineSpec`
-   - 生成 ≥2 份大纲，每份过合格线
+   - 生成 >= `min_eligible_outlines`（默认 2）份大纲，每份过合格线
    - CJK bigram overlap drift 检测（B77），落 `drift_score`
-   - `drift_rejected` 派生自 `drift_score < 0.20`，不存列（评审 #23）
+   - `drift_rejected` 派生自 `drift_score < writing_projects.outline_drift_threshold`（默认 0.20），不存列（评审 #23）
    - PK 选优 → `is_winner`（唯一索引约束，评审 #30）
 4. `contract_compiler/task_card_compiler.py`
    - 由 must_land 生成 TaskCard
@@ -176,11 +213,11 @@
 ### 验证清单
 - [ ] 7 个 dataclass 生成成功 + unpack 访问器，字段消费 lint 通过
 - [ ] 契约加载器 JOIN 5 张拆表正确加载 ShotContract（不传 dataclass 跨步骤）
-- [ ] 大纲生成 ≥2 份，PK 选优正确，is_winner 唯一
-- [ ] drift 检测：overlap < 0.2 拒绝；drift_rejected 派生不存列
+- [ ] 大纲生成 >= `min_eligible_outlines`（默认 2）份，PK 选优正确，is_winner 唯一
+- [ ] drift 检测：overlap < `outline_drift_threshold`（默认 0.2）拒绝；drift_rejected 派生不存列
 - [ ] task card 半句拒绝
 - [ ] task card 二次编译：旧行打戳 + 写新行，旧 prompt 保留
-- [ ] orchestrator 入口只收 `(shot_id, run_id)`（铁律 2 物理隔离）
+- [ ] shot 级 orchestrator 入口只收 `(shot_id, run_id)`（铁律 2 物理隔离）
 - [ ] 对照 `pitfall-checklist.md` P1.7-9 核对
 
 ---
@@ -199,7 +236,7 @@
    - 同 persona（契约指定）+ 同 prompt + 换模型，产 X 篇（创意 shot X+creative_shot_extra）
    - DB CHECK 保证 `draft_count <= len(writer_model_pool)`（评审 #25）
    - deviant 独立产 1 篇（`relaxed_soft=True`，`is_deviant=True`）
-   - N=2 局部重写时产 ≥2 篇新候选，与原 winner 候选池合并评分（评审 #11）
+   - N=2 局部重写时产 >= `redo_candidate_count`（默认 2）篇新候选，与原 winner 候选池合并评分（评审 #11）
 3. `writers/local_fallback.py`
    - LLM 失败时产占位稿，`degraded=True`（铁律 3）
    - 不进 jury 候选池
@@ -220,8 +257,8 @@
 - [ ] 5 维强度配比在 prompt 中体现
 - [ ] 角色声音样本、反面样本、纠正反馈、目标读者进入 context snapshot；被裁剪项有审计原因
 - [ ] 没有 `reader_pull_target` / `blind_review_policy` / `protected_roughness` 不得 confirm-contract
-- [ ] N=2 局部重写产 ≥2 篇，与原候选池合并评分
-- [ ] orchestrator 入口只收 `(shot_id, run_id)`
+- [ ] N=2 局部重写产 >= `redo_candidate_count`（默认 2）篇，与原候选池合并评分
+- [ ] shot 级 orchestrator 入口只收 `(shot_id, run_id)`
 - [ ] 对照 `pitfall-checklist.md` P2.N3、P3.B57 核对
 
 ---
@@ -243,7 +280,7 @@
    - POV 合规
    - 结构骨架（beat 顺序/逻辑）
 3. `jury/literary_jury.py`（3 裁判全评 12 维，方案 B，评审 #1/#4）
-   - 裁判池独立于写手池（N4），DB CHECK 保证 `jury_model_pool >= 3`
+   - 裁判池独立于写手池（N4），DB CHECK 保证 `jury_model_pool >= jury_model_pool_min`（默认 3）
    - **3 裁判都评全部 12 维**（NOT NULL，无稀疏），各有"主视角"（prompt 强调主视角维度详细 reasoning）
      - 裁判1（text 主视角）：画面/节奏/对话/悬疑
      - 裁判2（literary 主视角）：语言/情感/人物/结构
@@ -262,7 +299,7 @@
    - polish 输入必须包含 QualityReport；只修 destructive，保护 productive_deviations，neutral_issues 交 review
    - polish 后必须验证 productive_deviations 仍可定位，丢失则回退或阻断
    - polish 后重新过 hard gates + quality floor
-5. 淘汰后 <2 篇 → 补写（同 persona 同 prompt 换模型）
+5. 淘汰后合格候选 < `min_eligible_candidates`（默认 2）→ 补写（同 persona 同 prompt 换模型）
 
 ### 验证清单
 - [ ] 第一道门槛 4 维度全跑，规则为主
@@ -283,7 +320,14 @@
 - [ ] polish 不得磨平 protected_roughness / productive_deviations；相关测试能检测丢失并阻断
 - [ ] deviant 不进 jury 候选池；deviant_reference 注入 literary_jury 评 creative_boundary
 - [ ] 无 creative_jury 模块
-- [ ] 淘汰后 <2 篇触发补写
+- [ ] 淘汰后合格候选 < `min_eligible_candidates`（默认 2）触发补写
+- [ ] **自动重试机制（A'+A''）验证**：
+  - [ ] `auto_retry_on_hard_failure=TRUE` 时，quality floor 失败后自动重试
+  - [ ] `auto_retry_on_hard_failure=FALSE` 时，quality floor 失败后直接转 failed
+  - [ ] `max_retries_per_gate` 达到后停止重试，转 failed
+  - [ ] `retry_strategy='change_model'` 时，每次重试使用不同写手模型
+  - [ ] 重试预算（max_total_llm_calls）耗尽后转 failed
+  - [ ] accept 路径上编辑零动作（无 auto-retry 介入）
 - [ ] 对照 `pitfall-checklist.md` P1.6（B66）、P1.13（B54）、P2.N1/N3/N4、P3.B49 核对
 
 ---
@@ -404,7 +448,7 @@ quality blocking gate、章级 7 维硬质量门禁、accepted canonical 跑通�
 
 ### 桶 A — 契约语义/阈值断言（迁，约 30%）
 - **判据**：断言的是**领域不变量**（阈值、状态转移、封版规则、幂等性），与旧 schema/函数签名无关
-- **示例**：drift overlap < 0.2 拒绝、第 3 次熔断、封版前读 MAX、shot_id 含 run_id 后缀、accepted 唯一
+- **示例**：drift overlap < `outline_drift_threshold`（默认 0.2）拒绝、第 `consecutive_failure_circuit_break`（默认 3）次熔断、封版前读 MAX、shot_id 含 run_id 后缀、accepted 唯一
 - **迁移方式**：重写为新 dataclass/新函数签名下的断言，断言值不弱化（铁律：入参签名可改，断言不可弱化）
 - **落点**：对应 M0-M5 各里程碑验证清单
 

@@ -1,6 +1,6 @@
 # 墨韵 InkFlow v2 — 完整生产重构
 
-> **状态**：优化设计阶段（2026-07-04）
+> **状态**：Pre-M0 开工门禁收口中，P0 技术与战略决策已拍板（2026-07-04）
 > **目标**：从 0 构建完整生产版 InkFlow，根治旧系统“契约信号逐层丢失、门禁假放行、正文真相源绕过、崩溃恢复不可审计”的架构病。
 
 ## 这是什么
@@ -32,7 +32,8 @@
 | [invariant-traceability.md](docs/invariant-traceability.md) | 旧 bugfix / 架构决策到新测试和门禁的追踪矩阵 | 测试与验收负责人 |
 | [optimization-review.md](docs/optimization-review.md) | 5 个专家视角的优化设计评审结论、P0/P1 收敛项 | 架构与实现负责人 |
 | [pitfall-checklist.md](docs/pitfall-checklist.md) | 必须保留的踩坑修复与新增防御清单 | 写 core/ 模块前必读 |
-| [migration-plan.md](docs/migration-plan.md) | M0-M6 完整实现顺序、验证清单、生产验收标准 | 执行者 |
+| [migration-plan.md](docs/migration-plan.md) | Pre-M0 + M0-M6 完整实现顺序、验证清单、生产验收标准 | 执行者 |
+| [tasks.md](tasks.md) | P0 决策归档、Pre-M0 开工门禁任务、M0 开发任务队列 | 执行者 |
 
 ## 核心决策
 
@@ -45,10 +46,16 @@
 7. **硬门禁保护文学活力**：质量报告必须区分 ES/SEMI_ES/NES 和 destructive/productive/neutral；productive deviation 与 protected_roughness 不得被 polish 自动磨平。
 8. **完整作者闭环**：公开 CLI 覆盖 `init/setup/write/review/revise/reject/accept/export/import/resume`，人工决策有审计。
 9. **完整功能一次设计**：不以 MVP 降低范围；可以分里程碑实现，但每个里程碑不得删除最终生产能力。
+10. **参数化原则**：运营阈值（熔断预算、soft gate N、质量地板、drift 阈值、容量下限、自动重试策略）全部存入 `writing_projects` 表，运行时可调不改代码。DB CHECK 约束为绝对底线，应用层取 `max(项目阈值, 绝对底线)` 执行。
+11. **自动重试减少编辑工作量**：hard gate / quality floor 失败后，系统按 `retry_strategy` 自动重试，编辑只在 `failed` 状态介入做项目级资源决策，不在 accept 路径上介入审美判断。
+12. **生产内核优先**：M0/M1 先做实 schema、lint、状态机、LLMGateway、text_repository、resume，再用 1 章质量证明校准，之后扩展到 M2-M6。
+13. **当前产品边界**：单作者本地生产工具；SQLite 先行但按 PostgreSQL 迁移预留；真实 LLM 不进默认 CI，只进手动或 nightly 验收。
 
 ## 里程碑
 
 ```
+Pre-M0 开工门禁收口
+→
 M0 schema+codegen+lint+审计骨架
 → M1 core 状态机+会话+熔断+恢复
 → M2 contract+outline
@@ -68,4 +75,4 @@ M0 schema+codegen+lint+审计骨架
 
 ## 下一步
 
-先执行 M0：40 张生产表 DDL 烟测、质量硬门禁 CHECK、QualityReport schema、代码生成器、字段消费 lint、SQL 访问 lint、状态机 lint、AI 调用审计表、人工决策表、测试追踪矩阵。
+先执行 Pre-M0：修正 DDL 可执行性、jury 升级轮 schema、orchestrator 入口口径、resume SQL 示例、字段消费 lint 边界，并落 `test_schema_executes_all_ddl`。Pre-M0 通过后再进入 M0：40 张生产表 DDL 烟测、质量硬门禁 CHECK、QualityReport schema、代码生成器、字段消费 lint、SQL 访问 lint、状态机 lint、LLM 访问 lint、AI 调用审计表、人工决策表、测试追踪矩阵。

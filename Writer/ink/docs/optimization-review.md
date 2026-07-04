@@ -1,6 +1,6 @@
 # 优化设计评审结论
 
-> **状态**：v1（2026-07-04，质量硬门禁修订）
+> **状态**：v2（2026-07-04，Pre-M0 开工门禁修订）
 > **定位**：记录 5 个专家视角对 InkFlow v2 完整生产重构文档的评审结论。本文不是实施计划替代品；所有结论必须回落到 `design-v2.md`、`implementation-contract-v1.md`、`migration-plan.md`、`pitfall-checklist.md`、`author-workflow-contract.md` 与 `invariant-traceability.md`。
 
 ---
@@ -16,7 +16,7 @@
 5. AI 调用、失败、人工决策、崩溃恢复、导入与导出都可审计、可恢复、可测试。
 6. 旧系统反复复发的 bug 必须转成新系统的不变量和 CI 门禁。
 
-按这个目标，当前文档已经从“方向正确”收敛为“可开工的生产契约”。是否真正达到最优，取决于 M0-M6 实现后 invariant 测试是否全部通过；文档层面不再接受用 MVP、双轨、共享旧库或后续补齐来降低范围。
+按这个目标，当前文档已经从“方向正确”收敛为“可作为生产实现基线”。但这不等于带条件进入业务开发；专家审查发现的 DDL、jury 升级轮、orchestrator 入口、resume SQL、字段消费 lint 边界等 P0 可执行性问题，必须先在 Pre-M0 开工门禁全部清掉，再进入 M0 正常开发。是否真正达到最优，取决于 M0-M6 实现后 invariant 测试是否全部通过；文档层面不再接受用 MVP、双轨、共享旧库或后续补齐来降低范围。
 
 ---
 
@@ -39,7 +39,7 @@
 
 **已收敛点**：
 - `writing_soft_gate_counters` 是 soft gate N 的唯一权威源，`writing_shots.soft_fail_counts_snapshot` 只做审计快照。
-- `soft_sealed` 不回退到 `winner_selected`；N=2 翻盘只允许在 `winner_selected` 进入 `polish_revision` 之前完成。
+- `soft_sealed` 不回退到 `winner_selected`；`soft_gate_redo_n`（默认 2）翻盘只允许在 `winner_selected` 进入 `polish_revision` 之前完成。
 - `v_current_text` 用 `ROW_NUMBER()` 保证每 shot 恰一行，并投影 `revision_id/source_revision_id` 支撑 stale 检测。
 - `writing_chapter_reviews` 的 accepted canonical 唯一索引保证正式导出只认已接受版本。
 - `writing_jury_aggregates`、`writing_chapter_reviews`、`writing_book_check_results`、`writing_human_decisions` 已具备 shot/chapter/book/human 四层硬质量阻断字段。
@@ -71,10 +71,11 @@
 
 ### 2.5 实现落地专家
 
-**结论**：实现顺序可执行，M0 先固化“禁止犯错的机制”，再进入业务层，是当前风险最低的路径。
+**结论**：实现顺序可执行，Pre-M0 先清掉开工阻断项，M0 再固化“禁止犯错的机制”，之后进入业务层，是当前风险最低的路径。
 
 **已收敛点**：
-- M0 先做 schema、代码生成、lint、CI、text_repository 隔离。
+- Pre-M0 先做 DDL 可执行性、jury 升级轮 schema、orchestrator 入口口径、resume SQL、字段消费 lint 边界和 schema smoke 测试。
+- M0 再做 schema、代码生成、lint、CI、text_repository 隔离。
 - M1 再做状态机、LLMGateway、retry budget、resume。
 - M2-M6 依赖顺序清晰，最终以完整生产流验收。
 
@@ -92,7 +93,7 @@
 - 没有 3 表增量迁移。
 - 没有“先局部可用，后续再补生产能力”的范围裁剪。
 
-文档层面仍要求实现阶段阻断的 P0 项：
+文档层面仍要求 Pre-M0/M0 阻断的 P0 项：
 
 - DDL smoke test 必须稳定通过。
 - `v_current_text` 必须每 shot 恰一行。
@@ -119,12 +120,16 @@
 - `chapter_reviews.rejected` 必须允许保留完整评分与拒绝理由，便于人工复核与审计。
 - import finalize 必须校验 dry-run 后 source hash 未变化。
 - checkpoint 恢复不得覆盖已 hard sealed 文本。
-- 项目级质量标杆必须在 setup 时收集或生成；没有 `quality_bar/style_quality_profile` 不得 confirm-contract。
+- 项目级质量标杆必须在 setup 时收集或生成；没有 `writing_projects` 质量阈值字段（`shot_quality_floor` 等）/ `style_quality_profile` 不得 confirm-contract。
 - `quality_report_json` 必须采用统一 QualityReport schema，含 `evidence_class`、`defect_class`、盲评、继续阅读、productive_deviations 与 neutral_issues。
 - `polish_revision` 必须证明 protected_roughness 仍可定位，不能只证明分数提升。
+- **参数化原则落实**：所有运营阈值（熔断预算、soft gate 升级 N、drift 阈值、容量下限、自动重试策略）必须存入 `writing_projects` 表，运行时可调不改代码。DB CHECK 约束保留为绝对底线，应用层取 `max(项目阈值, 绝对底线)` 执行。详见 design-v2.md §0.4a。
+- **自动重试机制（A'+A''）**：hard gate / quality floor 失败后，系统按 `retry_strategy` 自动重试，减少编辑工作量。编辑只在 `failed` 状态介入做项目级资源决策。详见 design-v2.md §0.4b。
+- **quality_bar JSON 拆为独立字段**：原 `writing_meta_contracts.quality_bar` JSON 已拆为 `writing_projects` 表的 7 个独立字段（`shot_quality_floor`、`dimension_floor`、`chapter_quality_floor`、`book_quality_floor`、`judge_disagreement_max`、`reader_pull_floor`、`blind_review_min_passes`），支持 DB 层约束和索引。`writing_projects` 表级 CHECK 保证运营阈值不低于 DB 绝对底线。详见 implementation-contract-v1.md §2.1。
+- **checkpoint 崩溃恢复幂等性设计**：`writing_session_checkpoints` 表增加 `payload_checksum`（SHA-256）字段，写入时原子写入 payload + checksum；恢复时先校验 checksum，损坏则回退到上一个有效 checkpoint；全部损坏则从头扫描 `shot_status` 恢复。`CHECKPOINT_CORRUPTED` 事件记录到 `writing_runtime_events`。详见 implementation-contract-v1.md §3.8。
 
 ---
 
 ## 5. 最终判定
 
-以“完整生产、写作质量硬门禁、文学活力保护、可审计、可恢复、可测试、防旧病复发”为标准，当前设计是可执行的优化设计。下一步不是继续讨论 MVP 或旧系统迁移，而是按 `migration-plan.md` 从 M0 开工，并用 `invariant-traceability.md` 阻断每个未被测试证明的里程碑。
+以“完整生产、写作质量硬门禁、文学活力保护、可审计、可恢复、可测试、防旧病复发”为标准，当前设计是可执行的优化设计。下一步不是继续讨论 MVP 或旧系统迁移，而是按 `migration-plan.md` 先完成 Pre-M0 开工门禁，再进入 M0；每个里程碑都必须用 `invariant-traceability.md` 阻断未被测试证明的能力。

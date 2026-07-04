@@ -41,8 +41,9 @@
 ### 4. B59 — RetryBudget 熔断（两层，评审 P0-5 拆分）
 - **修复逻辑**：**先计算 next_count 再判断阈值**（不是先判再算，否则第 4 次才触发）。同类失败连续 3 次 → `done_red_permanent`。失败类型切换时连续计数归零（不叠加）。
 - **两层预算（评审 P0-5 拆分，原"8 次上限"语义不清）**：
-  1. **重试失败熔断 `MAX_CALLS_PER_SHOT=8`**（B59 原义）：同类失败连续 3 次熔断；失败类型切换归零；shot 内重试调用 ≤ 8 次。粒度是"同一失败类型的连续重试"。
-  2. **shot 总调用硬上限 `MAX_TOTAL_LLM_CALLS=40`**（P0-5 新增）：整个 shot 生命周期（draft + gate2 模型核验 + jury 3 裁判 + redo 重写 + 章级审核）所有 LLM 调用总和上限。防"每类失败都不足 3 次、但 12 类失败各重试 2 次 = 24 次 + 正常调用"绕过第 1 层烧穿。耗尽 → `transition(status,'failed')` 终态，不自动重试（需新建 run）。
+  1. **重试失败熔断 `max_calls_per_shot`（默认 8）**（B59 原义）：同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断；失败类型切换归零；shot 内重试调用 ≤ `max_calls_per_shot`。粒度是"同一失败类型的连续重试"。
+  2. **shot 总调用硬上限 `max_total_llm_calls`（默认 40）**（P0-5 新增）：整个 shot 生命周期（draft + gate2 模型核验 + jury 3 裁判 + redo 重写 + 章级审核）所有 LLM 调用总和上限。防"每类失败都不足 3 次、但 12 类失败各重试 2 次 = 24 次 + 正常调用"绕过第 1 层烧穿。耗尽 → `transition(status,'failed')` 终态，不自动重试（需新建 run）。
+- **参数化**：以上阈值均在 `writing_projects` 表，运行时可调不改代码。
 - **调用类型维度**：计数带 `call_type ∈ {'draft','gate2','jury','chapter_review'}`，第 1 层熔断按 `(shot_id, call_type, failure_type)` 三元组计数连续失败；第 2 层按 `shot_id` 总和。
 - **计数落 DB**：总量落 `writing_shots.llm_call_count` + `llm_call_breakdown`；连续失败落 `writing_llm_failure_streaks(shot_id, call_type, failure_type)`；每次调用明细落 `writing_ai_call_attempts`；状态变化落 `writing_runtime_events`。`LLMCallBudget.check_circuit(shot_id)` 无状态读 DB。
 - **为什么是领域知识**：无意义重试会烧穿成本 + 污染上下文。不同类型失败不叠加，避免误杀。两层分离：第 1 层防同类死循环，第 2 层防类型分散绕过。
@@ -67,7 +68,7 @@
 ### 7. B77 — 大纲幻觉 drift 检测
 - **修复逻辑**：大纲重生成后，与原始大纲做 CJK bigram overlap 计算。overlap < 0.20 → 拒绝这版再生。
 - **为什么是领域知识**：大纲重生成有幻觉风险（曾产出"1979 工厂→安保机器人"这种完全无关的内容），必须相似度校验。
-- **新架构落点**：`pipeline/outline_orchestrator.py`，落 `writing_outline_specs.drift_score`（0-1 越高越接近）。**`drift_rejected` 不再存列**（评审 #23，铁律 2"一个信号只存一处"）：派生自 `drift_score < 0.20`，消费端实时计算，避免列与列不一致。`is_winner` 加唯一约束保证大纲 PK 只选一个 winner。
+- **新架构落点**：`pipeline/outline_orchestrator.py`，落 `writing_outline_specs.drift_score`（0-1 越高越接近）。**`drift_rejected` 不再存列**（评审 #23，铁律 2"一个信号只存一处"）：派生自 `drift_score < writing_projects.outline_drift_threshold`（默认 0.20，运营可调），消费端实时计算，避免列与列不一致。`is_winner` 加唯一约束保证大纲 PK 只选一个 winner。
 - **核对**：CJK bigram overlap < 0.2 拒绝；drift_score 落库；drift_rejected 派生不存列；is_winner 唯一索引 ✓
 
 ### 8. B87 — outline_has_incomplete_tail
@@ -110,10 +111,10 @@
 - **核对**：timeout 的 draft `degraded=True`，不进 jury 候选池 ✓
 
 ### 14. B93 — 字数口径用 UTF-8 bytes
-- **修复逻辑**：titled shot ≥ 1200 bytes，章末 ≥ 1500 bytes，用 `len(text.encode("utf-8"))` 统一口径。不让 AI 自计汉字。
+- **修复逻辑**：titled shot ≥ `capacity_floor_titled_shot`（默认 1200）bytes，章末 ≥ `capacity_floor_chapter_end`（默认 1500）bytes，用 `len(text.encode("utf-8"))` 统一口径。不让 AI 自计汉字。阈值在 `writing_projects` 可调。
 - **为什么是领域知识**：AI 无法可靠自计汉字，程序侧统一 bytes 口径。
 - **新架构落点**：`gates/capacity.py`，函数 `check_bytes(text, min_bytes)`（第一道硬门槛的子项）
-- **核对**：UTF-8 bytes；阈值 1200/1500；不问 AI ✓
+- **核对**：UTF-8 bytes；阈值从 `writing_projects.capacity_floor_titled_shot`（默认 1200）/`capacity_floor_chapter_end`（默认 1500）读取，运行时可调；不问 AI ✓
 
 ### 15. B19+B62+B61 合并 — 四层执行隔离
 - **修复逻辑**：`logical_shot_id`（逻辑身份）+ `run_id`（执行身份）+ `accepted`（审稿状态）+ `is_current`（封版状态）是**正交的四个维度**，缺任何一个都会导致旧产出混入新产出。
@@ -139,8 +140,9 @@
 - **问题**：旧系统 soft gate 阻断封板不 redo，会卡死（exposition_drift 失败时"注入下一 shot"不解决当前 shot 封板）。
 - **新架构落点**：`core/retry_budget.py` 的 `SoftGateCounter`，同一 logical_shot_id 同一 soft gate 连续失败 N 次：
   - N=1：阻断封板，标记问题，不 redo
-  - N=2：触发该 shot 局部重写（换模型产 **≥2 篇**新候选，与原 winner 候选池合并重新评分选优，评审 #11）
-  - N=3：非质量 SOFT 可降级为 diagnostic 放行；`QUALITY_BLOCKING` 不得放行，必须 revise/reject 新建 run 或 failed
+  - N=`soft_gate_redo_n`（默认 2）：触发该 shot 局部重写（换模型产 **≥2 篇**新候选，与原 winner 候选池合并重新评分选优，评审 #11）
+  - N=`soft_gate_fail_n`（默认 3）：非质量 SOFT 可降级为 diagnostic 放行；`QUALITY_BLOCKING` 不得放行，必须 revise/reject 新建 run 或 failed
+- **参数化**：以上 N 阈值在 `writing_projects` 表，运行时可调不改代码。
 - **N 计数语义**（评审 #6，崩溃恢复关键）：
   - **权威源是 DB 结构化表**：`writing_soft_gate_counters(project_id, logical_shot_id, gate_name)`，每次 soft gate 判定后**立即原子累加**（非封版时才落）
   - `writing_shots.soft_fail_counts_snapshot` 只做审计快照，不允许业务读取
@@ -173,8 +175,8 @@
 - **问题**：旧系统 pyright 只保证"字段存在"不保证"字段被消费"，forbidden_facts 就这么丢的。
 - **新架构落点**：`ink/src/ink/codegen/field_usage_lint.py`，CI 强制运行。两道防线：
   1. **访问器 API 强制**：生成器为每个 dataclass 产出 `unpack()` 方法，消费端用 `unpack()` 解构或具名属性访问（`ast.Attribute` 节点）。**禁止**动态访问：`getattr`/`vars`/`__dict__`/`dataclasses.asdict`/`**x` 一律报错
-  2. **字段消费可达性扫描**：基于"类型可达性"扫描所有 import 了 generated dataclass 的模块（不限 `contract/`），对函数签名里的上游 dataclass 提取字段名，断言每个字段名被 `ast.Attribute` 节点引用。**不再用"字段名出现在源码字符串"的词法匹配**（治误报：字段名在注释/f-string/log 里不算消费；治漏报：动态访问被防线 1 拦截）
-- **核对**：CI 跑 field_usage_lint；所有上游字段被 ast.Attribute 引用；无动态访问后门 ✓
+  2. **字段消费可达性扫描**：动态访问禁令扫描所有 import 了 generated dataclass 的模块；全字段消费只作用于契约边界函数（contract compiler、prompt compiler、gate input builder、jury input builder、shot 级 orchestrator 入口）和显式标注 `@requires_full_field_consumption` 的函数。**不再用"字段名出现在源码字符串"的词法匹配**（治误报：字段名在注释/f-string/log 里不算消费；治漏报：动态访问被防线 1 拦截）
+- **核对**：CI 跑 field_usage_lint；契约边界函数的上游字段被 ast.Attribute 引用；普通 helper 不直接接收 generated dataclass；无动态访问后门 ✓
 
 ### N6. shot 状态机 14 态合法转移矩阵（评审 P0-2）
 - **问题**：无显式转移矩阵时，status 推进靠散落在各 orchestrator 的 `UPDATE ... SET status=?`，非法转移（如 `hard_sealed → drafting`）无法在 DB 层拦截，并发改也无人守。
@@ -203,7 +205,7 @@
 
 ### N11. checkpoint 是崩溃恢复的生产能力
 - **问题**：仅靠 status + resume_point 不足以证明恢复不会覆盖已完成成果。
-- **新架构落点**：`writing_session_checkpoints`，每个稳定阶段写 checkpoint，按 session 保留最近 3 个稳定点。
+- **新架构落点**：`writing_session_checkpoints`，每个稳定阶段写 checkpoint，按 session 保留最近 `checkpoint_max_retention`（默认 3）个稳定点。
 - **核对**：drafting/jury/soft_gate/chapter_review/import_finalize 崩溃恢复测试必须通过；已 hard_sealed 文本不可被恢复流程覆盖 ✓
 
 ### N12. 已有稿导入与重构是一等流程
@@ -214,7 +216,7 @@
 ### N13. 写作质量必须硬门禁
 - **问题**："最高分"可能只是烂稿中相对最好；soft gate 注入后文也可能让当前章带病 accepted；人工 accept 若可 override 硬失败，会把质量问题变成审计文本而非阻断。
 - **新架构落点**：
-  - `MetaContract.quality_bar` / `style_quality_profile` 定义项目级"什么叫好"。
+  - `writing_projects` 表的质量阈值字段（`shot_quality_floor`/`dimension_floor` 等）和 `style_quality_profile` 定义项目级"什么叫好"。
   - `writing_jury_aggregates.quality_gate_passed`、`judge_disagreement_max`、`quality_gate_reasons` 记录 shot 级硬门禁。
   - `polish_revision` 是 winner 后、soft seal 前的强制状态。
   - `writing_chapter_reviews.quality_gate_passed` 和 7 维阈值阻断 accepted。
@@ -261,7 +263,7 @@
 
 ### B92/B94 — 场景多样性 gate
 - 旧修复：加 distinct scene count 检查。
-- 新架构：`gates/l3_diversity.py`（GateClass.HARD），场景指纹 ≥ 3，落 `writing_shot_scene_fingerprints` 表。
+- 新架构：`gates/l3_diversity.py`（GateClass.HARD），场景指纹 >= `scene_fingerprint_min_diversity`（默认 3），落 `writing_shot_scene_fingerprints` 表。阈值在 `writing_projects` 可调。
 - 核对：L3 多样性 gate 硬阻断；指纹表落库 ✓
 
 ---
