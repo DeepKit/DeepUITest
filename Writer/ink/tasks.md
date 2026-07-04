@@ -521,16 +521,16 @@ def test_sensitive_data_not_leaked_to_llm(db, test_shot):
 
 这些任务不是业务开发；它们是进入 M0 前必须完成的工程门禁。
 
-- [ ] 建立新源码骨架：`ink/src/ink/`、`ink/tests/`、`ink/sql/`、基础 `pyproject.toml` 或沿用仓库既有 Python 工程配置。
-- [ ] 从 `implementation-contract-v1.md` 抽取正式 `schema.sql` 到版本控制，例如 `ink/sql/schema.sql`。
-- [ ] 添加 `test_schema_executes_all_ddl`：在内存 SQLite 开启 `PRAGMA foreign_keys=ON`，执行完整 schema，并断言表/索引/触发器/视图存在。
-- [ ] 添加 schema 元测试：禁止旧 jury role 唯一约束、禁止 runtime event 写入旧事件时间字段、禁止从 shot 表按 session 直查。
-- [ ] 添加 jury round schema 测试：基础轮允许 3 裁判；升级轮允许 `escalated_jury_count` 裁判；同轮同 slot/model 重复写入失败。
-- [ ] 添加 jury 自评阻断测试：`judge_model = writer_model` 时 DB trigger 必须拒绝写入，JOIN 审计查询结果为空。
-- [ ] 添加 orchestrator 入口签名 lint 的最小测试：shot 级 orchestrator 只能接收 `(shot_id, run_id)`；禁止 dataclass 作为入口参数。
-- [ ] 添加字段消费 lint 的最小测试：动态 dataclass 访问全局失败；全字段消费只在契约边界函数和显式标注函数失败。
-- [ ] 添加 resume SQL 契约测试：通过 `writing_runs.session_id` 定位 session 内 shot，不允许从 `writing_shots.session_id` 查询。
-- [ ] 把 Pre-M0 通过条件写入 CI 或本地统一命令，确保 M0 开发前可一键验证。
+- [x] 建立新源码骨架：`ink/src/ink/`、`ink/tests/`、`ink/sql/`、基础 `pyproject.toml`。
+- [x] 从 `implementation-contract-v1.md` 抽取正式 `schema.sql` 到版本控制：`ink/sql/schema.sql`。
+- [x] 添加 `test_schema_executes_all_ddl`：在内存 SQLite 开启 `PRAGMA foreign_keys=ON`，执行完整 schema，并断言表/索引/触发器/视图存在。
+- [x] 添加 schema 元测试：禁止旧 jury role 唯一约束、禁止 runtime event 写入旧事件时间字段、禁止从 shot 表按 session 直查。
+- [x] 添加 jury round schema 测试：基础轮允许 3 裁判；升级轮允许 `escalated_jury_count` 裁判；同轮同 slot/model 重复写入失败。
+- [x] 添加 jury 自评阻断测试：`judge_model = writer_model` 时 DB trigger 必须拒绝写入，JOIN 审计查询结果为空。
+- [x] 添加 orchestrator 入口签名 lint 的最小测试：shot 级 orchestrator 只能接收 `(shot_id, run_id)`；禁止 dataclass 作为入口参数。
+- [x] 添加字段消费 lint 的最小测试：动态 dataclass 访问全局失败；全字段消费只在契约边界函数和显式标注函数失败。
+- [x] 添加 resume SQL 契约测试：通过 `writing_runs.session_id` 定位 session 内 shot，不允许从 `writing_shots.session_id` 查询。
+- [x] 把 Pre-M0 通过条件写入本地统一命令：`cd ink && python -m pytest`。
 
 ### M0 正式开发任务
 

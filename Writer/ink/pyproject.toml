@@ -1,0 +1,10 @@
+[project]
+name = "inkflow-v2"
+version = "0.0.0"
+description = "InkFlow v2 production rewrite"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
