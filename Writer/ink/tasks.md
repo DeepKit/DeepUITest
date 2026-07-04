@@ -546,6 +546,18 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 接入字段消费 lint、SQL 访问 lint、状态更新 lint、LLM 访问 lint。
 - [x] 建立 `invariant-traceability.md` 到测试文件的追踪检查，禁止里程碑只写占位测试。
 
+### M1 核心机制任务
+
+- [x] 实现 14 态状态机合法转移、终态阻断、CAS stale 更新阻断。
+- [x] 实现 `SoftGateCounter`：`writing_soft_gate_counters` 作为 N 计数唯一权威源，支持 N=1/2/3 阈值映射。
+- [x] 实现 `LLMCallBudget`：同类失败连续熔断、单类型预算、总调用预算耗尽转 `failed`。
+- [x] 实现 `ResumeManager`：session 绑定恢复、14 态 resume 映射、`redo_in_progress` 分支、结构化 `resume_point` 校验。
+- [x] 实现 `CheckpointManager`：payload checksum、损坏 checkpoint 回退、`CHECKPOINT_CORRUPTED` 事件、retention 清理。
+- [x] 将 M1 核心不变量接入 `invariant-traceability.md` 追踪测试。
+- [ ] 实现 `SoftGateCounter` 与实际 soft gate orchestrator 的事务集成。
+- [ ] 实现 `LLMCallBudget` 与 `LLMGateway.call()` 的调用前后预算集成。
+- [ ] 实现完整 `ResumeManager.execute_resume_action()`，接入后续 orchestrator。
+
 ---
 
 ## 决策记录
