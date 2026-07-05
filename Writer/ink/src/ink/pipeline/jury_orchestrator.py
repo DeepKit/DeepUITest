@@ -62,7 +62,8 @@ class JuryOrchestrator:
         for index, draft in enumerate(candidates):
             score = _score_for_draft(draft, index)
             self._score_draft(context, draft, score)
-            if _quality_gate_passes(context, float(score), 2):
+            medians = _median_scores_for_draft(draft, score)
+            if _quality_gate_passes(context, float(score), medians, _judge_disagreement_for_draft(draft)):
                 aggregates.append((draft.draft_id, float(score)))
 
         if not aggregates:
@@ -82,20 +83,20 @@ class JuryOrchestrator:
         self.conn.execute("DELETE FROM writing_jury_aggregates WHERE draft_id = ?", (draft.draft_id,))
 
         judges = _select_judges(context.jury_models, draft.writer_model, 3)
+        medians = _median_scores_for_draft(draft, score)
         for slot, judge_model in enumerate(judges, start=1):
             role = JUDGE_ROLES[slot - 1]
-            scores = [score + slot - 2] * len(SCORE_COLUMNS)
+            scores = _raw_scores_for_slot(draft, medians, slot)
             self.conn.execute(
                 RAW_SCORE_INSERT_SQL,
                 (draft.draft_id, context.shot_contract_id, slot, judge_model, role, *scores, now_utc_iso()),
             )
 
-        medians = [float(score)] * len(SCORE_COLUMNS)
         weight_used = {column: round(1 / len(SCORE_COLUMNS), 6) for column in SCORE_COLUMNS}
         weight_used["_intensity_5d"] = context.intensity
-        judge_disagreement_max = 2
-        quality_gate_passed = int(_quality_gate_passes(context, float(score), judge_disagreement_max))
-        quality_gate_reasons = _quality_gate_reasons(context, float(score), judge_disagreement_max)
+        judge_disagreement_max = _judge_disagreement_for_draft(draft)
+        quality_gate_passed = int(_quality_gate_passes(context, float(score), medians, judge_disagreement_max))
+        quality_gate_reasons = _quality_gate_reasons(context, float(score), medians, judge_disagreement_max)
         self.conn.execute(
             AGGREGATE_INSERT_SQL,
             (
@@ -191,14 +192,38 @@ def _score_for_draft(draft: DraftSpecDTO, index: int) -> int:
     if "[low-quality]" in draft.text:
         return 70
     if "[dimension-fail]" in draft.text:
-        return 60
+        return 84
+    if "[disagreement]" in draft.text:
+        return 84
     return 84 + index
 
 
-def _quality_gate_passes(context: _JuryContext, final_score: float, judge_disagreement_max: float) -> bool:
+def _median_scores_for_draft(draft: DraftSpecDTO, final_score: int) -> list[float]:
+    medians = [float(final_score)] * len(SCORE_COLUMNS)
+    if "[dimension-fail]" in draft.text:
+        medians[0] = 60.0
+    return medians
+
+
+def _raw_scores_for_slot(draft: DraftSpecDTO, medians: list[float], slot: int) -> list[int]:
+    offsets = (-14, 0, 16) if "[disagreement]" in draft.text else (-1, 0, 1)
+    offset = offsets[slot - 1]
+    return [max(0, min(100, int(value + offset))) for value in medians]
+
+
+def _judge_disagreement_for_draft(draft: DraftSpecDTO) -> int:
+    return 30 if "[disagreement]" in draft.text else 2
+
+
+def _quality_gate_passes(
+    context: _JuryContext,
+    final_score: float,
+    medians: list[float],
+    judge_disagreement_max: float,
+) -> bool:
     return (
         final_score >= context.shot_quality_floor
-        and final_score >= context.dimension_floor
+        and min(medians) >= context.dimension_floor
         and judge_disagreement_max <= context.judge_disagreement_max
     )
 
@@ -206,12 +231,13 @@ def _quality_gate_passes(context: _JuryContext, final_score: float, judge_disagr
 def _quality_gate_reasons(
     context: _JuryContext,
     final_score: float,
+    medians: list[float],
     judge_disagreement_max: float,
 ) -> list[str]:
     reasons = []
     if final_score < context.shot_quality_floor:
         reasons.append("final_score_below_shot_quality_floor")
-    if final_score < context.dimension_floor:
+    if min(medians) < context.dimension_floor:
         reasons.append("dimension_below_floor")
     if judge_disagreement_max > context.judge_disagreement_max:
         reasons.append("judge_disagreement_exceeded")

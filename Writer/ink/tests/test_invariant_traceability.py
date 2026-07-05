@@ -27,6 +27,8 @@ INVARIANT_EVIDENCE = {
     "INV-OUTLINE-001": ["test_outline_drift_threshold_and_winner_uniqueness"],
     "INV-OUTLINE-002": ["test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards"],
     "INV-QUALITY-001": ["test_jury_quality_floor_failure_cannot_select_winner"],
+    "INV-QUALITY-002": ["test_jury_dimension_floor_failure_cannot_select_winner"],
+    "INV-QUALITY-003": ["test_jury_disagreement_failure_cannot_select_winner"],
     "INV-GATE-001": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-GATE-002": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-JURY-001": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],

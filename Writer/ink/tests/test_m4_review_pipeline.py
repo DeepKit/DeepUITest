@@ -82,6 +82,42 @@ def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     assert all("final_score_below_shot_quality_floor" in row[1] for row in rows)
 
 
+def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    WriteOrchestrator(conn, LLMGateway(conn, provider=DimensionFailDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    with pytest.raises(DataIntegrityError):
+        JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    rows = conn.execute("SELECT scene_visual_median, quality_gate_reasons, is_winner FROM writing_jury_aggregates").fetchall()
+    assert rows
+    assert all(row[0] == 60 and row[2] == 0 for row in rows)
+    assert all("dimension_below_floor" in row[1] for row in rows)
+
+
+def test_jury_disagreement_failure_cannot_select_winner() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    WriteOrchestrator(conn, LLMGateway(conn, provider=DisagreementDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    with pytest.raises(DataIntegrityError):
+        JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    rows = conn.execute("SELECT judge_disagreement_max, quality_gate_reasons, is_winner FROM writing_jury_aggregates").fetchall()
+    assert rows
+    assert all(row[0] == 30 and row[2] == 0 for row in rows)
+    assert all("judge_disagreement_exceeded" in row[1] for row in rows)
+
+
 def test_m4_orchestrator_entrypoint_signatures_lint_clean() -> None:
     from ink.pipeline import hard_gate_orchestrator, jury_orchestrator
 
@@ -102,6 +138,26 @@ class LowQualityDraftProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         return ModelResult(
             text=f"[low-quality] {model_name}:{idempotency_key}",
+            model_name=model_name,
+            token_input=1,
+            token_output=1,
+        )
+
+
+class DimensionFailDraftProvider:
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        return ModelResult(
+            text=f"[dimension-fail] {model_name}:{idempotency_key}",
+            model_name=model_name,
+            token_input=1,
+            token_output=1,
+        )
+
+
+class DisagreementDraftProvider:
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        return ModelResult(
+            text=f"[disagreement] {model_name}:{idempotency_key}",
             model_name=model_name,
             token_input=1,
             token_output=1,
