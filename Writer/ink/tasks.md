@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4 review baseline 已完成本地验证；当前任务队列已清零
+> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4/M5 baseline 已完成本地验证；M6 book/export baseline 开发中
 > **最后更新**：2026-07-05
 
 ---
@@ -609,6 +609,17 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 chapter hard seal：review 通过且 human accept 后，将本章 `soft_sealed` shot 写 `chapter_hard` revision 并推进到 `hard_sealed`。
 - [x] 将 M5 `INV-QUALITY-005`、`INV-QUALITY-007`、`INV-HUMAN-001` 接入 invariant 追踪测试。
 
+### M6 book/export/import baseline 任务
+
+- [x] 实现 `BookRollingCheckOrchestrator.run_if_due(project_id, up_to_chapter)`：按 `chapter_rolling_check_interval` 触发篇级滚动检测并落 `writing_book_check_results`。
+- [x] 实现篇级 blocking issue 阻断：最近一次 book check 有 blocking issue 时，不得继续 chapter accept / export。
+- [x] 实现 `ExportOrchestrator.export_project(project_id)`：只读 accepted canonical / hard-sealed 正文，并经 `TextRepository.read_current_text()` 读取。
+- [x] 实现 export 结构标签清理与 `EXPORT_COMPLETED` runtime event。
+- [x] 将 M6 `INV-QUALITY-006`、`INV-BOOK-001`、`INV-EXPORT-001` 接入 invariant 追踪测试。
+- [ ] 实现 import dry-run：生成 `writing_import_runs` / manifest / questions，不写正式正文或 accepted canonical。
+- [ ] 实现 import finalize：必须写 `writing_human_decisions` + `writing_import_decisions`，并校验 source hash 未变化。
+- [ ] 将 M6 `INV-IMPORT-001` 接入 invariant 追踪测试。
+
 ---
 
 ## 决策记录
@@ -633,6 +644,6 @@ Pre-M0 全部通过后才开始以下任务。
 
 ## 下一步
 
-1. 执行 M5 chapter review + human seal baseline，并保持 `cd ink && python -m pytest` 一键通过。
-2. M5 通过后再展开 M6 book rolling check / export / import finalize 任务队列。
+1. 执行 M6 book rolling check / export / import finalize 任务队列，并保持 `cd ink && python -m pytest` 一键通过。
+2. M6 通过后补完整 6 章 workflow smoke，覆盖 resume / revise / reject / import / export。
 3. 若实现发现文档与代码不可同时满足，先同步本文和正式设计文档，再继续开发。

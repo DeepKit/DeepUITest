@@ -7,6 +7,7 @@ from dataclasses import asdict
 from ink.core.state_machine import transition
 from ink.core.text_repository import TextRepository
 from ink.errors import DataIntegrityError
+from ink.pipeline.book_rolling_check_orchestrator import has_blocking_issues
 from ink.quality_report import validate_quality_report
 from ink.time import now_utc_iso
 
@@ -20,6 +21,8 @@ class HumanReviewOrchestrator:
         blocking_issues = tuple(json.loads(review["blocking_issues"]))
         if int(review["quality_gate_passed"]) != 1:
             raise DataIntegrityError("human accept cannot override chapter quality failure")
+        if has_blocking_issues(self.conn, project_id):
+            raise DataIntegrityError("unresolved book blocking issue prevents chapter accept")
 
         shots = _load_accept_ready_shots(self.conn, project_id, chapter_id, run_id)
         if not shots:
