@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4 review baseline 已完成本地验证
+> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4 review baseline 已完成本地验证；当前任务队列已清零
 > **最后更新**：2026-07-05
 
 ---
@@ -557,7 +557,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 将 M1 核心不变量接入 `invariant-traceability.md` 追踪测试。
 - [x] 实现 `SoftGateCounter` 与实际 soft gate orchestrator 的事务集成。
 - [x] 实现 `LLMCallBudget` 与 `LLMGateway.call()` 的调用前后预算集成。
-- [ ] 扩展 `ResumeManager.execute_resume_action()`，接入 M3-M6 drafting/gate/jury/polish/review/export handlers。
+- [x] 扩展 `ResumeManager.execute_resume_action()`：通过 `build_shot_resume_handlers()` 接入 M2-M4 shot 级 outline/task/prompt/drafting/gate/jury/polish handlers；M5/M6 review/export 属非 shot 级编排，后续里程碑单列。
 
 ### M2 contract + outline baseline 任务
 

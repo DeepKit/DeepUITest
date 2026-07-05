@@ -59,6 +59,12 @@ class HardGateOrchestrator:
             (draft_id, gate1_eligible, *gate1, gate2_eligible, *gate2, now_utc_iso()),
         )
 
+    def resume_handlers(self) -> dict[str, object]:
+        return {
+            "rerun_hard_gate1": self.run_both_gates,
+            "rerun_hard_gate2": self.run_both_gates,
+        }
+
 
 def _gate1(draft: DraftSpecDTO, forbidden_words: list[str]) -> tuple[int, int, int, int]:
     contract_compliance = int(not draft.degraded)
