@@ -46,6 +46,7 @@ INVARIANT_EVIDENCE = {
     "INV-QUALITY-007": ["test_human_accept_cannot_override_quality_failure"],
     "INV-QUALITY-011": ["test_polish_blocks_when_smart_model_unavailable_without_downgrade"],
     "INV-HUMAN-001": ["test_human_accept_writes_decision_and_hard_seals_chapter"],
+    "INV-IMPORT-001": ["test_import_dry_run_finalize"],
     "INV-EXPORT-001": ["test_export_accepted_only"],
     "INV-BOOK-001": ["test_book_rolling_check_interval"],
     "INV-GATE-001": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],

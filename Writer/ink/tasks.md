@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4/M5 baseline 已完成本地验证；M6 book/export baseline 开发中
+> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4/M5/M6 baseline 已完成本地验证；下一阶段为 6 章 workflow smoke
 > **最后更新**：2026-07-05
 
 ---
@@ -616,9 +616,9 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `ExportOrchestrator.export_project(project_id)`：只读 accepted canonical / hard-sealed 正文，并经 `TextRepository.read_current_text()` 读取。
 - [x] 实现 export 结构标签清理与 `EXPORT_COMPLETED` runtime event。
 - [x] 将 M6 `INV-QUALITY-006`、`INV-BOOK-001`、`INV-EXPORT-001` 接入 invariant 追踪测试。
-- [ ] 实现 import dry-run：生成 `writing_import_runs` / manifest / questions，不写正式正文或 accepted canonical。
-- [ ] 实现 import finalize：必须写 `writing_human_decisions` + `writing_import_decisions`，并校验 source hash 未变化。
-- [ ] 将 M6 `INV-IMPORT-001` 接入 invariant 追踪测试。
+- [x] 实现 import dry-run：生成 `writing_import_runs` / manifest / questions，不写正式正文或 accepted canonical。
+- [x] 实现 import finalize：必须写 `writing_human_decisions` + `writing_import_decisions`，并校验 source hash 未变化。
+- [x] 将 M6 `INV-IMPORT-001` 接入 invariant 追踪测试。
 
 ---
 
@@ -644,6 +644,6 @@ Pre-M0 全部通过后才开始以下任务。
 
 ## 下一步
 
-1. 执行 M6 book rolling check / export / import finalize 任务队列，并保持 `cd ink && python -m pytest` 一键通过。
-2. M6 通过后补完整 6 章 workflow smoke，覆盖 resume / revise / reject / import / export。
+1. 补完整 6 章 workflow smoke，覆盖 resume / revise / reject / import / export。
+2. 根据 smoke 暴露的问题补 CLI、非 shot 级 resume handler 或流程胶水。
 3. 若实现发现文档与代码不可同时满足，先同步本文和正式设计文档，再继续开发。
