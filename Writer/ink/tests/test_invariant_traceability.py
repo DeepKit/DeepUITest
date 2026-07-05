@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-M0_M2_INVARIANT_EVIDENCE = {
+INVARIANT_EVIDENCE = {
     "INV-CONTRACT-001": ["test_field_usage_lint", "lint_field_usage"],
     "INV-SQL-001": ["test_sql_access_lint", "lint_sql_access"],
     "INV-DDL-001": ["test_schema_executes_all_ddl"],
@@ -26,16 +26,21 @@ M0_M2_INVARIANT_EVIDENCE = {
     "INV-PROMPT-001": ["test_prompt_snapshot_compiler_supersedes_by_task_card_persona"],
     "INV-OUTLINE-001": ["test_outline_drift_threshold_and_winner_uniqueness"],
     "INV-OUTLINE-002": ["test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards"],
+    "INV-QUALITY-001": ["test_jury_quality_floor_failure_cannot_select_winner"],
+    "INV-GATE-001": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
+    "INV-GATE-002": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
+    "INV-JURY-001": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
+    "INV-JURY-002": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
 }
 
 
-def test_m0_m2_invariants_have_executable_evidence() -> None:
+def test_tracked_invariants_have_executable_evidence() -> None:
     root = Path(__file__).resolve().parents[1]
     matrix = (root / "docs" / "invariant-traceability.md").read_text(encoding="utf-8")
     test_source = "\n".join(path.read_text(encoding="utf-8") for path in (root / "tests").glob("test_*.py"))
     lint_source = "\n".join(path.read_text(encoding="utf-8") for path in (root / "src" / "ink" / "linting").glob("*.py"))
     source = test_source + "\n" + lint_source
 
-    for invariant_id, evidence_tokens in M0_M2_INVARIANT_EVIDENCE.items():
+    for invariant_id, evidence_tokens in INVARIANT_EVIDENCE.items():
         assert invariant_id in matrix
         assert any(token in source for token in evidence_tokens), invariant_id

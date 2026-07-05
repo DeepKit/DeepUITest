@@ -30,7 +30,7 @@
 | INV-LLM-001 | B59 | 同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断，失败类型切换归零 | `test_llm_failure_streaks` | M1 |
 | INV-LLM-002 | P0-5 | shot 总 AI 调用达到 `max_total_llm_calls`（默认 40）上限转 `failed` | `test_total_llm_budget_transitions_failed` | M1 |
 | INV-LLM-003 | 运行时评审 | 所有 AI 调用必须经 `LLMGateway` 并落 attempt | `llm_access_lint` + `test_ai_attempt_written` | M0/M1 |
-| INV-QUALITY-001 | 质量铁律 | `final_score < shot_quality_floor` 的 draft 不得 winner | `test_winner_requires_quality_floor` | M4 |
+| INV-QUALITY-001 | 质量铁律 | `final_score < shot_quality_floor` 的 draft 不得 winner | `test_jury_quality_floor_failure_cannot_select_winner` | M4 |
 | INV-QUALITY-002 | 质量铁律 | 任一核心维度低于 `dimension_floor` 不得 `quality_gate_passed` / soft seal | `test_dimension_floor_blocks_winner` | M4 |
 | INV-QUALITY-003 | 质量铁律 | 裁判分歧超过阈值不得直接 winner，必须升级复核 | `test_judge_disagreement_blocks_winner` | M4 |
 | INV-QUALITY-004 | 质量铁律 | winner 必须经过 `polish_revision` 并重新过 hard gates + quality floor 后才能 soft seal | `test_polish_required_before_soft_seal` | M4/M5 |
@@ -72,10 +72,10 @@
 
 | ID | 不变量 | 新测试 / 门禁 | 里程碑 |
 |----|--------|---------------|--------|
-| INV-GATE-001 | hard gate 必须先于文学 jury | `test_eligibility_before_jury` | M4 |
-| INV-GATE-002 | degraded draft 不进 jury | `test_degraded_excluded_from_jury` | M3/M4 |
-| INV-JURY-001 | 3 裁判全评 12 维，raw 与 aggregate 分离 | `test_jury_three_models_all_dimensions` | M4 |
-| INV-JURY-002 | 裁判模型不得等于该 draft 的 writer_model | `test_no_self_judging` | M4 |
+| INV-GATE-001 | hard gate 必须先于文学 jury | `test_hard_gate_orchestrator_records_two_gate_eligibility_and_blocks_degraded` | M4 |
+| INV-GATE-002 | degraded draft 不进 jury | `test_hard_gate_orchestrator_records_two_gate_eligibility_and_blocks_degraded` | M3/M4 |
+| INV-JURY-001 | 3 裁判全评 12 维，raw 与 aggregate 分离 | `test_jury_scores_three_models_all_dimensions_and_selects_winner` | M4 |
+| INV-JURY-002 | 裁判模型不得等于该 draft 的 writer_model | `test_jury_scores_three_models_all_dimensions_and_selects_winner` | M4 |
 | INV-PROMPT-001 | task card / prompt 二次编译旧行打 superseded_at，新行保留 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards` + `test_prompt_snapshot_compiler_supersedes_by_task_card_persona` | M2 |
 | INV-OUTLINE-001 | drift_score < `outline_drift_threshold`（默认 0.20）拒绝 | `test_outline_drift_threshold_and_winner_uniqueness` | M2 |
 | INV-OUTLINE-002 | task card 半句拒绝 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards` | M2 |

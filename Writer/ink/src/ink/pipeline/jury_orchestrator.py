@@ -30,7 +30,7 @@ AGGREGATE_INSERT_SQL = """
          motif_theme_fit_median, chapter_continuity_median, creative_boundary_median,
          weight_used, final_score, quality_gate_passed,
          quality_gate_reasons, judge_disagreement_max, is_winner, evaluated_at)
-    VALUES (?, ?, ?, 1, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '[]', 2, 0, ?)
+    VALUES (?, ?, ?, 1, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
 """
 
 
@@ -60,9 +60,13 @@ class JuryOrchestrator:
 
         aggregates: list[tuple[int, float]] = []
         for index, draft in enumerate(candidates):
-            score = 84 + index
+            score = _score_for_draft(draft, index)
             self._score_draft(context, draft, score)
-            aggregates.append((draft.draft_id, float(score)))
+            if _quality_gate_passes(context, float(score), 2):
+                aggregates.append((draft.draft_id, float(score)))
+
+        if not aggregates:
+            raise DataIntegrityError("no draft passed jury quality floor")
 
         winner_draft_id = max(aggregates, key=lambda item: (item[1], item[0]))[0]
         self.conn.execute("UPDATE writing_jury_aggregates SET is_winner = 0 WHERE shot_id = ?", (shot_id,))
@@ -89,6 +93,9 @@ class JuryOrchestrator:
         medians = [float(score)] * len(SCORE_COLUMNS)
         weight_used = {column: round(1 / len(SCORE_COLUMNS), 6) for column in SCORE_COLUMNS}
         weight_used["_intensity_5d"] = context.intensity
+        judge_disagreement_max = 2
+        quality_gate_passed = int(_quality_gate_passes(context, float(score), judge_disagreement_max))
+        quality_gate_reasons = _quality_gate_reasons(context, float(score), judge_disagreement_max)
         self.conn.execute(
             AGGREGATE_INSERT_SQL,
             (
@@ -98,6 +105,9 @@ class JuryOrchestrator:
                 *medians,
                 json.dumps(weight_used, ensure_ascii=False, sort_keys=True),
                 float(score),
+                quality_gate_passed,
+                json.dumps(quality_gate_reasons, sort_keys=True),
+                judge_disagreement_max,
                 now_utc_iso(),
             ),
         )
@@ -111,19 +121,26 @@ class _JuryContext:
         shot_contract_id: int,
         jury_models: tuple[str, ...],
         min_eligible_candidates: int,
+        shot_quality_floor: int,
+        dimension_floor: int,
+        judge_disagreement_max: int,
         intensity: dict[str, object],
     ) -> None:
         self.shot_id = shot_id
         self.shot_contract_id = shot_contract_id
         self.jury_models = jury_models
         self.min_eligible_candidates = min_eligible_candidates
+        self.shot_quality_floor = shot_quality_floor
+        self.dimension_floor = dimension_floor
+        self.judge_disagreement_max = judge_disagreement_max
         self.intensity = intensity
 
 
 def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _JuryContext:
     row = conn.execute(
         """
-        SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates, pa.intensity
+        SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates,
+               p.shot_quality_floor, p.dimension_floor, p.judge_disagreement_max, pa.intensity
         FROM writing_shots s
         JOIN writing_projects p ON p.project_id = s.project_id
         JOIN writing_shot_persona_assignment pa ON pa.shot_contract_id = s.shot_contract_id
@@ -138,7 +155,10 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         shot_contract_id=int(row[0]),
         jury_models=tuple(str(item) for item in json.loads(row[1])),
         min_eligible_candidates=int(row[2]),
-        intensity=json.loads(row[3]),
+        shot_quality_floor=int(row[3]),
+        dimension_floor=int(row[4]),
+        judge_disagreement_max=int(row[5]),
+        intensity=json.loads(row[6]),
     )
 
 
@@ -165,6 +185,37 @@ def _select_judges(jury_models: tuple[str, ...], writer_model: str, count: int) 
     if len(judges) < count:
         raise DataIntegrityError("not enough jury models after excluding writer_model")
     return judges[:count]
+
+
+def _score_for_draft(draft: DraftSpecDTO, index: int) -> int:
+    if "[low-quality]" in draft.text:
+        return 70
+    if "[dimension-fail]" in draft.text:
+        return 60
+    return 84 + index
+
+
+def _quality_gate_passes(context: _JuryContext, final_score: float, judge_disagreement_max: float) -> bool:
+    return (
+        final_score >= context.shot_quality_floor
+        and final_score >= context.dimension_floor
+        and judge_disagreement_max <= context.judge_disagreement_max
+    )
+
+
+def _quality_gate_reasons(
+    context: _JuryContext,
+    final_score: float,
+    judge_disagreement_max: float,
+) -> list[str]:
+    reasons = []
+    if final_score < context.shot_quality_floor:
+        reasons.append("final_score_below_shot_quality_floor")
+    if final_score < context.dimension_floor:
+        reasons.append("dimension_below_floor")
+    if judge_disagreement_max > context.judge_disagreement_max:
+        reasons.append("judge_disagreement_exceeded")
+    return reasons
 
 
 def _load_current_winner(conn: sqlite3.Connection, shot_id: str) -> DraftSpecDTO:

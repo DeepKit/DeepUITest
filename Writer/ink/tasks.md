@@ -592,7 +592,8 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] jury dispatch 按 draft 排除该 draft 的 `writer_model`；DB trigger 与 JOIN 审计保持为空。
 - [x] jury baseline 排除 `degraded` 与 `is_deviant` 正式候选；deviant 暂作为 M4 后续 creative boundary reference 输入。
 - [x] 通过 `writing_jury_aggregates.is_winner` 唯一索引保证每 shot 唯一 winner，并推进 `jury_scoring -> winner_selected`。
-- [ ] 实现 final_score / dimension_floor / judge_disagreement 的失败分支与补写触发。
+- [x] 实现 `final_score < shot_quality_floor` 不得 winner：低分 aggregate 可审计落库，但不推进 `winner_selected`。
+- [ ] 实现 dimension_floor / judge_disagreement 的失败分支与补写触发。
 - [ ] 实现 deviant_reference 注入 creative_boundary 评分输入。
 - [ ] 实现 polish_revision 强制流程：winner 必须 polish 后重新过 hard gates + quality floor。
 - [ ] 实现 smart-model-required 任务不可降级阻断。

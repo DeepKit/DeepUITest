@@ -4,7 +4,9 @@ from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
-from ink.core.llm_gateway import LLMGateway
+from ink.core.llm_gateway import LLMGateway, ModelResult
+from ink.errors import DataIntegrityError
+import pytest
 from test_m3_writer_pipeline import FailFirstDraftProvider, RecordingDraftProvider, make_prompt_compiled_shot
 
 
@@ -59,6 +61,27 @@ def test_jury_scores_three_models_all_dimensions_and_selects_winner() -> None:
     ).fetchone()[0] == 0
 
 
+def test_jury_quality_floor_failure_cannot_select_winner() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    WriteOrchestrator(conn, LLMGateway(conn, provider=LowQualityDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    with pytest.raises(DataIntegrityError):
+        JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "jury_scoring"
+    rows = conn.execute(
+        "SELECT quality_gate_passed, quality_gate_reasons, is_winner FROM writing_jury_aggregates"
+    ).fetchall()
+    assert rows
+    assert all(row[0] == 0 and row[2] == 0 for row in rows)
+    assert all("final_score_below_shot_quality_floor" in row[1] for row in rows)
+
+
 def test_m4_orchestrator_entrypoint_signatures_lint_clean() -> None:
     from ink.pipeline import hard_gate_orchestrator, jury_orchestrator
 
@@ -73,3 +96,13 @@ def _ids(conn):
         "SELECT shot_id, run_id, shot_contract_id FROM writing_shots WHERE logical_shot_id = 'shot-001'"
     ).fetchone()
     return {"shot_id": row[0], "run_id": row[1], "shot_contract_id": row[2]}
+
+
+class LowQualityDraftProvider:
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        return ModelResult(
+            text=f"[low-quality] {model_name}:{idempotency_key}",
+            model_name=model_name,
+            token_input=1,
+            token_output=1,
+        )
