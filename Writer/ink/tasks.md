@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4/M5/M6 baseline 已完成本地验证；下一阶段为 6 章 workflow smoke
+> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳与最终 invariant 收口已完成本地验证
 > **最后更新**：2026-07-05
 
 ---
@@ -627,6 +627,19 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 补 6 章 workflow smoke：`setup/write/review` ×6，至少一次 `reject`，至少一次 `revise` 后新 run 重跑，触发第 5 章 book rolling check，最终 `accept/export/import dry-run/finalize`。
 - [x] 将 M6 `INV-WORKFLOW-001` 接入 invariant 追踪测试。
 
+### M6 CLI thin shell 任务
+
+- [x] 实现 `ink.cli` 薄壳，覆盖 `init/setup/confirm-contract/write/review/accept/revise/reject/resume/import/export` 命令调度。
+- [x] 在 `pyproject.toml` 暴露 `ink = ink.cli:main` console script。
+- [x] 补 CLI 集成测试，覆盖本地 DB 初始化、章节 setup/write/review/revise/reject/accept/export/import finalize。
+
+### 最终 invariant 收口任务
+
+- [x] 将 `INV-RUN-001` 接入测试：logical/run/accepted/is_current 四轴隔离，export 只读 accepted hard seal。
+- [x] 将 `INV-FACT-001` 与 `INV-AUDIT-001` 接入测试：fact anchor hard gate 阻断并写 contract clause attribution。
+- [x] 将 `INV-QUALITY-009` 接入测试：盲评/继续阅读失败不得 accepted。
+- [x] 将 `INV-QUALITY-010` 接入测试：polish 不得删除 productive deviation / protected roughness marker。
+
 ---
 
 ## 决策记录
@@ -651,6 +664,6 @@ Pre-M0 全部通过后才开始以下任务。
 
 ## 下一步
 
-1. 补完整 6 章 workflow smoke，覆盖 resume / revise / reject / import / export。
-2. 根据 smoke 暴露的问题补 CLI、非 shot 级 resume handler 或流程胶水。
-3. 若实现发现文档与代码不可同时满足，先同步本文和正式设计文档，再继续开发。
+1. 当前开发任务队列已清零；默认本地验收命令为 `cd ink && python -m pytest`。
+2. 后续若进入实稿试运行，单独开启真实 LLM provider / nightly 成本记录 / 阈值调参任务。
+3. 后续若进入产品化，单独开启更细的交互式 setup、非 shot 级 resume handler 与 CLI 易用性任务。

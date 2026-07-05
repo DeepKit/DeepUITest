@@ -1,6 +1,6 @@
 # 墨韵 InkFlow v2 — 完整生产重构
 
-> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过，M4 review baseline 开发中（2026-07-05）
+> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳已完成本地验证（2026-07-05）
 > **目标**：从 0 构建完整生产版 InkFlow，根治旧系统“契约信号逐层丢失、门禁假放行、正文真相源绕过、崩溃恢复不可审计”的架构病。
 
 ## 这是什么
@@ -73,6 +73,12 @@ M0 schema+codegen+lint+审计骨架
 - 不让 local fallback、未审稿正文、失败 AI 调用静默进入“通过”结果。
 - 不用“MVP”缩小最终功能；只允许按依赖顺序分批实现完整生产设计。
 
-## 下一步
+## 当前验收
 
-继续推进 M2-M6：先把 contract/outline baseline 接入 outline orchestrator、prompt snapshot 与 resume 重跑分支，再进入 M3 writers/deviant、M4 hard gates+jury、M5 soft gates/chapter review/human decisions、M6 import/book/export 与 6 章生产验收。
+默认本地验收命令：
+
+```bash
+cd ink && python -m pytest
+```
+
+当前 CLI 薄壳覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，真实 LLM provider、nightly 成本记录和更细的交互式 setup 可作为后续产品化任务单独开启。

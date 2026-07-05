@@ -156,4 +156,8 @@ def _score_chapter(texts: list[str], floor: int) -> dict[str, int]:
     joined = "\n".join(texts)
     if "[chapter-fail]" in joined:
         scores["rhythm_curve"] = floor - 1
+    if "[blind-fail]" in joined:
+        scores["chapter_continuity_hard"] = floor - 1
+    if "[reader-pull-fail]" in joined:
+        scores["chapter_hook_soft"] = floor - 1
     return scores

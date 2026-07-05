@@ -38,6 +38,7 @@ class PolishOrchestrator:
             model_name="smart-polish",
             idempotency_key=f"polish:{shot_id}:{run_id}:{winner.draft_id}",
         )
+        _ensure_productive_markers_preserved(winner.text, result.text)
         revision_id = TextRepository(self.conn).write_revision(
             shot_id,
             run_id,
@@ -92,3 +93,10 @@ def _polish_prompt(winner_text: str) -> str:
         "neutral_issues=[]\n\n"
         f"{winner_text}"
     )
+
+
+def _ensure_productive_markers_preserved(source_text: str, polished_text: str) -> None:
+    markers = ("[productive-deviation]", "[protected-roughness]")
+    missing = [marker for marker in markers if marker in source_text and marker not in polished_text]
+    if missing:
+        raise DataIntegrityError(f"polish removed protected productive marker: {', '.join(missing)}")

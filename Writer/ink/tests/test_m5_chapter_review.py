@@ -50,6 +50,22 @@ def test_human_accept_cannot_override_quality_failure() -> None:
     assert conn.execute("SELECT count(*) FROM writing_shot_revisions WHERE sealed_by = 'chapter_hard'").fetchone()[0] == 0
 
 
+def test_blind_review_and_reader_pull_required() -> None:
+    conn = make_soft_sealed_chapter()
+    ids = _ids(conn)
+    conn.execute(
+        "UPDATE writing_shot_revisions SET text = text || ' [blind-fail] [reader-pull-fail]' WHERE sealed_by = 'shot_soft'"
+    )
+
+    review = ChapterReviewOrchestrator(conn).review_chapter(1, 1, int(ids["run_id"]))
+
+    assert review.quality_gate_passed is False
+    assert set(review.blocking_issues) == {"chapter_continuity_hard", "chapter_hook_soft"}
+    with pytest.raises(DataIntegrityError):
+        HumanReviewOrchestrator(conn).accept_chapter(1, 1, int(ids["run_id"]), actor="author", reason="approve")
+    assert conn.execute("SELECT count(*) FROM writing_human_decisions").fetchone()[0] == 0
+
+
 def test_human_accept_writes_decision_and_hard_seals_chapter() -> None:
     conn = make_soft_sealed_chapter()
     ids = _ids(conn)

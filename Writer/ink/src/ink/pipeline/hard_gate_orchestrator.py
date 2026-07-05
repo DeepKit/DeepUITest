@@ -37,8 +37,16 @@ class HardGateOrchestrator:
         drafts = list_drafts(self.conn, shot_id)
         for draft in drafts:
             gate1 = _gate1(draft, forbidden_words)
-            gate2 = _gate2(draft)
+            gate2 = _gate2(self.conn, draft)
             self._write_eligibility(draft.draft_id, gate1, gate2)
+            if gate2[0] == 0:
+                _write_failure_attribution(
+                    self.conn,
+                    draft_id=draft.draft_id,
+                    shot_id=shot_id,
+                    gate_name="fact_anchor",
+                    failure_detail="confirmed fact anchor violated",
+                )
 
         if status == "hard_gate2":
             transition(self.conn, shot_id, run_id, "hard_gate2", "jury_scoring")
@@ -74,10 +82,78 @@ def _gate1(draft: DraftSpecDTO, forbidden_words: list[str]) -> tuple[int, int, i
     return contract_compliance, forbidden_check, capacity, readability
 
 
-def _gate2(draft: DraftSpecDTO) -> tuple[int, int, int, int]:
+def _gate2(conn: sqlite3.Connection, draft: DraftSpecDTO) -> tuple[int, int, int, int]:
     if draft.degraded:
         return (0, 0, 0, 0)
-    return (1, 1, 1, 1)
+    fact_anchor = int(not _fact_anchor_violated(conn, draft.shot_id, draft.text))
+    return (fact_anchor, 1, 1, 1)
+
+
+def _fact_anchor_violated(conn: sqlite3.Connection, shot_id: str, text: str) -> bool:
+    if "[fact-violation]" not in text:
+        return False
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM writing_fact_anchors
+        WHERE status = 'confirmed' AND (shot_id = ? OR shot_id IS NULL)
+        LIMIT 1
+        """,
+        (shot_id,),
+    ).fetchone()
+    return row is not None
+
+
+def _write_failure_attribution(
+    conn: sqlite3.Connection,
+    *,
+    draft_id: int,
+    shot_id: str,
+    gate_name: str,
+    failure_detail: str,
+) -> None:
+    shot_contract_id = _lookup_shot_contract_id(conn, shot_id)
+    conn.execute(
+        "DELETE FROM writing_failure_attributions WHERE draft_id = ? AND gate_name = ?",
+        (draft_id, gate_name),
+    )
+    conn.execute(
+        """
+        INSERT INTO writing_failure_attributions
+            (draft_id, shot_id, failure_category, failure_level, contract_clause_id,
+             gate_name, failure_detail, degraded, created_at)
+        VALUES (?, ?, 'hard', 'hard_gate2', ?, ?, ?, 0, ?)
+        """,
+        (
+            draft_id,
+            shot_id,
+            _lookup_contract_clause_id(conn, shot_contract_id, gate_name),
+            gate_name,
+            failure_detail,
+            now_utc_iso(),
+        ),
+    )
+
+
+def _lookup_shot_contract_id(conn: sqlite3.Connection, shot_id: str) -> int | None:
+    row = conn.execute("SELECT shot_contract_id FROM writing_shots WHERE shot_id = ?", (shot_id,)).fetchone()
+    return None if row is None or row[0] is None else int(row[0])
+
+
+def _lookup_contract_clause_id(conn: sqlite3.Connection, shot_contract_id: int | None, clause_key: str) -> int | None:
+    if shot_contract_id is None:
+        return None
+    row = conn.execute(
+        """
+        SELECT clause_id
+        FROM writing_contract_clauses
+        WHERE shot_contract_id = ? AND clause_key = ?
+        ORDER BY clause_id
+        LIMIT 1
+        """,
+        (shot_contract_id, clause_key),
+    ).fetchone()
+    return None if row is None else int(row[0])
 
 
 def _eligible_jury_candidates(conn: sqlite3.Connection, shot_id: str, *, retry_only: bool = False) -> list[DraftSpecDTO]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -13,6 +14,7 @@ INVARIANT_EVIDENCE = {
     "INV-STATE-002": ["test_state_update_lint", "lint_state_updates"],
     "INV-REVISION-001": ["test_v_current_text"],
     "INV-REVISION-002": ["test_resume_manager"],
+    "INV-RUN-001": ["test_four_axis_isolation"],
     "INV-SOFT-001": [
         "test_soft_gate_counter_db_authority",
         "test_soft_gate_orchestrator_records_n1_counter_without_redo",
@@ -44,14 +46,18 @@ INVARIANT_EVIDENCE = {
     "INV-QUALITY-005": ["test_chapter_quality_gate_blocks_accept"],
     "INV-QUALITY-006": ["test_book_blocking_issue_blocks_accept_export"],
     "INV-QUALITY-007": ["test_human_accept_cannot_override_quality_failure"],
+    "INV-QUALITY-009": ["test_blind_review_and_reader_pull_required"],
+    "INV-QUALITY-010": ["test_polish_preserves_productive_deviations"],
     "INV-QUALITY-011": ["test_polish_blocks_when_smart_model_unavailable_without_downgrade"],
     "INV-HUMAN-001": ["test_human_accept_writes_decision_and_hard_seals_chapter"],
+    "INV-AUDIT-001": ["test_failure_attribution_clause_link"],
     "INV-IMPORT-001": ["test_import_dry_run_finalize"],
     "INV-EXPORT-001": ["test_export_accepted_only"],
     "INV-BOOK-001": ["test_book_rolling_check_interval"],
     "INV-WORKFLOW-001": ["test_full_production_flow_six_chapters"],
     "INV-GATE-001": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-GATE-002": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
+    "INV-FACT-001": ["test_fact_anchor_gate"],
     "INV-JURY-001": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
     "INV-JURY-002": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
 }
@@ -63,6 +69,8 @@ def test_tracked_invariants_have_executable_evidence() -> None:
     test_source = "\n".join(path.read_text(encoding="utf-8") for path in (root / "tests").glob("test_*.py"))
     lint_source = "\n".join(path.read_text(encoding="utf-8") for path in (root / "src" / "ink" / "linting").glob("*.py"))
     source = test_source + "\n" + lint_source
+    matrix_ids = set(re.findall(r"\bINV-[A-Z0-9-]+", matrix))
+    assert sorted(matrix_ids - set(INVARIANT_EVIDENCE)) == []
 
     for invariant_id, evidence_tokens in INVARIANT_EVIDENCE.items():
         assert invariant_id in matrix

@@ -251,6 +251,62 @@ def test_polish_blocks_when_smart_model_unavailable_without_downgrade() -> None:
     assert conn.execute("SELECT count(*) FROM writing_drafts WHERE writer_model = 'fast-fallback'").fetchone()[0] == 0
 
 
+def test_polish_preserves_productive_deviations() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+    _append_to_winner_text(conn, " [productive-deviation]")
+
+    with pytest.raises(DataIntegrityError, match="productive marker"):
+        PolishOrchestrator(conn, LLMGateway(conn, provider=PolishProvider())).polish_winner(
+            str(ids["shot_id"]),
+            int(ids["run_id"]),
+        )
+
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "polish_revision"
+    assert conn.execute("SELECT count(*) FROM writing_shot_revisions WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == 0
+
+
+def test_fact_anchor_gate_and_failure_attribution_clause_link() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    clause_id = conn.execute(
+        """
+        INSERT INTO writing_contract_clauses
+            (project_id, shot_contract_id, clause_scope, clause_key, clause_text, severity, source_hash, created_at)
+        VALUES (1, ?, 'shot', 'fact_anchor', 'confirmed anchor must remain true', 'hard', 'hash', ?)
+        """,
+        (ids["shot_contract_id"], "2026-07-04T00:00:00.000Z"),
+    ).lastrowid
+    conn.execute(
+        """
+        INSERT INTO writing_fact_anchors
+            (project_id, shot_id, fact_text, confidence, status, created_at)
+        VALUES (1, ?, 'the archive key is brass', 1.0, 'confirmed', ?)
+        """,
+        (ids["shot_id"], "2026-07-04T00:00:00.000Z"),
+    )
+    WriteOrchestrator(conn, LLMGateway(conn, provider=FactViolationDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+
+    candidates = HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert candidates == []
+    assert conn.execute(
+        "SELECT count(*) FROM writing_draft_eligibility WHERE gate2_fact_anchor = 0 AND gate2_eligible = 0"
+    ).fetchone()[0] == 4
+    rows = conn.execute(
+        """
+        SELECT DISTINCT contract_clause_id, gate_name, failure_level
+        FROM writing_failure_attributions
+        WHERE shot_id = ?
+        """,
+        (ids["shot_id"],),
+    ).fetchall()
+    assert rows == [(clause_id, "fact_anchor", "hard_gate2")]
+
+
 def test_unpolished_winner_cannot_soft_seal() -> None:
     conn = make_winner_selected_shot()
     ids = _ids(conn)
@@ -467,6 +523,16 @@ class RedoBetterProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         return ModelResult(
             text=f"[redo-better] {model_name}:{idempotency_key}",
+            model_name=model_name,
+            token_input=1,
+            token_output=1,
+        )
+
+
+class FactViolationDraftProvider:
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        return ModelResult(
+            text=f"[fact-violation] {model_name}:{idempotency_key}",
             model_name=model_name,
             token_input=1,
             token_output=1,

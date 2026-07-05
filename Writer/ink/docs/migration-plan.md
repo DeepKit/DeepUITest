@@ -1,8 +1,9 @@
 # 实施计划 — Pre-M0 + M0-M6 从 0 构建完整生产版
 
-> **状态**：v3（2026-07-04，Pre-M0 开工门禁修订），对应 `design-v2.md`
+> **状态**：v4（2026-07-05，本地 baseline 验收完成），对应 `design-v2.md`
 > **定位**：**从 0 构建完整生产版**，不基于旧 `inkflow/` 改造。无工期、无双轨并行、无旧系统迁移、无 MVP 裁剪。
 > **原则**：旧系统仅作"领域知识参考库"，取其踩坑结晶与领域设计，弃其架构病土壤。每个里程碑完成后对照 `pitfall-checklist.md` 逐条核对。
+> **执行状态来源**：本文保留里程碑设计与历史验证清单；当前已完成/待办状态以 `tasks.md`、`invariant-traceability.md` 和 `cd ink && python -m pytest` 为准。
 
 ---
 
@@ -471,8 +472,8 @@ quality blocking gate、章级 7 维硬质量门禁、accepted canonical 跑通�
 
 ---
 
-## 下一步
-- `design-v2.md`：架构设计与六条铁律
-- `implementation-contract-v1.md`：40 张生产表 DDL + dataclass schema + unpack 访问器 + 模块接口 + resume 映射 + sqlparse lint
-- `pitfall-checklist.md`：15 条踩坑结晶 + 14 条新增防御（含 jury 方案 B、resume 14 态、质量硬门禁、文学活力保护、字段消费 AST、AI 调用审计、人类决策、导入账本）
-- M0 开工：40 张生产表 DDL + 代码生成器 + unpack 访问器 + 字段消费 lint + sqlparse lint + AI/状态 lint
+## 当前验收
+- `tasks.md` 开发任务队列已清零。
+- `invariant-traceability.md` 中当前追踪的 blocking/P1 invariant 均有可执行测试或 lint evidence。
+- 默认本地验收命令：`cd ink && python -m pytest`。
+- 后续若进入实稿试运行或产品化，另开真实 LLM provider、nightly 成本记录、交互式 setup、非 shot 级 resume handler 与 CLI 易用性任务。
