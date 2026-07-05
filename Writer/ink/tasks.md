@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1/M2 核心门禁已通过；M3 writer baseline 开发中
+> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4 review baseline 开发中
 > **最后更新**：2026-07-05
 
 ---
@@ -583,6 +583,19 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 将 M3 `rerun_drafting` / `rerun_soft_gate_redo_drafting` handlers 接入 `ResumeManager.execute_resume_action()`。
 - [ ] 在 M4 jury 中将 N=2 redo 候选与原候选池合并评分，并处理翻盘事务。
 - [x] 将 normal/deviant prompt context snapshot 写入 `writing_context_snapshots`，记录缺失/裁剪原因。
+
+### M4 review baseline 任务
+
+- [x] 实现 `HardGateOrchestrator.run_both_gates()`：`hard_gate1 -> hard_gate2 -> jury_scoring`，并落 `writing_draft_eligibility`。
+- [x] hard gate baseline 阻断 `degraded=1` 候选进入正式 jury 候选池。
+- [x] 实现 `JuryOrchestrator.score_and_select_winner()`：基础轮 3 裁判、每裁判 12 维全评分，raw scores 与 aggregate 分表落库。
+- [x] jury dispatch 按 draft 排除该 draft 的 `writer_model`；DB trigger 与 JOIN 审计保持为空。
+- [x] jury baseline 排除 `degraded` 与 `is_deviant` 正式候选；deviant 暂作为 M4 后续 creative boundary reference 输入。
+- [x] 通过 `writing_jury_aggregates.is_winner` 唯一索引保证每 shot 唯一 winner，并推进 `jury_scoring -> winner_selected`。
+- [ ] 实现 final_score / dimension_floor / judge_disagreement 的失败分支与补写触发。
+- [ ] 实现 deviant_reference 注入 creative_boundary 评分输入。
+- [ ] 实现 polish_revision 强制流程：winner 必须 polish 后重新过 hard gates + quality floor。
+- [ ] 实现 smart-model-required 任务不可降级阻断。
 
 ---
 
