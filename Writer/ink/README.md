@@ -1,6 +1,6 @@
 # 墨韵 InkFlow v2 — 完整生产重构
 
-> **状态**：Pre-M0 开工门禁收口中，P0 技术与战略决策已拍板（2026-07-04）
+> **状态**：Pre-M0/M0/M1 核心门禁已通过，M2 contract+outline baseline 收口中（2026-07-05）
 > **目标**：从 0 构建完整生产版 InkFlow，根治旧系统“契约信号逐层丢失、门禁假放行、正文真相源绕过、崩溃恢复不可审计”的架构病。
 
 ## 这是什么
@@ -75,4 +75,4 @@ M0 schema+codegen+lint+审计骨架
 
 ## 下一步
 
-先执行 Pre-M0：修正 DDL 可执行性、jury 升级轮 schema、orchestrator 入口口径、resume SQL 示例、字段消费 lint 边界，并落 `test_schema_executes_all_ddl`。Pre-M0 通过后再进入 M0：40 张生产表 DDL 烟测、质量硬门禁 CHECK、QualityReport schema、代码生成器、字段消费 lint、SQL 访问 lint、状态机 lint、LLM 访问 lint、AI 调用审计表、人工决策表、测试追踪矩阵。
+继续推进 M2-M6：先把 contract/outline baseline 接入 outline orchestrator、prompt snapshot 与 resume 重跑分支，再进入 M3 writers/deviant、M4 hard gates+jury、M5 soft gates/chapter review/human decisions、M6 import/book/export 与 6 章生产验收。

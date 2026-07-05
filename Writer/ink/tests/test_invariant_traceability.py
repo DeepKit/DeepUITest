@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-M0_M1_INVARIANT_EVIDENCE = {
+M0_M2_INVARIANT_EVIDENCE = {
     "INV-CONTRACT-001": ["test_field_usage_lint", "lint_field_usage"],
     "INV-SQL-001": ["test_sql_access_lint", "lint_sql_access"],
     "INV-DDL-001": ["test_schema_executes_all_ddl"],
@@ -23,16 +23,19 @@ M0_M1_INVARIANT_EVIDENCE = {
     "INV-JURY-ROUND-001": ["test_jury_raw_scores_support_base_and_escalated_rounds"],
     "INV-CHECKPOINT-001": ["test_session_checkpoints_allow_null_shot_id"],
     "INV-RECOVERY-001": ["test_checkpoint_manager_checksum_recovery"],
+    "INV-PROMPT-001": ["test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards"],
+    "INV-OUTLINE-001": ["test_outline_drift_threshold_and_winner_uniqueness"],
+    "INV-OUTLINE-002": ["test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards"],
 }
 
 
-def test_m0_m1_invariants_have_executable_evidence() -> None:
+def test_m0_m2_invariants_have_executable_evidence() -> None:
     root = Path(__file__).resolve().parents[1]
     matrix = (root / "docs" / "invariant-traceability.md").read_text(encoding="utf-8")
     test_source = "\n".join(path.read_text(encoding="utf-8") for path in (root / "tests").glob("test_*.py"))
     lint_source = "\n".join(path.read_text(encoding="utf-8") for path in (root / "src" / "ink" / "linting").glob("*.py"))
     source = test_source + "\n" + lint_source
 
-    for invariant_id, evidence_tokens in M0_M1_INVARIANT_EVIDENCE.items():
+    for invariant_id, evidence_tokens in M0_M2_INVARIANT_EVIDENCE.items():
         assert invariant_id in matrix
         assert any(token in source for token in evidence_tokens), invariant_id
