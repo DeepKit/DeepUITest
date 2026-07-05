@@ -65,6 +65,41 @@ def test_jury_scores_three_models_all_dimensions_and_selects_winner() -> None:
     ).fetchone()[0] == 0
 
 
+def test_redo_candidates_merge_with_existing_pool_and_can_flip_winner() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+    original_winner = conn.execute(
+        "SELECT draft_id FROM writing_jury_aggregates WHERE shot_id = ? AND is_winner = 1",
+        (ids["shot_id"],),
+    ).fetchone()[0]
+    conn.execute(
+        "UPDATE writing_shots SET redo_in_progress = 1 WHERE shot_id = ?",
+        (ids["shot_id"],),
+    )
+    WriteOrchestrator(conn, LLMGateway(conn, provider=RedoBetterProvider())).produce_redo_candidates(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+
+    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert winner.draft_id != original_winner
+    assert winner.retry_count == 1
+    assert conn.execute(
+        "SELECT redo_in_progress FROM writing_shots WHERE shot_id = ?",
+        (ids["shot_id"],),
+    ).fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM writing_jury_aggregates WHERE is_winner = 1").fetchone()[0] == 1
+    assert conn.execute(
+        """
+        SELECT count(*)
+        FROM writing_drafts d
+        JOIN writing_draft_eligibility e ON e.draft_id = d.draft_id
+        WHERE d.retry_count > 0 AND e.gate1_eligible = 1 AND e.gate2_eligible = 1
+        """
+    ).fetchone()[0] == 2
+
+
 def test_creative_shot_passes_deviant_reference_to_jury_aggregate_without_scoring_deviant() -> None:
     conn = make_prompt_compiled_shot(creative=True)
     ids = _ids(conn)
@@ -254,6 +289,16 @@ class PolishProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         assert "productive_deviations" in prompt_text
         return ModelResult(text="polished text", model_name=model_name, token_input=1, token_output=1)
+
+
+class RedoBetterProvider:
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        return ModelResult(
+            text=f"[redo-better] {model_name}:{idempotency_key}",
+            model_name=model_name,
+            token_input=1,
+            token_output=1,
+        )
 
 
 class UnavailablePolishProvider:

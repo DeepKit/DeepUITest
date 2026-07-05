@@ -32,6 +32,30 @@ AGGREGATE_INSERT_SQL = """
          quality_gate_reasons, judge_disagreement_max, is_winner, evaluated_at)
     VALUES (?, ?, ?, 1, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
 """
+ELIGIBLE_BASE_CANDIDATES_SQL = """
+    SELECT d.draft_id
+    FROM writing_drafts d
+    JOIN writing_draft_eligibility e ON e.draft_id = d.draft_id
+    WHERE d.shot_id = ?
+      AND d.degraded = 0
+      AND d.is_deviant = 0
+      AND d.retry_count = 0
+      AND e.gate1_eligible = 1
+      AND e.gate2_eligible = 1
+    ORDER BY d.draft_id
+"""
+ELIGIBLE_RETRY_CANDIDATES_SQL = """
+    SELECT d.draft_id
+    FROM writing_drafts d
+    JOIN writing_draft_eligibility e ON e.draft_id = d.draft_id
+    WHERE d.shot_id = ?
+      AND d.degraded = 0
+      AND d.is_deviant = 0
+      AND d.retry_count > 0
+      AND e.gate1_eligible = 1
+      AND e.gate2_eligible = 1
+    ORDER BY d.draft_id
+"""
 
 
 def score_and_select_winner(shot_id: str, run_id: int) -> DraftSpecDTO:
@@ -47,6 +71,8 @@ class JuryOrchestrator:
     def score_and_select_winner(self, shot_id: str, run_id: int) -> DraftSpecDTO:
         status = load_status(self.conn, shot_id, run_id)
         if status == "winner_selected":
+            if _redo_in_progress(self.conn, shot_id, run_id):
+                return self._score_redo_and_maybe_flip(shot_id, run_id)
             return _load_current_winner(self.conn, shot_id)
         if status != "jury_scoring":
             raise DataIntegrityError(f"jury cannot run from status: {status}")
@@ -77,6 +103,51 @@ class JuryOrchestrator:
         )
         transition(self.conn, shot_id, run_id, "jury_scoring", "winner_selected")
         return load_draft(self.conn, winner_draft_id)
+
+    def _score_redo_and_maybe_flip(self, shot_id: str, run_id: int) -> DraftSpecDTO:
+        from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
+
+        HardGateOrchestrator(self.conn).run_both_gates(shot_id, run_id)
+        context = _load_jury_context(self.conn, shot_id, run_id)
+        redo_candidates = _eligible_candidates(self.conn, shot_id, retry_only=True)
+        if len(redo_candidates) < context.redo_candidate_count:
+            raise DataIntegrityError(
+                f"redo jury candidates below threshold: {len(redo_candidates)} < {context.redo_candidate_count}"
+            )
+
+        best_existing = _load_best_aggregate(self.conn, shot_id)
+        if best_existing is None:
+            raise DataIntegrityError(f"existing winner aggregate not found for redo: {shot_id}")
+
+        redo_aggregates: list[tuple[int, float]] = []
+        for index, draft in enumerate(redo_candidates):
+            score = _score_for_draft(draft, index)
+            self._score_draft(context, draft, score)
+            medians = _median_scores_for_draft(draft, score)
+            if _quality_gate_passes(context, float(score), medians, _judge_disagreement_for_draft(draft)):
+                redo_aggregates.append((draft.draft_id, float(score)))
+
+        if redo_aggregates:
+            best_redo = max(redo_aggregates, key=lambda item: (item[1], item[0]))
+            if best_redo[1] > best_existing[1]:
+                self.conn.execute("UPDATE writing_jury_aggregates SET is_winner = 0 WHERE shot_id = ?", (shot_id,))
+                self.conn.execute(
+                    "UPDATE writing_jury_aggregates SET is_winner = 1 WHERE shot_id = ? AND draft_id = ?",
+                    (shot_id, best_redo[0]),
+                )
+
+        self.conn.execute(
+            "UPDATE writing_shots SET redo_in_progress = 0 WHERE shot_id = ? AND run_id = ?",
+            (shot_id, run_id),
+        )
+        return _load_current_winner(self.conn, shot_id)
+
+    def resume_handlers(self) -> dict[str, object]:
+        return {
+            "rerun_jury": self.score_and_select_winner,
+            "rerun_soft_gate_redo_jury": self.score_and_select_winner,
+            "rerun_winner_select": self.score_and_select_winner,
+        }
 
     def _score_draft(self, context: "_JuryContext", draft: DraftSpecDTO, score: int) -> None:
         self.conn.execute("DELETE FROM writing_jury_raw_scores WHERE draft_id = ? AND jury_round = 1", (draft.draft_id,))
@@ -124,6 +195,7 @@ class _JuryContext:
         shot_contract_id: int,
         jury_models: tuple[str, ...],
         min_eligible_candidates: int,
+        redo_candidate_count: int,
         shot_quality_floor: int,
         dimension_floor: int,
         judge_disagreement_max: int,
@@ -134,6 +206,7 @@ class _JuryContext:
         self.shot_contract_id = shot_contract_id
         self.jury_models = jury_models
         self.min_eligible_candidates = min_eligible_candidates
+        self.redo_candidate_count = redo_candidate_count
         self.shot_quality_floor = shot_quality_floor
         self.dimension_floor = dimension_floor
         self.judge_disagreement_max = judge_disagreement_max
@@ -144,7 +217,7 @@ class _JuryContext:
 def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _JuryContext:
     row = conn.execute(
         """
-        SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates,
+        SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates, p.redo_candidate_count,
                p.shot_quality_floor, p.dimension_floor, p.judge_disagreement_max,
                pa.intensity, pa.is_creative_shot
         FROM writing_shots s
@@ -161,27 +234,18 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         shot_contract_id=int(row[0]),
         jury_models=tuple(str(item) for item in json.loads(row[1])),
         min_eligible_candidates=int(row[2]),
-        shot_quality_floor=int(row[3]),
-        dimension_floor=int(row[4]),
-        judge_disagreement_max=int(row[5]),
-        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[7]) == 1 else None,
-        intensity=json.loads(row[6]),
+        redo_candidate_count=int(row[3]),
+        shot_quality_floor=int(row[4]),
+        dimension_floor=int(row[5]),
+        judge_disagreement_max=int(row[6]),
+        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[8]) == 1 else None,
+        intensity=json.loads(row[7]),
     )
 
 
-def _eligible_candidates(conn: sqlite3.Connection, shot_id: str) -> list[DraftSpecDTO]:
+def _eligible_candidates(conn: sqlite3.Connection, shot_id: str, *, retry_only: bool = False) -> list[DraftSpecDTO]:
     rows = conn.execute(
-        """
-        SELECT d.draft_id
-        FROM writing_drafts d
-        JOIN writing_draft_eligibility e ON e.draft_id = d.draft_id
-        WHERE d.shot_id = ?
-          AND d.degraded = 0
-          AND d.is_deviant = 0
-          AND e.gate1_eligible = 1
-          AND e.gate2_eligible = 1
-        ORDER BY d.draft_id
-        """,
+        ELIGIBLE_RETRY_CANDIDATES_SQL if retry_only else ELIGIBLE_BASE_CANDIDATES_SQL,
         (shot_id,),
     ).fetchall()
     return [load_draft(conn, int(row[0])) for row in rows]
@@ -192,6 +256,28 @@ def _select_judges(jury_models: tuple[str, ...], writer_model: str, count: int) 
     if len(judges) < count:
         raise DataIntegrityError("not enough jury models after excluding writer_model")
     return judges[:count]
+
+
+def _redo_in_progress(conn: sqlite3.Connection, shot_id: str, run_id: int) -> bool:
+    row = conn.execute(
+        "SELECT redo_in_progress FROM writing_shots WHERE shot_id = ? AND run_id = ?",
+        (shot_id, run_id),
+    ).fetchone()
+    return row is not None and int(row[0]) == 1
+
+
+def _load_best_aggregate(conn: sqlite3.Connection, shot_id: str) -> tuple[int, float] | None:
+    row = conn.execute(
+        """
+        SELECT draft_id, final_score
+        FROM writing_jury_aggregates
+        WHERE shot_id = ? AND is_winner = 1 AND quality_gate_passed = 1
+        ORDER BY final_score DESC, draft_id DESC
+        LIMIT 1
+        """,
+        (shot_id,),
+    ).fetchone()
+    return None if row is None else (int(row[0]), float(row[1]))
 
 
 def _load_deviant_reference(conn: sqlite3.Connection, shot_id: str) -> int | None:
@@ -215,6 +301,8 @@ def _score_for_draft(draft: DraftSpecDTO, index: int) -> int:
         return 84
     if "[disagreement]" in draft.text:
         return 84
+    if "[redo-better]" in draft.text:
+        return 92 + index
     return 84 + index
 
 

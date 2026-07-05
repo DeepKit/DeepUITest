@@ -25,10 +25,11 @@ class HardGateOrchestrator:
 
     def run_both_gates(self, shot_id: str, run_id: int) -> list[DraftSpecDTO]:
         status = load_status(self.conn, shot_id, run_id)
+        redo_mode = status == "winner_selected" and _redo_in_progress(self.conn, shot_id, run_id)
         if status == "hard_gate1":
             transition(self.conn, shot_id, run_id, "hard_gate1", "hard_gate2")
             status = "hard_gate2"
-        if status not in {"hard_gate2", "jury_scoring"}:
+        if status not in {"hard_gate2", "jury_scoring"} and not redo_mode:
             raise DataIntegrityError(f"hard gates cannot run from status: {status}")
 
         contract = load_shot_contract(self.conn, shot_id, run_id)
@@ -41,7 +42,7 @@ class HardGateOrchestrator:
 
         if status == "hard_gate2":
             transition(self.conn, shot_id, run_id, "hard_gate2", "jury_scoring")
-        return _eligible_jury_candidates(self.conn, shot_id)
+        return _eligible_jury_candidates(self.conn, shot_id, retry_only=redo_mode)
 
     def _write_eligibility(self, draft_id: int, gate1: tuple[int, int, int, int], gate2: tuple[int, int, int, int]) -> None:
         self.conn.execute("DELETE FROM writing_draft_eligibility WHERE draft_id = ?", (draft_id,))
@@ -73,11 +74,14 @@ def _gate2(draft: DraftSpecDTO) -> tuple[int, int, int, int]:
     return (1, 1, 1, 1)
 
 
-def _eligible_jury_candidates(conn: sqlite3.Connection, shot_id: str) -> list[DraftSpecDTO]:
+def _eligible_jury_candidates(conn: sqlite3.Connection, shot_id: str, *, retry_only: bool = False) -> list[DraftSpecDTO]:
     candidates = [
         draft
         for draft in list_drafts(conn, shot_id)
-        if not draft.degraded and not draft.is_deviant and _is_eligible(conn, draft.draft_id)
+        if not draft.degraded
+        and not draft.is_deviant
+        and (draft.retry_count > 0 if retry_only else draft.retry_count == 0)
+        and _is_eligible(conn, draft.draft_id)
     ]
     return candidates
 
@@ -92,3 +96,11 @@ def _is_eligible(conn: sqlite3.Connection, draft_id: int) -> bool:
         (draft_id,),
     ).fetchone()
     return row is not None and int(row[0]) == 1 and int(row[1]) == 1
+
+
+def _redo_in_progress(conn: sqlite3.Connection, shot_id: str, run_id: int) -> bool:
+    row = conn.execute(
+        "SELECT redo_in_progress FROM writing_shots WHERE shot_id = ? AND run_id = ?",
+        (shot_id, run_id),
+    ).fetchone()
+    return row is not None and int(row[0]) == 1

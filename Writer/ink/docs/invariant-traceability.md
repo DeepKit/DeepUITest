@@ -26,7 +26,7 @@
 | INV-REVISION-002 | B92 | stale revision 不 skip，下游必须重跑 | `test_resume_detects_stale_upstream_revision` | M1 |
 | INV-RUN-001 | B62/B61 | logical_shot_id、run_id、accepted、is_current 四维正交 | `test_four_axis_isolation` | M1 |
 | INV-SOFT-001 | N2 | soft gate N 计数唯一权威源是 `writing_soft_gate_counters` | `test_soft_gate_counter_db_authority` | M1 |
-| INV-SOFT-002 | N2 | N=2 翻盘只允许在 `winner_selected`；进入 `polish_revision`/`soft_sealed` 后新建 run | `test_soft_gate_redo_before_polish_only` | M1 |
+| INV-SOFT-002 | N2 | N=2 翻盘只允许在 `winner_selected`；进入 `polish_revision`/`soft_sealed` 后新建 run | `test_resume_manager_handles_redo_in_progress_branches` + `test_redo_candidates_merge_with_existing_pool_and_can_flip_winner` | M1/M4 |
 | INV-LLM-001 | B59 | 同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断，失败类型切换归零 | `test_llm_failure_streaks` | M1 |
 | INV-LLM-002 | P0-5 | shot 总 AI 调用达到 `max_total_llm_calls`（默认 40）上限转 `failed` | `test_total_llm_budget_transitions_failed` | M1 |
 | INV-LLM-003 | 运行时评审 | 所有 AI 调用必须经 `LLMGateway` 并落 attempt | `llm_access_lint` + `test_ai_attempt_written` | M0/M1 |

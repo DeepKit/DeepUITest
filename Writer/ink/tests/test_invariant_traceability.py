@@ -14,7 +14,7 @@ INVARIANT_EVIDENCE = {
     "INV-REVISION-001": ["test_v_current_text"],
     "INV-REVISION-002": ["test_resume_manager"],
     "INV-SOFT-001": ["test_soft_gate_counter_db_authority"],
-    "INV-SOFT-002": ["test_resume_manager_handles_redo_in_progress"],
+    "INV-SOFT-002": ["test_resume_manager_handles_redo_in_progress", "test_redo_candidates_merge"],
     "INV-LLM-001": ["test_llm_failure_streaks_and_budget_circuit"],
     "INV-LLM-002": ["test_total_llm_budget_transitions_failed"],
     "INV-LLM-003": ["test_llm_gateway_records_attempt", "lint_llm_access"],
