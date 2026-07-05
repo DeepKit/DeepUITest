@@ -33,7 +33,7 @@
 | INV-QUALITY-001 | 质量铁律 | `final_score < shot_quality_floor` 的 draft 不得 winner | `test_jury_quality_floor_failure_cannot_select_winner` | M4 |
 | INV-QUALITY-002 | 质量铁律 | 任一核心维度低于 `dimension_floor` 不得 `quality_gate_passed` / soft seal | `test_jury_dimension_floor_failure_cannot_select_winner` | M4 |
 | INV-QUALITY-003 | 质量铁律 | 裁判分歧超过阈值不得直接 winner，必须升级复核 | `test_jury_disagreement_failure_cannot_select_winner` | M4 |
-| INV-QUALITY-004 | 质量铁律 | winner 必须经过 `polish_revision` 并重新过 hard gates + quality floor 后才能 soft seal | `test_polish_winner_writes_revision_and_returns_to_hard_gate`（polish baseline）；soft seal 复验待 M5 补测 | M4/M5 |
+| INV-QUALITY-004 | 质量铁律 | winner 必须经过 `polish_revision` 并重新过 hard gates + quality floor 后才能 soft seal | `test_polish_winner_writes_revision_and_returns_to_hard_gate` + `test_unpolished_winner_cannot_soft_seal` + `test_polished_winner_repasses_quality_before_soft_seal` | M4 |
 | INV-QUALITY-005 | 质量铁律 | 章级 7 维任一低于阈值不得 accepted | `test_chapter_quality_gate_blocks_accept` | M5 |
 | INV-QUALITY-006 | 质量铁律 | 篇级 blocking issue 未解决不得继续 accept/export | `test_book_blocking_issue_blocks_accept_export` | M6 |
 | INV-QUALITY-007 | 质量铁律 | human accept 不得 override 硬质量失败 | `test_human_accept_cannot_override_quality_failure` | M5 |

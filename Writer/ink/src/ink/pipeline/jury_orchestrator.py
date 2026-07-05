@@ -39,7 +39,6 @@ ELIGIBLE_BASE_CANDIDATES_SQL = """
     WHERE d.shot_id = ?
       AND d.degraded = 0
       AND d.is_deviant = 0
-      AND d.retry_count = 0
       AND e.gate1_eligible = 1
       AND e.gate2_eligible = 1
     ORDER BY d.draft_id

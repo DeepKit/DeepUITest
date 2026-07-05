@@ -8,6 +8,7 @@ from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.polish_orchestrator import PolishOrchestrator
+from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.core.llm_gateway import LLMGateway, ModelResult
 from ink.errors import DataIntegrityError, LLMProviderError
@@ -168,6 +169,47 @@ def test_polish_blocks_when_smart_model_unavailable_without_downgrade() -> None:
     assert conn.execute("SELECT count(*) FROM writing_drafts WHERE writer_model = 'fast-fallback'").fetchone()[0] == 0
 
 
+def test_unpolished_winner_cannot_soft_seal() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+
+    with pytest.raises(DataIntegrityError):
+        SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "winner_selected"
+    assert conn.execute("SELECT count(*) FROM writing_shot_revisions WHERE sealed_by = 'shot_soft'").fetchone()[0] == 0
+
+
+def test_polished_winner_repasses_quality_before_soft_seal() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+    PolishOrchestrator(conn, LLMGateway(conn, provider=PolishProvider())).polish_winner(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    revision_id = SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert winner.writer_model == "smart-polish"
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "soft_sealed"
+    revision = conn.execute(
+        """
+        SELECT text, sealed_by, is_current, sealed_at
+        FROM writing_shot_revisions
+        WHERE revision_id = ?
+        """,
+        (revision_id,),
+    ).fetchone()
+    assert revision[:3] == ("polished text", "shot_soft", 0)
+    assert revision[3] is not None
+    assert conn.execute(
+        "SELECT quality_gate_passed FROM writing_jury_aggregates WHERE is_winner = 1"
+    ).fetchone()[0] == 1
+    assert conn.execute("SELECT text FROM v_current_text WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "polished text"
+
+
 def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
     ids = _ids(conn)
@@ -249,14 +291,16 @@ def test_jury_disagreement_failure_cannot_select_winner() -> None:
 
 
 def test_m4_orchestrator_entrypoint_signatures_lint_clean() -> None:
-    from ink.pipeline import hard_gate_orchestrator, jury_orchestrator, polish_orchestrator
+    from ink.pipeline import hard_gate_orchestrator, jury_orchestrator, polish_orchestrator, soft_seal_orchestrator
 
     hard_gate_source = hard_gate_orchestrator.__loader__.get_source(hard_gate_orchestrator.__name__)
     jury_source = jury_orchestrator.__loader__.get_source(jury_orchestrator.__name__)
     polish_source = polish_orchestrator.__loader__.get_source(polish_orchestrator.__name__)
+    soft_seal_source = soft_seal_orchestrator.__loader__.get_source(soft_seal_orchestrator.__name__)
     assert lint_shot_orchestrator_source(hard_gate_source, "hard_gate_orchestrator.py") == []
     assert lint_shot_orchestrator_source(jury_source, "jury_orchestrator.py") == []
     assert lint_shot_orchestrator_source(polish_source, "polish_orchestrator.py") == []
+    assert lint_shot_orchestrator_source(soft_seal_source, "soft_seal_orchestrator.py") == []
 
 
 def _ids(conn):

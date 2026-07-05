@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4 review baseline 开发中
+> **状态**：Pre-M0/M0/M1/M2/M3 核心门禁已通过；M4 review baseline 已完成本地验证
 > **最后更新**：2026-07-05
 
 ---
@@ -597,7 +597,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 quality floor 失败后的补写触发与自动重试策略：关闭自动重试时转 `failed`，开启时补写 retry 候选并重评。
 - [x] 实现 deviant_reference 注入 jury aggregate 审计输入，且不建立独立 creative_jury。
 - [x] 实现 polish_revision baseline：winner 进入 polish、写正文 revision、生成 polish draft，并回到 `hard_gate1` 重新验证。
-- [ ] 实现 polish 后重新过 hard gates + quality floor 通过才允许 `soft_sealed`。
+- [x] 实现 polish 后重新过 hard gates + quality floor 通过才允许 `soft_sealed`。
 - [x] 实现 polish smart-model-required 不可降级阻断：smart 不可用时停在 `polish_revision`，不写 revision。
 
 ---
