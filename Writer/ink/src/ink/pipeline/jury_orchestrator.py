@@ -94,6 +94,8 @@ class JuryOrchestrator:
 
         weight_used = {column: round(1 / len(SCORE_COLUMNS), 6) for column in SCORE_COLUMNS}
         weight_used["_intensity_5d"] = context.intensity
+        if context.deviant_reference_draft_id is not None:
+            weight_used["_deviant_reference_draft_id"] = context.deviant_reference_draft_id
         judge_disagreement_max = _judge_disagreement_for_draft(draft)
         quality_gate_passed = int(_quality_gate_passes(context, float(score), medians, judge_disagreement_max))
         quality_gate_reasons = _quality_gate_reasons(context, float(score), medians, judge_disagreement_max)
@@ -125,6 +127,7 @@ class _JuryContext:
         shot_quality_floor: int,
         dimension_floor: int,
         judge_disagreement_max: int,
+        deviant_reference_draft_id: int | None,
         intensity: dict[str, object],
     ) -> None:
         self.shot_id = shot_id
@@ -134,6 +137,7 @@ class _JuryContext:
         self.shot_quality_floor = shot_quality_floor
         self.dimension_floor = dimension_floor
         self.judge_disagreement_max = judge_disagreement_max
+        self.deviant_reference_draft_id = deviant_reference_draft_id
         self.intensity = intensity
 
 
@@ -141,7 +145,8 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
     row = conn.execute(
         """
         SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates,
-               p.shot_quality_floor, p.dimension_floor, p.judge_disagreement_max, pa.intensity
+               p.shot_quality_floor, p.dimension_floor, p.judge_disagreement_max,
+               pa.intensity, pa.is_creative_shot
         FROM writing_shots s
         JOIN writing_projects p ON p.project_id = s.project_id
         JOIN writing_shot_persona_assignment pa ON pa.shot_contract_id = s.shot_contract_id
@@ -159,6 +164,7 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         shot_quality_floor=int(row[3]),
         dimension_floor=int(row[4]),
         judge_disagreement_max=int(row[5]),
+        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[7]) == 1 else None,
         intensity=json.loads(row[6]),
     )
 
@@ -186,6 +192,20 @@ def _select_judges(jury_models: tuple[str, ...], writer_model: str, count: int) 
     if len(judges) < count:
         raise DataIntegrityError("not enough jury models after excluding writer_model")
     return judges[:count]
+
+
+def _load_deviant_reference(conn: sqlite3.Connection, shot_id: str) -> int | None:
+    row = conn.execute(
+        """
+        SELECT draft_id
+        FROM writing_drafts
+        WHERE shot_id = ? AND is_deviant = 1 AND degraded = 0
+        ORDER BY draft_id DESC
+        LIMIT 1
+        """,
+        (shot_id,),
+    ).fetchone()
+    return None if row is None else int(row[0])
 
 
 def _score_for_draft(draft: DraftSpecDTO, index: int) -> int:

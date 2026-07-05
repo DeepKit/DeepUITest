@@ -595,7 +595,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `final_score < shot_quality_floor` 不得 winner：低分 aggregate 可审计落库，但不推进 `winner_selected`。
 - [x] 实现 dimension_floor / judge_disagreement 失败分支：aggregate 记录失败原因，不选 winner。
 - [ ] 实现 quality floor 失败后的补写触发与自动重试策略。
-- [ ] 实现 deviant_reference 注入 creative_boundary 评分输入。
+- [x] 实现 deviant_reference 注入 jury aggregate 审计输入，且不建立独立 creative_jury。
 - [ ] 实现 polish_revision 强制流程：winner 必须 polish 后重新过 hard gates + quality floor。
 - [ ] 实现 smart-model-required 任务不可降级阻断。
 

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.core.llm_gateway import LLMGateway, ModelResult
 from ink.errors import DataIntegrityError
-import pytest
 from test_m3_writer_pipeline import FailFirstDraftProvider, RecordingDraftProvider, make_prompt_compiled_shot
 
 
@@ -57,6 +60,33 @@ def test_jury_scores_three_models_all_dimensions_and_selects_winner() -> None:
         FROM writing_jury_raw_scores r
         JOIN writing_drafts d ON d.draft_id = r.draft_id
         WHERE d.is_deviant = 1 OR d.degraded = 1 OR d.writer_model = r.judge_model
+        """
+    ).fetchone()[0] == 0
+
+
+def test_creative_shot_passes_deviant_reference_to_jury_aggregate_without_scoring_deviant() -> None:
+    conn = make_prompt_compiled_shot(creative=True)
+    ids = _ids(conn)
+    WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    deviant_id = conn.execute(
+        "SELECT draft_id FROM writing_drafts WHERE shot_id = ? AND is_deviant = 1",
+        (ids["shot_id"],),
+    ).fetchone()[0]
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    payload = conn.execute("SELECT weight_used FROM writing_jury_aggregates LIMIT 1").fetchone()[0]
+    assert json.loads(payload)["_deviant_reference_draft_id"] == deviant_id
+    assert conn.execute(
+        """
+        SELECT count(*)
+        FROM writing_jury_raw_scores r
+        JOIN writing_drafts d ON d.draft_id = r.draft_id
+        WHERE d.is_deviant = 1
         """
     ).fetchone()[0] == 0
 
