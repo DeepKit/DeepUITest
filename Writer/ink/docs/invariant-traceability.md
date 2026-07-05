@@ -44,7 +44,7 @@
 | INV-JURY-SELF-001 | D3/P0-4 | DB trigger 阻断 `judge_model = writer_model` 的 raw score 写入，JOIN 审计为空 | `test_jury_raw_scores_no_self_judge_trigger` | M0/M4 |
 | INV-JURY-ROUND-001 | 专家审查 P0 | `writing_jury_raw_scores` 必须支持基础 3 裁判和分歧升级 `jury_round`；不得用 role 唯一约束限死 3 行 | `test_jury_raw_scores_supports_escalation_round` | Pre-M0/M0 |
 | INV-CHECKPOINT-001 | D2 | checkpoint `shot_id` 允许 NULL；非 NULL 时必须是 attempt shot id 并满足 FK | `test_checkpoint_shot_id_null_and_fk_semantics` | M0/M1 |
-| INV-HUMAN-001 | B44/B61 | setup/contract/review/import 人工动作必须写 human decision | `test_human_decision_required` | M5 |
+| INV-HUMAN-001 | B44/B61 | setup/contract/review/import 人工动作必须写 human decision | `test_human_accept_writes_decision_and_hard_seals_chapter` | M5 |
 | INV-AUDIT-001 | D-23 | failure attribution 必须能关联 contract clause | `test_failure_attribution_clause_link` | M5 |
 | INV-RECOVERY-001 | D-14 | 每个稳定阶段写 checkpoint，崩溃恢复不覆盖已封板文本 | `test_resume_from_checkpoints` | M1 |
 | INV-IMPORT-001 | 产品工作流 | import dry-run 不写正式数据，finalize 必须有人类决策 | `test_import_dry_run_finalize` | M6 |

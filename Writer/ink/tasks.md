@@ -600,6 +600,15 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 polish 后重新过 hard gates + quality floor 通过才允许 `soft_sealed`。
 - [x] 实现 polish smart-model-required 不可降级阻断：smart 不可用时停在 `polish_revision`，不写 revision。
 
+### M5 chapter review + human seal baseline 任务
+
+- [x] 实现 `ChapterReviewOrchestrator.review_chapter(project_id, chapter_id, run_id)`：仅当本章 shot 全部 `soft_sealed` 时写入章级 7 维 review。
+- [x] 实现章级 7 维硬质量门禁：任一维低于 `chapter_quality_floor` 时 `quality_gate_passed=0`，不得 `accepted`。
+- [x] 实现 human accept 审计：accept 必须写 `writing_human_decisions`，并记录结构化 `preconditions_json` 与 `quality_report_json`。
+- [x] 实现 human accept 不可覆盖硬质量失败：章级 review 未通过时 accept 必须拒绝，不得 hard seal。
+- [x] 实现 chapter hard seal：review 通过且 human accept 后，将本章 `soft_sealed` shot 写 `chapter_hard` revision 并推进到 `hard_sealed`。
+- [x] 将 M5 `INV-QUALITY-005`、`INV-QUALITY-007`、`INV-HUMAN-001` 接入 invariant 追踪测试。
+
 ---
 
 ## 决策记录
@@ -624,6 +633,6 @@ Pre-M0 全部通过后才开始以下任务。
 
 ## 下一步
 
-1. 先执行“开发任务队列 / Pre-M0 开工门禁任务”，并保证本地/CI 一键通过。
-2. Pre-M0 通过后开始 M0 正式开发：schema、代码生成器、repository、状态机、LLMGateway、lint 与 invariant 测试。
-3. 任一 Pre-M0 任务失败时，不进入 M0；技术小问题直接修，战略口径变化必须回到本文和正式设计文档同步更新。
+1. 执行 M5 chapter review + human seal baseline，并保持 `cd ink && python -m pytest` 一键通过。
+2. M5 通过后再展开 M6 book rolling check / export / import finalize 任务队列。
+3. 若实现发现文档与代码不可同时满足，先同步本文和正式设计文档，再继续开发。

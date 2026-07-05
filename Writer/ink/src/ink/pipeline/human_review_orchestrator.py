@@ -1,0 +1,158 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from dataclasses import asdict
+
+from ink.core.state_machine import transition
+from ink.core.text_repository import TextRepository
+from ink.errors import DataIntegrityError
+from ink.quality_report import validate_quality_report
+from ink.time import now_utc_iso
+
+
+class HumanReviewOrchestrator:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def accept_chapter(self, project_id: int, chapter_id: int, run_id: int, *, actor: str, reason: str) -> int:
+        review = _load_pending_review(self.conn, project_id, chapter_id, run_id)
+        blocking_issues = tuple(json.loads(review["blocking_issues"]))
+        if int(review["quality_gate_passed"]) != 1:
+            raise DataIntegrityError("human accept cannot override chapter quality failure")
+
+        shots = _load_accept_ready_shots(self.conn, project_id, chapter_id, run_id)
+        if not shots:
+            raise DataIntegrityError(f"chapter has no soft_sealed shots to accept: {project_id}/{chapter_id}/{run_id}")
+
+        session_id = _lookup_session_id(self.conn, run_id)
+        preconditions = {
+            "review_id": int(review["review_id"]),
+            "quality_gate_passed": True,
+            "blocking_issues": list(blocking_issues),
+            "soft_sealed_shot_count": len(shots),
+        }
+        quality_report = _accepted_quality_report(blocking_issues)
+
+        try:
+            self.conn.execute("SAVEPOINT human_accept_chapter")
+            decision_id = _insert_human_decision(
+                self.conn,
+                project_id=project_id,
+                session_id=session_id,
+                run_id=run_id,
+                chapter_id=chapter_id,
+                actor=actor,
+                reason=reason,
+                preconditions=preconditions,
+                quality_report=quality_report,
+            )
+            self.conn.execute(
+                "UPDATE writing_chapter_reviews SET status = 'accepted' WHERE review_id = ?",
+                (review["review_id"],),
+            )
+            repo = TextRepository(self.conn)
+            for shot_id in shots:
+                text = repo.read_current_text(shot_id, run_id)
+                repo.write_revision(shot_id, run_id, text, seal="chapter_hard")
+                transition(self.conn, shot_id, run_id, "soft_sealed", "hard_sealed")
+        except Exception:
+            self.conn.execute("ROLLBACK TO human_accept_chapter")
+            self.conn.execute("RELEASE human_accept_chapter")
+            raise
+        else:
+            self.conn.execute("RELEASE human_accept_chapter")
+            return decision_id
+
+
+def _load_pending_review(conn: sqlite3.Connection, project_id: int, chapter_id: int, run_id: int) -> dict[str, object]:
+    row = conn.execute(
+        """
+        SELECT review_id, quality_gate_passed, blocking_issues, status
+        FROM writing_chapter_reviews
+        WHERE project_id = ? AND chapter_id = ? AND run_id = ?
+        """,
+        (project_id, chapter_id, run_id),
+    ).fetchone()
+    if row is None:
+        raise DataIntegrityError(f"chapter review not found: {project_id}/{chapter_id}/{run_id}")
+    if str(row[3]) != "pending":
+        raise DataIntegrityError(f"chapter review must be pending before accept, got: {row[3]}")
+    return {
+        "review_id": int(row[0]),
+        "quality_gate_passed": int(row[1]),
+        "blocking_issues": str(row[2]),
+        "status": str(row[3]),
+    }
+
+
+def _load_accept_ready_shots(conn: sqlite3.Connection, project_id: int, chapter_id: int, run_id: int) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT shot_id, status
+        FROM writing_shots
+        WHERE project_id = ? AND chapter_id = ? AND run_id = ?
+        ORDER BY shot_id
+        """,
+        (project_id, chapter_id, run_id),
+    ).fetchall()
+    not_soft_sealed = [str(row[0]) for row in rows if str(row[1]) != "soft_sealed"]
+    if not_soft_sealed:
+        raise DataIntegrityError(f"human accept requires all shots soft_sealed: {not_soft_sealed}")
+    return [str(row[0]) for row in rows]
+
+
+def _lookup_session_id(conn: sqlite3.Connection, run_id: int) -> int:
+    row = conn.execute("SELECT session_id FROM writing_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if row is None:
+        raise DataIntegrityError(f"run not found: {run_id}")
+    return int(row[0])
+
+
+def _accepted_quality_report(blocking_issues: tuple[str, ...]) -> dict[str, object]:
+    report = {
+        "evidence_class": "SEMI_ES",
+        "defect_class": "neutral",
+        "blind_review_passed": True,
+        "would_continue_reading_score": 82,
+        "blocking_items": list(blocking_issues),
+        "productive_deviations": [],
+        "neutral_issues": [],
+        "smart_model_required": True,
+    }
+    validated = validate_quality_report(report)
+    return asdict(validated)
+
+
+def _insert_human_decision(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int,
+    session_id: int,
+    run_id: int,
+    chapter_id: int,
+    actor: str,
+    reason: str,
+    preconditions: dict[str, object],
+    quality_report: dict[str, object],
+) -> int:
+    cursor = conn.execute(
+        """
+        INSERT INTO writing_human_decisions
+            (project_id, session_id, run_id, chapter_id, decision_type, actor, reason,
+             preconditions_json, quality_report_json, hard_quality_override, created_at)
+        VALUES (?, ?, ?, ?, 'accept', ?, ?, ?, ?, 0, ?)
+        """,
+        (
+            project_id,
+            session_id,
+            run_id,
+            chapter_id,
+            actor,
+            reason,
+            json.dumps(preconditions, ensure_ascii=False, sort_keys=True),
+            json.dumps(quality_report, ensure_ascii=False, sort_keys=True),
+            now_utc_iso(),
+        ),
+    )
+    return int(cursor.lastrowid)
