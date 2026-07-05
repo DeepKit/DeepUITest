@@ -76,7 +76,7 @@
 | INV-GATE-002 | degraded draft 不进 jury | `test_degraded_excluded_from_jury` | M3/M4 |
 | INV-JURY-001 | 3 裁判全评 12 维，raw 与 aggregate 分离 | `test_jury_three_models_all_dimensions` | M4 |
 | INV-JURY-002 | 裁判模型不得等于该 draft 的 writer_model | `test_no_self_judging` | M4 |
-| INV-PROMPT-001 | task card / prompt 二次编译旧行打 superseded_at，新行保留 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards`（task card baseline）；prompt snapshot 待 M2 完整编译器补测 | M2 |
+| INV-PROMPT-001 | task card / prompt 二次编译旧行打 superseded_at，新行保留 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards` + `test_prompt_snapshot_compiler_supersedes_by_task_card_persona` | M2 |
 | INV-OUTLINE-001 | drift_score < `outline_drift_threshold`（默认 0.20）拒绝 | `test_outline_drift_threshold_and_winner_uniqueness` | M2 |
 | INV-OUTLINE-002 | task card 半句拒绝 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards` | M2 |
 | INV-FACT-001 | fact anchor 违约/幻觉阻断 hard gate2 | `test_fact_anchor_gate` | M4 |

@@ -560,13 +560,14 @@ Pre-M0 全部通过后才开始以下任务。
 
 ### M2 contract + outline baseline 任务
 
+- [x] 扩展契约 DTO 生成器：覆盖 MetaContract / ShotContract / OutlineSpec / TaskCard / PromptSpec / DraftSpec / JuryInput 生产链。
 - [x] 实现 `load_shot_contract(conn, shot_id, run_id)`：orchestrator 入口只用 id，从 DB 重新加载 shot contract 完整投影。
 - [x] 实现 `TaskCardCompiler.write_task_card()`：拒绝半句 task card，二次编译旧行写 `superseded_at` 并新增当前行。
 - [x] 实现 CJK bigram overlap drift 检测：`drift_score < outline_drift_threshold` 派生拒绝，不新增重复状态列。
 - [x] 实现 `OutlineRepository`：落库大纲候选，PK 选优时保证同一 shot contract 仅一个 `is_winner=1`。
+- [x] 实现 `OutlineOrchestrator.evaluate_and_select()`：按项目阈值生成合格大纲、保留低 drift 候选证据、选 winner 并推进到 `outline_confirmed`。
+- [x] 实现 `PromptSnapshotCompiler`：prompt snapshot 二次编译旧行打 `superseded_at`，新行成为当前版本。
 - [x] 将 M2 的 `INV-PROMPT-001`、`INV-OUTLINE-001`、`INV-OUTLINE-002` 接入 invariant 追踪测试。
-- [ ] 实现 `outline_orchestrator.evaluate_and_select(shot_id, run_id)`：生成不少于 `min_eligible_outlines` 的合格大纲并推进状态。
-- [ ] 实现 prompt snapshot 编译与 supersede：`writing_prompt_snapshots` 旧 prompt 保留，新 prompt 成为当前版本。
 - [ ] 将 M2 outline/task card/prompt 编译接入 shot 级 orchestrator 与 resume 重跑分支。
 
 ---

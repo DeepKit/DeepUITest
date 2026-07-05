@@ -23,7 +23,7 @@ M0_M2_INVARIANT_EVIDENCE = {
     "INV-JURY-ROUND-001": ["test_jury_raw_scores_support_base_and_escalated_rounds"],
     "INV-CHECKPOINT-001": ["test_session_checkpoints_allow_null_shot_id"],
     "INV-RECOVERY-001": ["test_checkpoint_manager_checksum_recovery"],
-    "INV-PROMPT-001": ["test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards"],
+    "INV-PROMPT-001": ["test_prompt_snapshot_compiler_supersedes_by_task_card_persona"],
     "INV-OUTLINE-001": ["test_outline_drift_threshold_and_winner_uniqueness"],
     "INV-OUTLINE-002": ["test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards"],
 }

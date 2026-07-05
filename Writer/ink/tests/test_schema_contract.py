@@ -270,6 +270,7 @@ def insert_minimal_draft(conn: sqlite3.Connection, writer_model: str = "writer-a
         "session_id": 10,
         "run_id": 20,
         "shot_contract_id": shot_contract_id,
+        "task_card_id": task_card_id,
         "prompt_id": prompt_id,
         "shot_id": shot_id,
         "draft_id": cur.lastrowid,

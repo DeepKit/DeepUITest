@@ -8,7 +8,16 @@ from pathlib import Path
 import pytest
 
 from ink.codegen.generate import render_dataclasses
-from ink.contract.generated.dtos import ProjectConfigDTO, QualityReportDTO, ShotContractDTO
+from ink.contract.generated.dtos import (
+    DraftSpecDTO,
+    JuryInputDTO,
+    OutlineSpecDTO,
+    ProjectConfigDTO,
+    PromptSpecDTO,
+    QualityReportDTO,
+    ShotContractDTO,
+    TaskCardDTO,
+)
 from ink.errors import DataIntegrityError
 from ink.quality_report import validate_quality_report
 from ink.time import now_utc_iso
@@ -59,11 +68,60 @@ def test_generated_contract_dtos_are_frozen_and_unpack_all_fields() -> None:
     )
     assert report.unpack()["evidence_class"] == "ES"
 
+    outline = OutlineSpecDTO(
+        outline_id=1,
+        shot_contract_id=2,
+        evaluated_outline_text="她走进档案室。",
+        drift_score=0.9,
+        is_winner=True,
+    )
+    task_card = TaskCardDTO(
+        task_card_id=3,
+        shot_contract_id=2,
+        compiled_instructions="写出档案室发现钥匙。",
+        superseded_at=None,
+    )
+    prompt = PromptSpecDTO(
+        prompt_id=4,
+        task_card_id=3,
+        persona="意象师",
+        full_prompt_text="prompt",
+        prompt_size_bytes=6,
+        relaxed_soft=False,
+        superseded_at=None,
+    )
+    draft = DraftSpecDTO(
+        draft_id=5,
+        shot_id="shot-001@20",
+        prompt_id=4,
+        persona="意象师",
+        writer_model="writer-a",
+        text="正文",
+        byte_count=6,
+        degraded=False,
+    )
+    jury_input = JuryInputDTO(
+        draft_id=5,
+        shot_contract_id=2,
+        jury_round=1,
+        judge_model_pool=("judge-a", "judge-b", "judge-c"),
+    )
+    assert outline.unpack()["is_winner"] is True
+    assert task_card.unpack()["superseded_at"] is None
+    assert prompt.unpack()["prompt_size_bytes"] == 6
+    assert draft.unpack()["degraded"] is False
+    assert jury_input.unpack()["jury_round"] == 1
+
 
 def test_codegen_rendered_output_compiles() -> None:
     source = render_dataclasses()
     compile(source, "<generated dtos>", "exec")
     assert "class ShotContractDTO" in source
+    assert "class OutlineSpecDTO" in source
+    assert "class TaskCardDTO" in source
+    assert "class PromptSpecDTO" in source
+    assert "class DraftSpecDTO" in source
+    assert "class JuryInputDTO" in source
     assert "class ProjectConfigDTO" in source
     assert "class QualityReportDTO" in source
 

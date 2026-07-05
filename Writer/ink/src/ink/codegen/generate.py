@@ -18,6 +18,22 @@ class DataclassSpec:
 
 SCHEMAS: tuple[DataclassSpec, ...] = (
     DataclassSpec(
+        "MetaContractDTO",
+        (
+            FieldSpec("meta_contract_id", "int"),
+            FieldSpec("project_id", "int"),
+            FieldSpec("identity", "dict[str, object]"),
+            FieldSpec("narrative_voice", "dict[str, object]"),
+            FieldSpec("hard_boundaries", "dict[str, object]"),
+            FieldSpec("style_locks", "dict[str, object]"),
+            FieldSpec("world_knowledge", "dict[str, object]"),
+            FieldSpec("motif_system", "dict[str, object]"),
+            FieldSpec("creative_zones", "dict[str, object]"),
+            FieldSpec("style_quality_profile", "dict[str, object]"),
+            FieldSpec("status", "str"),
+        ),
+    ),
+    DataclassSpec(
         "ShotContractDTO",
         (
             FieldSpec("shot_id", "str"),
@@ -27,6 +43,59 @@ SCHEMAS: tuple[DataclassSpec, ...] = (
             FieldSpec("scene_contract", "dict[str, object]"),
             FieldSpec("persona_assignment", "dict[str, object]"),
             FieldSpec("soft_constraints", "dict[str, object]"),
+        ),
+    ),
+    DataclassSpec(
+        "OutlineSpecDTO",
+        (
+            FieldSpec("outline_id", "int"),
+            FieldSpec("shot_contract_id", "int"),
+            FieldSpec("evaluated_outline_text", "str"),
+            FieldSpec("drift_score", "float"),
+            FieldSpec("is_winner", "bool"),
+        ),
+    ),
+    DataclassSpec(
+        "TaskCardDTO",
+        (
+            FieldSpec("task_card_id", "int"),
+            FieldSpec("shot_contract_id", "int"),
+            FieldSpec("compiled_instructions", "str"),
+            FieldSpec("superseded_at", "str | None"),
+        ),
+    ),
+    DataclassSpec(
+        "PromptSpecDTO",
+        (
+            FieldSpec("prompt_id", "int"),
+            FieldSpec("task_card_id", "int"),
+            FieldSpec("persona", "str"),
+            FieldSpec("full_prompt_text", "str"),
+            FieldSpec("prompt_size_bytes", "int"),
+            FieldSpec("relaxed_soft", "bool"),
+            FieldSpec("superseded_at", "str | None"),
+        ),
+    ),
+    DataclassSpec(
+        "DraftSpecDTO",
+        (
+            FieldSpec("draft_id", "int"),
+            FieldSpec("shot_id", "str"),
+            FieldSpec("prompt_id", "int"),
+            FieldSpec("persona", "str"),
+            FieldSpec("writer_model", "str"),
+            FieldSpec("text", "str"),
+            FieldSpec("byte_count", "int"),
+            FieldSpec("degraded", "bool"),
+        ),
+    ),
+    DataclassSpec(
+        "JuryInputDTO",
+        (
+            FieldSpec("draft_id", "int"),
+            FieldSpec("shot_contract_id", "int"),
+            FieldSpec("jury_round", "int"),
+            FieldSpec("judge_model_pool", "tuple[str, ...]"),
         ),
     ),
     DataclassSpec(
