@@ -49,6 +49,7 @@ INVARIANT_EVIDENCE = {
     "INV-IMPORT-001": ["test_import_dry_run_finalize"],
     "INV-EXPORT-001": ["test_export_accepted_only"],
     "INV-BOOK-001": ["test_book_rolling_check_interval"],
+    "INV-WORKFLOW-001": ["test_full_production_flow_six_chapters"],
     "INV-GATE-001": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-GATE-002": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-JURY-001": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],

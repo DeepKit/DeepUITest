@@ -620,6 +620,13 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 import finalize：必须写 `writing_human_decisions` + `writing_import_decisions`，并校验 source hash 未变化。
 - [x] 将 M6 `INV-IMPORT-001` 接入 invariant 追踪测试。
 
+### M6 workflow smoke + human revise/reject 任务
+
+- [x] 实现 `HumanReviewOrchestrator.reject_chapter(...)`：写 `writing_human_decisions(decision_type='reject')`，并将当前 review 标记为 `rejected`，不得 hard seal 或 export。
+- [x] 实现 `HumanReviewOrchestrator.revise_chapter(...)`：写 `writing_human_decisions(decision_type='revise')`，新建 run/shot contract/shot，旧 run 审计留档且不覆盖。
+- [x] 补 6 章 workflow smoke：`setup/write/review` ×6，至少一次 `reject`，至少一次 `revise` 后新 run 重跑，触发第 5 章 book rolling check，最终 `accept/export/import dry-run/finalize`。
+- [x] 将 M6 `INV-WORKFLOW-001` 接入 invariant 追踪测试。
+
 ---
 
 ## 决策记录
