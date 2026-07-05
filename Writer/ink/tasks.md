@@ -594,7 +594,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 通过 `writing_jury_aggregates.is_winner` 唯一索引保证每 shot 唯一 winner，并推进 `jury_scoring -> winner_selected`。
 - [x] 实现 `final_score < shot_quality_floor` 不得 winner：低分 aggregate 可审计落库，但不推进 `winner_selected`。
 - [x] 实现 dimension_floor / judge_disagreement 失败分支：aggregate 记录失败原因，不选 winner。
-- [ ] 实现 quality floor 失败后的补写触发与自动重试策略。
+- [x] 实现 quality floor 失败后的补写触发与自动重试策略：关闭自动重试时转 `failed`，开启时补写 retry 候选并重评。
 - [x] 实现 deviant_reference 注入 jury aggregate 审计输入，且不建立独立 creative_jury。
 - [x] 实现 polish_revision baseline：winner 进入 polish、写正文 revision、生成 polish draft，并回到 `hard_gate1` 重新验证。
 - [ ] 实现 polish 后重新过 hard gates + quality floor 通过才允许 `soft_sealed`。

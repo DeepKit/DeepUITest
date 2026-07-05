@@ -171,6 +171,7 @@ def test_polish_blocks_when_smart_model_unavailable_without_downgrade() -> None:
 def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
     ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=LowQualityDraftProvider())).produce_drafts(
         str(ids["shot_id"]),
         int(ids["run_id"]),
@@ -180,7 +181,7 @@ def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     with pytest.raises(DataIntegrityError):
         JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
-    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "jury_scoring"
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "failed"
     rows = conn.execute(
         "SELECT quality_gate_passed, quality_gate_reasons, is_winner FROM writing_jury_aggregates"
     ).fetchall()
@@ -189,9 +190,30 @@ def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     assert all("final_score_below_shot_quality_floor" in row[1] for row in rows)
 
 
+def test_jury_quality_failure_auto_retries_and_selects_retry_winner() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET min_eligible_candidates = 2, max_retries_per_gate = 1 WHERE project_id = 1")
+    WriteOrchestrator(conn, LLMGateway(conn, provider=LowQualityDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert winner.retry_count == 1
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "winner_selected"
+    assert conn.execute("SELECT retry_count FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM writing_drafts WHERE retry_count = 1").fetchone()[0] == 2
+    assert conn.execute("SELECT count(*) FROM writing_jury_aggregates WHERE quality_gate_passed = 0").fetchone()[0] == 3
+    assert conn.execute("SELECT count(*) FROM writing_jury_aggregates WHERE quality_gate_passed = 1").fetchone()[0] == 2
+
+
 def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
     ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=DimensionFailDraftProvider())).produce_drafts(
         str(ids["shot_id"]),
         int(ids["run_id"]),
@@ -210,6 +232,7 @@ def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
 def test_jury_disagreement_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
     ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=DisagreementDraftProvider())).produce_drafts(
         str(ids["shot_id"]),
         int(ids["run_id"]),

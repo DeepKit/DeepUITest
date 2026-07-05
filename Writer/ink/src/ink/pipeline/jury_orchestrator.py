@@ -93,9 +93,47 @@ class JuryOrchestrator:
                 aggregates.append((draft.draft_id, float(score)))
 
         if not aggregates:
-            raise DataIntegrityError("no draft passed jury quality floor")
+            return self._handle_quality_retry_or_fail(context, shot_id, run_id)
 
         winner_draft_id = max(aggregates, key=lambda item: (item[1], item[0]))[0]
+        self.conn.execute("UPDATE writing_jury_aggregates SET is_winner = 0 WHERE shot_id = ?", (shot_id,))
+        self.conn.execute(
+            "UPDATE writing_jury_aggregates SET is_winner = 1 WHERE shot_id = ? AND draft_id = ?",
+            (shot_id, winner_draft_id),
+        )
+        transition(self.conn, shot_id, run_id, "jury_scoring", "winner_selected")
+        return load_draft(self.conn, winner_draft_id)
+
+    def _handle_quality_retry_or_fail(self, context: "_JuryContext", shot_id: str, run_id: int) -> DraftSpecDTO:
+        if not context.auto_retry_on_hard_failure:
+            transition(self.conn, shot_id, run_id, "jury_scoring", "failed")
+            raise DataIntegrityError("no draft passed jury quality floor")
+
+        from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
+        from ink.pipeline.write_orchestrator import WriteOrchestrator
+
+        try:
+            WriteOrchestrator(self.conn).produce_quality_retry_candidates(shot_id, run_id)
+            HardGateOrchestrator(self.conn).run_both_gates(shot_id, run_id)
+        except DataIntegrityError:
+            transition(self.conn, shot_id, run_id, "jury_scoring", "failed")
+            raise
+
+        retry_candidates = _eligible_candidates(self.conn, shot_id, retry_only=True)
+        retry_aggregates: list[tuple[int, float]] = []
+        for index, draft in enumerate(retry_candidates):
+            score = _score_for_draft(draft, index)
+            self._score_draft(context, draft, score)
+            medians = _median_scores_for_draft(draft, score)
+            if _quality_gate_passes(context, float(score), medians, _judge_disagreement_for_draft(draft)):
+                retry_aggregates.append((draft.draft_id, float(score)))
+
+        if not retry_aggregates:
+            if _shot_retry_count(self.conn, shot_id, run_id) >= context.max_retries_per_gate:
+                transition(self.conn, shot_id, run_id, "jury_scoring", "failed")
+            raise DataIntegrityError("no retry draft passed jury quality floor")
+
+        winner_draft_id = max(retry_aggregates, key=lambda item: (item[1], item[0]))[0]
         self.conn.execute("UPDATE writing_jury_aggregates SET is_winner = 0 WHERE shot_id = ?", (shot_id,))
         self.conn.execute(
             "UPDATE writing_jury_aggregates SET is_winner = 1 WHERE shot_id = ? AND draft_id = ?",
@@ -196,6 +234,8 @@ class _JuryContext:
         jury_models: tuple[str, ...],
         min_eligible_candidates: int,
         redo_candidate_count: int,
+        auto_retry_on_hard_failure: bool,
+        max_retries_per_gate: int,
         shot_quality_floor: int,
         dimension_floor: int,
         judge_disagreement_max: int,
@@ -207,6 +247,8 @@ class _JuryContext:
         self.jury_models = jury_models
         self.min_eligible_candidates = min_eligible_candidates
         self.redo_candidate_count = redo_candidate_count
+        self.auto_retry_on_hard_failure = auto_retry_on_hard_failure
+        self.max_retries_per_gate = max_retries_per_gate
         self.shot_quality_floor = shot_quality_floor
         self.dimension_floor = dimension_floor
         self.judge_disagreement_max = judge_disagreement_max
@@ -218,6 +260,7 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
     row = conn.execute(
         """
         SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates, p.redo_candidate_count,
+               p.auto_retry_on_hard_failure, p.max_retries_per_gate,
                p.shot_quality_floor, p.dimension_floor, p.judge_disagreement_max,
                pa.intensity, pa.is_creative_shot
         FROM writing_shots s
@@ -235,11 +278,13 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         jury_models=tuple(str(item) for item in json.loads(row[1])),
         min_eligible_candidates=int(row[2]),
         redo_candidate_count=int(row[3]),
-        shot_quality_floor=int(row[4]),
-        dimension_floor=int(row[5]),
-        judge_disagreement_max=int(row[6]),
-        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[8]) == 1 else None,
-        intensity=json.loads(row[7]),
+        auto_retry_on_hard_failure=bool(row[4]),
+        max_retries_per_gate=int(row[5]),
+        shot_quality_floor=int(row[6]),
+        dimension_floor=int(row[7]),
+        judge_disagreement_max=int(row[8]),
+        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[10]) == 1 else None,
+        intensity=json.loads(row[9]),
     )
 
 
@@ -264,6 +309,14 @@ def _redo_in_progress(conn: sqlite3.Connection, shot_id: str, run_id: int) -> bo
         (shot_id, run_id),
     ).fetchone()
     return row is not None and int(row[0]) == 1
+
+
+def _shot_retry_count(conn: sqlite3.Connection, shot_id: str, run_id: int) -> int:
+    row = conn.execute(
+        "SELECT retry_count FROM writing_shots WHERE shot_id = ? AND run_id = ?",
+        (shot_id, run_id),
+    ).fetchone()
+    return 0 if row is None else int(row[0])
 
 
 def _load_best_aggregate(conn: sqlite3.Connection, shot_id: str) -> tuple[int, float] | None:

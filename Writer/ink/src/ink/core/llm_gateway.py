@@ -28,7 +28,7 @@ class ModelProvider(Protocol):
 class MockProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         return ModelResult(
-            text=f"[mock:{model_name}:{idempotency_key}] {prompt_text}",
+            text=f"[mock:{model_name}:{idempotency_key}] generated draft",
             model_name=model_name,
             token_input=len(prompt_text.split()),
             token_output=1,

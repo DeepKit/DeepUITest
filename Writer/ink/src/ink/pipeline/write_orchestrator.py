@@ -96,6 +96,32 @@ class WriteOrchestrator:
             )
         return [draft for draft in list_drafts(self.conn, shot_id) if draft.retry_count == retry_count]
 
+    def produce_quality_retry_candidates(self, shot_id: str, run_id: int) -> list[DraftSpecDTO]:
+        context = _load_write_context(self.conn, shot_id, run_id, include_deviant=False)
+        status = load_status(self.conn, shot_id, run_id)
+        if status != "jury_scoring":
+            raise DataIntegrityError(f"quality retry requires jury_scoring, got: {status}")
+
+        retry_count = _next_retry_count(self.conn, shot_id)
+        if retry_count > context.max_retries_per_gate:
+            raise DataIntegrityError("max_retries_per_gate exhausted")
+
+        selected_models = select_writer_models(context.writer_models, context.min_eligible_candidates)
+        for index, model_name in enumerate(selected_models, start=1):
+            self._produce_one(
+                context=context,
+                prompt=context.prompt,
+                model_name=model_name,
+                idempotency_key=f"quality-retry:{shot_id}:{run_id}:{retry_count}:{index}",
+                is_deviant=False,
+                retry_count=retry_count,
+            )
+        self.conn.execute(
+            "UPDATE writing_shots SET retry_count = ? WHERE shot_id = ? AND run_id = ?",
+            (retry_count, shot_id, run_id),
+        )
+        return [draft for draft in list_drafts(self.conn, shot_id) if draft.retry_count == retry_count]
+
     def resume_handlers(self) -> dict[str, object]:
         return {
             "rerun_drafting": self.produce_drafts,
@@ -160,6 +186,8 @@ class _WriteContext:
         run_id: int,
         candidate_count: int,
         redo_candidate_count: int,
+        min_eligible_candidates: int,
+        max_retries_per_gate: int,
         writer_models: tuple[str, ...],
         prompt: PromptSpecDTO,
         deviant_prompt: PromptSpecDTO | None,
@@ -169,6 +197,8 @@ class _WriteContext:
         self.run_id = run_id
         self.candidate_count = candidate_count
         self.redo_candidate_count = redo_candidate_count
+        self.min_eligible_candidates = min_eligible_candidates
+        self.max_retries_per_gate = max_retries_per_gate
         self.writer_models = writer_models
         self.prompt = prompt
         self.deviant_prompt = deviant_prompt
@@ -183,7 +213,8 @@ def _load_write_context(
 ) -> _WriteContext:
     row = conn.execute(
         """
-        SELECT s.project_id, s.shot_contract_id, p.draft_count, p.creative_shot_extra, p.redo_candidate_count
+        SELECT s.project_id, s.shot_contract_id, p.draft_count, p.creative_shot_extra,
+               p.redo_candidate_count, p.min_eligible_candidates, p.max_retries_per_gate
         FROM writing_shots s
         JOIN writing_projects p ON p.project_id = s.project_id
         WHERE s.shot_id = ? AND s.run_id = ?
@@ -228,6 +259,8 @@ def _load_write_context(
         run_id=run_id,
         candidate_count=candidate_count,
         redo_candidate_count=int(row[4]),
+        min_eligible_candidates=int(row[5]),
+        max_retries_per_gate=int(row[6]),
         writer_models=load_writer_model_pool(conn, project_id),
         prompt=prompt,
         deviant_prompt=deviant_prompt,
@@ -242,3 +275,11 @@ def _enter_drafting_state(conn: sqlite3.Connection, shot_id: str, run_id: int) -
     if status == "drafting":
         return "drafting"
     raise DataIntegrityError(f"drafting cannot run from status: {status}")
+
+
+def _next_retry_count(conn: sqlite3.Connection, shot_id: str) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(MAX(retry_count), 0) + 1 FROM writing_drafts WHERE shot_id = ?",
+        (shot_id,),
+    ).fetchone()
+    return int(row[0])
