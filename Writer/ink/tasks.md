@@ -555,7 +555,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `CheckpointManager`：payload checksum、损坏 checkpoint 回退、`CHECKPOINT_CORRUPTED` 事件、retention 清理。
 - [x] 实现 `ResumeManager.execute_resume_action()` 可配置分发，并接入 M2 pre-drafting resume handlers。
 - [x] 将 M1 核心不变量接入 `invariant-traceability.md` 追踪测试。
-- [ ] 实现 `SoftGateCounter` 与实际 soft gate orchestrator 的事务集成。
+- [x] 实现 `SoftGateCounter` 与实际 soft gate orchestrator 的事务集成。
 - [x] 实现 `LLMCallBudget` 与 `LLMGateway.call()` 的调用前后预算集成。
 - [ ] 扩展 `ResumeManager.execute_resume_action()`，接入 M3-M6 drafting/gate/jury/polish/review/export handlers。
 

@@ -13,8 +13,15 @@ INVARIANT_EVIDENCE = {
     "INV-STATE-002": ["test_state_update_lint", "lint_state_updates"],
     "INV-REVISION-001": ["test_v_current_text"],
     "INV-REVISION-002": ["test_resume_manager"],
-    "INV-SOFT-001": ["test_soft_gate_counter_db_authority"],
-    "INV-SOFT-002": ["test_resume_manager_handles_redo_in_progress", "test_redo_candidates_merge"],
+    "INV-SOFT-001": [
+        "test_soft_gate_counter_db_authority",
+        "test_soft_gate_orchestrator_records_n1_counter_without_redo",
+    ],
+    "INV-SOFT-002": [
+        "test_resume_manager_handles_redo_in_progress",
+        "test_soft_gate_orchestrator_sets_redo_in_progress_on_n2_idempotently",
+        "test_redo_candidates_merge",
+    ],
     "INV-LLM-001": ["test_llm_failure_streaks_and_budget_circuit"],
     "INV-LLM-002": ["test_total_llm_budget_transitions_failed"],
     "INV-LLM-003": ["test_llm_gateway_records_attempt", "lint_llm_access"],

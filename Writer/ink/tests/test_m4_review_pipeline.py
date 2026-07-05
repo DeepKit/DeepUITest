@@ -4,7 +4,9 @@ import json
 
 import pytest
 
+from ink.core.resume import ResumeManager
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
+from ink.pipeline.gate_orchestrator import GateOrchestrator
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.polish_orchestrator import PolishOrchestrator
@@ -99,6 +101,86 @@ def test_redo_candidates_merge_with_existing_pool_and_can_flip_winner() -> None:
         WHERE d.retry_count > 0 AND e.gate1_eligible = 1 AND e.gate2_eligible = 1
         """
     ).fetchone()[0] == 2
+
+
+def test_soft_gate_orchestrator_records_n1_counter_without_redo() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+    _append_to_winner_text(conn, " [soft-fail]")
+
+    result = GateOrchestrator(conn).run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert result.action == "block"
+    assert result.passed is False
+    assert [(failure.gate_name, failure.n, failure.level) for failure in result.failures] == [
+        ("reader_pull", 1, 1)
+    ]
+    assert conn.execute(
+        "SELECT status, redo_in_progress FROM writing_shots WHERE shot_id = ?",
+        (ids["shot_id"],),
+    ).fetchone() == ("winner_selected", 0)
+    assert conn.execute(
+        "SELECT n, last_level FROM writing_soft_gate_counters WHERE logical_shot_id = 'shot-001' AND gate_name = 'reader_pull'"
+    ).fetchone() == (1, 1)
+    snapshot = conn.execute(
+        "SELECT soft_fail_counts_snapshot FROM writing_shots WHERE shot_id = ?",
+        (ids["shot_id"],),
+    ).fetchone()[0]
+    assert json.loads(snapshot) == {"reader_pull": 1}
+    assert conn.execute(
+        "SELECT failure_category, failure_level, gate_name, soft_gate_n FROM writing_failure_attributions"
+    ).fetchone() == ("soft", "soft_gate", "reader_pull", 1)
+
+
+def test_soft_gate_orchestrator_sets_redo_in_progress_on_n2_idempotently() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+    _append_to_winner_text(conn, " [soft-fail]")
+    orchestrator = GateOrchestrator(conn)
+
+    orchestrator.run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+    result = orchestrator.run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+    resumed = orchestrator.run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert result.action == "redo"
+    assert result.failures[0].n == 2
+    assert resumed.action == "redo_in_progress"
+    assert conn.execute(
+        "SELECT redo_in_progress FROM writing_shots WHERE shot_id = ?",
+        (ids["shot_id"],),
+    ).fetchone()[0] == 1
+    resume_point = conn.execute(
+        "SELECT resume_point FROM writing_shots WHERE shot_id = ?",
+        (ids["shot_id"],),
+    ).fetchone()[0]
+    assert json.loads(resume_point) == {"gate_names": ["reader_pull"], "phase": "soft_gate"}
+    assert conn.execute(
+        "SELECT n FROM writing_soft_gate_counters WHERE logical_shot_id = 'shot-001' AND gate_name = 'reader_pull'"
+    ).fetchone()[0] == 2
+    assert ResumeManager(conn).resume_shot(10, str(ids["shot_id"]), int(ids["run_id"])) == "rerun_soft_gate_redo_drafting"
+
+
+def test_quality_blocking_soft_gate_n3_fails_without_diagnostic_downgrade() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+    _append_to_winner_text(conn, " [quality-blocking]")
+    orchestrator = GateOrchestrator(conn)
+
+    orchestrator.run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+    orchestrator.run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+    conn.execute(
+        "UPDATE writing_shots SET redo_in_progress = 0 WHERE shot_id = ?",
+        (ids["shot_id"],),
+    )
+    result = orchestrator.run_soft_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    assert result.action == "failed"
+    assert result.failures[0].gate_class == "quality_blocking"
+    assert result.failures[0].n == 3
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "failed"
+    assert conn.execute(
+        "SELECT max(soft_gate_n) FROM writing_failure_attributions WHERE gate_name = 'chapter_hook'"
+    ).fetchone()[0] == 3
 
 
 def test_creative_shot_passes_deviant_reference_to_jury_aggregate_without_scoring_deviant() -> None:
@@ -291,12 +373,20 @@ def test_jury_disagreement_failure_cannot_select_winner() -> None:
 
 
 def test_m4_orchestrator_entrypoint_signatures_lint_clean() -> None:
-    from ink.pipeline import hard_gate_orchestrator, jury_orchestrator, polish_orchestrator, soft_seal_orchestrator
+    from ink.pipeline import (
+        gate_orchestrator,
+        hard_gate_orchestrator,
+        jury_orchestrator,
+        polish_orchestrator,
+        soft_seal_orchestrator,
+    )
 
+    gate_source = gate_orchestrator.__loader__.get_source(gate_orchestrator.__name__)
     hard_gate_source = hard_gate_orchestrator.__loader__.get_source(hard_gate_orchestrator.__name__)
     jury_source = jury_orchestrator.__loader__.get_source(jury_orchestrator.__name__)
     polish_source = polish_orchestrator.__loader__.get_source(polish_orchestrator.__name__)
     soft_seal_source = soft_seal_orchestrator.__loader__.get_source(soft_seal_orchestrator.__name__)
+    assert lint_shot_orchestrator_source(gate_source, "gate_orchestrator.py") == []
     assert lint_shot_orchestrator_source(hard_gate_source, "hard_gate_orchestrator.py") == []
     assert lint_shot_orchestrator_source(jury_source, "jury_orchestrator.py") == []
     assert lint_shot_orchestrator_source(polish_source, "polish_orchestrator.py") == []
@@ -320,6 +410,21 @@ def make_winner_selected_shot():
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
     JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
     return conn
+
+
+def _append_to_winner_text(conn, marker: str) -> None:
+    conn.execute(
+        """
+        UPDATE writing_drafts
+        SET text = text || ?, byte_count = byte_count + ?
+        WHERE draft_id = (
+            SELECT draft_id
+            FROM writing_jury_aggregates
+            WHERE is_winner = 1
+        )
+        """,
+        (marker, len(marker.encode("utf-8"))),
+    )
 
 
 class LowQualityDraftProvider:
