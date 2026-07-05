@@ -66,6 +66,9 @@ class DraftSpecDTO(GeneratedContractDTO):
     text: str
     byte_count: int
     degraded: bool
+    failure_category: str | None
+    retry_count: int
+    is_deviant: bool
 
 @dataclass(frozen=True)
 class JuryInputDTO(GeneratedContractDTO):

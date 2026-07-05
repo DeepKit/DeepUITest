@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Protocol
 
+from ink.core.retry_budget import LLMCallBudget
 from ink.errors import LLMProviderError
 from ink.time import now_utc_iso
 
@@ -52,6 +53,13 @@ class LLMGateway:
         idempotency_key: str,
         model_provider: str = "mock",
     ) -> ModelResult:
+        budget = LLMCallBudget(self.conn, project_id) if shot_id is not None and run_id is not None else None
+        if budget is not None:
+            allowed, reason = budget.check_circuit(shot_id, run_id)
+            if not allowed:
+                self._write_event(project_id, shot_id, run_id, "LLM_BUDGET_BLOCKED", {"reason": reason})
+                raise LLMProviderError(f"LLM budget blocked: {reason}")
+
         now = now_utc_iso()
         prompt_hash = _sha256(prompt_text)
         cursor = self.conn.execute(
@@ -87,10 +95,15 @@ class LLMGateway:
                 """,
                 (type(exc).__name__, attempt_id),
             )
+            if budget is not None:
+                budget.record_call(shot_id, call_type, success=False, failure_type=type(exc).__name__)
             self._write_event(project_id, shot_id, run_id, "LLM_CALL_FAILED", {"attempt_id": attempt_id})
             raise LLMProviderError(str(exc)) from exc
 
         response_hash = _sha256(result.text)
+        if budget is not None:
+            budget.record_call(shot_id, call_type, success=True)
+            budget.check_circuit(shot_id, run_id)
         self.conn.execute(
             """
             UPDATE writing_ai_call_attempts

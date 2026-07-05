@@ -87,6 +87,9 @@ SCHEMAS: tuple[DataclassSpec, ...] = (
             FieldSpec("text", "str"),
             FieldSpec("byte_count", "int"),
             FieldSpec("degraded", "bool"),
+            FieldSpec("failure_category", "str | None"),
+            FieldSpec("retry_count", "int"),
+            FieldSpec("is_deviant", "bool"),
         ),
     ),
     DataclassSpec(

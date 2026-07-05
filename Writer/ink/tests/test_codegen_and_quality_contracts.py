@@ -99,6 +99,9 @@ def test_generated_contract_dtos_are_frozen_and_unpack_all_fields() -> None:
         text="正文",
         byte_count=6,
         degraded=False,
+        failure_category=None,
+        retry_count=0,
+        is_deviant=False,
     )
     jury_input = JuryInputDTO(
         draft_id=5,

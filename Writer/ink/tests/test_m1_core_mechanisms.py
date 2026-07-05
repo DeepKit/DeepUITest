@@ -5,8 +5,10 @@ import json
 import pytest
 
 from ink.core.checkpoint_manager import CheckpointManager
+from ink.core.llm_gateway import LLMGateway, ModelResult
 from ink.core.resume import ResumeManager
 from ink.core.retry_budget import LLMCallBudget, SoftGateCounter
+from ink.errors import LLMProviderError
 from ink.errors import DataIntegrityError
 from test_schema_contract import NOW, insert_minimal_draft, insert_raw_score, make_schema_db
 
@@ -63,6 +65,58 @@ def test_total_llm_budget_transitions_failed() -> None:
     assert budget.check_circuit(str(ids["shot_id"]), int(ids["run_id"])) == (False, "total_exceeded")
     status = conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0]
     assert status == "failed"
+
+
+def test_llm_gateway_integrates_budget_and_failure_streaks() -> None:
+    conn = make_schema_db()
+    ids = insert_minimal_draft(conn)
+    gateway = LLMGateway(conn, provider=FailOnceProvider())
+
+    with pytest.raises(LLMProviderError):
+        gateway.call(
+            project_id=int(ids["project_id"]),
+            shot_id=str(ids["shot_id"]),
+            run_id=int(ids["run_id"]),
+            call_type="draft",
+            prompt_id=int(ids["prompt_id"]),
+            prompt_text="write scene",
+            model_name="writer-a",
+            idempotency_key="draft-fail",
+        )
+
+    assert conn.execute("SELECT llm_call_count FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == 1
+    streak = conn.execute(
+        """
+        SELECT failure_type, consecutive_count
+        FROM writing_llm_failure_streaks
+        WHERE shot_id = ? AND call_type = 'draft'
+        """,
+        (ids["shot_id"],),
+    ).fetchone()
+    assert streak == ("RuntimeError", 1)
+
+    result = gateway.call(
+        project_id=int(ids["project_id"]),
+        shot_id=str(ids["shot_id"]),
+        run_id=int(ids["run_id"]),
+        call_type="draft",
+        prompt_id=int(ids["prompt_id"]),
+        prompt_text="write scene",
+        model_name="writer-b",
+        idempotency_key="draft-ok",
+    )
+
+    assert result.text == "ok"
+    assert conn.execute("SELECT llm_call_count FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == 2
+    reset = conn.execute(
+        """
+        SELECT consecutive_count
+        FROM writing_llm_failure_streaks
+        WHERE shot_id = ? AND call_type = 'draft' AND failure_type = 'RuntimeError'
+        """,
+        (ids["shot_id"],),
+    ).fetchone()
+    assert reset == (0,)
 
 
 def test_resume_manager_maps_status_and_rejects_cross_session_resume() -> None:
@@ -166,3 +220,14 @@ def test_checkpoint_manager_retention_uses_project_setting() -> None:
         "SELECT phase FROM writing_session_checkpoints WHERE session_id = 10 ORDER BY checkpoint_id"
     ).fetchall()
     assert rows == [("phase-2",), ("phase-3",)]
+
+
+class FailOnceProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("temporary failure")
+        return ModelResult(text="ok", model_name=model_name, token_input=1, token_output=1)

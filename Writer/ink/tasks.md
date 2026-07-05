@@ -1,6 +1,6 @@
 # InkFlow v2 开发任务清单
 
-> **状态**：Pre-M0/M0/M1 核心门禁已通过；M2 contract+outline baseline 收口中
+> **状态**：Pre-M0/M0/M1/M2 核心门禁已通过；M3 writer baseline 开发中
 > **最后更新**：2026-07-05
 
 ---
@@ -556,7 +556,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `ResumeManager.execute_resume_action()` 可配置分发，并接入 M2 pre-drafting resume handlers。
 - [x] 将 M1 核心不变量接入 `invariant-traceability.md` 追踪测试。
 - [ ] 实现 `SoftGateCounter` 与实际 soft gate orchestrator 的事务集成。
-- [ ] 实现 `LLMCallBudget` 与 `LLMGateway.call()` 的调用前后预算集成。
+- [x] 实现 `LLMCallBudget` 与 `LLMGateway.call()` 的调用前后预算集成。
 - [ ] 扩展 `ResumeManager.execute_resume_action()`，接入 M3-M6 drafting/gate/jury/polish/review/export handlers。
 
 ### M2 contract + outline baseline 任务
@@ -570,6 +570,18 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `PromptSnapshotCompiler`：prompt snapshot 二次编译旧行打 `superseded_at`，新行成为当前版本。
 - [x] 将 M2 的 `INV-PROMPT-001`、`INV-OUTLINE-001`、`INV-OUTLINE-002` 接入 invariant 追踪测试。
 - [x] 将 M2 outline/task card/prompt 编译接入 `PreDraftingOrchestrator` 与 resume 重跑分支。
+
+### M3 writer baseline 任务
+
+- [x] 实现 `writers/model_pool.py`：从 `writing_projects.writer_model_pool` 读取写手模型池，并按候选数量轮换选择模型。
+- [x] 实现 `WriteOrchestrator.produce_drafts()`：shot 级入口只用 `(shot_id, run_id)` 重新加载 contract/task card/prompt。
+- [x] 实现同 persona + 同 prompt + 换模型产 X 篇候选，并在完成后推进 `drafting -> hard_gate1`。
+- [x] 实现 creative shot 的 `draft_count + creative_shot_extra` 候选产稿。
+- [x] 实现 deviant 独立产 1 篇：`is_deviant=1`，使用 `relaxed_soft=1` prompt snapshot。
+- [x] 实现 LLM provider 失败时 local fallback：落 `degraded=1`、`failure_category`，供 M4 jury 排除。
+- [ ] 实现 N=2 局部重写产 >= `redo_candidate_count` 篇，并与原候选池合并评分。
+- [ ] 将 M3 drafting handler 接入 `ResumeManager.execute_resume_action()`。
+- [ ] 将 context snapshot 写入 prompt/context 输入快照，记录裁剪原因。
 
 ---
 
