@@ -7,6 +7,7 @@ from ink.contract.generated.dtos import PromptSpecDTO, TaskCardDTO
 from ink.contract.loader import load_shot_contract
 from ink.contract.prompt import PromptSnapshotCompiler
 from ink.contract.task_card import TaskCardCompiler, load_latest_task_card
+from ink.core.context_snapshot import prompt_context_payload, save_context_snapshot
 from ink.core.llm_gateway import LLMGateway
 from ink.core.state_machine import load_status, transition
 from ink.errors import DataIntegrityError
@@ -60,6 +61,19 @@ class PreDraftingOrchestrator:
         task_card = load_latest_task_card(self.conn, shot_contract_id)
         persona = str(contract.persona_assignment["persona"])
         prompt = PromptSnapshotCompiler(self.conn).compile_from_task_card(task_card.task_card_id, persona)
+        save_context_snapshot(
+            self.conn,
+            project_id=_lookup_project_id(self.conn, shot_id, run_id),
+            shot_id=shot_id,
+            run_id=run_id,
+            prompt_id=prompt.prompt_id,
+            upstream_revision_ids=(),
+            context_payload=prompt_context_payload(
+                task_card_id=task_card.task_card_id,
+                persona=persona,
+                relaxed_soft=False,
+            ),
+        )
         if status == "task_card_compiled":
             transition(self.conn, shot_id, run_id, "task_card_compiled", "prompt_compiled")
         return prompt
@@ -80,4 +94,14 @@ def _lookup_shot_contract_id(conn: sqlite3.Connection, shot_id: str, run_id: int
     ).fetchone()
     if row is None or row[0] is None:
         raise DataIntegrityError(f"shot contract not found: {shot_id}/{run_id}")
+    return int(row[0])
+
+
+def _lookup_project_id(conn: sqlite3.Connection, shot_id: str, run_id: int) -> int:
+    row = conn.execute(
+        "SELECT project_id FROM writing_shots WHERE shot_id = ? AND run_id = ?",
+        (shot_id, run_id),
+    ).fetchone()
+    if row is None:
+        raise DataIntegrityError(f"shot not found: {shot_id}/{run_id}")
     return int(row[0])

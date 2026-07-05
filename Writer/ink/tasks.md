@@ -582,7 +582,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 N=2 局部重写产 >= `redo_candidate_count` 篇，使用 `retry_count>0` 并保持 `winner_selected + redo_in_progress=1`。
 - [x] 将 M3 `rerun_drafting` / `rerun_soft_gate_redo_drafting` handlers 接入 `ResumeManager.execute_resume_action()`。
 - [ ] 在 M4 jury 中将 N=2 redo 候选与原候选池合并评分，并处理翻盘事务。
-- [ ] 将 context snapshot 写入 prompt/context 输入快照，记录裁剪原因。
+- [x] 将 normal/deviant prompt context snapshot 写入 `writing_context_snapshots`，记录缺失/裁剪原因。
 
 ---
 

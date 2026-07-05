@@ -184,6 +184,20 @@ def test_pre_drafting_orchestrator_runs_m2_pipeline_until_prompt_compiled() -> N
     assert status == "prompt_compiled"
     assert prompt.persona == "悬疑官"
     assert "发现钥匙" in prompt.full_prompt_text
+    snapshot = conn.execute(
+        """
+        SELECT prompt_id, upstream_revision_ids, context_payload
+        FROM writing_context_snapshots
+        WHERE shot_id = ?
+        """,
+        (ids["shot_id"],),
+    ).fetchone()
+    assert snapshot[0] == prompt.prompt_id
+    assert json.loads(snapshot[1]) == []
+    payload = json.loads(snapshot[2])
+    assert payload["persona"] == "悬疑官"
+    assert payload["relaxed_soft"] is False
+    assert {item["field"] for item in payload["clipped_items"]} >= {"voice_samples", "target_reader"}
     current_task_cards = conn.execute(
         """
         SELECT count(*)

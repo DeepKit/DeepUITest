@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from ink.core.llm_gateway import LLMGateway, ModelResult
@@ -30,6 +31,15 @@ def test_write_orchestrator_produces_same_persona_same_prompt_with_distinct_mode
         "SELECT relaxed_soft FROM writing_prompt_snapshots WHERE prompt_id = ?",
         (deviant[0].prompt_id,),
     ).fetchone()[0] == 1
+    payload = conn.execute(
+        """
+        SELECT context_payload
+        FROM writing_context_snapshots
+        WHERE prompt_id = ?
+        """,
+        (deviant[0].prompt_id,),
+    ).fetchone()[0]
+    assert json.loads(payload)["relaxed_soft"] is True
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "hard_gate1"
     assert conn.execute("SELECT count(*) FROM writing_ai_call_attempts WHERE call_type = 'draft'").fetchone()[0] == 4
 

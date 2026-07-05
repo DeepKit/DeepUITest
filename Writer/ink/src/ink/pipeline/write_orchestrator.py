@@ -6,6 +6,7 @@ from ink.contract.generated.dtos import DraftSpecDTO, PromptSpecDTO
 from ink.contract.loader import load_shot_contract
 from ink.contract.prompt import PromptSnapshotCompiler, load_latest_prompt_spec
 from ink.contract.task_card import load_latest_task_card
+from ink.core.context_snapshot import prompt_context_payload, save_context_snapshot
 from ink.core.llm_gateway import LLMGateway
 from ink.core.state_machine import load_status, transition
 from ink.errors import DataIntegrityError, LLMProviderError
@@ -206,6 +207,19 @@ def _load_write_context(
             task_card.task_card_id,
             persona,
             relaxed_soft=True,
+        )
+        save_context_snapshot(
+            conn,
+            project_id=project_id,
+            shot_id=shot_id,
+            run_id=run_id,
+            prompt_id=deviant_prompt.prompt_id,
+            upstream_revision_ids=(),
+            context_payload=prompt_context_payload(
+                task_card_id=task_card.task_card_id,
+                persona=persona,
+                relaxed_soft=True,
+            ),
         )
 
     return _WriteContext(
