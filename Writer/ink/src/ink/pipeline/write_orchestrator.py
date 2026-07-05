@@ -52,6 +52,8 @@ class WriteOrchestrator:
             )
 
         if not deviant_existing:
+            if context.deviant_prompt is None:
+                raise DataIntegrityError("deviant prompt was not compiled")
             deviant_model = context.writer_models[context.candidate_count % len(context.writer_models)]
             drafts.append(
                 self._produce_one(
@@ -67,6 +69,38 @@ class WriteOrchestrator:
             transition(self.conn, shot_id, run_id, "drafting", "hard_gate1")
         return list_drafts(self.conn, shot_id)
 
+    def produce_redo_candidates(self, shot_id: str, run_id: int) -> list[DraftSpecDTO]:
+        context = _load_write_context(self.conn, shot_id, run_id, include_deviant=False)
+        row = self.conn.execute(
+            "SELECT status, redo_in_progress FROM writing_shots WHERE shot_id = ? AND run_id = ?",
+            (shot_id, run_id),
+        ).fetchone()
+        if row is None or row[0] != "winner_selected" or int(row[1]) != 1:
+            raise DataIntegrityError("redo candidates require winner_selected with redo_in_progress=1")
+
+        existing = [draft for draft in list_drafts(self.conn, shot_id) if draft.retry_count > 0]
+        retry_count = max((draft.retry_count for draft in existing), default=1)
+        current_wave = [draft for draft in existing if draft.retry_count == retry_count]
+        needed = max(0, context.redo_candidate_count - len(current_wave))
+        selected_models = select_writer_models(context.writer_models, context.redo_candidate_count)
+        for offset in range(needed):
+            index = len(current_wave) + offset
+            self._produce_one(
+                context=context,
+                prompt=context.prompt,
+                model_name=selected_models[index],
+                idempotency_key=f"redo:{shot_id}:{run_id}:{retry_count}:{index + 1}",
+                is_deviant=False,
+                retry_count=retry_count,
+            )
+        return [draft for draft in list_drafts(self.conn, shot_id) if draft.retry_count == retry_count]
+
+    def resume_handlers(self) -> dict[str, object]:
+        return {
+            "rerun_drafting": self.produce_drafts,
+            "rerun_soft_gate_redo_drafting": self.produce_redo_candidates,
+        }
+
     def _produce_one(
         self,
         *,
@@ -75,6 +109,7 @@ class WriteOrchestrator:
         model_name: str,
         idempotency_key: str,
         is_deviant: bool,
+        retry_count: int = 0,
     ) -> DraftSpecDTO:
         try:
             result = self.gateway.call(
@@ -95,6 +130,7 @@ class WriteOrchestrator:
                 writer_model=model_name,
                 text=result.text,
                 is_deviant=is_deviant,
+                retry_count=retry_count,
             )
         except LLMProviderError as exc:
             if "budget blocked" in str(exc):
@@ -110,6 +146,7 @@ class WriteOrchestrator:
                 degraded=True,
                 failure_category=failure_category,
                 is_deviant=is_deviant,
+                retry_count=retry_count,
             )
 
 
@@ -121,23 +158,31 @@ class _WriteContext:
         shot_id: str,
         run_id: int,
         candidate_count: int,
+        redo_candidate_count: int,
         writer_models: tuple[str, ...],
         prompt: PromptSpecDTO,
-        deviant_prompt: PromptSpecDTO,
+        deviant_prompt: PromptSpecDTO | None,
     ) -> None:
         self.project_id = project_id
         self.shot_id = shot_id
         self.run_id = run_id
         self.candidate_count = candidate_count
+        self.redo_candidate_count = redo_candidate_count
         self.writer_models = writer_models
         self.prompt = prompt
         self.deviant_prompt = deviant_prompt
 
 
-def _load_write_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _WriteContext:
+def _load_write_context(
+    conn: sqlite3.Connection,
+    shot_id: str,
+    run_id: int,
+    *,
+    include_deviant: bool = True,
+) -> _WriteContext:
     row = conn.execute(
         """
-        SELECT s.project_id, s.shot_contract_id, p.draft_count, p.creative_shot_extra
+        SELECT s.project_id, s.shot_contract_id, p.draft_count, p.creative_shot_extra, p.redo_candidate_count
         FROM writing_shots s
         JOIN writing_projects p ON p.project_id = s.project_id
         WHERE s.shot_id = ? AND s.run_id = ?
@@ -155,17 +200,20 @@ def _load_write_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> 
     candidate_count = int(row[2]) + (int(row[3]) if is_creative else 0)
     task_card = load_latest_task_card(conn, shot_contract_id)
     prompt = load_latest_prompt_spec(conn, task_card.task_card_id, persona)
-    deviant_prompt = PromptSnapshotCompiler(conn).compile_from_task_card(
-        task_card.task_card_id,
-        persona,
-        relaxed_soft=True,
-    )
+    deviant_prompt = None
+    if include_deviant:
+        deviant_prompt = PromptSnapshotCompiler(conn).compile_from_task_card(
+            task_card.task_card_id,
+            persona,
+            relaxed_soft=True,
+        )
 
     return _WriteContext(
         project_id=project_id,
         shot_id=shot_id,
         run_id=run_id,
         candidate_count=candidate_count,
+        redo_candidate_count=int(row[4]),
         writer_models=load_writer_model_pool(conn, project_id),
         prompt=prompt,
         deviant_prompt=deviant_prompt,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from ink.core.llm_gateway import LLMGateway, ModelResult
+from ink.core.resume import ResumeManager
 from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
@@ -74,6 +75,65 @@ def test_write_orchestrator_degrades_provider_failure_to_local_fallback() -> Non
         LIMIT 1
         """
     ).fetchone() == (0, "RuntimeError")
+
+
+def test_write_orchestrator_resume_handler_reruns_drafting() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    provider = RecordingDraftProvider()
+    orchestrator = WriteOrchestrator(conn, LLMGateway(conn, provider=provider))
+
+    result = ResumeManager(conn).execute_resume_action(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+        "rerun_drafting",
+        orchestrator.resume_handlers(),
+    )
+
+    regular = [draft for draft in result if not draft.is_deviant]
+    assert len(regular) == 3
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "hard_gate1"
+
+
+def test_write_orchestrator_redo_candidates_are_retry_drafts_and_idempotent() -> None:
+    conn = make_prompt_compiled_shot()
+    ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET redo_candidate_count = 2 WHERE project_id = 1")
+    WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    conn.execute(
+        "UPDATE writing_shots SET status = 'winner_selected', redo_in_progress = 1 WHERE shot_id = ?",
+        (ids["shot_id"],),
+    )
+    orchestrator = WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider()))
+    manager = ResumeManager(conn)
+
+    assert manager.resume_shot(10, str(ids["shot_id"]), int(ids["run_id"])) == "rerun_soft_gate_redo_drafting"
+    first = manager.execute_resume_action(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+        "rerun_soft_gate_redo_drafting",
+        orchestrator.resume_handlers(),
+    )
+    second = manager.execute_resume_action(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+        "rerun_soft_gate_redo_drafting",
+        orchestrator.resume_handlers(),
+    )
+
+    assert len(first) == 2
+    assert [draft.retry_count for draft in first] == [1, 1]
+    assert [draft.is_deviant for draft in first] == [False, False]
+    assert [draft.draft_id for draft in second] == [draft.draft_id for draft in first]
+    assert manager.resume_shot(10, str(ids["shot_id"]), int(ids["run_id"])) == "rerun_soft_gate_redo_jury"
+    status = conn.execute(
+        "SELECT status, redo_in_progress FROM writing_shots WHERE shot_id = ?",
+        (ids["shot_id"],),
+    ).fetchone()
+    assert status == ("winner_selected", 1)
 
 
 def test_write_orchestrator_entrypoint_signature_lints_clean() -> None:
