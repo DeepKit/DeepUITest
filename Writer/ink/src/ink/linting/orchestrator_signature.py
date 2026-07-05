@@ -11,6 +11,7 @@ SHOT_ORCHESTRATOR_FILES = {
     "hard_gate_orchestrator.py",
     "jury_orchestrator.py",
     "gate_orchestrator.py",
+    "polish_orchestrator.py",
 }
 
 

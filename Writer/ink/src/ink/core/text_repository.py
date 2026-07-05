@@ -46,8 +46,10 @@ class TextRepository:
         sealed_at = now if seal != "none" else None
         sealed_by = None if seal == "none" else seal
 
+        started_transaction = not self.conn.in_transaction
         try:
-            self.conn.execute("BEGIN")
+            if started_transaction:
+                self.conn.execute("BEGIN")
             if seal == "chapter_hard":
                 self.conn.execute(
                     "UPDATE writing_shot_revisions SET is_current = 0 WHERE shot_id = ?",
@@ -73,10 +75,12 @@ class TextRepository:
                 ),
             )
         except Exception:
-            self.conn.rollback()
+            if started_transaction:
+                self.conn.rollback()
             raise
         else:
-            self.conn.commit()
+            if started_transaction:
+                self.conn.commit()
             return int(cursor.lastrowid)
 
     def is_hard_sealed(self, shot_id: str, run_id: int) -> bool:

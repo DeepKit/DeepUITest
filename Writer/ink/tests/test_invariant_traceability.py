@@ -29,6 +29,7 @@ INVARIANT_EVIDENCE = {
     "INV-QUALITY-001": ["test_jury_quality_floor_failure_cannot_select_winner"],
     "INV-QUALITY-002": ["test_jury_dimension_floor_failure_cannot_select_winner"],
     "INV-QUALITY-003": ["test_jury_disagreement_failure_cannot_select_winner"],
+    "INV-QUALITY-004": ["test_polish_winner_writes_revision_and_returns_to_hard_gate"],
     "INV-GATE-001": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-GATE-002": ["test_hard_gate_orchestrator_records_two_gate_eligibility"],
     "INV-JURY-001": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
