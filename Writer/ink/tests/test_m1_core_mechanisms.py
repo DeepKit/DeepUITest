@@ -115,6 +115,24 @@ def test_resume_point_parser_requires_structured_fields() -> None:
         manager.parse_resume_point('{"phase":"bad"}')
 
 
+def test_resume_manager_execute_resume_action_dispatches_configured_handler() -> None:
+    manager = ResumeManager(make_schema_db())
+    calls = []
+
+    result = manager.execute_resume_action(
+        "shot-001@20",
+        20,
+        "rerun_prompt",
+        {"rerun_prompt": lambda shot_id, run_id: calls.append((shot_id, run_id)) or "done"},
+    )
+
+    assert result == "done"
+    assert calls == [("shot-001@20", 20)]
+    assert manager.execute_resume_action("shot-001@20", 20, "skip", {}) is None
+    with pytest.raises(DataIntegrityError):
+        manager.execute_resume_action("shot-001@20", 20, "rerun_missing", {})
+
+
 def test_checkpoint_manager_checksum_recovery_and_corruption_event() -> None:
     conn = make_schema_db()
     ids = insert_minimal_draft(conn)

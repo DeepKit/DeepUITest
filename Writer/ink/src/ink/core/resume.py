@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable, Mapping
 
 from ink.errors import DataIntegrityError
 
@@ -63,6 +64,20 @@ class ResumeManager:
                 return "rerun_soft_gate_redo_jury"
 
         return RESUME_MAP.get(status, "skip")
+
+    def execute_resume_action(
+        self,
+        shot_id: str,
+        run_id: int,
+        action: str,
+        handlers: Mapping[str, Callable[[str, int], object]],
+    ) -> object | None:
+        if action == "skip":
+            return None
+        handler = handlers.get(action)
+        if handler is None:
+            raise DataIntegrityError(f"resume action handler is not configured: {action}")
+        return handler(shot_id, run_id)
 
     def parse_resume_point(self, resume_point: str) -> dict:
         payload = json.loads(resume_point)

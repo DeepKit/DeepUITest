@@ -553,10 +553,11 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `LLMCallBudget`：同类失败连续熔断、单类型预算、总调用预算耗尽转 `failed`。
 - [x] 实现 `ResumeManager`：session 绑定恢复、14 态 resume 映射、`redo_in_progress` 分支、结构化 `resume_point` 校验。
 - [x] 实现 `CheckpointManager`：payload checksum、损坏 checkpoint 回退、`CHECKPOINT_CORRUPTED` 事件、retention 清理。
+- [x] 实现 `ResumeManager.execute_resume_action()` 可配置分发，并接入 M2 pre-drafting resume handlers。
 - [x] 将 M1 核心不变量接入 `invariant-traceability.md` 追踪测试。
 - [ ] 实现 `SoftGateCounter` 与实际 soft gate orchestrator 的事务集成。
 - [ ] 实现 `LLMCallBudget` 与 `LLMGateway.call()` 的调用前后预算集成。
-- [ ] 实现完整 `ResumeManager.execute_resume_action()`，接入后续 orchestrator。
+- [ ] 扩展 `ResumeManager.execute_resume_action()`，接入 M3-M6 drafting/gate/jury/polish/review/export handlers。
 
 ### M2 contract + outline baseline 任务
 
@@ -568,7 +569,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 `OutlineOrchestrator.evaluate_and_select()`：按项目阈值生成合格大纲、保留低 drift 候选证据、选 winner 并推进到 `outline_confirmed`。
 - [x] 实现 `PromptSnapshotCompiler`：prompt snapshot 二次编译旧行打 `superseded_at`，新行成为当前版本。
 - [x] 将 M2 的 `INV-PROMPT-001`、`INV-OUTLINE-001`、`INV-OUTLINE-002` 接入 invariant 追踪测试。
-- [ ] 将 M2 outline/task card/prompt 编译接入 shot 级 orchestrator 与 resume 重跑分支。
+- [x] 将 M2 outline/task card/prompt 编译接入 `PreDraftingOrchestrator` 与 resume 重跑分支。
 
 ---
 

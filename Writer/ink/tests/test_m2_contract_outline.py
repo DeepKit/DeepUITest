@@ -12,6 +12,7 @@ from ink.errors import DataIntegrityError
 from ink.outline.drift import cjk_bigram_overlap, is_drift_rejected
 from ink.outline.repository import OutlineRepository
 from ink.pipeline.outline_orchestrator import OutlineOrchestrator
+from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
 from test_schema_contract import NOW, insert_minimal_draft, make_schema_db
 
@@ -162,6 +163,73 @@ def test_outline_orchestrator_entrypoint_signature_lints_clean() -> None:
 
     source = outline_orchestrator.__loader__.get_source(outline_orchestrator.__name__)
     assert lint_shot_orchestrator_source(source, "outline_orchestrator.py") == []
+
+
+def test_pre_drafting_orchestrator_runs_m2_pipeline_until_prompt_compiled() -> None:
+    conn = make_schema_db()
+    ids = insert_minimal_draft(conn)
+    insert_chinese_contract_children(conn, int(ids["shot_contract_id"]))
+    conn.commit()
+    provider = SequenceProvider(
+        [
+            "她走进档案室发现钥匙门外脚步",
+            "她走进档案室发现钥匙门外脚步并关上灯",
+        ]
+    )
+    orchestrator = PreDraftingOrchestrator(conn, LLMGateway(conn, provider=provider))
+
+    prompt = orchestrator.run_until_prompt_compiled(str(ids["shot_id"]), int(ids["run_id"]))
+
+    status = conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0]
+    assert status == "prompt_compiled"
+    assert prompt.persona == "悬疑官"
+    assert "发现钥匙" in prompt.full_prompt_text
+    current_task_cards = conn.execute(
+        """
+        SELECT count(*)
+        FROM writing_shot_task_cards
+        WHERE shot_contract_id = ? AND superseded_at IS NULL
+        """,
+        (ids["shot_contract_id"],),
+    ).fetchone()[0]
+    assert current_task_cards == 1
+
+
+def test_resume_rerun_prompt_supersedes_previous_prompt_snapshot() -> None:
+    conn = make_schema_db()
+    ids = insert_minimal_draft(conn)
+    insert_chinese_contract_children(conn, int(ids["shot_contract_id"]))
+    conn.commit()
+    provider = SequenceProvider(
+        [
+            "她走进档案室发现钥匙门外脚步",
+            "她走进档案室发现钥匙门外脚步并关上灯",
+        ]
+    )
+    orchestrator = PreDraftingOrchestrator(conn, LLMGateway(conn, provider=provider))
+    first_prompt = orchestrator.run_until_prompt_compiled(str(ids["shot_id"]), int(ids["run_id"]))
+
+    from ink.core.resume import ResumeManager
+
+    result = ResumeManager(conn).execute_resume_action(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+        "rerun_prompt",
+        orchestrator.resume_handlers(),
+    )
+
+    assert result.prompt_id != first_prompt.prompt_id
+    rows = conn.execute(
+        """
+        SELECT prompt_id, superseded_at
+        FROM writing_prompt_snapshots
+        WHERE task_card_id = ? AND persona = '悬疑官'
+        ORDER BY prompt_id
+        """,
+        (first_prompt.task_card_id,),
+    ).fetchall()
+    assert rows == [(first_prompt.prompt_id, rows[0][1]), (result.prompt_id, None)]
+    assert rows[0][1] is not None
 
 
 class SequenceProvider:
