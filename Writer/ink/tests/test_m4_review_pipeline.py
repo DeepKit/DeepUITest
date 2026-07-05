@@ -10,7 +10,7 @@ from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.polish_orchestrator import PolishOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.core.llm_gateway import LLMGateway, ModelResult
-from ink.errors import DataIntegrityError
+from ink.errors import DataIntegrityError, LLMProviderError
 from test_m3_writer_pipeline import FailFirstDraftProvider, RecordingDraftProvider, make_prompt_compiled_shot
 
 
@@ -116,6 +116,21 @@ def test_polish_winner_writes_revision_and_returns_to_hard_gate() -> None:
     ).fetchone()
     assert polished_draft == ("smart-polish", 1, "polished text")
     assert conn.execute("SELECT count(*) FROM writing_ai_call_attempts WHERE call_type = 'polish'").fetchone()[0] == 1
+
+
+def test_polish_blocks_when_smart_model_unavailable_without_downgrade() -> None:
+    conn = make_winner_selected_shot()
+    ids = _ids(conn)
+
+    with pytest.raises(LLMProviderError):
+        PolishOrchestrator(conn, LLMGateway(conn, provider=UnavailablePolishProvider())).polish_winner(
+            str(ids["shot_id"]),
+            int(ids["run_id"]),
+        )
+
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "polish_revision"
+    assert conn.execute("SELECT count(*) FROM writing_shot_revisions WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM writing_drafts WHERE writer_model = 'fast-fallback'").fetchone()[0] == 0
 
 
 def test_jury_quality_floor_failure_cannot_select_winner() -> None:
@@ -239,3 +254,9 @@ class PolishProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         assert "productive_deviations" in prompt_text
         return ModelResult(text="polished text", model_name=model_name, token_input=1, token_output=1)
+
+
+class UnavailablePolishProvider:
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        assert model_name == "smart-polish"
+        raise RuntimeError("smart model unavailable")

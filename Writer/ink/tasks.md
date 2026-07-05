@@ -598,7 +598,7 @@ Pre-M0 全部通过后才开始以下任务。
 - [x] 实现 deviant_reference 注入 jury aggregate 审计输入，且不建立独立 creative_jury。
 - [x] 实现 polish_revision baseline：winner 进入 polish、写正文 revision、生成 polish draft，并回到 `hard_gate1` 重新验证。
 - [ ] 实现 polish 后重新过 hard gates + quality floor 通过才允许 `soft_sealed`。
-- [ ] 实现 smart-model-required 任务不可降级阻断。
+- [x] 实现 polish smart-model-required 不可降级阻断：smart 不可用时停在 `polish_revision`，不写 revision。
 
 ---
 

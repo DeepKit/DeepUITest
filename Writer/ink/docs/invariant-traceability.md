@@ -40,7 +40,7 @@
 | INV-QUALITY-008 | 质量证明 | `quality_report_json` 必须标注 ES/SEMI_ES/NES 与 destructive/productive/neutral | `test_quality_report_schema_requires_evidence_and_defect_class` | M0/M5 |
 | INV-QUALITY-009 | 质量证明 | 盲评未通过或 `would_continue_reading_score` 低于阈值不得 `quality_gate_passed` / accepted | `test_blind_review_and_reader_pull_required` | M4/M5 |
 | INV-QUALITY-010 | 文学活力保护 | `productive_deviations` / `protected_roughness` 不得被 polish 自动删除或磨平 | `test_polish_preserves_productive_deviations` | M4/M5 |
-| INV-QUALITY-011 | 模型层级 | 文学体验评审、盲评排序、边界复核、返工指导、polish 不得降级到非 smart 模型 | `test_smart_model_required_tasks_block_on_unavailable_smart` | M4 |
+| INV-QUALITY-011 | 模型层级 | 文学体验评审、盲评排序、边界复核、返工指导、polish 不得降级到非 smart 模型 | `test_polish_blocks_when_smart_model_unavailable_without_downgrade` | M4 |
 | INV-JURY-SELF-001 | D3/P0-4 | DB trigger 阻断 `judge_model = writer_model` 的 raw score 写入，JOIN 审计为空 | `test_jury_raw_scores_no_self_judge_trigger` | M0/M4 |
 | INV-JURY-ROUND-001 | 专家审查 P0 | `writing_jury_raw_scores` 必须支持基础 3 裁判和分歧升级 `jury_round`；不得用 role 唯一约束限死 3 行 | `test_jury_raw_scores_supports_escalation_round` | Pre-M0/M0 |
 | INV-CHECKPOINT-001 | D2 | checkpoint `shot_id` 允许 NULL；非 NULL 时必须是 attempt shot id 并满足 FK | `test_checkpoint_shot_id_null_and_fk_semantics` | M0/M1 |
