@@ -190,7 +190,26 @@ begin
     LSetup := TDeepAxisSetupForm.Create(Self);
     try
       if LSetup.ShowModal = mrOk then
-        Log('初始设置完成: ' + TDeepAxisConfig.GetWeChatDataPath)
+      begin
+        Log('初始设置完成: ' + TDeepAxisConfig.GetWeChatDataPath);
+        // After wizard, try auto-detect keys
+        if FWeChatScanner.TrySavedKeysOnly then
+        begin
+          HideWarning;
+          Log(Format('已加载 %d 个密钥', [FWeChatScanner.KeyManager.GetKeyCount]));
+          var LCP2 := FWeChatScanner.DecryptedContactPath;
+          var LMP2 := FWeChatScanner.DecryptedMessage0Path;
+          var LSP2 := FWeChatScanner.DecryptedSessionPath;
+          if (LCP2 <> '') and (LMP2 <> '') and FWeChatReader.OpenPaths(LCP2, LMP2, LSP2) then
+          begin
+            FRadarPanel.SetWeChatConnected(True);
+            Log('已自动连接微信数据');
+            FStatusBar.SimpleText := '已连接 — 正在首次分析...';
+            StartPolling;
+            FDBPollerThread.ForcePoll;
+          end;
+        end;
+      end
       else
         Log('初始设置已取消');
     finally
@@ -221,6 +240,7 @@ begin
         FRadarPanel.SetWeChatConnected(True);
         Log('已连接微信数据');
         StartPolling;
+        FDBPollerThread.ForcePoll;  // immediate first analysis
       end;
     end;
   end
@@ -668,7 +688,11 @@ begin
       if LResult.IsSuccess then
       begin
         FKeyMonitorTimer.Enabled := False;
-        Log('密钥捕获成功！正在解密数据库...');
+        Log('密钥捕获成功！自动连接解密数据库...');
+        FStatusBar.SimpleText := '密钥已捕获 — 自动连接中...';
+        Application.ProcessMessages;
+        // Auto-connect: reuse DoConnectDecrypted logic
+        DoConnectDecrypted(nil);
       end
       else
       begin
@@ -706,8 +730,9 @@ begin
     HideWarning;
     FRadarPanel.SetWeChatConnected(True);
     Log('已连接解密数据库');
-    FStatusBar.SimpleText := '已连接 — 请点击"4. 读取联系人"';
+    FStatusBar.SimpleText := '已连接 — 正在首次分析...';
     StartPolling;
+    FDBPollerThread.ForcePoll;  // immediate first analysis instead of waiting 30s
   end
   else
   begin
