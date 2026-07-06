@@ -125,6 +125,30 @@ python -m pytest
 - dry-run 预检不会提交 DB 写入；补 setup dry-run 不落库测试。
 - 补错误 JSON 测试，避免重新退回裸异常输出。
 
+## 2026-07-06 完成 P1 阈值调参回放记录
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_threshold_replay.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- 阈值回放定向测试：`2 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`109 passed`
+
+### 已完成：P1 threshold replay
+
+- 新增 `ink.threshold_replay.build_threshold_replay_record()`，离线读取 DB 并生成阈值候选回放记录。
+- 回放覆盖 shot quality floor、dimension floor、chapter quality floor、book quality floor、reader pull、blind review pass count、soft gate redo/fail N。
+- 新增 `ink-replay-thresholds` console script，支持将回放结果追加到 JSONL。
+- 回放只读业务表，不修改项目阈值和生产数据。
+- 补阈值回放记录和命令入口测试。
+
 ## 2026-07-05 完成本地 baseline 验收
 
 验证命令：
