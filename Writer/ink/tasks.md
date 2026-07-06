@@ -1,6 +1,6 @@
 # InkFlow v2 当前任务队列
 
-> **状态**：Pre-M0-M6 baseline、非 shot 级 resume baseline、真实 LLM provider 配置入口、manual LLM 验收记录、参数化 setup、CLI JSON/dry-run、阈值回放记录已完成本地验证。已完成任务已归档到 `history.md`，修复记录见 `bugfix.md`。
+> **状态**：Pre-M0-M6 baseline、P1 产品化队列、PostgreSQL/RLS 适配边界说明已完成本地验证。已完成任务已归档到 `history.md`，修复记录见 `bugfix.md`。
 > **最后更新**：2026-07-06
 
 ---
@@ -24,6 +24,5 @@
 
 ## P2 后续架构增强
 
-- [ ] 为未来 PostgreSQL/RLS 迁移补数据库适配层边界说明和最小兼容测试。
 - [ ] 将测试 fixture/builder 从各测试文件中抽到共享工厂，减少重复插入样板。
 - [ ] 增加性能基线测试：mock LLM 下单 shot、6 章 smoke、CLI 一章流程的耗时上限。

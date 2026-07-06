@@ -33,6 +33,7 @@
 | [optimization-review.md](docs/optimization-review.md) | 5 个专家视角的优化设计评审结论、P0/P1 收敛项 | 架构与实现负责人 |
 | [pitfall-checklist.md](docs/pitfall-checklist.md) | 必须保留的踩坑修复与新增防御清单 | 写 core/ 模块前必读 |
 | [migration-plan.md](docs/migration-plan.md) | Pre-M0 + M0-M6 完整实现顺序、验证清单、生产验收标准 | 执行者 |
+| [postgresql-rls-adapter-boundary.md](docs/postgresql-rls-adapter-boundary.md) | 未来 PostgreSQL/RLS 迁移的适配层边界、RLS/auth context、并发锁和 SQL 方言说明 | 架构与实现负责人 |
 | [tasks.md](tasks.md) | 当前未完成任务队列 | 执行者 |
 | [history.md](history.md) | 已完成任务归档与验收记录 | 执行者 |
 | [bugfix.md](bugfix.md) | 开发期缺陷、根因、修复和防回归测试 | 执行者 |
