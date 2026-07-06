@@ -35,7 +35,7 @@
 - AI 调用统一经 **LLMGateway**：所有 prompt/response/hash/token/error/failure streak/runtime event 落库，可恢复、可审计、可成本追踪
 - 人工动作经 **human_decisions**：setup confirm、contract confirm、review accept/revise/reject、abort 都有 actor/reason/前置条件审计
 - 主编台交互经 **DecisionSession 专表**：自然语言、AI 解析、回读、1-8/0/9 选项集、确认结果和断点续接全部持久化；未确认意见不进入 prompt 或 canonical
-- 源文档先经 **SourceNormalizer** 合并、去重、拆矛盾、原子化；`better.md` 等过程文件只作抽取输入，处理后必须清空，只保留 processed manifest/hash 审计
+- 源文档先经 **SourceNormalizer** 合并、去重、拆矛盾、原子化；source coverage 采用原子条款 × contract field 矩阵，AI 抽取采用双模型交叉 + coverage gate；`better.md` 等过程文件只作抽取输入，处理后必须清空，只保留 processed manifest/hash 审计
 - 已有稿重构经 **import ledger**：dry-run、source hash、低置信问题、人类裁决、finalize 原子落库
 
 ### 0.4 不做
@@ -320,6 +320,8 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 - `better.md` 等过程文件只作为 `process_scratch` 输入；抽取完成后，已解决内容合并进原子条款或 confirmed contract，并清空过程文件，只保留 processed manifest/hash 审计。
 - 重复条款合并 source_refs；冲突条款生成主编台选择题；含混条款拆成一个个可验证原子条款。
 - 原子条款必须包含 stable id、scope、clause_type、severity、source_refs、source_hash 和 status。
+- source coverage 固定按原子条款 × contract field 建矩阵；必填字段没有 confirmed clause 或人工空值理由时，不得封板。
+- AI 抽取完整性固定采用 primary/crosscheck 双模型交叉抽取；不一致、漏抽、冲突和低置信项进入 coverage gap/conflict，并由主编台选择式裁决。
 - 未原子化条款不得进入 contract patch；未 confirmed 条款不得进入 prompt。
 
 ### 3.1 契约层级（dataclass 链）

@@ -54,7 +54,7 @@
 11. **自动重试减少编辑工作量**：hard gate / quality floor 失败后，系统按 `retry_strategy` 自动重试，编辑只在 `failed` 状态介入做项目级资源决策，不在 accept 路径上介入审美判断。
 12. **生产内核优先**：M0/M1 先做实 schema、lint、状态机、LLMGateway、text_repository、resume，再用 1 章质量证明校准，之后扩展到 M2-M6。
 13. **主编台交互边界**：作者只面对 `InkFlow 主编台` 和少量确认点；后台通过 `DecisionSession`、`ContractSteward`、`Gatekeeper`、`CanonicalKeeper`、`AuditLedger` 等角色保存、校验、恢复和审计，未确认意见不得进入 prompt 或 accepted canonical。
-14. **源文档先规范化**：写作指南、大纲和 `better.md` 等过程文件必须先合并、去重、拆矛盾、原子化；`better.md` 处理后必须清空，只保留 processed manifest/hash 审计。
+14. **源文档先规范化**：写作指南、大纲和 `better.md` 等过程文件必须先合并、去重、拆矛盾、原子化；coverage 使用原子条款 × contract field 矩阵，`better.md` 处理后必须清空，只保留 processed manifest/hash 审计。
 15. **选择式对话协议**：主编台裁决默认给 1-8 个选项，`0` 返回，`9` 重新生成；选项集持久化，恢复后不得漂移。
 16. **当前产品边界**：单作者本地生产工具；SQLite 先行但按 PostgreSQL 迁移预留；真实 LLM 不进默认 CI，只进手动或 nightly 验收。
 

@@ -1818,6 +1818,8 @@ class DecisionSession:
 - `DecisionSession` 不复用 `writing_human_decisions`。`writing_human_decisions` 只记录已经确认的正式人工动作。
 - 自然语言输入、AI 解析、选项集、回读文本、重生成记录必须进专表；否则恢复时会被迫依赖聊天上下文。
 - 源文档规范化、`better.md` 处理和原子条款必须进专表；否则无法检查覆盖率、重复、冲突和 source hash stale。
+- source coverage 粒度固定为 `atomic_clause × contract_field`；必填字段没有覆盖证据时，coverage gate 必须阻断契约确认。
+- AI 抽取完整性固定采用双模型交叉抽取；不一致、遗漏和低置信项必须进入 coverage gap/conflict。
 - 契约版本和契约 patch 必须与 source clauses 关联；否则无法证明“从大纲到契约”没有变形或遗漏。
 
 **建议 DDL 草案**（schema revision，不属于当前 40 表 baseline）：
@@ -1852,6 +1854,49 @@ CREATE TABLE writing_atomic_source_clauses (
     supersedes_clause_id INTEGER,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE writing_source_extraction_runs (
+    extraction_run_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_document_id INTEGER NOT NULL,
+    extractor_slot TEXT NOT NULL CHECK (extractor_slot IN ('primary','crosscheck')),
+    model_provider TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    extracted_clause_ids_json TEXT NOT NULL DEFAULT '[]',
+    low_confidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK (status IN ('running','completed','failed','superseded')),
+    created_at TEXT NOT NULL,
+    finished_at TEXT
+);
+
+CREATE TABLE writing_source_coverage_matrix (
+    coverage_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    atomic_clause_id INTEGER,
+    contract_scope_type TEXT NOT NULL CHECK (contract_scope_type IN ('book','volume','part','chapter','shot')),
+    contract_scope_id TEXT,
+    contract_field_path TEXT NOT NULL,
+    coverage_status TEXT NOT NULL CHECK (coverage_status IN ('covered','gap','conflict','rejected','deferred','diagnostic')),
+    decision_session_id INTEGER,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE writing_process_file_manifests (
+    process_manifest_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_document_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    processed_hash TEXT NOT NULL,
+    cleared_at TEXT NOT NULL,
+    extracted_clause_ids_json TEXT NOT NULL DEFAULT '[]',
+    contract_patch_ids_json TEXT NOT NULL DEFAULT '[]',
+    decision_session_ids_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE writing_decision_sessions (

@@ -11,6 +11,7 @@
 - 主编台对需要裁决的问题默认给 1-8 个编号选项；`0` 返回，`9` 重新生成选项。作者的自由文本只作为补充意见保存，再生成下一组选项。
 - 未确认的 contract patch、review 意见或导入判断不得进入 prompt、accepted canonical 或 export。
 - `better.md` 是过程文件，不是长期真相源；资料官抽取、合并、去重、原子化并落入 source clauses / contracts 后，必须清空，只保留 processed manifest/hash 审计。
+- 写作指南到契约的覆盖检查采用“原子条款 × contract field”矩阵；AI 抽取采用双模型交叉抽取，coverage gate 未通过不得封 `BookContract`。
 - 所有 AI 调用必须经 `LLMGateway`，落 `writing_ai_call_attempts` 与 `writing_runtime_events`。
 - 所有正式正文必须来自 accepted canonical；未 accepted、rejected、degraded、failed run 的文本不得进入后续上下文或导出。
 - 所有正式正文必须通过 shot/chapter/book 三层质量硬门禁；人工 accept 不得覆盖硬质量失败。
@@ -140,6 +141,8 @@ setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必�
 - `better.md` 等过程文件只能作为 `process_scratch` 输入。
 - 重复/冲突/含混条款必须合并、去重、拆分为原子条款。
 - 低置信抽取和 source coverage 缺口必须生成主编台选择题，由作者裁决。
+- source coverage 必须按原子条款到 contract field 建矩阵；必填 contract field 没有 confirmed clause 或人工空值理由时，coverage gate 阻断确认。
+- AI 抽取必须跑 primary/crosscheck 双模型交叉；两边不一致、漏抽、冲突和低置信项进入 coverage gap/conflict。
 - 处理完成后，过程文件必须清空，并记录 processed manifest/hash。
 
 重构已有稿时，导入文本进入正文 revision 链；导入文本不得直接 accepted，必须走同一套 hard gates、quality floor、polish_revision、chapter review、book rolling check，不允许绕过 accepted canonical。
@@ -169,6 +172,8 @@ setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必�
 - 选择式对话恢复：至少一个 option set 在中断后恢复，1-8/0/9 语义不变
 - 局部修订：至少一个 `ScopedDecisionSession` 修改章级契约后，受影响 prompt/draft/review 被标记 stale 或新建 run
 - 文档规范化：至少一次 `better.md` 处理后被清空，confirmed contract 不再直接引用该过程文件
+- source coverage：至少一次原子条款 × contract field coverage gate 阻断缺口，并通过选择式裁决后解除阻断
+- AI 抽取完整性：至少一次 primary/crosscheck 双模型抽取差异被记录为 gap/conflict
 - 生成测试：先封 `BookContract` 全书基线，再跑前 6 章灰度生产
 
 验收通过标准：无 degraded 假通过、无低于 shot/chapter/book 质量硬门禁的文本进入 accepted/export、无盲评/继续阅读失败文本进入 accepted、无 productive_deviation 被 polish 磨平、无人工 override 硬质量失败、无未审稿正文进入导出、未确认 DecisionSession 不进入 prompt、source hash 变化阻断旧确认、所有 AI 调用可追溯、所有人工决策可追溯、所有旧关键不变量在 `invariant-traceability.md` 中有对应测试。

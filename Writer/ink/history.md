@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-07-06 完成 source coverage 战略决策归档
+
+验证命令：
+
+```bash
+docs-only change; no runtime tests required
+```
+
+### 已完成：覆盖率与抽取完整性口径定版
+
+- 将 source coverage 粒度定为“原子条款 × contract field”矩阵；必填字段没有 confirmed clause 或人工空值理由时，coverage gate 阻断契约确认。
+- 将 AI 抽取完整性定为 primary/crosscheck 双模型交叉抽取；不一致、漏抽、冲突和低置信项进入 coverage gap/conflict。
+- 将 `better.md` 清空后的 manifest 定为只记录 hash、处理时间、抽取条款 ID、contract patch ID 和 DecisionSession ID，不保留过程文件正文或摘要。
+- 更新 `docs/interactive-contract-workflow.md`、`docs/implementation-contract-v1.md`、`docs/author-workflow-contract.md`、`docs/design-v2.md`、`README.md` 和 `tasks.md`，把上述口径从讨论项改为开发约束。
+
 ## 2026-07-06 完成源文档规范化与选择式对话文档化
 
 验证命令：

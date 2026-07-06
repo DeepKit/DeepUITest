@@ -65,6 +65,47 @@ updated_at
 
 未原子化条款不得进入契约 patch；未确认条款不得进入 prompt。
 
+### 2.1 source coverage 与抽取完整性
+
+source coverage 采用 **原子条款 × contract field** 矩阵。每个原子条款必须映射到一个或多个契约字段，或被显式标记为 `rejected` / `deferred` / `diagnostic`。每个必填 contract field 必须能反查到 confirmed atomic clauses 或人工确认的空值理由。
+
+覆盖矩阵最小字段：
+
+```text
+coverage_id
+project_id
+atomic_clause_id
+contract_scope_type      # book / volume / part / chapter / shot
+contract_scope_id
+contract_field_path      # e.g. BookContract.evidence_chain
+coverage_status          # covered / gap / conflict / rejected / deferred
+decision_session_id
+created_at
+updated_at
+```
+
+AI 抽取完整性采用 **双模型交叉抽取 + coverage gate**：
+
+1. `primary` 抽取器生成原子条款候选。
+2. `crosscheck` 抽取器独立抽取同一源文档。
+3. 程序合并候选，按语义相似度和 source ref 去重。
+4. 两边不一致、未映射条款、必填字段缺口进入 `coverage_status='gap'` 或 `conflict`。
+5. coverage gate 未清空 blocking gap 前，不允许生成 confirmed contract patch。
+6. 缺口裁决一律生成 1-8/0/9 选择题，不要求人类编辑结构化卡片。
+
+`better.md` 清空后的 processed manifest 只记录审计元数据，不保留过程文件正文或摘要：
+
+```text
+process_manifest_id
+source_path
+content_hash
+processed_hash
+cleared_at
+extracted_clause_ids
+contract_patch_ids
+decision_session_ids
+```
+
 ## 3. 前台角色
 
 作者日常只需要理解以下角色：
@@ -377,18 +418,18 @@ AI 输出三次无法过校验时，DecisionSession 转 `needs_human`，主编�
 
 ---
 
-## 12. 生成测试与未决问题
+## 12. 生成测试与覆盖决策
 
 首次真实生成测试采用“两段式封板”：
 
 1. 先完成 `BookContract` 全书基线封板，确认写作宪法、人物核心、证据链、风格锁和禁止方向。
 2. 再运行前 6 章灰度生成，验证章级/shot 级契约、stale 传播、主编台交互负担、恢复点和质量门禁。
 
-仍需讨论的战略问题：
+已定策略：
 
-- source coverage 矩阵做到多细：按源文件、章节、原子条款，还是按 contract field。
-- AI 抽取 completeness 如何证明：抽样复核、双模型交叉抽取、还是 coverage gate。
-- `better.md` 清空后的 manifest 格式：只记录 hash/处理时间/抽取条款 ID，还是也记录处理摘要。
+- source coverage 粒度使用 **原子条款 × contract field** 矩阵。
+- AI 抽取 completeness 使用 **双模型交叉抽取 + coverage gate**。
+- `better.md` 清空后的 manifest 记录 hash、处理时间、抽取条款 ID、contract patch ID 和 decision session ID，不记录过程文件正文或摘要。
 
 ## 13. 验收口径
 
@@ -404,3 +445,4 @@ AI 输出三次无法过校验时，DecisionSession 转 `needs_human`，主编�
 - 已 accepted 正文只可通过 revise run 修改。
 - `better.md` 处理后不再被 prompt 或契约确认直接引用。
 - 冲突/遗漏裁决使用 1-8/0/9 选择式对话，恢复后选项集不漂移。
+- source coverage gate 未清空 blocking gap 时，不得确认 BookContract 或进入前 6 章生成。
