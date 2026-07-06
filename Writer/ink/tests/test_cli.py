@@ -214,3 +214,82 @@ def _row(db_path: Path, sql: str):
         return conn.execute(sql).fetchone()
     finally:
         conn.close()
+
+
+def test_cli_confirm_contract_via_decision_session_writes_audit_chain(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "ds-demo", "--title", "DS Demo"]) == 0
+
+    # CLI 尚未暴露 decision-session start（Task #4 范围），��里直接经 Store 准备 awaiting_confirm 会话。
+    from ink.decision_sessions import DecisionSessionStore
+
+    conn = sqlite3.connect(db_path)
+    try:
+        store = DecisionSessionStore(conn)
+        session_id = store.start(
+            project_id=1,
+            scope_type="book",
+            scope_id=None,
+            target_type="BookContract",
+            target_id="book",
+            human_text="封全书基线",
+        )
+        store.record_ai_parse(
+            session_id,
+            parsed_patch={"scope_type": "book", "change_type": "refine"},
+            readback_text="我理解为封基线。",
+            source_hashes=["hash-guide"],
+            before_hash="before-hash",
+        )
+        store.create_option_set(session_id, options=[{"label": "确认基线"}], recommended_option=1)
+        store.select_option(session_id, 1)
+        conn.commit()
+    finally:
+        conn.close()
+
+    payload = _run_and_capture(
+        [
+            "--db", str(db_path),
+            "confirm-contract",
+            "--decision-session-id", str(session_id),
+            "--scope-type", "book",
+            "--contract-json", '{"identity":{"title":"DS Demo"},"logline":"core"}',
+            "--source-hashes", "hash-guide",
+            "--reason", "封基线",
+        ]
+    )
+    assert payload["ok"] is True
+    data = payload["data"]
+    assert data["decision_session_id"] == session_id
+    assert data["contract_version_id"] > 0
+    assert data["after_hash"]
+
+    assert _scalar(
+        db_path,
+        "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'contract_confirm'",
+    ) == 1
+    assert _scalar(db_path, "SELECT count(*) FROM writing_contract_versions") == 1
+    assert _scalar(db_path, "SELECT count(*) FROM writing_contract_patches") == 1
+    assert _scalar(db_path, "SELECT count(*) FROM writing_contract_changelog") == 1
+
+    conn = sqlite3.connect(db_path)
+    try:
+        status = conn.execute(
+            "SELECT status, after_hash FROM writing_decision_sessions WHERE decision_session_id = ?",
+            (session_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert status[0] == "confirmed"
+    assert status[1] == data["after_hash"]
+
+
+def _run_and_capture(argv: list[str]) -> dict:
+    import io
+    import contextlib
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = main(argv)
+    assert rc == 0
+    return json.loads(buf.getvalue())

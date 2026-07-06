@@ -1,6 +1,6 @@
 # InkFlow v2 当前任务队列
 
-> **状态**：当前生产内核开发队列已完成本地验证。v1.1 DecisionSession/source coverage 持久化基础层已完成，主编台产品化集成继续开发。
+> **状态**：v1.1 持久化基础层 + DecisionSession 主编台集成（`confirm_and_apply` 原子审计链 + coverage gate 阻断 + CLI `--decision-session-id`）已完成，全量 124 passed。主编台产品化集成继续开发。
 > **最后更新**：2026-07-06
 
 ---
@@ -20,17 +20,28 @@
 
 ## P1 产品化任务
 
-- **主编台交互层**：实现 `WorkflowConductor` 薄调度状态机，前台只暴露 InkFlow 主编台，后台调度 DecisionSession / ContractSteward / Gatekeeper / CanonicalKeeper / AuditLedger。
-- **DecisionSession 主编台集成**：把 `DecisionSessionStore` 接入 `confirm-contract`、导入裁决和后续主编台入口；confirmed 时原子写 human decision、contract changelog、contract version。
+### 1. 主编台调度与集成
+
+- **WorkflowConductor 薄调度状态机**：前台只暴露 InkFlow 主编台，后台调度 DecisionSession / ContractSteward / Gatekeeper / CanonicalKeeper / AuditLedger。
+- ~~**DecisionSession 主编台集成**：把 `DecisionSessionStore` 接入 `confirm-contract`、导入裁决和后续主编台入口；confirmed 时原子写 human decision、contract changelog、contract version。~~ ✅ 已完成（`confirm_and_apply` 原子审计链 + coverage gate 阻断 + CLI `--decision-session-id`；见 history.md Task #3）
 - **选择式对话 CLI/API**：把 1-8 编号选项、`0` 返回、`9` 重新生成接入用户可调用命令，并支持恢复展示原 option set。
 - **自然语言到契约 patch**：AI 只能输出结构化 patch；程序负责 schema 校验、来源覆盖、冲突检查、回读确认、事务写库和写后审计。
 - **ScopedDecisionSession**：支持 book / volume / part / chapter / shot 作用域修订，记录 affected scopes 和 stale downstream；已 accepted 正文必须走 revise run。
-- **源文档规范化算法**：实现 `SourceLibrarian` / `SourceNormalizer` / `ImportCurator` 读取写作指南目录、计算 source hash、合并去重、拆矛盾、原子化 source clauses，并生成冲突/遗漏选择题。
-- **source coverage gate 集成**：把原子条款 × contract field 覆盖矩阵接入契约确认；blocking gap 未解决时阻断 BookContract/局部契约确认。
-- **双模型抽取执行器**：接入 LLMGateway 执行 primary/crosscheck 抽取，对不一致、漏抽、冲突和低置信项生成 coverage gap/conflict。
-- **过程文件清空执行器**：将 `better.md` 作为 `process_scratch` 输入；抽取并合并完成后清空文件，写 processed manifest，禁止后续 prompt/contract 直接引用已处理过程文件。
+
+### 2. 源文档规范化与覆盖
+
+- **源文档规范化算法**：实现 `SourceLibrarian` / `SourceNormalizer` / `ImportCurator` 读取写作指南目录、计算 source hash、合并去重、拆矛盾、原子化 source clauses，并生成冲突/遗漏选择题。（存储层 `SourceWorkflowStore` 已落，需实现读取/合并/去重/原子化算法和选择题生成逻辑。）
+- **source coverage gate 集成**：把原子条款 × contract field 覆盖矩阵接入契约确认；blocking gap 未解决时阻断 BookContract/局部契约确认。（存储层 `SourceWorkflowStore.record_coverage/resolve_coverage/has_blocking_coverage_gaps` 已落，需接入契约确认流程。）
+- **双模型抽取执行器**：接入 `LLMGateway` 执行 primary/crosscheck 抽取，对不一致、漏抽、冲突和低置信项生成 coverage gap/conflict。（存储层 `SourceWorkflowStore.record_extraction_run` 已落，需实现双模型调度和差异比对逻辑。）
+- **过程文件清空执行器**：将 `better.md` 作为 `process_scratch` 输入；抽取并合并完成后清空文件，写 processed manifest，禁止后续 prompt/contract 直接引用已处理过程文件。（存储层 `SourceWorkflowStore.record_process_file_manifest` 已落，需实现文件清空和引用阻断逻辑。）
+
+### 3. 契约版本与 stale 传播
+
 - **契约字段投影集成**：将 BookContract / VolumeContract / PartContract / ChapterContract / ShotContract 字段投影接入 contract versions、contract patches 和 source clause 追踪。
 - **stale 传播实现**：契约或 source hash 变化后，按 book/volume/part/chapter/shot 层级标记下游 prompt、draft、review、book check stale；已 accepted 正文只允许 revise run。
+
+### 4. 验收与防回归
+
 - **前 6 章生成验收**：先封 `BookContract` 全书基线，再基于真实写作指南目录跑前 6 章灰度生成，验证交互负担、恢复点、契约抽取和质量门禁。
 - **防回归测试**：覆盖未确认 patch 不进 prompt、source hash 变化阻断确认、断点续接回读、局部修订 stale 传播、AI 解析失败不污染生产契约、`better.md` 清空后不再被直接引用。
 

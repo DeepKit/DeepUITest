@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from factories import NOW, make_schema_db
-from ink.decision_sessions import DecisionSessionStore
+from ink.decision_sessions import ConfirmedContractResult, DecisionSessionStore
 from ink.errors import DataIntegrityError
 from ink.source_workflow import SourceWorkflowStore
 
@@ -235,3 +235,229 @@ def _insert_project(conn: sqlite3.Connection) -> None:
         """,
         (NOW,),
     )
+
+
+def _prepare_awaiting_session(store: DecisionSessionStore, *, scope_type: str = "book", scope_id: str | None = None, target_id: str = "book") -> int:
+    session_id = store.start(
+        project_id=1,
+        scope_type=scope_type,
+        scope_id=scope_id,
+        target_type=f"{scope_type.capitalize()}Contract",
+        target_id=target_id,
+        human_text="封基线",
+    )
+    store.record_ai_parse(
+        session_id,
+        parsed_patch={"scope_type": scope_type, "change_type": "refine"},
+        readback_text="我理解为封基线。",
+        source_hashes=["hash-guide"],
+        before_hash="before-hash",
+    )
+    store.create_option_set(session_id, options=[{"label": "确认基线"}], recommended_option=1)
+    store.select_option(session_id, 1)
+    return session_id
+
+
+def test_confirm_and_apply_atomically_writes_full_audit_chain() -> None:
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+    session_id = _prepare_awaiting_session(store)
+
+    result = store.confirm_and_apply(
+        session_id,
+        actor="author",
+        reason="封全书基线",
+        contract_scope_type="book",
+        contract_scope_id=None,
+        contract_payload={"identity": {"title": "Demo"}, "logline": "core promise"},
+        change_type="refine",
+        source_clause_ids=[101, 102],
+        affected_scopes=[{"scope_type": "book"}],
+        stale_downstream=[],
+        source_hashes=["hash-guide"],
+    )
+
+    assert isinstance(result, ConfirmedContractResult)
+    assert result.decision_session_id == session_id
+
+    session_row = conn.execute(
+        "SELECT status, after_hash FROM writing_decision_sessions WHERE decision_session_id = ?",
+        (session_id,),
+    ).fetchone()
+    assert session_row[0] == "confirmed"
+    assert session_row[1] == result.after_hash
+
+    decision_row = conn.execute(
+        """
+        SELECT decision_type, actor, reason
+        FROM writing_human_decisions WHERE decision_id = ?
+        """,
+        (result.human_decision_id,),
+    ).fetchone()
+    assert decision_row == ("contract_confirm", "author", "封全书基线")
+
+    version_row = conn.execute(
+        """
+        SELECT scope_type, scope_id, version, status, contract_hash,
+               created_from_decision_session_id
+        FROM writing_contract_versions WHERE contract_version_id = ?
+        """,
+        (result.contract_version_id,),
+    ).fetchone()
+    assert version_row[0] == "book"
+    assert version_row[1] is None
+    assert version_row[2] == 1
+    assert version_row[3] == "confirmed"
+    assert version_row[4] == result.after_hash
+    assert version_row[5] == session_id
+
+    patch_row = conn.execute(
+        """
+        SELECT decision_session_id, base_contract_version_id, target_contract_version_id,
+               change_type, status
+        FROM writing_contract_patches WHERE contract_patch_id = ?
+        """,
+        (result.contract_patch_id,),
+    ).fetchone()
+    assert patch_row[0] == session_id
+    assert patch_row[1] is None  # 首次确认无 base
+    assert patch_row[2] == result.contract_version_id
+    assert patch_row[3] == "refine"
+    assert patch_row[4] == "confirmed"
+
+    changelog_row = conn.execute(
+        """
+        SELECT old_hash, new_hash, human_decision_id
+        FROM writing_contract_changelog WHERE change_id = ?
+        """,
+        (result.contract_changelog_id,),
+    ).fetchone()
+    assert changelog_row[0] == "before-hash"
+    assert changelog_row[1] == result.after_hash
+    assert changelog_row[2] == result.human_decision_id
+
+
+def test_confirm_and_apply_second_version_links_base_contract_version() -> None:
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+
+    first_session = _prepare_awaiting_session(store, target_id="book")
+    first_result = store.confirm_and_apply(
+        first_session,
+        actor="author",
+        reason="封基线",
+        contract_scope_type="book",
+        contract_scope_id=None,
+        contract_payload={"identity": {"title": "Demo"}},
+        source_hashes=["hash-guide"],
+    )
+
+    second_session = _prepare_awaiting_session(store, target_id="book")
+    second_result = store.confirm_and_apply(
+        second_session,
+        actor="author",
+        reason="细化证据链",
+        contract_scope_type="book",
+        contract_scope_id=None,
+        contract_payload={"identity": {"title": "Demo"}, "evidence_chain": "chain-v2"},
+        source_hashes=["hash-guide"],
+    )
+
+    assert second_result.contract_version_id != first_result.contract_version_id
+    patch_row = conn.execute(
+        """
+        SELECT base_contract_version_id, target_contract_version_id, version
+        FROM writing_contract_patches p
+        JOIN writing_contract_versions v ON v.contract_version_id = p.target_contract_version_id
+        WHERE p.contract_patch_id = ?
+        """,
+        (second_result.contract_patch_id,),
+    ).fetchone()
+    assert patch_row[0] == first_result.contract_version_id
+    assert patch_row[1] == second_result.contract_version_id
+    assert patch_row[2] == 2  # 第二次确认版本号递增
+
+
+def test_confirm_and_apply_blocked_by_coverage_gate() -> None:
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+    source_store = SourceWorkflowStore(conn)
+
+    source_document_id = source_store.register_source_document(
+        project_id=1,
+        source_path="guide.md",
+        source_kind="guide",
+        content_hash="hash-guide",
+    )
+    clause_id = source_store.record_atomic_clause(
+        project_id=1,
+        source_document_id=source_document_id,
+        scope_type="book",
+        scope_id=None,
+        clause_type="plot",
+        severity="hard",
+        clause_text="全书证据链必须先确认。",
+        source_refs=["guide.md#L1"],
+        source_hashes=["hash-guide"],
+    )
+    source_store.record_coverage(
+        project_id=1,
+        contract_scope_type="book",
+        contract_scope_id=None,
+        contract_field_path="BookContract.evidence_chain",
+        coverage_status="gap",
+        atomic_clause_id=clause_id,
+    )
+
+    session_id = _prepare_awaiting_session(store)
+    with pytest.raises(DataIntegrityError):
+        store.confirm_and_apply(
+            session_id,
+            actor="author",
+            reason="封基线",
+            contract_scope_type="book",
+            contract_scope_id=None,
+            contract_payload={"identity": {"title": "Demo"}},
+            source_hashes=["hash-guide"],
+            coverage_gate=source_store,
+        )
+
+    # 阻断时不应写入任何审计行
+    assert conn.execute(
+        "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'contract_confirm'"
+    ).fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM writing_contract_versions").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM writing_contract_patches").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM writing_contract_changelog").fetchone()[0] == 0
+    session_status = conn.execute(
+        "SELECT status FROM writing_decision_sessions WHERE decision_session_id = ?",
+        (session_id,),
+    ).fetchone()[0]
+    assert session_status == "awaiting_confirm"
+
+
+def test_confirm_and_apply_rejects_non_awaiting_session() -> None:
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+    session_id = store.start(
+        project_id=1,
+        scope_type="book",
+        scope_id=None,
+        target_type="BookContract",
+        target_id="book",
+        human_text="未解析",
+    )
+    with pytest.raises(DataIntegrityError):
+        store.confirm_and_apply(
+            session_id,
+            actor="author",
+            reason="封基线",
+            contract_scope_type="book",
+            contract_scope_id=None,
+            contract_payload={},
+            source_hashes=[],
+        )

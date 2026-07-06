@@ -382,3 +382,11 @@ python -m compileall -q src tests
 - F2 使用 builder/factory fixture + mock LLM。
 - F3 默认 CI 只测 mock 性能，真实 LLM 成本进手动/nightly。
 - F4 安全测试覆盖 SQL/lint/正文隔离/SDK 直连/import/export。
+
+### 已完成：Task #3 DecisionSession 主编台集成
+
+- `DecisionSessionStore.confirm_and_apply()`：在单个 SAVEPOINT 内按 implementation-contract-v1 §3.6a 写入规则 7-8 原子写入完整 confirmed 审计链——coverage gate 检查 → `writing_human_decisions`（`decision_type='contract_confirm'`）→ `writing_contract_versions`（新版本，`status='confirmed'`，关联 `created_from_decision_session_id`）→ `writing_contract_patches`（`status='confirmed'`，链接 base/target version）→ `writing_contract_changelog`（old/new hash + human_decision_id）→ DecisionSession 置 `confirmed` + after_hash。任一写入失败整体回滚，不允许半状态。
+- coverage gate 阻断：`confirm_and_apply` 接受可选 `coverage_gate` 参数（`SourceWorkflowStore`），blocking gap 未清空时抛 `DataIntegrityError` 且不写任何审计行。
+- 契约版本递增：`_next_contract_version` 按 `(project_id, scope_type, scope_id)` 递增；`_resolve_base_contract_version_id` 把上一次 confirmed/locked 版本作为 patch base，首次确认为 NULL。
+- CLI `confirm-contract --decision-session-id`：新增 `--scope-type/--scope-id/--contract-json/--source-clause-ids/--source-hashes`，走 `confirm_and_apply` 路径；不传 `--decision-session-id` 时保留旧的直接写 human_decision 行为，保持冒烟测试兼容。
+- 测试：`test_decision_source_workflow.py` +4（原子写入、二次确认 base 链接、coverage gate 阻断、非 awaiting 拒绝）；`test_cli.py` +1（CLI 端到端审计链）。全量 124 passed。

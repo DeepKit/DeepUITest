@@ -11,6 +11,7 @@ from typing import Sequence
 from ink.core.llm_gateway import LLMGateway, ModelResult, build_model_provider, load_llm_provider_config
 from ink.core.resume import ResumeManager
 from ink.database import connect
+from ink.decision_sessions import DecisionSessionStore
 from ink.errors import InkError
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
 from ink.pipeline.export_orchestrator import ExportOrchestrator
@@ -110,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
     confirm_cmd.add_argument("--project-id", type=int)
     confirm_cmd.add_argument("--actor", default="author")
     confirm_cmd.add_argument("--reason", default="contract confirmed")
+    confirm_cmd.add_argument("--decision-session-id", type=int, help="Confirm via DecisionSession confirm_and_apply (writes contract version + patch + changelog)")
+    confirm_cmd.add_argument("--scope-type", choices=("book", "volume", "part", "chapter", "shot"), help="Contract scope for DecisionSession confirmation")
+    confirm_cmd.add_argument("--scope-id", help="Contract scope id for scoped DecisionSession confirmation")
+    confirm_cmd.add_argument("--contract-json", help="Confirmed contract payload JSON for DecisionSession confirmation")
+    confirm_cmd.add_argument("--source-clause-ids", help="Comma-separated atomic source clause ids backing this contract")
+    confirm_cmd.add_argument("--source-hashes", help="Comma-separated source hashes backing this contract")
     _add_dry_run(confirm_cmd)
     confirm_cmd.set_defaults(handler=_cmd_confirm_contract)
 
@@ -324,10 +331,12 @@ def _cmd_setup(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, 
     }
 
 
-def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
+def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
     if args.dry_run:
         return {"project_id": project_id, "planned_decisions": 1}
+    if args.decision_session_id is not None:
+        return _confirm_via_decision_session(conn, args, project_id)
     cursor = conn.execute(
         """
         INSERT INTO writing_human_decisions
@@ -338,6 +347,37 @@ def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) ->
         (project_id, args.actor, args.reason, now_utc_iso()),
     )
     return {"decision_id": int(cursor.lastrowid)}
+
+
+def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Namespace, project_id: int) -> dict[str, object]:
+    if args.scope_type is None:
+        raise SystemExit("confirm-contract --decision-session-id requires --scope-type")
+    if args.contract_json is None:
+        raise SystemExit("confirm-contract --decision-session-id requires --contract-json")
+    try:
+        contract_payload = json.loads(args.contract_json)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"--contract-json must be valid JSON: {exc}") from exc
+    if not isinstance(contract_payload, dict):
+        raise SystemExit("--contract-json must be a JSON object")
+    result = DecisionSessionStore(conn).confirm_and_apply(
+        args.decision_session_id,
+        actor=args.actor,
+        reason=args.reason,
+        contract_scope_type=args.scope_type,
+        contract_scope_id=args.scope_id,
+        contract_payload=contract_payload,
+        source_clause_ids=_csv_ints(args.source_clause_ids),
+        source_hashes=_csv_strings(args.source_hashes),
+    )
+    return {
+        "decision_session_id": result.decision_session_id,
+        "human_decision_id": result.human_decision_id,
+        "contract_version_id": result.contract_version_id,
+        "contract_patch_id": result.contract_patch_id,
+        "contract_changelog_id": result.contract_changelog_id,
+        "after_hash": result.after_hash,
+    }
 
 
 def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -806,6 +846,27 @@ def _validate_persona_intensity(payload: dict[str, object]) -> None:
         value = payload.get(key)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0 or value > 10:
             raise SystemExit(f"--persona-intensity-json must contain integer 0-10 for {key}")
+
+
+def _csv_ints(raw: str | None) -> list[int]:
+    if not raw:
+        return []
+    values: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            values.append(int(part))
+        except ValueError as exc:
+            raise SystemExit(f"expected integer list, got invalid value: {part}") from exc
+    return values
+
+
+def _csv_strings(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 def _json_dumps(value: object) -> str:
