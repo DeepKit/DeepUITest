@@ -1760,6 +1760,84 @@ class ResumeManager:
 - `SoftGateCounter` 无状态读 DB，崩溃不丢
 - N 绑 `logical_shot_id + gate_name`（跨 run 累积）：同一 logical shot 重跑计数延续
 
+### 3.6a DecisionSession 与主编台交互（v1.1 产品化扩展）
+
+`DecisionSession` 是自然语言交互的持久化状态机，用于防止 AI 理解、作者确认和程序写库之间漂移。它是主编台交互层的核心，不替代 `writing_human_decisions`；只有 `confirmed` 的 DecisionSession 才能产生正式 human decision 和 contract changelog。
+
+**角色边界**：
+
+- `WorkflowConductor`：薄调度层，只读取状态并选择下一步角色，不直接写契约、正文或 canonical。
+- `DecisionSessionHost`：保存 human_text、AI parsed patch、readback_text、状态和恢复点。
+- `ContractSteward`：管理契约版本、source hash、confirmed/locked/superseded 状态。
+- `Gatekeeper`：校验 AI patch 的 schema、来源覆盖、上下层冲突、stale 和状态机合法性。
+- `CanonicalKeeper`：只接受已确认契约与 accepted 正文，不读取聊天内容。
+- `AuditLedger`：追加记录 AI 调用、human decision、contract changelog、runtime event、失败原因。
+
+**状态机**：
+
+```python
+DECISION_SESSION_TRANSITIONS = {
+    "collecting": {"ai_parsed", "cancelled"},
+    "ai_parsed": {"awaiting_confirm", "needs_human", "retryable_failed", "cancelled"},
+    "awaiting_confirm": {"confirmed", "collecting", "cancelled", "stale"},
+    "needs_human": {"collecting", "cancelled"},
+    "retryable_failed": {"ai_parsed", "needs_human", "cancelled"},
+    "stale": {"collecting", "cancelled"},
+    "confirmed": set(),
+    "cancelled": set(),
+}
+```
+
+**最小投影字段**（v1.1 schema revision 再落正式 DDL，不混入当前 40 表基线）：
+
+```python
+@dataclass(frozen=True)
+class DecisionSession:
+    decision_session_id: int
+    project_id: int
+    scope_type: Literal["book", "volume", "part", "chapter", "shot", "review", "import"]
+    scope_id: str | None
+    target_type: str
+    target_id: str | None
+    status: str
+    human_text: str
+    parsed_patch_json: str
+    readback_text: str
+    source_hashes_json: str
+    before_hash: str | None
+    after_hash: str | None
+    created_at: str
+    updated_at: str
+```
+
+**写入规则**：
+
+1. AI 只能返回结构化 patch，不得直接写 SQL 或生产表。
+2. 同一 target 同时只能有一个 active DecisionSession。
+3. `awaiting_confirm` 恢复时必须回读 `readback_text`，不得依赖聊天上下文。
+4. source hash 变化后，DecisionSession 转 `stale`，不得直接确认。
+5. 作者裸 "确认" 只有在当前唯一 `awaiting_confirm` 会话存在时有效。
+6. `confirmed` 必须在单事务内写入 `writing_human_decisions`、`writing_contract_changelog`、新契约版本/source hash，并把 DecisionSession 置为终态。
+7. 任一写入失败必须整体回滚，不允许出现 human decision 已写但契约未更新的半状态。
+
+**ScopedDecisionSession**：
+
+局部修订必须带作用域，不能偷改上层契约：
+
+```python
+@dataclass(frozen=True)
+class ScopedDecisionPatch:
+    scope_type: Literal["book", "volume", "part", "chapter", "shot"]
+    scope_id: str | None
+    base_contract_version: str
+    change_type: Literal["refine", "override", "split", "defer", "reject"]
+    affected_scopes_json: str
+    stale_downstream_json: str
+    patch_json: str
+```
+
+下游 stale 规则：局部契约变更后，依赖旧契约的 prompt snapshots、drafts、reviews 必须标记 stale 或新建 run；已 accepted 正文只允许通过 revise run 修改。
+
 ### 3.7 并发模型与隔离边界（评审 P0-2，新增）
 
 **当前假设（单 session 串行）**：
@@ -2014,3 +2092,6 @@ def test_lint_catches_field_name_in_comment_only():
 - `design-v2.md`：架构设计与铁律
 - `pitfall-checklist.md`：踩坑结晶在新架构的落点（含 B29/B44/B92 resume 语义、jury 方案 B 数学修正）
 - `migration-plan.md`：从 0 构建的 M0-M6 步骤；M6 联调 ≥6 章；557 旧测试三桶迁移方法论
+- `author-workflow-contract.md`：作者可执行工作流与人工确认边界
+- `interactive-contract-workflow.md`：主编台、DecisionSession、ScopedDecisionSession 与自然语言交互防漂移机制
+- `invariant-traceability.md`：旧 bugfix / 架构决策 / 新测试 / 里程碑阻断矩阵

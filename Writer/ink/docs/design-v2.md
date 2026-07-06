@@ -254,6 +254,26 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 | **篇级检测官** | 滚动全书级维度检测（每 N 章跑一次） | 封版 |
 | **人类 review** | accept / revise / reject 正式正文 | 封版 |
 
+### 2.1a 主编台与后台生产角色
+
+作者前台只面对 **InkFlow 主编台**。主编台负责引导自然语言交互、回读系统理解、提示待确认事项和恢复中断会话；作者不需要选择内部模块或编辑结构化卡片。
+
+后台必须保留清晰角色边界：
+
+| 后台角色 | 代码名 | 边界 |
+|----------|--------|------|
+| 流程主持人 | `WorkflowConductor` | 只读取状态、选择下一步角色、提交状态机；不得直接改契约、accept 正文或写 canonical |
+| 决策会话主持人 | `DecisionSessionHost` | 持久化自然语言意见、AI 解析、回读文本、确认状态和断点续接 |
+| 源料管理员 | `SourceLibrarian` | 导入指南/大纲/素材，计算 source hash，记录来源优先级和 stale |
+| 契约抽取员 | `ContractExtractor` | 生成 proposed contract patch，不得 confirmed |
+| 契约管家 | `ContractSteward` | 管理元契约、卷/部、章、shot 契约版本、状态和变更历史 |
+| 闸门守卫 | `Gatekeeper` | 做 schema、必填字段、禁区、质量阈值和状态机硬校验 |
+| 真相保管员 | `CanonicalKeeper` | 维护 confirmed/locked 契约与 accepted 正文的唯一真相源 |
+| 审计账本 | `AuditLedger` | 追加记录 AI 调用、人类决策、契约变更、运行事件和失败原因 |
+| 断点续接器 | `RecoveryManager` | 从 DB 恢复未完成的 DecisionSession、resume point、import finalize 和 AI job |
+
+`WorkflowConductor` 必须是薄调度层或表驱动状态机，不能成为上帝对象。所有生产性写入必须经过 `Gatekeeper` 校验、`ContractSteward` 版本管理、`CanonicalKeeper` 真相源边界和 `AuditLedger` 追加审计。
+
 ### 2.2 写手 persona = 强度调音器（非分工切片）
 
 **核心定义**：persona 不是"只写一个侧面"的分工，是"同一篇完整稿的不同强度配比调音"。每一篇稿都是完整稿（5 维都涉及），只是强度侧重不同。
@@ -333,6 +353,29 @@ draft（草稿）→ confirmed（确认）→ locked（锁定）
 - `draft`：契约生成后，可修改
 - `confirmed`：shot 开始执行后，契约冻结不可改
 - `locked`：shot 硬封版后，契约随正文一起锁定
+
+### 3.3a 契约作用域与局部修订
+
+全书契约不要求一次讨论到所有细节。第一次只封 `BookContract` 基线，后续通过带作用域的 `ScopedDecisionSession` 优化卷/部、章或 shot。
+
+```
+BookContract
+  → VolumeContract
+    → PartContract
+      → ChapterContract
+        → ShotContract
+          → PromptSnapshot
+          → Draft
+          → AcceptedCanonical
+```
+
+规则：
+
+- 全书红线、POV、类型定位、硬质量标准不能被章级或 shot 级讨论覆盖。
+- 局部修订必须带 `scope_type`、`scope_id`、`base_contract_version`、`change_type` 和 affected scopes。
+- 局部修改必须做影响分析；例如第 25 章证据回收调整必须标记第 24/26 章和证据链 stale 风险。
+- 已生成 prompt / draft / review 若依赖旧契约，必须标记 stale 并重编译或重跑。
+- 已 accepted 正文不得原地改；必须新建 revise run，旧版本留档。
 
 ### 3.4 shot 状态机（14 态合法转移，评审 P0-2 + 质量硬门禁）
 
@@ -722,4 +765,5 @@ ink/src/ink/
 - `optimization-review.md`：5 个专家视角的优化设计评审结论，明确当前设计可作为完整生产版实现基线，并列出 P0/P1 收敛项
 - `migration-plan.md`：从 0 构建的 M0-M6（无工期、无双轨、无迁移旧系统）；M6 联调 ≥6 章（覆盖跨章/篇级/崩溃恢复）；557 旧测试三桶迁移方法论
 - `author-workflow-contract.md`：完整作者工作流契约（无 MVP，覆盖导入、setup、write、review、revise/reject/accept/export）
+- `interactive-contract-workflow.md`：主编台、DecisionSession、ScopedDecisionSession、后台角色边界与自然语言交互防漂移机制
 - `invariant-traceability.md`：旧 bugfix / 架构决策 / 新测试 / 里程碑阻断矩阵

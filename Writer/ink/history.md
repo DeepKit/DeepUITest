@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-07-06 完成主编台交互机制文档化
+
+验证命令：
+
+```bash
+docs-only change; no runtime tests required
+```
+
+### 已完成：产品化交互设计归档
+
+- 新增 `docs/interactive-contract-workflow.md`，定义 InkFlow 主编台、前台/后台角色边界、DecisionSession、ScopedDecisionSession、AI 到程序的防卡约束和验收口径。
+- 更新 `README.md` 文档索引和核心原则，明确未确认意见不得进入 prompt 或 accepted canonical。
+- 更新 `docs/design-v2.md`，将主编台/后台生产角色纳入角色体系，将全书基线封板与局部作用域修订纳入契约系统。
+- 更新 `docs/author-workflow-contract.md`，定义自然语言交互标准回合、断点恢复、全书基线封板和局部修订。
+- 更新 `docs/implementation-contract-v1.md`，记录 v1.1 产品化扩展接口与状态机边界，不混入当前 40 表基线。
+
 ## 2026-07-06 完成非 shot 级 resume baseline
 
 验证命令：

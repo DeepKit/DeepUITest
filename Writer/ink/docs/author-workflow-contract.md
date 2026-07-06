@@ -7,6 +7,8 @@
 
 - 生产期不随机打断作者；人类只在 setup、contract confirm、review、import finalize、abort 等明确边界介入。
 - 所有人工动作必须落 `writing_human_decisions`，包含 actor、reason、目标 session/run/chapter/shot、前置条件校验结果。
+- 作者可以只用自然语言与 `InkFlow 主编台` 交互；自然语言不得直接生效，必须经 `DecisionSession` 解析、回读、确认、落库。
+- 未确认的 contract patch、review 意见或导入判断不得进入 prompt、accepted canonical 或 export。
 - 所有 AI 调用必须经 `LLMGateway`，落 `writing_ai_call_attempts` 与 `writing_runtime_events`。
 - 所有正式正文必须来自 accepted canonical；未 accepted、rejected、degraded、failed run 的文本不得进入后续上下文或导出。
 - 所有正式正文必须通过 shot/chapter/book 三层质量硬门禁；人工 accept 不得覆盖硬质量失败。
@@ -31,6 +33,23 @@
 | `ink import --finalize RUN` | 人类确认导入并原子落库 | import decision、human decision、project data |
 | `ink export` | 导出 accepted canonical 正文 | export artifact、runtime event |
 
+## 2A. 主编台交互层
+
+产品化交互默认由 `InkFlow 主编台` 包装公开命令。作者不选择内部角色，不编辑结构化卡片，只用自然语言表达意见。
+
+标准回合：
+
+1. 作者说出意见或确认。
+2. `DecisionSessionHost` 立即保存 `human_text`。
+3. `ContractExtractor` / 审稿角色把意见解析为结构化 patch。
+4. `Gatekeeper` 校验 schema、来源、上下层冲突和 stale。
+5. `ReadbackPresenter` 回读："我理解为……是否确认？"
+6. 作者确认后，`AcceptanceRegistrar` / `ContractSteward` 原子写入 human decision、contract changelog、契约版本和 source hash。
+
+若会话中断，恢复时主编台必须回读最近一个 `awaiting_confirm` 或 `needs_human` 的 DecisionSession。恢复不得依赖聊天上下文。
+
+作者前台只看到：主编台、资料官、契约官、审稿官、封板官、恢复官。后台角色名只进入日志、开发文档和调试详情。
+
 ## 3. Init / Setup
 
 `init` 必须收集或生成：
@@ -50,6 +69,11 @@
 - task card 与 prompt snapshot
 
 setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必须写 `writing_human_decisions(decision_type='contract_confirm')`。
+
+首次实稿生产建议拆成两级确认：
+
+1. **全书基线封板**：确认世界观红线、写作宪法、叙事视角、人物核心弧线、全书证据链、卷功能、投稿样稿目标和禁止方向，形成 `BookContract` 基线。
+2. **局部作用域修订**：后续按卷/部/章/shot 开 `ScopedDecisionSession`。局部修订只能细化或覆盖该作用域内的契约，不得反向修改全书红线。受影响下游 prompt、draft、review 必须标记 stale。
 
 ## 4. Write
 
@@ -129,5 +153,7 @@ setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必�
 - `export`（必须无篇级 blocking issue）
 - `import --dry-run` + `import --finalize`
 - 崩溃恢复：drafting、jury、soft_gate、chapter_review、import_finalize 至少各一个断点
+- 主编台交互恢复：至少一个 `DecisionSession` 在 `awaiting_confirm` 中断后可恢复回读并继续确认
+- 局部修订：至少一个 `ScopedDecisionSession` 修改章级契约后，受影响 prompt/draft/review 被标记 stale 或新建 run
 
-验收通过标准：无 degraded 假通过、无低于 shot/chapter/book 质量硬门禁的文本进入 accepted/export、无盲评/继续阅读失败文本进入 accepted、无 productive_deviation 被 polish 磨平、无人工 override 硬质量失败、无未审稿正文进入导出、所有 AI 调用可追溯、所有人工决策可追溯、所有旧关键不变量在 `invariant-traceability.md` 中有对应测试。
+验收通过标准：无 degraded 假通过、无低于 shot/chapter/book 质量硬门禁的文本进入 accepted/export、无盲评/继续阅读失败文本进入 accepted、无 productive_deviation 被 polish 磨平、无人工 override 硬质量失败、无未审稿正文进入导出、未确认 DecisionSession 不进入 prompt、source hash 变化阻断旧确认、所有 AI 调用可追溯、所有人工决策可追溯、所有旧关键不变量在 `invariant-traceability.md` 中有对应测试。

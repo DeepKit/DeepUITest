@@ -29,6 +29,7 @@
 | [design-v2.md](docs/design-v2.md) | 新架构权威设计：六条铁律、完整生产线、存储模型、模块骨架 | 所有人先读 |
 | [implementation-contract-v1.md](docs/implementation-contract-v1.md) | dataclass、40 张生产表 DDL、模块接口、状态机、CI 门禁 | 实现者 |
 | [author-workflow-contract.md](docs/author-workflow-contract.md) | 作者可执行工作流：init/setup/write/review/revise/accept/export/import | 产品与 CLI 实现者 |
+| [interactive-contract-workflow.md](docs/interactive-contract-workflow.md) | 主编台、可恢复人类决策会话、局部契约修订、AI/程序交互边界 | 产品化交互与架构实现者 |
 | [invariant-traceability.md](docs/invariant-traceability.md) | 旧 bugfix / 架构决策到新测试和门禁的追踪矩阵 | 测试与验收负责人 |
 | [optimization-review.md](docs/optimization-review.md) | 5 个专家视角的优化设计评审结论、P0/P1 收敛项 | 架构与实现负责人 |
 | [pitfall-checklist.md](docs/pitfall-checklist.md) | 必须保留的踩坑修复与新增防御清单 | 写 core/ 模块前必读 |
@@ -52,7 +53,8 @@
 10. **参数化原则**：运营阈值（熔断预算、soft gate N、质量地板、drift 阈值、容量下限、自动重试策略）全部存入 `writing_projects` 表，运行时可调不改代码。DB CHECK 约束为绝对底线，应用层取 `max(项目阈值, 绝对底线)` 执行。
 11. **自动重试减少编辑工作量**：hard gate / quality floor 失败后，系统按 `retry_strategy` 自动重试，编辑只在 `failed` 状态介入做项目级资源决策，不在 accept 路径上介入审美判断。
 12. **生产内核优先**：M0/M1 先做实 schema、lint、状态机、LLMGateway、text_repository、resume，再用 1 章质量证明校准，之后扩展到 M2-M6。
-13. **当前产品边界**：单作者本地生产工具；SQLite 先行但按 PostgreSQL 迁移预留；真实 LLM 不进默认 CI，只进手动或 nightly 验收。
+13. **主编台交互边界**：作者只面对 `InkFlow 主编台` 和少量确认点；后台通过 `DecisionSession`、`ContractSteward`、`Gatekeeper`、`CanonicalKeeper`、`AuditLedger` 等角色保存、校验、恢复和审计，未确认意见不得进入 prompt 或 accepted canonical。
+14. **当前产品边界**：单作者本地生产工具；SQLite 先行但按 PostgreSQL 迁移预留；真实 LLM 不进默认 CI，只进手动或 nightly 验收。
 
 ## 里程碑
 
