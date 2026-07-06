@@ -858,3 +858,190 @@ CREATE TABLE writing_import_decisions (
     FOREIGN KEY (import_run_id) REFERENCES writing_import_runs(import_run_id) ON DELETE CASCADE,
     FOREIGN KEY (human_decision_id) REFERENCES writing_human_decisions(decision_id)
 );
+
+-- 41. writing_source_documents（v1.1 主编台源文档注册表）
+CREATE TABLE writing_source_documents (
+    source_document_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('guide','outline','character','world','draft','process_scratch','other')),
+    priority INTEGER NOT NULL DEFAULT 100,
+    content_hash TEXT NOT NULL,
+    processed_hash TEXT,
+    status TEXT NOT NULL CHECK (status IN ('active','processed','stale','cleared','rejected')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (project_id, source_path, content_hash),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_source_documents_project_status ON writing_source_documents(project_id, status);
+
+-- 42. writing_atomic_source_clauses（源文档原子条款）
+CREATE TABLE writing_atomic_source_clauses (
+    atomic_clause_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_document_id INTEGER NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot','source')),
+    scope_id TEXT,
+    clause_type TEXT NOT NULL CHECK (clause_type IN ('plot','character','world','style','quality','forbidden','process')),
+    severity TEXT NOT NULL CHECK (severity IN ('hard','soft','diagnostic')),
+    clause_text TEXT NOT NULL,
+    source_refs_json TEXT NOT NULL CHECK (json_valid(source_refs_json)),
+    source_hashes_json TEXT NOT NULL CHECK (json_valid(source_hashes_json)),
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','superseded','rejected','stale')),
+    supersedes_clause_id INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_document_id) REFERENCES writing_source_documents(source_document_id) ON DELETE CASCADE,
+    FOREIGN KEY (supersedes_clause_id) REFERENCES writing_atomic_source_clauses(atomic_clause_id)
+);
+CREATE INDEX idx_atomic_clauses_scope ON writing_atomic_source_clauses(project_id, scope_type, scope_id, status);
+
+-- 43. writing_source_extraction_runs（primary/crosscheck 抽取审计）
+CREATE TABLE writing_source_extraction_runs (
+    extraction_run_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_document_id INTEGER NOT NULL,
+    extractor_slot TEXT NOT NULL CHECK (extractor_slot IN ('primary','crosscheck')),
+    model_provider TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    extracted_clause_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(extracted_clause_ids_json)),
+    low_confidence_refs_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(low_confidence_refs_json)),
+    status TEXT NOT NULL CHECK (status IN ('running','completed','failed','superseded')),
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_document_id) REFERENCES writing_source_documents(source_document_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_source_extraction_document ON writing_source_extraction_runs(source_document_id, extractor_slot, status);
+
+-- 44. writing_decision_sessions（可恢复人类决策会话）
+CREATE TABLE writing_decision_sessions (
+    decision_session_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot','review','import','source')),
+    scope_id TEXT,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    parent_decision_session_id INTEGER,
+    status TEXT NOT NULL CHECK (status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed','stale','confirmed','cancelled')),
+    human_text TEXT NOT NULL DEFAULT '',
+    parsed_patch_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(parsed_patch_json)),
+    readback_text TEXT NOT NULL DEFAULT '',
+    source_hashes_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(source_hashes_json)),
+    before_hash TEXT,
+    after_hash TEXT,
+    selected_option INTEGER CHECK (selected_option IS NULL OR selected_option BETWEEN 1 AND 8),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_decision_session_id) REFERENCES writing_decision_sessions(decision_session_id)
+);
+CREATE UNIQUE INDEX idx_active_decision_session_target
+ON writing_decision_sessions(project_id, target_type, COALESCE(target_id, ''))
+WHERE status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed');
+CREATE INDEX idx_decision_sessions_scope ON writing_decision_sessions(project_id, scope_type, scope_id, status);
+
+-- 45. writing_decision_option_sets（1-8/0/9 选择式对话）
+CREATE TABLE writing_decision_option_sets (
+    option_set_id INTEGER PRIMARY KEY,
+    decision_session_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    options_json TEXT NOT NULL CHECK (
+        json_valid(options_json)
+        AND json_type(options_json) = 'array'
+        AND json_array_length(options_json) BETWEEN 1 AND 8
+    ),
+    recommended_option INTEGER CHECK (recommended_option IS NULL OR recommended_option BETWEEN 1 AND 8),
+    allow_back INTEGER NOT NULL DEFAULT 1 CHECK (allow_back IN (0,1)),
+    allow_regenerate INTEGER NOT NULL DEFAULT 1 CHECK (allow_regenerate IN (0,1)),
+    regenerate_count INTEGER NOT NULL DEFAULT 0 CHECK (regenerate_count >= 0),
+    status TEXT NOT NULL CHECK (status IN ('active','selected','superseded','cancelled')),
+    created_at TEXT NOT NULL,
+    UNIQUE (decision_session_id, version),
+    FOREIGN KEY (decision_session_id) REFERENCES writing_decision_sessions(decision_session_id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_active_decision_option_set
+ON writing_decision_option_sets(decision_session_id)
+WHERE status = 'active';
+
+-- 46. writing_contract_versions（层级契约版本）
+CREATE TABLE writing_contract_versions (
+    contract_version_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot')),
+    scope_id TEXT,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','locked','superseded','stale')),
+    contract_json TEXT NOT NULL CHECK (json_valid(contract_json)),
+    contract_hash TEXT NOT NULL,
+    source_clause_ids_json TEXT NOT NULL CHECK (json_valid(source_clause_ids_json)),
+    created_from_decision_session_id INTEGER,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (created_from_decision_session_id) REFERENCES writing_decision_sessions(decision_session_id)
+);
+CREATE UNIQUE INDEX idx_contract_versions_unique_scope
+ON writing_contract_versions(project_id, scope_type, COALESCE(scope_id, ''), version);
+CREATE INDEX idx_contract_versions_scope ON writing_contract_versions(project_id, scope_type, scope_id, status);
+
+-- 47. writing_contract_patches（契约 patch 与 stale 影响）
+CREATE TABLE writing_contract_patches (
+    contract_patch_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    decision_session_id INTEGER NOT NULL,
+    base_contract_version_id INTEGER,
+    target_contract_version_id INTEGER,
+    change_type TEXT NOT NULL CHECK (change_type IN ('refine','override','split','defer','reject','normalize')),
+    patch_json TEXT NOT NULL CHECK (json_valid(patch_json)),
+    affected_scopes_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(affected_scopes_json)),
+    stale_downstream_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(stale_downstream_json)),
+    source_clause_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(source_clause_ids_json)),
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','rejected','applied','stale')),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (decision_session_id) REFERENCES writing_decision_sessions(decision_session_id) ON DELETE CASCADE,
+    FOREIGN KEY (base_contract_version_id) REFERENCES writing_contract_versions(contract_version_id),
+    FOREIGN KEY (target_contract_version_id) REFERENCES writing_contract_versions(contract_version_id)
+);
+CREATE INDEX idx_contract_patches_decision ON writing_contract_patches(decision_session_id, status);
+
+-- 48. writing_source_coverage_matrix（原子条款 × contract field 覆盖矩阵）
+CREATE TABLE writing_source_coverage_matrix (
+    coverage_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    atomic_clause_id INTEGER,
+    contract_scope_type TEXT NOT NULL CHECK (contract_scope_type IN ('book','volume','part','chapter','shot')),
+    contract_scope_id TEXT,
+    contract_field_path TEXT NOT NULL,
+    coverage_status TEXT NOT NULL CHECK (coverage_status IN ('covered','gap','conflict','rejected','deferred','diagnostic')),
+    decision_session_id INTEGER,
+    evidence_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence_json)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (atomic_clause_id) REFERENCES writing_atomic_source_clauses(atomic_clause_id) ON DELETE SET NULL,
+    FOREIGN KEY (decision_session_id) REFERENCES writing_decision_sessions(decision_session_id)
+);
+CREATE INDEX idx_source_coverage_scope ON writing_source_coverage_matrix(project_id, contract_scope_type, contract_scope_id, coverage_status);
+CREATE INDEX idx_source_coverage_field ON writing_source_coverage_matrix(project_id, contract_field_path, coverage_status);
+
+-- 49. writing_process_file_manifests（过程文件清空后的审计 manifest，不保存正文/摘要）
+CREATE TABLE writing_process_file_manifests (
+    process_manifest_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_document_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    processed_hash TEXT NOT NULL,
+    cleared_at TEXT NOT NULL,
+    extracted_clause_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(extracted_clause_ids_json)),
+    contract_patch_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(contract_patch_ids_json)),
+    decision_session_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(decision_session_ids_json)),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_document_id) REFERENCES writing_source_documents(source_document_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_process_file_manifest_source ON writing_process_file_manifests(source_document_id, cleared_at);

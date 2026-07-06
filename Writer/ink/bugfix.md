@@ -7,6 +7,13 @@
 
 ## 2026-07-06
 
+### BFX-009 DecisionSession active 唯一索引误含 status
+
+- **现象**：v1.1 DecisionSession DDL 初稿将 `status` 放进 active 唯一索引键，导致同一 `target_type/target_id` 可以同时存在 `collecting`、`ai_parsed` 等多个活跃会话。
+- **根因**：唯一索引把“活跃状态过滤条件”和“唯一业务键”混在一起，实际约束变成“同一 target 同一状态唯一”，没有约束“同一 target 单 active session”。
+- **修复**：唯一索引改为 `(project_id, target_type, COALESCE(target_id,'')) WHERE status IN (...)`，不再把 `status` 纳入唯一键。
+- **防回归**：`tests/test_decision_source_workflow.py::test_decision_session_enforces_single_active_target_and_option_regeneration`。
+
 ### BFX-007 CLI resume 忽略 session 级 resume_point
 
 - **现象**：`ink resume --session-id` 只遍历 `writing_shots` 并执行 shot 级 action，未读取 `writing_sessions.resume_point`，导致 `chapter_review`、`book_check` 等 session 级断点无法恢复。

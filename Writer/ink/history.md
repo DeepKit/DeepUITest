@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-07-06 完成 P1 DecisionSession/source coverage 持久化基础层
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_schema_contract.py tests/test_decision_source_workflow.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- Decision/source workflow 定向测试：`13 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`119 passed`
+
+### 已完成：v1.1 持久化边界
+
+- 扩展 `sql/schema.sql` 到 49 张生产表，新增 source documents、atomic source clauses、source extraction runs、DecisionSession、option sets、contract versions、contract patches、source coverage matrix、process file manifests。
+- 新增 `DecisionSessionStore`，支持同 target 单 active session、AI parsed、awaiting_confirm、1-8 选择、`0` 返回、`9` 重生成 option set、confirmed 终态。
+- 新增 `SourceWorkflowStore`，支持源文档注册、原子条款、primary/crosscheck 抽取 run、coverage gap/conflict、coverage resolve、`better.md` 清空后 process manifest。
+- 更新 schema 契约测试到 49 表 / 58 索引，并补 v1.1 表存在性测试。
+- 新增 `tests/test_decision_source_workflow.py`，覆盖 active session 唯一性、option set 恢复语义、coverage gate 阻断与解除、process manifest 不保存过程文件正文/摘要。
+
 ## 2026-07-06 完成 source coverage 战略决策归档
 
 验证命令：

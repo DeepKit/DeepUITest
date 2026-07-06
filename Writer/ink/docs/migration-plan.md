@@ -11,7 +11,7 @@
 
 ### 0.1 从 0 构建
 - 新代码在 `ink/src/ink/`，不修改旧 `inkflow/`
-- DB schema 重新设计（40 张生产表），不沿用旧 56 表
+- DB schema 重新设计（当前 49 张生产表：40 张生产内核表 + 9 张 v1.1 主编台/源文档产品化表），不沿用旧 56 表
 - 编排层重写，不沿用旧 cli.py
 
 ### 0.2 无工期
@@ -70,7 +70,7 @@
 
 ### 任务
 1. **DB schema 落地**（`implementation-contract-v1.md §2`）
-   - 建 40 张生产表的 DDL（契约/执行/评审/悬疑/篇级检测/运行审计/人工决策/导入账本）
+   - 建 49 张生产表的 DDL（40 张生产内核表 + 9 张 v1.1 主编台/源文档产品化表）
    - shot 契约核心字段拆 5 张结构化表（must_land/anti_write/scene_contract/persona_assignment/soft_constraints）
    - jury 评分拆 raw_scores + aggregates 2 张表（方案 B）
    - 建 CHECK 约束（含 JSON pool 底线、`draft_count <= pool`、`jury_pool >= jury_model_pool_min`（默认 3）、信息差 6 态枚举、winner 必须 quality_gate_passed、accepted 必须章级 7 维达标）、FK ON DELETE CASCADE、唯一索引（is_winner、accepted canonical、jury winner、每 shot 最多一个 current revision）
@@ -99,7 +99,7 @@
    - 每个旧 bugfix / 决策条目必须有 invariant ID 或明确废弃理由
 
 ### 验证清单
-- [ ] 40 张生产表 DDL 在内存 SQLite 执行成功，CHECK/FK/索引/VIEW 齐全
+- [ ] 49 张生产表 DDL 在内存 SQLite 执行成功，CHECK/FK/索引/VIEW 齐全
 - [ ] 所有时间字段按 UTC ISO 8601 `YYYY-MM-DDTHH:MM:SS.sssZ` 由 `now_utc_iso()` 写入
 - [ ] **`writing_projects` 表包含所有运营参数列**：质量阈值字段（`shot_quality_floor`, `dimension_floor`, `chapter_quality_floor`, `book_quality_floor`, `judge_disagreement_max`, `reader_pull_floor`, `blind_review_min_passes`）+ 熔断预算字段 + 其他运营参数（参数化原则 §1.5）
 - [ ] `writer_model_pool` / `jury_model_pool` DB 底线 CHECK 通过；元素类型、去重、交集由 `ProjectConfigValidator` 测试覆盖
@@ -473,7 +473,7 @@ quality blocking gate、章级 7 维硬质量门禁、accepted canonical 跑通�
 ---
 
 ## 当前验收
-- `tasks.md` 开发任务队列已清零。
-- `invariant-traceability.md` 中当前追踪的 blocking/P1 invariant 均有可执行测试或 lint evidence。
+- `tasks.md` 记录当前 P1 产品化任务队列。
+- `invariant-traceability.md` 中当前追踪的 blocking/P1 invariant 应有可执行测试或 lint evidence。
 - 默认本地验收命令：`cd ink && python -m pytest`。
-- 后续若进入实稿试运行或产品化，另开真实 LLM provider、nightly 成本记录、交互式 setup、非 shot 级 resume handler 与 CLI 易用性任务。
+- 实稿试运行前必须完成主编台、DecisionSession、source coverage、过程文件清空 manifest 和前 6 章灰度生成验收。

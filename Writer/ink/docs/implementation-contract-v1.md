@@ -1,7 +1,7 @@
 # 实现契约 v1 — dataclass / DB / 模块接口
 
 > **状态**：v1（2026-07-03，评审修订），对应 `design-v2.md`
-> **定位**：从 0 构建的完整生产技术契约。不沿用旧系统 schema，重新设计 40 张生产表。
+> **定位**：从 0 构建的完整生产技术契约。不沿用旧系统 schema，重新设计 49 张生产表（40 张生产内核表 + 9 张 v1.1 主编台/源文档产品化表）。
 > **评审修订**：jury 方案 B（3 裁判全评 12 维）、契约核心字段拆 5 张结构化表、resume 语义补齐、字段消费 lint 改访问器 API + AST、物理隔离加 DB VIEW + sqlparse、AI 调用审计、人类决策、导入账本、checkpoint 与契约条款审计。
 
 ---
@@ -365,7 +365,9 @@ def compile_prompt(prompt_spec: PromptSpec) -> str:
 
 ---
 
-## 2. DB schema（40 张生产表 DDL）
+## 2. DB schema（49 张生产表 DDL）
+
+表 1-40 是 M0-M6 生产内核基线；表 41-49 是 v1.1 主编台、DecisionSession、源文档规范化、source coverage 和过程文件清空 manifest 的产品化扩展。
 
 **时间字段约定**：所有 `created_at`、`updated_at`、`evaluated_at`、`started_at`、`finished_at`、`sealed_at` 等 `TEXT` 时间字段统一使用 UTC ISO 8601：`YYYY-MM-DDTHH:MM:SS.sssZ`。应用层只能通过 `now_utc_iso()` 写入业务时间；DDL 不依赖 SQLite 本地时间函数。
 
@@ -1920,7 +1922,7 @@ CREATE TABLE writing_decision_sessions (
 );
 
 CREATE UNIQUE INDEX idx_active_decision_session_target
-ON writing_decision_sessions(project_id, target_type, COALESCE(target_id, ''), status)
+ON writing_decision_sessions(project_id, target_type, COALESCE(target_id, ''))
 WHERE status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed');
 
 CREATE TABLE writing_decision_option_sets (

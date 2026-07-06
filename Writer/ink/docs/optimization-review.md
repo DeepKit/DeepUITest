@@ -35,7 +35,7 @@
 
 ### 2.2 数据库与状态机专家
 
-**结论**：40 张生产表 + 1 个 `v_current_text` 视图的结构能够承载完整生产闭环；质量硬门禁通过现有表加字段实现，不增加表数。
+**结论**：40 张生产内核表 + 1 个 `v_current_text` 视图能够承载 M0-M6 生产闭环；v1.1 主编台/源文档产品化扩展新增 9 张表，总计 49 张生产表。
 
 **已收敛点**：
 - `writing_soft_gate_counters` 是 soft gate N 的唯一权威源，`writing_shots.soft_fail_counts_snapshot` 只做审计快照。

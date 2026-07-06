@@ -17,7 +17,7 @@
 |----|------|--------|---------------|--------|
 | INV-CONTRACT-001 | B28/B48/B67/B87/B92 | dataclass 上游字段必须被消费，不得动态访问 | `test_field_usage_lint_*` + `field_usage_lint` | M0 |
 | INV-SQL-001 | B19 | 非 `core/text_repository.py` 不得直接访问 `writing_shot_revisions` | `test_sql_access_lint_*` | M0 |
-| INV-DDL-001 | 评审 P0 | 40 张生产表 DDL 必须在内存 SQLite 执行成功 | `test_schema_executes_all_ddl` | M0 |
+| INV-DDL-001 | 评审 P0 + v1.1 产品化 | 49 张生产表 DDL 必须在内存 SQLite 执行成功 | `test_schema_executes_all_ddl` | M0/P1 |
 | INV-CONFIG-001 | D1/P0-4 | 模型池必须是非空唯一字符串数组；默认写手池与裁判池无交集，重叠时排除 writer 后仍有 3 个 jury model | `test_project_config_validator_model_pools` | M0 |
 | INV-TIME-001 | D5 | 所有业务时间字段统一 UTC ISO 8601 `YYYY-MM-DDTHH:MM:SS.sssZ` | `test_now_utc_iso_format` | M0 |
 | INV-STATE-001 | P0-2 | 14 态状态机只允许矩阵内转移，winner 必须经 polish_revision，终态无出边 | `test_state_machine_matrix` | M1 |

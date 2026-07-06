@@ -317,4 +317,4 @@
 ## 下一步
 - `migration-plan.md`：从 0 构建完整生产版的 M0-M6 步骤、验证清单（无工期、无双轨、无 MVP）；M6 联调 ≥6 章；557 旧测试三桶迁移方法论
 - `design-v2.md`：架构设计与六条铁律
-- `implementation-contract-v1.md`：40 张生产表 DDL + dataclass schema + unpack 访问器 + 模块接口 + resume 映射 + sqlparse lint
+- `implementation-contract-v1.md`：49 张生产表 DDL + dataclass schema + unpack 访问器 + 模块接口 + resume 映射 + sqlparse lint

@@ -27,7 +27,7 @@
 | 文档 | 作用 | 读者 |
 |------|------|------|
 | [design-v2.md](docs/design-v2.md) | 新架构权威设计：六条铁律、完整生产线、存储模型、模块骨架 | 所有人先读 |
-| [implementation-contract-v1.md](docs/implementation-contract-v1.md) | dataclass、40 张生产表 DDL、模块接口、状态机、CI 门禁 | 实现者 |
+| [implementation-contract-v1.md](docs/implementation-contract-v1.md) | dataclass、49 张生产表 DDL、模块接口、状态机、CI 门禁 | 实现者 |
 | [author-workflow-contract.md](docs/author-workflow-contract.md) | 作者可执行工作流：init/setup/write/review/revise/accept/export/import | 产品与 CLI 实现者 |
 | [interactive-contract-workflow.md](docs/interactive-contract-workflow.md) | 主编台、可恢复人类决策会话、局部契约修订、AI/程序交互边界 | 产品化交互与架构实现者 |
 | [invariant-traceability.md](docs/invariant-traceability.md) | 旧 bugfix / 架构决策到新测试和门禁的追踪矩阵 | 测试与验收负责人 |

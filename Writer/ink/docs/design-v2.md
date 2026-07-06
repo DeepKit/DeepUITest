@@ -22,7 +22,7 @@
 - **踩坑修复逻辑**（15 条结晶，见 pitfall-checklist.md）
 
 ### 0.3 从 0 构建的新架构（弃其架构病）
-- DB schema **重新设计**：40 张生产表（非旧 56 张），保留领域必需 + 踩坑结晶 + 完整生产所需的 AI 调用审计、运行时事件、人工决策、导入账本、checkpoint 与测试可追踪性支撑
+- DB schema **重新设计**：49 张生产表（非旧 56 张；40 张生产内核表 + 9 张 v1.1 主编台/源文档产品化表），保留领域必需 + 踩坑结晶 + 完整生产所需的 AI 调用审计、运行时事件、人工决策、导入账本、checkpoint 与测试可追踪性支撑
 - 契约传递用**代码生成**（pydantic schema → dataclass + `unpack()` 访问器 + AST `ast.Attribute` 字段消费检查），非手写 dataclass
 - 正文表**物理隔离**（`shot_revisions` 只 `core/text_repository` 可 import + DB VIEW + sqlparse CI lint 三重约束）
 - 编排层 orchestrator **入口物理隔离**（签名只收 `(shot_id, run_id)`，禁止传上游 dataclass）
@@ -39,7 +39,7 @@
 - 已有稿重构经 **import ledger**：dry-run、source hash、低置信问题、人类裁决、finalize 原子落库
 
 ### 0.4 不做
-- 不沿用旧 56 表 schema（重新设计 40 张生产表）
+- 不沿用旧 56 表 schema（重新设计 49 张生产表）
 - 不沿用旧 cli.py 的编排逻辑（重写编排层）
 - 不做双轨并行/迁移（从 0 构建，不管旧系统）
 - 不讨论工期/时间计划（不在本文件及下游文档记录时间）
@@ -648,7 +648,7 @@ final_score = Σ(dimension_score[d] × weight[d])   # weight 已归一化，和�
 
 ---
 
-## 7. 存储模型（40 张生产表）
+## 7. 存储模型（49 张生产表）
 
 **设计原则**：
 - 从 0 设计，不沿用旧 56 表
@@ -717,6 +717,17 @@ final_score = Σ(dimension_score[d] × weight[d])   # weight 已归一化，和�
 38. `writing_import_manifests` — 源文件/章节/shot 的 source hash 与映射计划
 39. `writing_import_questions` — 低置信导入问题、人类裁决、resolution
 40. `writing_import_decisions` — 导入 finalize 时的人类确认与原子落库审计
+
+**第 9 层：主编台与源文档规范化（9 张）**
+41. `writing_source_documents` — 源文档注册表，含 `better.md` 等过程文件状态
+42. `writing_atomic_source_clauses` — 源文档原子条款
+43. `writing_source_extraction_runs` — primary/crosscheck 抽取运行审计
+44. `writing_decision_sessions` — 可恢复人类决策会话
+45. `writing_decision_option_sets` — 1-8/0/9 选择式对话选项集
+46. `writing_contract_versions` — 层级契约版本
+47. `writing_contract_patches` — 契约 patch 与 stale 影响范围
+48. `writing_source_coverage_matrix` — 原子条款 × contract field coverage gate
+49. `writing_process_file_manifests` — 过程文件清空后的 manifest，不保存正文/摘要
 
 ### 7.2 不纳入 schema 的（dataclass/内存承载）
 - prompt 中间对象（编译过程在内存；完整 prompt 和 hash 落 `writing_prompt_snapshots`）
@@ -787,7 +798,7 @@ ink/src/ink/
 
 ## 9. 下游文档
 
-- `implementation-contract-v1.md`：dataclass 完整定义（pydantic schema）、40 张生产表 DDL、模块接口契约、代码生成 + `unpack()` 访问器 + AST 字段消费 lint 配置、sqlparse SQL lint 配置、shot_status→resume 映射矩阵
+- `implementation-contract-v1.md`：dataclass 完整定义（pydantic schema）、49 张生产表 DDL、模块接口契约、代码生成 + `unpack()` 访问器 + AST 字段消费 lint 配置、sqlparse SQL lint 配置、shot_status→resume 映射矩阵
 - `pitfall-checklist.md`：15 条踩坑修复在新架构的落点 + 新增条目（B19 物理隔离、B66 两道门槛、reading_fluency 去重、soft gate 3 级、deviant 评审、B29/B44/B92 resume 语义、jury 方案 B 数学修正）
 - `optimization-review.md`：5 个专家视角的优化设计评审结论，明确当前设计可作为完整生产版实现基线，并列出 P0/P1 收敛项
 - `migration-plan.md`：从 0 构建的 M0-M6（无工期、无双轨、无迁移旧系统）；M6 联调 ≥6 章（覆盖跨章/篇级/崩溃恢复）；557 旧测试三桶迁移方法论

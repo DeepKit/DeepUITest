@@ -22,8 +22,35 @@ def test_schema_executes_all_ddl() -> None:
         ).fetchall()
     )
 
-    assert counts == {"index": 44, "table": 40, "trigger": 2, "view": 1}
+    assert counts == {"index": 58, "table": 49, "trigger": 2, "view": 1}
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_schema_includes_v11_decision_and_source_tables() -> None:
+    conn = make_schema_db()
+    table_names = {
+        row[0]
+        for row in conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+            """
+        ).fetchall()
+    }
+
+    expected = {
+        "writing_source_documents",
+        "writing_atomic_source_clauses",
+        "writing_source_extraction_runs",
+        "writing_decision_sessions",
+        "writing_decision_option_sets",
+        "writing_contract_versions",
+        "writing_contract_patches",
+        "writing_source_coverage_matrix",
+        "writing_process_file_manifests",
+    }
+    assert expected <= table_names
 
 
 def test_schema_does_not_contain_pre_m0_legacy_patterns() -> None:
@@ -175,4 +202,3 @@ def test_v_current_text_returns_single_current_revision_over_latest_unsealed() -
         (ids["shot_id"],),
     ).fetchall()
     assert rows == [("sealed text", 1, 1)]
-
