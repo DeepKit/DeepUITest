@@ -1037,6 +1037,23 @@ begin
       if FCurrentData.Metrics[I].HasMarketingKeywords then
         FEvidenceMemo.Lines.Add('检测到营销关键词');
 
+      // Add actionable suggestion based on hint type
+      FEvidenceMemo.Lines.Add('');
+      case LHint.HintType of
+        rhtCooling:
+          FEvidenceMemo.Lines.Add('💡 建议: 发一条轻松的消息，关心近况');
+        rhtLongSilence:
+          FEvidenceMemo.Lines.Add('💡 建议: 分享一个有趣的话题或回忆');
+        rhtReactivated:
+          FEvidenceMemo.Lines.Add('💡 建议: 趁热打铁，及时回复互动');
+        rhtOutboundHeavy:
+          FEvidenceMemo.Lines.Add('💡 建议: 减少主动消息，等待对方回应');
+        rhtHighLinkSharing:
+          FEvidenceMemo.Lines.Add('💡 建议: 减少链接分享，增加原创内容');
+        rhtMarketingPattern:
+          FEvidenceMemo.Lines.Add('💡 建议: 减少营销话术，增加个人化交流');
+      end;
+
       Break;
     end;
 
