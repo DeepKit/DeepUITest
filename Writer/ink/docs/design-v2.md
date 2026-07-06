@@ -34,6 +34,8 @@
 - 崩溃恢复 **shot_status 14 态 → resume 行为映射矩阵**（done 类 skip / generating 类幂等重跑 / pre-drafting 类 superseded_at 幂等）
 - AI 调用统一经 **LLMGateway**：所有 prompt/response/hash/token/error/failure streak/runtime event 落库，可恢复、可审计、可成本追踪
 - 人工动作经 **human_decisions**：setup confirm、contract confirm、review accept/revise/reject、abort 都有 actor/reason/前置条件审计
+- 主编台交互经 **DecisionSession 专表**：自然语言、AI 解析、回读、1-8/0/9 选项集、确认结果和断点续接全部持久化；未确认意见不进入 prompt 或 canonical
+- 源文档先经 **SourceNormalizer** 合并、去重、拆矛盾、原子化；`better.md` 等过程文件只作抽取输入，处理后必须清空，只保留 processed manifest/hash 审计
 - 已有稿重构经 **import ledger**：dry-run、source hash、低置信问题、人类裁决、finalize 原子落库
 
 ### 0.4 不做
@@ -265,6 +267,7 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 | 流程主持人 | `WorkflowConductor` | 只读取状态、选择下一步角色、提交状态机；不得直接改契约、accept 正文或写 canonical |
 | 决策会话主持人 | `DecisionSessionHost` | 持久化自然语言意见、AI 解析、回读文本、确认状态和断点续接 |
 | 源料管理员 | `SourceLibrarian` | 导入指南/大纲/素材，计算 source hash，记录来源优先级和 stale |
+| 源文档规范员 | `SourceNormalizer` | 合并、去重、拆矛盾、原子化源文档条款，处理 `better.md` 等过程文件生命周期 |
 | 契约抽取员 | `ContractExtractor` | 生成 proposed contract patch，不得 confirmed |
 | 契约管家 | `ContractSteward` | 管理元契约、卷/部、章、shot 契约版本、状态和变更历史 |
 | 闸门守卫 | `Gatekeeper` | 做 schema、必填字段、禁区、质量阈值和状态机硬校验 |
@@ -273,6 +276,8 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 | 断点续接器 | `RecoveryManager` | 从 DB 恢复未完成的 DecisionSession、resume point、import finalize 和 AI job |
 
 `WorkflowConductor` 必须是薄调度层或表驱动状态机，不能成为上帝对象。所有生产性写入必须经过 `Gatekeeper` 校验、`ContractSteward` 版本管理、`CanonicalKeeper` 真相源边界和 `AuditLedger` 追加审计。
+
+主编台默认使用选择式对话：每个裁决给 1-8 个编号选项，`0` 返回，`9` 重新生成选项。自由文本只作为补充意见保存，再进入下一轮选项生成；恢复时必须回放原 option set，不能依赖聊天上下文或重新生成一组漂移选项。
 
 ### 2.2 写手 persona = 强度调音器（非分工切片）
 
@@ -306,6 +311,16 @@ MetaContract → ShotContract → OutlineSpec → TaskCard → PromptSpec → Dr
 ---
 
 ## 3. 契约系统
+
+### 3.0 源文档规范化
+
+契约抽取前必须先规范化源文档：
+
+- 权威源文档保留原文、path、hash、优先级和来源引用。
+- `better.md` 等过程文件只作为 `process_scratch` 输入；抽取完成后，已解决内容合并进原子条款或 confirmed contract，并清空过程文件，只保留 processed manifest/hash 审计。
+- 重复条款合并 source_refs；冲突条款生成主编台选择题；含混条款拆成一个个可验证原子条款。
+- 原子条款必须包含 stable id、scope、clause_type、severity、source_refs、source_hash 和 status。
+- 未原子化条款不得进入 contract patch；未 confirmed 条款不得进入 prompt。
 
 ### 3.1 契约层级（dataclass 链）
 
@@ -376,6 +391,16 @@ BookContract
 - 局部修改必须做影响分析；例如第 25 章证据回收调整必须标记第 24/26 章和证据链 stale 风险。
 - 已生成 prompt / draft / review 若依赖旧契约，必须标记 stale 并重编译或重跑。
 - 已 accepted 正文不得原地改；必须新建 revise run，旧版本留档。
+
+层级字段边界：
+
+- `BookContract` 封全书身份、类型定位、叙事声音、硬边界、世界知识、人物小传、证据链、母题系统、风格锁、质量画像和禁止方向。
+- `VolumeContract` 封卷功能、主冲突、进入/退出状态、证据推进、人物弧线增量、母题推进和节奏目标。
+- `PartContract` 封局部目标、过渡功能、必需揭示、情绪曲线和依赖范围。
+- `ChapterContract` 封章节功能、开场钩子、机构动作、角色代价、must_land、证据种植/回收、章末裂口、对白/感官锚点和反写清单。
+- `ShotContract` 继续使用 must_land、anti_write、scene_contract、persona_assignment、soft_constraints 五组结构化字段，并补连续性引用和 source_refs。
+
+stale 传播由程序执行：上层 contract 变化必须标记下游契约、prompt、draft、review、book check stale；已 accepted 正文只能通过 revise run 更新。
 
 ### 3.4 shot 状态机（14 态合法转移，评审 P0-2 + 质量硬门禁）
 

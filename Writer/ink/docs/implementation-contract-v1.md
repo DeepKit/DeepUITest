@@ -1806,8 +1806,121 @@ class DecisionSession:
     source_hashes_json: str
     before_hash: str | None
     after_hash: str | None
+    option_set_json: str
+    selected_option: int | None
+    parent_decision_session_id: int | None
     created_at: str
     updated_at: str
+```
+
+**v1.1 专表原则**：
+
+- `DecisionSession` 不复用 `writing_human_decisions`。`writing_human_decisions` 只记录已经确认的正式人工动作。
+- 自然语言输入、AI 解析、选项集、回读文本、重生成记录必须进专表；否则恢复时会被迫依赖聊天上下文。
+- 源文档规范化、`better.md` 处理和原子条款必须进专表；否则无法检查覆盖率、重复、冲突和 source hash stale。
+- 契约版本和契约 patch 必须与 source clauses 关联；否则无法证明“从大纲到契约”没有变形或遗漏。
+
+**建议 DDL 草案**（schema revision，不属于当前 40 表 baseline）：
+
+```sql
+CREATE TABLE writing_source_documents (
+    source_document_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('guide','outline','character','world','draft','process_scratch','other')),
+    priority INTEGER NOT NULL DEFAULT 100,
+    content_hash TEXT NOT NULL,
+    processed_hash TEXT,
+    status TEXT NOT NULL CHECK (status IN ('active','processed','stale','cleared','rejected')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (project_id, source_path, content_hash)
+);
+
+CREATE TABLE writing_atomic_source_clauses (
+    atomic_clause_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    source_document_id INTEGER NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot','source')),
+    scope_id TEXT,
+    clause_type TEXT NOT NULL CHECK (clause_type IN ('plot','character','world','style','quality','forbidden','process')),
+    severity TEXT NOT NULL CHECK (severity IN ('hard','soft','diagnostic')),
+    clause_text TEXT NOT NULL,
+    source_refs_json TEXT NOT NULL,
+    source_hashes_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','superseded','rejected','stale')),
+    supersedes_clause_id INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE writing_decision_sessions (
+    decision_session_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot','review','import','source')),
+    scope_id TEXT,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    parent_decision_session_id INTEGER,
+    status TEXT NOT NULL CHECK (status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed','stale','confirmed','cancelled')),
+    human_text TEXT NOT NULL DEFAULT '',
+    parsed_patch_json TEXT NOT NULL DEFAULT '{}',
+    readback_text TEXT NOT NULL DEFAULT '',
+    source_hashes_json TEXT NOT NULL DEFAULT '[]',
+    before_hash TEXT,
+    after_hash TEXT,
+    selected_option INTEGER CHECK (selected_option IS NULL OR selected_option BETWEEN 1 AND 8),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_active_decision_session_target
+ON writing_decision_sessions(project_id, target_type, COALESCE(target_id, ''), status)
+WHERE status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed');
+
+CREATE TABLE writing_decision_option_sets (
+    option_set_id INTEGER PRIMARY KEY,
+    decision_session_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    options_json TEXT NOT NULL,
+    recommended_option INTEGER CHECK (recommended_option IS NULL OR recommended_option BETWEEN 1 AND 8),
+    allow_back INTEGER NOT NULL DEFAULT 1 CHECK (allow_back IN (0,1)),
+    allow_regenerate INTEGER NOT NULL DEFAULT 1 CHECK (allow_regenerate IN (0,1)),
+    regenerate_count INTEGER NOT NULL DEFAULT 0 CHECK (regenerate_count >= 0),
+    status TEXT NOT NULL CHECK (status IN ('active','selected','superseded','cancelled')),
+    created_at TEXT NOT NULL,
+    UNIQUE (decision_session_id, version)
+);
+
+CREATE TABLE writing_contract_versions (
+    contract_version_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot')),
+    scope_id TEXT,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','locked','superseded','stale')),
+    contract_json TEXT NOT NULL,
+    contract_hash TEXT NOT NULL,
+    source_clause_ids_json TEXT NOT NULL,
+    created_from_decision_session_id INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE (project_id, scope_type, COALESCE(scope_id, ''), version)
+);
+
+CREATE TABLE writing_contract_patches (
+    contract_patch_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    decision_session_id INTEGER NOT NULL,
+    base_contract_version_id INTEGER,
+    target_contract_version_id INTEGER,
+    change_type TEXT NOT NULL CHECK (change_type IN ('refine','override','split','defer','reject','normalize')),
+    patch_json TEXT NOT NULL,
+    affected_scopes_json TEXT NOT NULL DEFAULT '[]',
+    stale_downstream_json TEXT NOT NULL DEFAULT '[]',
+    source_clause_ids_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','rejected','applied','stale')),
+    created_at TEXT NOT NULL
+);
 ```
 
 **写入规则**：
@@ -1817,8 +1930,9 @@ class DecisionSession:
 3. `awaiting_confirm` 恢复时必须回读 `readback_text`，不得依赖聊天上下文。
 4. source hash 变化后，DecisionSession 转 `stale`，不得直接确认。
 5. 作者裸 "确认" 只有在当前唯一 `awaiting_confirm` 会话存在时有效。
-6. `confirmed` 必须在单事务内写入 `writing_human_decisions`、`writing_contract_changelog`、新契约版本/source hash，并把 DecisionSession 置为终态。
-7. 任一写入失败必须整体回滚，不允许出现 human decision 已写但契约未更新的半状态。
+6. 作者选择 `0` 时回到上一步或 `collecting`；选择 `9` 时当前 option set 置 `superseded` 并生成新版选项集。
+7. `confirmed` 必须在单事务内写入 `writing_human_decisions`、`writing_contract_changelog`、新契约版本/source hash，并把 DecisionSession 置为终态。
+8. 任一写入失败必须整体回滚，不允许出现 human decision 已写但契约未更新的半状态。
 
 **ScopedDecisionSession**：
 
@@ -1837,6 +1951,25 @@ class ScopedDecisionPatch:
 ```
 
 下游 stale 规则：局部契约变更后，依赖旧契约的 prompt snapshots、drafts、reviews 必须标记 stale 或新建 run；已 accepted 正文只允许通过 revise run 修改。
+
+**stale 传播矩阵**：
+
+| 变更层级 | 下游处理 |
+|----------|----------|
+| BookContract | 全部卷/部/章/shot 契约、prompt、draft、review、book check stale |
+| VolumeContract | 本卷部/章/shot 契约、prompt、draft、review、book check stale |
+| PartContract | 本部章/shot 契约、prompt、draft、review、book check stale |
+| ChapterContract | 本章 shot 契约、prompt、draft、chapter review、book check stale |
+| ShotContract | 本 shot prompt、draft、jury、soft gate、chapter review、book check stale |
+| SourceDocument hash | 依赖该 source 的 atomic clauses、contract patches、DecisionSession、prompt snapshots stale |
+
+**字段标准投影**：
+
+- `BookContract`：identity、logline、genre_positioning、narrative_voice、hard_boundaries、world_knowledge、character_bibles、evidence_chain、motif_system、style_locks、quality_profile、forbidden_directions、source_refs。
+- `VolumeContract`：volume_id/name、function、arc_goal、main_conflict、entry_state、exit_state、evidence_progression、character_arc_delta、motif_progression、pacing_target、required_turning_points、forbidden_repetition、source_refs。
+- `PartContract`：part_id/name、local_goal、transition_function、required_reveals、emotional_curve、dependency_scopes、risk_notes、source_refs。
+- `ChapterContract`：chapter_id/title、chapter_function、scene_hook、institution_action、character_cost、must_land、evidence_plant_or_payoff、sci_fi_or_world_anchor、chapter_end_crack、dialogue_anchor、sensory_anchor、pacing_shape、continuity_refs、anti_write、dependencies、source_refs。
+- `ShotContract`：继续沿用 5 张结构化表 must_land、anti_write、scene_contract、persona_assignment、soft_constraints，并补 emotional_beat、continuity_refs、source_refs 投影。
 
 ### 3.7 并发模型与隔离边界（评审 P0-2，新增）
 

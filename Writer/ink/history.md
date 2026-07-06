@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-07-06 完成源文档规范化与选择式对话文档化
+
+验证命令：
+
+```bash
+docs-only change; no runtime tests required
+```
+
+### 已完成：主编台细则收敛
+
+- 更新 `docs/interactive-contract-workflow.md`，定义 `better.md` 过程文件生命周期、源文档合并/去重/原子化、1-8/0/9 选择式对话、契约字段标准和 stale 传播矩阵。
+- 更新 `docs/implementation-contract-v1.md`，补充 v1.1 专表原则、DecisionSession option set、source documents、atomic clauses、contract versions、contract patches 的 schema revision 草案。
+- 更新 `docs/author-workflow-contract.md`，把选择式对话、过程文件清空处理、先封全书基线再跑前 6 章灰度生成纳入用户侧流程。
+- 更新 `docs/design-v2.md` 与 `README.md`，把 SourceNormalizer、过程文件不作真相源、选择式对话和层级契约字段边界纳入权威设计摘要。
+- 更新 `tasks.md`，将下一批开发队列收敛为 DecisionSession 专表、选择式对话引擎、源文档规范化、过程文件处理、字段 schema revision、stale 传播和前 6 章生成验收。
+
 ## 2026-07-06 完成主编台交互机制文档化
 
 验证命令：

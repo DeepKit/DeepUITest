@@ -8,7 +8,9 @@
 - 生产期不随机打断作者；人类只在 setup、contract confirm、review、import finalize、abort 等明确边界介入。
 - 所有人工动作必须落 `writing_human_decisions`，包含 actor、reason、目标 session/run/chapter/shot、前置条件校验结果。
 - 作者可以只用自然语言与 `InkFlow 主编台` 交互；自然语言不得直接生效，必须经 `DecisionSession` 解析、回读、确认、落库。
+- 主编台对需要裁决的问题默认给 1-8 个编号选项；`0` 返回，`9` 重新生成选项。作者的自由文本只作为补充意见保存，再生成下一组选项。
 - 未确认的 contract patch、review 意见或导入判断不得进入 prompt、accepted canonical 或 export。
+- `better.md` 是过程文件，不是长期真相源；资料官抽取、合并、去重、原子化并落入 source clauses / contracts 后，必须清空，只保留 processed manifest/hash 审计。
 - 所有 AI 调用必须经 `LLMGateway`，落 `writing_ai_call_attempts` 与 `writing_runtime_events`。
 - 所有正式正文必须来自 accepted canonical；未 accepted、rejected、degraded、failed run 的文本不得进入后续上下文或导出。
 - 所有正式正文必须通过 shot/chapter/book 三层质量硬门禁；人工 accept 不得覆盖硬质量失败。
@@ -43,10 +45,12 @@
 2. `DecisionSessionHost` 立即保存 `human_text`。
 3. `ContractExtractor` / 审稿角色把意见解析为结构化 patch。
 4. `Gatekeeper` 校验 schema、来源、上下层冲突和 stale。
-5. `ReadbackPresenter` 回读："我理解为……是否确认？"
-6. 作者确认后，`AcceptanceRegistrar` / `ContractSteward` 原子写入 human decision、contract changelog、契约版本和 source hash。
+5. `ReadbackPresenter` 回读："我理解为……"，并给出 1-8 个编号选项。
+6. 作者选择 1-8 后，`AcceptanceRegistrar` / `ContractSteward` 原子写入 human decision、contract changelog、契约版本和 source hash；选择 `0` 返回上一步，选择 `9` 重新生成选项并保留审计。
 
 若会话中断，恢复时主编台必须回读最近一个 `awaiting_confirm` 或 `needs_human` 的 DecisionSession。恢复不得依赖聊天上下文。
+
+恢复时必须展示原 option set，不能让模型重新生成一组看似相同但含义漂移的选项。
 
 作者前台只看到：主编台、资料官、契约官、审稿官、封板官、恢复官。后台角色名只进入日志、开发文档和调试详情。
 
@@ -73,7 +77,8 @@ setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必�
 首次实稿生产建议拆成两级确认：
 
 1. **全书基线封板**：确认世界观红线、写作宪法、叙事视角、人物核心弧线、全书证据链、卷功能、投稿样稿目标和禁止方向，形成 `BookContract` 基线。
-2. **局部作用域修订**：后续按卷/部/章/shot 开 `ScopedDecisionSession`。局部修订只能细化或覆盖该作用域内的契约，不得反向修改全书红线。受影响下游 prompt、draft、review 必须标记 stale。
+2. **前 6 章灰度生成**：在全书基线封板后生成前 6 章，用来验证契约抽取、章/shot 细化、质量门禁、恢复点和人类交互负担。
+3. **局部作用域修订**：后续按卷/部/章/shot 开 `ScopedDecisionSession`。局部修订只能细化或覆盖该作用域内的契约，不得反向修改全书红线。受影响下游 prompt、draft、review 必须标记 stale。
 
 ## 4. Write
 
@@ -130,6 +135,13 @@ setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必�
 
 导入必须记录 source hash。源文件变化后，旧 dry-run 结果不得 finalize。
 
+写作指南目录导入时必须先做文档规范化：
+
+- `better.md` 等过程文件只能作为 `process_scratch` 输入。
+- 重复/冲突/含混条款必须合并、去重、拆分为原子条款。
+- 低置信抽取和 source coverage 缺口必须生成主编台选择题，由作者裁决。
+- 处理完成后，过程文件必须清空，并记录 processed manifest/hash。
+
 重构已有稿时，导入文本进入正文 revision 链；导入文本不得直接 accepted，必须走同一套 hard gates、quality floor、polish_revision、chapter review、book rolling check，不允许绕过 accepted canonical。
 
 ## 7. Export
@@ -154,6 +166,9 @@ setup 后进入人工确认点：作者可 confirm、edit、abort。confirm 必�
 - `import --dry-run` + `import --finalize`
 - 崩溃恢复：drafting、jury、soft_gate、chapter_review、import_finalize 至少各一个断点
 - 主编台交互恢复：至少一个 `DecisionSession` 在 `awaiting_confirm` 中断后可恢复回读并继续确认
+- 选择式对话恢复：至少一个 option set 在中断后恢复，1-8/0/9 语义不变
 - 局部修订：至少一个 `ScopedDecisionSession` 修改章级契约后，受影响 prompt/draft/review 被标记 stale 或新建 run
+- 文档规范化：至少一次 `better.md` 处理后被清空，confirmed contract 不再直接引用该过程文件
+- 生成测试：先封 `BookContract` 全书基线，再跑前 6 章灰度生产
 
 验收通过标准：无 degraded 假通过、无低于 shot/chapter/book 质量硬门禁的文本进入 accepted/export、无盲评/继续阅读失败文本进入 accepted、无 productive_deviation 被 polish 磨平、无人工 override 硬质量失败、无未审稿正文进入导出、未确认 DecisionSession 不进入 prompt、source hash 变化阻断旧确认、所有 AI 调用可追溯、所有人工决策可追溯、所有旧关键不变量在 `invariant-traceability.md` 中有对应测试。
