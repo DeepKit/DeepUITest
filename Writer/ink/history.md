@@ -77,6 +77,30 @@ python -m pytest
 - 新增 JSONL 追加入口 `append_jsonl_record()`。
 - 新增 console script `ink-record-llm-acceptance`，用于 nightly/manual 汇总指定 DB 并追加记录；默认测试只验证 mock/失败调用和记录格式，不触发真实网络。
 
+## 2026-07-06 完成 P1 参数化 setup
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_cli.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- CLI 定向测试：`3 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`105 passed`
+
+### 已完成：P1 setup 输入增强
+
+- `ink setup` 增加 `--shots-per-chapter`，支持每章生成多个结构化 shot。
+- `ink setup` 增加 meta contract JSON 参数，覆盖 identity、narrative voice、hard boundaries、style locks、world knowledge、motif system、creative zones 和 style quality profile。
+- `ink setup` 增加章节规格参数：`--rhythm-json`、`--hook-target`、`--motif-density`。
+- `ink setup` 增加 shot 契约参数：must-land events、beats、information releases、forbidden facts/words、POV、scene、characters、persona intensity、creative shot、relaxable rules 和 deviation budget。
+- 保持默认 setup 兼容旧 CLI 流程；补多 shot 和作者输入落库测试。
+
 ## 2026-07-05 完成本地 baseline 验收
 
 验证命令：

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -66,6 +66,33 @@ def build_parser() -> argparse.ArgumentParser:
     setup_cmd.add_argument("--project-id", type=int)
     setup_cmd.add_argument("--run-id", type=int)
     setup_cmd.add_argument("--chapters", type=int, required=True)
+    setup_cmd.add_argument("--shots-per-chapter", type=int, default=1)
+    setup_cmd.add_argument("--identity-json")
+    setup_cmd.add_argument("--narrative-voice-json")
+    setup_cmd.add_argument("--hard-boundaries-json")
+    setup_cmd.add_argument("--style-locks-json")
+    setup_cmd.add_argument("--world-knowledge-json")
+    setup_cmd.add_argument("--motif-system-json")
+    setup_cmd.add_argument("--creative-zones-json")
+    setup_cmd.add_argument("--style-quality-profile-json")
+    setup_cmd.add_argument("--rhythm-json")
+    setup_cmd.add_argument("--hook-target")
+    setup_cmd.add_argument("--motif-density", type=float)
+    setup_cmd.add_argument("--must-land-event", action="append")
+    setup_cmd.add_argument("--beat", action="append")
+    setup_cmd.add_argument("--information-release", action="append")
+    setup_cmd.add_argument("--forbidden-fact", action="append")
+    setup_cmd.add_argument("--forbidden-word", action="append")
+    setup_cmd.add_argument("--pov-only", action="append")
+    setup_cmd.add_argument("--location")
+    setup_cmd.add_argument("--time-of-day")
+    setup_cmd.add_argument("--character", action="append")
+    setup_cmd.add_argument("--character-position", action="append", metavar="NAME=POSITION")
+    setup_cmd.add_argument("--persona", choices=("意象师", "节奏师", "对话师", "结构师", "悬疑官"))
+    setup_cmd.add_argument("--persona-intensity-json")
+    setup_cmd.add_argument("--creative-shot", action="store_true")
+    setup_cmd.add_argument("--relaxable-rule", action="append")
+    setup_cmd.add_argument("--deviation-budget", type=float)
     setup_cmd.set_defaults(handler=_cmd_setup)
 
     confirm_cmd = subcommands.add_parser("confirm-contract")
@@ -169,50 +196,69 @@ def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, i
 def _cmd_setup(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
+    options = _setup_options(args)
+    _upsert_meta_contract(conn, project_id, options)
     created: list[str] = []
     for chapter_id in range(1, args.chapters + 1):
-        logical_shot_id = f"ch-{chapter_id:02d}-shot-001"
-        existing = conn.execute(
-            """
-            SELECT shot_id
-            FROM writing_shots
-            WHERE project_id = ? AND chapter_id = ? AND run_id = ? AND logical_shot_id = ?
-            """,
-            (project_id, chapter_id, run_id, logical_shot_id),
-        ).fetchone()
-        if existing is not None:
-            continue
-        now = now_utc_iso()
-        contract_cursor = conn.execute(
-            """
-            INSERT INTO writing_shot_contracts
-                (project_id, chapter_id, run_id, logical_shot_id, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'confirmed', ?, ?)
-            """,
-            (project_id, chapter_id, run_id, logical_shot_id, now, now),
-        )
-        shot_contract_id = int(contract_cursor.lastrowid)
-        _insert_default_contract_children(conn, shot_contract_id)
-        shot_id = f"{logical_shot_id}@{run_id}"
+        for shot_index in range(1, options.shots_per_chapter + 1):
+            logical_shot_id = f"ch-{chapter_id:02d}-shot-{shot_index:03d}"
+            existing = conn.execute(
+                """
+                SELECT shot_id
+                FROM writing_shots
+                WHERE project_id = ? AND chapter_id = ? AND run_id = ? AND logical_shot_id = ?
+                """,
+                (project_id, chapter_id, run_id, logical_shot_id),
+            ).fetchone()
+            if existing is not None:
+                continue
+            now = now_utc_iso()
+            contract_cursor = conn.execute(
+                """
+                INSERT INTO writing_shot_contracts
+                    (project_id, chapter_id, run_id, logical_shot_id, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'confirmed', ?, ?)
+                """,
+                (project_id, chapter_id, run_id, logical_shot_id, now, now),
+            )
+            shot_contract_id = int(contract_cursor.lastrowid)
+            _insert_contract_children(conn, shot_contract_id, options)
+            shot_id = f"{logical_shot_id}@{run_id}"
+            conn.execute(
+                """
+                INSERT INTO writing_shots
+                    (shot_id, project_id, chapter_id, shot_contract_id, run_id, logical_shot_id,
+                     status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                """,
+                (shot_id, project_id, chapter_id, shot_contract_id, run_id, logical_shot_id, now, now),
+            )
+            created.append(shot_id)
         conn.execute(
             """
-            INSERT INTO writing_shots
-                (shot_id, project_id, chapter_id, shot_contract_id, run_id, logical_shot_id,
-                 status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-            """,
-            (shot_id, project_id, chapter_id, shot_contract_id, run_id, logical_shot_id, now, now),
-        )
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO writing_chapter_specs
+            INSERT INTO writing_chapter_specs
                 (project_id, chapter_id, rhythm_curve_target, hook_target, motif_density_target)
-            VALUES (?, ?, '{}', NULL, NULL)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(project_id, chapter_id)
+            DO UPDATE SET
+                rhythm_curve_target = excluded.rhythm_curve_target,
+                hook_target = excluded.hook_target,
+                motif_density_target = excluded.motif_density_target
             """,
-            (project_id, chapter_id),
+            (
+                project_id,
+                chapter_id,
+                _json_dumps(options.rhythm_curve_target),
+                options.hook_target,
+                options.motif_density_target,
+            ),
         )
-        created.append(shot_id)
-    return {"project_id": project_id, "run_id": run_id, "created_shots": created}
+    return {
+        "project_id": project_id,
+        "run_id": run_id,
+        "shots_per_chapter": options.shots_per_chapter,
+        "created_shots": created,
+    }
 
 
 def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
@@ -413,6 +459,37 @@ def _jsonable_result(value: object) -> object:
     return str(value)
 
 
+@dataclass(frozen=True)
+class _SetupOptions:
+    shots_per_chapter: int
+    identity: dict[str, object]
+    narrative_voice: dict[str, object]
+    hard_boundaries: dict[str, object]
+    style_locks: dict[str, object]
+    world_knowledge: dict[str, object]
+    motif_system: dict[str, object]
+    creative_zones: dict[str, object]
+    style_quality_profile: dict[str, object]
+    rhythm_curve_target: object
+    hook_target: str | None
+    motif_density_target: float | None
+    must_land_events: list[str]
+    beats: list[str]
+    information_releases: list[str]
+    forbidden_facts: list[str]
+    forbidden_words: list[str]
+    pov_only: list[str]
+    location: str
+    time_of_day: str
+    characters_present: list[str]
+    character_positions: dict[str, str]
+    persona: str
+    persona_intensity: dict[str, int]
+    is_creative_shot: bool
+    relaxable_rules: list[str]
+    deviation_budget: float
+
+
 class _CliDeterministicProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         if idempotency_key.startswith("outline:"):
@@ -425,14 +502,113 @@ class _CliDeterministicProvider:
         return ModelResult(text=text, model_name=model_name, token_input=len(prompt_text.split()), token_output=1)
 
 
-def _insert_default_contract_children(conn: sqlite3.Connection, shot_contract_id: int) -> None:
+def _setup_options(args: argparse.Namespace) -> _SetupOptions:
+    shots_per_chapter = int(args.shots_per_chapter)
+    if shots_per_chapter < 1:
+        raise SystemExit("setup --shots-per-chapter must be >= 1")
+    persona_intensity = _json_object_arg(
+        args.persona_intensity_json,
+        {"画面": 7, "节奏": 6, "对话": 3, "结构": 6, "悬疑": 8},
+        "--persona-intensity-json",
+    )
+    _validate_persona_intensity(persona_intensity)
+    characters = _arg_list(args.character, ["她"])
+    return _SetupOptions(
+        shots_per_chapter=shots_per_chapter,
+        identity=_json_object_arg(args.identity_json, {"project_identity": "local author draft"}, "--identity-json"),
+        narrative_voice=_json_object_arg(
+            args.narrative_voice_json,
+            {"person": "third", "distance": "close", "texture": "clean suspense"},
+            "--narrative-voice-json",
+        ),
+        hard_boundaries=_json_object_arg(args.hard_boundaries_json, {"forbidden": []}, "--hard-boundaries-json"),
+        style_locks=_json_object_arg(args.style_locks_json, {"must_keep": []}, "--style-locks-json"),
+        world_knowledge=_json_object_arg(args.world_knowledge_json, {"facts": []}, "--world-knowledge-json"),
+        motif_system=_json_object_arg(args.motif_system_json, {"motifs": []}, "--motif-system-json"),
+        creative_zones=_json_object_arg(args.creative_zones_json, {"allowed": []}, "--creative-zones-json"),
+        style_quality_profile=_json_object_arg(
+            args.style_quality_profile_json,
+            {
+                "target_reader": "genre reader",
+                "benchmark": [],
+                "positive_examples": [],
+                "negative_examples": [],
+                "banned_cliches": [],
+            },
+            "--style-quality-profile-json",
+        ),
+        rhythm_curve_target=_json_value_arg(args.rhythm_json, {}, "--rhythm-json"),
+        hook_target=args.hook_target,
+        motif_density_target=args.motif_density,
+        must_land_events=_arg_list(args.must_land_event, ["她走进档案室"]),
+        beats=_arg_list(args.beat, ["发现钥匙"]),
+        information_releases=_arg_list(args.information_release, ["门外脚步"]),
+        forbidden_facts=_arg_list(args.forbidden_fact, []),
+        forbidden_words=_arg_list(args.forbidden_word, ["突然"]),
+        pov_only=_arg_list(args.pov_only, ["她"]),
+        location=args.location or "档案室",
+        time_of_day=args.time_of_day or "夜晚",
+        characters_present=characters,
+        character_positions=_character_positions(args.character_position, characters),
+        persona=args.persona or "悬疑官",
+        persona_intensity={key: int(persona_intensity[key]) for key in ("画面", "节奏", "对话", "结构", "悬疑")},
+        is_creative_shot=bool(args.creative_shot),
+        relaxable_rules=_arg_list(args.relaxable_rule, ["metaphor"]),
+        deviation_budget=0.2 if args.deviation_budget is None else float(args.deviation_budget),
+    )
+
+
+def _upsert_meta_contract(conn: sqlite3.Connection, project_id: int, options: _SetupOptions) -> None:
+    row = conn.execute(
+        "SELECT meta_contract_id FROM writing_meta_contracts WHERE project_id = ? ORDER BY meta_contract_id DESC LIMIT 1",
+        (project_id,),
+    ).fetchone()
+    values = (
+        _json_dumps(options.identity),
+        _json_dumps(options.narrative_voice),
+        _json_dumps(options.hard_boundaries),
+        _json_dumps(options.style_locks),
+        _json_dumps(options.world_knowledge),
+        _json_dumps(options.motif_system),
+        _json_dumps(options.creative_zones),
+        _json_dumps(options.style_quality_profile),
+    )
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO writing_meta_contracts
+                (project_id, identity, narrative_voice, hard_boundaries, style_locks,
+                 world_knowledge, motif_system, creative_zones, style_quality_profile, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
+            """,
+            (project_id, *values),
+        )
+        return
+    conn.execute(
+        """
+        UPDATE writing_meta_contracts
+        SET identity = ?, narrative_voice = ?, hard_boundaries = ?, style_locks = ?,
+            world_knowledge = ?, motif_system = ?, creative_zones = ?,
+            style_quality_profile = ?, status = 'confirmed'
+        WHERE meta_contract_id = ?
+        """,
+        (*values, int(row[0])),
+    )
+
+
+def _insert_contract_children(conn: sqlite3.Connection, shot_contract_id: int, options: _SetupOptions) -> None:
     conn.execute(
         """
         INSERT INTO writing_shot_must_land
             (shot_contract_id, events, beats, information_releases)
         VALUES (?, ?, ?, ?)
         """,
-        (shot_contract_id, json.dumps(["她走进档案室"]), json.dumps(["发现钥匙"]), json.dumps(["门外脚步"])),
+        (
+            shot_contract_id,
+            _json_dumps(options.must_land_events),
+            _json_dumps(options.beats),
+            _json_dumps(options.information_releases),
+        ),
     )
     conn.execute(
         """
@@ -440,32 +616,98 @@ def _insert_default_contract_children(conn: sqlite3.Connection, shot_contract_id
             (shot_contract_id, forbidden_facts, forbidden_words, pov_only)
         VALUES (?, ?, ?, ?)
         """,
-        (shot_contract_id, json.dumps([]), json.dumps(["突然"]), json.dumps(["她"])),
+        (
+            shot_contract_id,
+            _json_dumps(options.forbidden_facts),
+            _json_dumps(options.forbidden_words),
+            _json_dumps(options.pov_only),
+        ),
     )
     conn.execute(
         """
         INSERT INTO writing_shot_scene_contract
             (shot_contract_id, location, time_of_day, characters_present, character_positions)
-            VALUES (?, '档案室', '夜晚', ?, ?)
+            VALUES (?, ?, ?, ?, ?)
         """,
-        (shot_contract_id, json.dumps(["她"]), json.dumps({"她": "门边"}, ensure_ascii=False)),
+        (
+            shot_contract_id,
+            options.location,
+            options.time_of_day,
+            _json_dumps(options.characters_present),
+            _json_dumps(options.character_positions),
+        ),
     )
     conn.execute(
         """
         INSERT INTO writing_shot_persona_assignment
             (shot_contract_id, persona, intensity, is_creative_shot, is_suspense_shot)
-            VALUES (?, '悬疑官', ?, 0, 1)
+            VALUES (?, ?, ?, ?, 1)
         """,
-        (shot_contract_id, json.dumps({"画面": 7, "节奏": 6, "对话": 3, "结构": 6, "悬疑": 8}, ensure_ascii=False)),
+        (
+            shot_contract_id,
+            options.persona,
+            _json_dumps(options.persona_intensity),
+            int(options.is_creative_shot),
+        ),
     )
     conn.execute(
         """
         INSERT INTO writing_shot_soft_constraints
             (shot_contract_id, relaxable_rules, deviation_budget)
-        VALUES (?, ?, 0.2)
+        VALUES (?, ?, ?)
         """,
-        (shot_contract_id, json.dumps(["metaphor"])),
+        (shot_contract_id, _json_dumps(options.relaxable_rules), options.deviation_budget),
     )
+
+
+def _json_value_arg(raw: str | None, default: object, field_name: str) -> object:
+    if raw is None:
+        return default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{field_name} must be valid JSON") from exc
+
+
+def _json_object_arg(raw: str | None, default: dict[str, object], field_name: str) -> dict[str, object]:
+    value = _json_value_arg(raw, default, field_name)
+    if not isinstance(value, dict):
+        raise SystemExit(f"{field_name} must be a JSON object")
+    return value
+
+
+def _arg_list(values: list[str] | None, default: list[str]) -> list[str]:
+    result = [value for value in (values or default) if value]
+    if not result and default:
+        return default
+    return result
+
+
+def _character_positions(values: list[str] | None, characters: list[str]) -> dict[str, str]:
+    if not values:
+        return {character: "场内" for character in characters}
+    positions: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise SystemExit("setup --character-position must use NAME=POSITION")
+        name, position = value.split("=", 1)
+        if not name or not position:
+            raise SystemExit("setup --character-position must use NAME=POSITION")
+        positions[name] = position
+    for character in characters:
+        positions.setdefault(character, "场内")
+    return positions
+
+
+def _validate_persona_intensity(payload: dict[str, object]) -> None:
+    for key in ("画面", "节奏", "对话", "结构", "悬疑"):
+        value = payload.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0 or value > 10:
+            raise SystemExit(f"--persona-intensity-json must contain integer 0-10 for {key}")
+
+
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 if __name__ == "__main__":

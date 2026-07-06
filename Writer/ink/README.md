@@ -1,6 +1,6 @@
 # 墨韵 InkFlow v2 — 完整生产重构
 
-> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳、非 shot resume、真实 LLM provider 配置和 manual 验收记录已完成本地验证（2026-07-06）
+> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳、非 shot resume、真实 LLM provider 配置、manual 验收记录和参数化 setup 已完成本地验证（2026-07-06）
 > **目标**：从 0 构建完整生产版 InkFlow，根治旧系统“契约信号逐层丢失、门禁假放行、正文真相源绕过、崩溃恢复不可审计”的架构病。
 
 ## 这是什么
@@ -83,4 +83,4 @@ M0 schema+codegen+lint+审计骨架
 cd ink && python -m pytest
 ```
 
-当前 CLI 薄壳覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，真实 LLM provider 可通过 `--llm-provider openai-compatible` 接入；nightly/manual 验收可用 `ink-record-llm-acceptance` 记录成本、耗时、失败率和质量样例。更细的交互式 setup、CLI 易用性和阈值回放仍在后续产品化任务中。
+当前 CLI 薄壳覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，真实 LLM provider 可通过 `--llm-provider openai-compatible` 接入；nightly/manual 验收可用 `ink-record-llm-acceptance` 记录成本、耗时、失败率和质量样例；`setup` 已支持项目元契约、章节节奏、shot 数量和核心风格约束输入。CLI 易用性和阈值回放仍在后续产品化任务中。
