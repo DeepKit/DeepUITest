@@ -94,6 +94,7 @@ type
     procedure DoVariant1; procedure DoVariant2; procedure DoVariant3;
     procedure DoSettings(Sender: TObject);
     procedure DoAbout(Sender: TObject);
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure Log(const AMsg: string);
     procedure UpdateWorkflow;
     procedure ShowWarning(const AMsg: string);
@@ -413,6 +414,8 @@ var
 begin
   Caption := APP_TITLE + ' ' + APP_TITLE_ZH + ' v' + APP_VERSION;
   Width := 1600; Height := 1000;
+  KeyPreview := True;
+  OnKeyDown := FormKeyDown;
 
   // Menu
   FMainMenu := TMainMenu.Create(Self); Self.Menu := FMainMenu;
@@ -814,6 +817,28 @@ begin
     'WeChat CRM 与销售辅助工具' + #13#10 +
     '基于微信 4.1.10.53 数据库解密技术',
     mtInformation, [mbOK], 0);
+end;
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────
+
+procedure TDeepAxisMainForm.FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  // F1-F5: step buttons
+  case Key of
+    VK_F1: begin DoLaunchWeChat(Sender); Key := 0; end;
+    VK_F2: begin DoScanKey(Sender); Key := 0; end;
+    VK_F3: begin DoConnectDecrypted(Sender); Key := 0; end;
+    VK_F4: begin DoReadContacts(Sender); Key := 0; end;
+    VK_F5: begin DoRefreshData(Sender); Key := 0; end;
+    Ord('F'):
+      if ssCtrl in Shift then
+      begin
+        // Ctrl+F: focus search in RadarPanel
+        if FRadarPanel <> nil then
+          FRadarPanel.FocusSearch;
+        Key := 0;
+      end;
+  end;
 end;
 
 // ── Send workflow ──────────────────────────────────────────────────

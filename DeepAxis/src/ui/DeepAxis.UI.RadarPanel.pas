@@ -111,6 +111,7 @@ type
     procedure SetData(const AData: TPollResult);
     procedure SetWeChatConnected(AConnected: Boolean);
     procedure Clear;
+    procedure FocusSearch;
     function TryGetSelectedContact(out AContact: TContact): Boolean;
     function IsConnected: Boolean;
     property SelectedContactIndex: Integer read FSelectedContactIndex;
@@ -1042,6 +1043,12 @@ begin
   FConfidenceLabel.Caption := '';
   FEvidenceMemo.Clear;
   FEvidenceMemo.Visible := False;
+end;
+
+procedure TDeepAxisRadarPanel.FocusSearch;
+begin
+  if FSearchEdit <> nil then
+    FSearchEdit.SetFocus;
 end;
 
 end.
