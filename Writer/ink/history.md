@@ -101,6 +101,30 @@ python -m pytest
 - `ink setup` 增加 shot 契约参数：must-land events、beats、information releases、forbidden facts/words、POV、scene、characters、persona intensity、creative shot、relaxable rules 和 deviation budget。
 - 保持默认 setup 兼容旧 CLI 流程；补多 shot 和作者输入落库测试。
 
+## 2026-07-06 完成 P1 CLI 易用性
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_cli.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- CLI 定向测试：`5 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`107 passed`
+
+### 已完成：P1 CLI JSON / dry-run
+
+- CLI 成功输出统一为 `{"ok": true, "command": "...", "data": ...}`。
+- CLI handler 错误统一输出 JSON error envelope 到 stderr，并返回非 0 状态。
+- `setup/write/review/accept/revise/reject/resume/export/confirm-contract` 增加 `--dry-run` 预检；`import --dry-run` 保留原导入清单语义。
+- dry-run 预检不会提交 DB 写入；补 setup dry-run 不落库测试。
+- 补错误 JSON 测试，避免重新退回裸异常输出。
+
 ## 2026-07-05 完成本地 baseline 验收
 
 验证命令：

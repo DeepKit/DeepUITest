@@ -1,6 +1,6 @@
 # InkFlow v2 当前任务队列
 
-> **状态**：Pre-M0-M6 baseline、非 shot 级 resume baseline、真实 LLM provider 配置入口、manual LLM 验收记录、参数化 setup 已完成本地验证。已完成任务已归档到 `history.md`，修复记录见 `bugfix.md`。
+> **状态**：Pre-M0-M6 baseline、非 shot 级 resume baseline、真实 LLM provider 配置入口、manual LLM 验收记录、参数化 setup、CLI JSON/dry-run 已完成本地验证。已完成任务已归档到 `history.md`，修复记录见 `bugfix.md`。
 > **最后更新**：2026-07-06
 
 ---
@@ -20,7 +20,6 @@
 
 ## P1 产品化任务
 
-- [ ] 改善 CLI 易用性：统一 JSON 输出 schema、错误提示、`--dry-run` 预检和帮助文本。
 - [ ] 增加阈值调参记录：shot/chapter/book quality floor、reader pull、blind review、soft gate N 的运行数据回放。
 
 ## P2 后续架构增强

@@ -152,6 +152,54 @@ def test_cli_setup_accepts_author_contract_inputs(tmp_path: Path) -> None:
     assert contract[13] == 0.35
 
 
+def test_cli_outputs_json_envelope_and_setup_dry_run_does_not_write(tmp_path: Path, capsys) -> None:
+    db_path = tmp_path / "ink.sqlite"
+
+    assert main(["--db", str(db_path), "init", "--code", "dry-run-demo", "--title", "Dry Run Demo"]) == 0
+    init_payload = json.loads(capsys.readouterr().out)
+    assert init_payload["ok"] is True
+    assert init_payload["command"] == "init"
+    assert init_payload["data"]["project_id"] == 1
+
+    assert main(
+        [
+            "--db",
+            str(db_path),
+            "setup",
+            "--chapters",
+            "2",
+            "--shots-per-chapter",
+            "3",
+            "--dry-run",
+        ]
+    ) == 0
+    dry_run_payload = json.loads(capsys.readouterr().out)
+    assert dry_run_payload == {
+        "ok": True,
+        "command": "setup",
+        "data": {
+            "project_id": 1,
+            "run_id": 1,
+            "planned_chapters": 2,
+            "shots_per_chapter": 3,
+            "planned_shots": 6,
+        },
+    }
+    assert _scalar(db_path, "SELECT count(*) FROM writing_shots") == 0
+
+
+def test_cli_errors_are_json(tmp_path: Path, capsys) -> None:
+    db_path = tmp_path / "ink.sqlite"
+
+    assert main(["--db", str(db_path), "setup", "--chapters", "1"]) == 1
+
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["ok"] is False
+    assert payload["command"] == "setup"
+    assert payload["error"]["type"] == "UsageError"
+    assert "project not found" in payload["error"]["message"]
+
+
 def _scalar(db_path: Path, sql: str):
     conn = sqlite3.connect(db_path)
     try:

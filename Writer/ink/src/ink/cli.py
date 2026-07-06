@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Sequence
@@ -10,6 +11,7 @@ from typing import Sequence
 from ink.core.llm_gateway import LLMGateway, ModelResult, build_model_provider, load_llm_provider_config
 from ink.core.resume import ResumeManager
 from ink.database import connect
+from ink.errors import InkError
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
 from ink.pipeline.export_orchestrator import ExportOrchestrator
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
@@ -31,13 +33,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     conn = _open_cli_db(args.db)
     try:
         payload = args.handler(conn, args)
-    except Exception:
+    except SystemExit as exc:
         conn.rollback()
-        raise
+        _print_error(args, exc)
+        return _exit_code(exc)
+    except Exception as exc:
+        conn.rollback()
+        _print_error(args, exc)
+        return 1
     else:
-        conn.commit()
+        if _is_precheck_dry_run(args):
+            conn.rollback()
+        else:
+            conn.commit()
         if payload is not None:
-            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            print(json.dumps({"ok": True, "command": args.command, "data": payload}, ensure_ascii=False, sort_keys=True))
         return 0
     finally:
         conn.close()
@@ -66,6 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup_cmd.add_argument("--project-id", type=int)
     setup_cmd.add_argument("--run-id", type=int)
     setup_cmd.add_argument("--chapters", type=int, required=True)
+    _add_dry_run(setup_cmd)
     setup_cmd.add_argument("--shots-per-chapter", type=int, default=1)
     setup_cmd.add_argument("--identity-json")
     setup_cmd.add_argument("--narrative-voice-json")
@@ -99,36 +110,43 @@ def build_parser() -> argparse.ArgumentParser:
     confirm_cmd.add_argument("--project-id", type=int)
     confirm_cmd.add_argument("--actor", default="author")
     confirm_cmd.add_argument("--reason", default="contract confirmed")
+    _add_dry_run(confirm_cmd)
     confirm_cmd.set_defaults(handler=_cmd_confirm_contract)
 
     write_cmd = subcommands.add_parser("write")
     _add_chapter_run_args(write_cmd)
+    _add_dry_run(write_cmd)
     write_cmd.set_defaults(handler=_cmd_write)
 
     review_cmd = subcommands.add_parser("review")
     _add_chapter_run_args(review_cmd)
+    _add_dry_run(review_cmd)
     review_cmd.set_defaults(handler=_cmd_review)
 
     accept_cmd = subcommands.add_parser("accept")
     _add_chapter_run_args(accept_cmd)
     accept_cmd.add_argument("--actor", default="author")
     accept_cmd.add_argument("--reason", default="accept chapter")
+    _add_dry_run(accept_cmd)
     accept_cmd.set_defaults(handler=_cmd_accept)
 
     revise_cmd = subcommands.add_parser("revise")
     _add_chapter_run_args(revise_cmd)
     revise_cmd.add_argument("--actor", default="author")
     revise_cmd.add_argument("--reason", default="revise chapter")
+    _add_dry_run(revise_cmd)
     revise_cmd.set_defaults(handler=_cmd_revise)
 
     reject_cmd = subcommands.add_parser("reject")
     _add_chapter_run_args(reject_cmd)
     reject_cmd.add_argument("--actor", default="author")
     reject_cmd.add_argument("--reason", default="reject chapter")
+    _add_dry_run(reject_cmd)
     reject_cmd.set_defaults(handler=_cmd_reject)
 
     resume_cmd = subcommands.add_parser("resume")
     resume_cmd.add_argument("--session-id", type=int, required=True)
+    _add_dry_run(resume_cmd)
     resume_cmd.set_defaults(handler=_cmd_resume)
 
     import_cmd = subcommands.add_parser("import")
@@ -144,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     export_cmd = subcommands.add_parser("export")
     export_cmd.add_argument("--project-id", type=int)
     export_cmd.add_argument("--output")
+    _add_dry_run(export_cmd)
     export_cmd.set_defaults(handler=_cmd_export)
     return parser
 
@@ -152,6 +171,10 @@ def _add_chapter_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--project-id", type=int)
     parser.add_argument("--chapter", type=int, required=True)
     parser.add_argument("--run-id", type=int)
+
+
+def _add_dry_run(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--dry-run", action="store_true", help="Validate inputs and print the planned action without writing changes")
 
 
 def _open_cli_db(path: str) -> sqlite3.Connection:
@@ -163,6 +186,38 @@ def _open_cli_db(path: str) -> sqlite3.Connection:
     if has_schema is None:
         initialize_schema(conn)
     return conn
+
+
+def _is_precheck_dry_run(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "dry_run", False)) and getattr(args, "command", None) != "import"
+
+
+def _print_error(args: argparse.Namespace, exc: BaseException | None) -> None:
+    command = getattr(args, "command", None)
+    if isinstance(exc, SystemExit):
+        message = str(exc.code)
+        error_type = "UsageError"
+    elif isinstance(exc, InkError):
+        message = str(exc)
+        error_type = type(exc).__name__
+    elif isinstance(exc, sqlite3.Error):
+        message = str(exc)
+        error_type = type(exc).__name__
+    else:
+        message = "" if exc is None else str(exc)
+        error_type = "UnexpectedError" if exc is not None else "UnknownError"
+    print(
+        json.dumps(
+            {"ok": False, "command": command, "error": {"type": error_type, "message": message}},
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+
+
+def _exit_code(exc: SystemExit) -> int:
+    return int(exc.code) if isinstance(exc.code, int) else 1
 
 
 def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
@@ -197,6 +252,14 @@ def _cmd_setup(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, 
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
     options = _setup_options(args)
+    if args.dry_run:
+        return {
+            "project_id": project_id,
+            "run_id": run_id,
+            "planned_chapters": args.chapters,
+            "shots_per_chapter": options.shots_per_chapter,
+            "planned_shots": args.chapters * options.shots_per_chapter,
+        }
     _upsert_meta_contract(conn, project_id, options)
     created: list[str] = []
     for chapter_id in range(1, args.chapters + 1):
@@ -262,6 +325,9 @@ def _cmd_setup(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, 
 
 
 def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
+    project_id = _project_id(conn, args)
+    if args.dry_run:
+        return {"project_id": project_id, "planned_decisions": 1}
     cursor = conn.execute(
         """
         INSERT INTO writing_human_decisions
@@ -269,7 +335,7 @@ def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) ->
              quality_report_json, hard_quality_override, created_at)
         VALUES (?, 'contract_confirm', ?, ?, '{}', '{}', 0, ?)
         """,
-        (_project_id(conn, args), args.actor, args.reason, now_utc_iso()),
+        (project_id, args.actor, args.reason, now_utc_iso()),
     )
     return {"decision_id": int(cursor.lastrowid)}
 
@@ -278,8 +344,11 @@ def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, 
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
     gateway = _gateway(conn, args)
+    shot_ids = _chapter_shots(conn, project_id, args.chapter, run_id)
+    if args.dry_run:
+        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_shots": shot_ids}
     written: list[str] = []
-    for shot_id in _chapter_shots(conn, project_id, args.chapter, run_id):
+    for shot_id in shot_ids:
         _run_shot_to_soft_sealed(conn, shot_id, run_id, gateway)
         written.append(shot_id)
     return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "soft_sealed": written}
@@ -288,6 +357,9 @@ def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, 
 def _cmd_review(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
+    shot_ids = _chapter_shots(conn, project_id, args.chapter, run_id)
+    if args.dry_run:
+        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_review_shots": shot_ids}
     review = ChapterReviewOrchestrator(conn).review_chapter(project_id, args.chapter, run_id)
     return {"review_id": review.review_id, "quality_gate_passed": review.quality_gate_passed}
 
@@ -295,6 +367,8 @@ def _cmd_review(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 def _cmd_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
+    if args.dry_run:
+        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_decisions": 1}
     decision_id = HumanReviewOrchestrator(conn).accept_chapter(
         project_id,
         args.chapter,
@@ -308,6 +382,8 @@ def _cmd_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 def _cmd_revise(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
+    if args.dry_run:
+        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_action": "revise"}
     result = HumanReviewOrchestrator(conn).revise_chapter(
         project_id,
         args.chapter,
@@ -321,6 +397,8 @@ def _cmd_revise(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 def _cmd_reject(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
+    if args.dry_run:
+        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_decisions": 1}
     decision_id = HumanReviewOrchestrator(conn).reject_chapter(
         project_id,
         args.chapter,
@@ -334,6 +412,7 @@ def _cmd_reject(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 def _cmd_resume(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, list[dict[str, object]]]:
     manager = ResumeManager(conn)
     handlers = build_shot_resume_handlers(conn, _gateway(conn, args))
+    dry_run = bool(args.dry_run)
     session = conn.execute(
         "SELECT resume_point FROM writing_sessions WHERE session_id = ?",
         (args.session_id,),
@@ -356,16 +435,18 @@ def _cmd_resume(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
         shot_id = str(row[0])
         run_id = int(row[1])
         action = manager.resume_shot(args.session_id, shot_id, run_id)
-        manager.execute_resume_action(shot_id, run_id, action, handlers)
+        if not dry_run:
+            manager.execute_resume_action(shot_id, run_id, action, handlers)
         actions.append({"shot_id": shot_id, "run_id": run_id, "action": action})
     session_actions = []
     if session_resume_point:
         payload = manager.parse_resume_point(str(session_resume_point))
-        result = manager.execute_resume_point(payload, build_non_shot_resume_handlers(conn))
-        conn.execute(
-            "UPDATE writing_sessions SET crashed = 0, resume_point = NULL WHERE session_id = ?",
-            (args.session_id,),
-        )
+        result = None if dry_run else manager.execute_resume_point(payload, build_non_shot_resume_handlers(conn))
+        if not dry_run:
+            conn.execute(
+                "UPDATE writing_sessions SET crashed = 0, resume_point = NULL WHERE session_id = ?",
+                (args.session_id,),
+            )
         session_actions.append({"phase": payload["phase"], "result": _jsonable_result(result)})
     return {"actions": actions, "session_actions": session_actions}
 
@@ -383,6 +464,27 @@ def _cmd_import(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 
 def _cmd_export(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
+    if args.dry_run:
+        row = conn.execute(
+            """
+            SELECT count(DISTINCT r.chapter_id), count(*)
+            FROM writing_chapter_reviews r
+            JOIN writing_shots s
+              ON s.project_id = r.project_id
+             AND s.chapter_id = r.chapter_id
+             AND s.run_id = r.run_id
+            WHERE r.project_id = ?
+              AND r.status = 'accepted'
+              AND s.status = 'hard_sealed'
+            """,
+            (project_id,),
+        ).fetchone()
+        return {
+            "project_id": project_id,
+            "output": args.output,
+            "accepted_chapters": int(row[0]),
+            "hard_sealed_shots": int(row[1]),
+        }
     artifact = ExportOrchestrator(conn).export_project(project_id)
     if args.output:
         Path(args.output).write_text(artifact, encoding="utf-8")
