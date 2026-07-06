@@ -90,6 +90,7 @@ type
     FSelectedContactIndex: Integer;
     FListBoxRowToHintIndex: TArray<Integer>;  // maps list row → hint index
     FWeChatConnected: Boolean;
+    FEmptyGuideLabel: TLabel;  // shown when no hints/contacts
 
     procedure BuildUI;
     procedure UpdateStats;
@@ -580,6 +581,18 @@ begin
   FEvidenceMemo.ReadOnly := True;
   FEvidenceMemo.ScrollBars := ssVertical;
   FEvidenceMemo.Visible := False;
+
+  // Empty state guide (overlay on bottom panel when no data)
+  FEmptyGuideLabel := TLabel.Create(FBottomPanel);
+  FEmptyGuideLabel.Parent := FBottomPanel;
+  FEmptyGuideLabel.Align := alClient;
+  FEmptyGuideLabel.Alignment := taCenter;
+  FEmptyGuideLabel.Layout := tlCenter;
+  FEmptyGuideLabel.WordWrap := True;
+  FEmptyGuideLabel.Font.Size := 11;
+  FEmptyGuideLabel.Font.Color := clGray;
+  FEmptyGuideLabel.Caption := '正在等待数据...';
+  FEmptyGuideLabel.Visible := True;
 end;
 
 procedure TDeepAxisRadarPanel.OnContactListClick(Sender: TObject);
@@ -691,6 +704,29 @@ var
   LRowCount: Integer;
   LTargetRow: Integer;
 begin
+  // Show empty guide if no hints
+  if Length(FCurrentData.Hints) = 0 then
+  begin
+    FEmptyGuideLabel.Visible := True;
+    if not FWeChatConnected then
+      FEmptyGuideLabel.Caption := '未连接微信数据' + #13#10 + #13#10 +
+        '请通过工具栏完成以下步骤:' + #13#10 +
+        '1. 启动微信 → 2. 扫描密钥 → 3. 连接解密 → 4. 读取联系人' + #13#10 + #13#10 +
+        '或点击 "设置" 配置微信数据目录'
+    else
+      FEmptyGuideLabel.Caption := '已连接，暂无雷达提示' + #13#10 + #13#10 +
+        '正在分析联系人互动数据...' + #13#10 +
+        '当检测到降温、沉默、回暖等情况时会在此显示';
+    // Clear list
+    FContactListBox.Items.Clear;
+    SetLength(FListBoxRowToHintIndex, 0);
+    FSelectedContactIndex := -1;
+    Exit;
+  end;
+
+  // Has data — hide guide and populate list
+  FEmptyGuideLabel.Visible := False;
+
   FContactListBox.Items.BeginUpdate;
   try
     FContactListBox.Items.Clear;
