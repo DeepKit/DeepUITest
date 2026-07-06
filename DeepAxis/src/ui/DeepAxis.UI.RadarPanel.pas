@@ -1010,8 +1010,19 @@ begin
     if FCurrentData.Metrics[I].ContactId = LHint.ContactId then
     begin
       if FCurrentData.Metrics[I].LastInteractionAt > 0 then
-        FLastInteractionLabel.Caption := '上次互动: ' +
-          DateTimeToStr(FCurrentData.Metrics[I].LastInteractionAt)
+      begin
+        var LDaysAgo := DaysBetween(FCurrentData.Metrics[I].LastInteractionAt, Now);
+        var LRelTime: string;
+        if LDaysAgo = 0 then LRelTime := '今天'
+        else if LDaysAgo = 1 then LRelTime := '昨天'
+        else if LDaysAgo < 7 then LRelTime := Format('%d 天前', [LDaysAgo])
+        else if LDaysAgo < 30 then LRelTime := Format('%d 天前', [LDaysAgo])
+        else if LDaysAgo < 365 then LRelTime := Format('%d 个月前', [LDaysAgo div 30])
+        else LRelTime := Format('%d 个月前', [LDaysAgo div 30]);
+
+        FLastInteractionLabel.Caption := Format('上次互动: %s (%s)',
+          [LRelTime, DateToStr(FCurrentData.Metrics[I].LastInteractionAt)]);
+      end
       else
         FLastInteractionLabel.Caption := '无互动记录';
 
