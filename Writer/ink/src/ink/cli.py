@@ -7,7 +7,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Sequence
 
-from ink.core.llm_gateway import LLMGateway, ModelResult
+from ink.core.llm_gateway import LLMGateway, ModelResult, build_model_provider, load_llm_provider_config
 from ink.core.resume import ResumeManager
 from ink.database import connect
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
@@ -46,6 +46,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ink")
     parser.add_argument("--db", required=True, help="SQLite database path")
+    parser.add_argument(
+        "--llm-provider",
+        choices=("deterministic", "mock", "openai-compatible"),
+        default="deterministic",
+        help="LLM provider for commands that call models",
+    )
+    parser.add_argument("--llm-base-url", help="Base URL for openai-compatible providers")
+    parser.add_argument("--llm-api-key-env", help="Environment variable that stores the provider API key")
+    parser.add_argument("--llm-timeout", type=float, help="Provider request timeout in seconds")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     init_cmd = subcommands.add_parser("init")
@@ -222,7 +231,7 @@ def _cmd_confirm_contract(conn: sqlite3.Connection, args: argparse.Namespace) ->
 def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
-    gateway = _gateway(conn)
+    gateway = _gateway(conn, args)
     written: list[str] = []
     for shot_id in _chapter_shots(conn, project_id, args.chapter, run_id):
         _run_shot_to_soft_sealed(conn, shot_id, run_id, gateway)
@@ -278,7 +287,7 @@ def _cmd_reject(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 
 def _cmd_resume(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, list[dict[str, object]]]:
     manager = ResumeManager(conn)
-    handlers = build_shot_resume_handlers(conn, _gateway(conn))
+    handlers = build_shot_resume_handlers(conn, _gateway(conn, args))
     session = conn.execute(
         "SELECT resume_point FROM writing_sessions WHERE session_id = ?",
         (args.session_id,),
@@ -382,8 +391,16 @@ def _run_shot_to_soft_sealed(conn: sqlite3.Connection, shot_id: str, run_id: int
     SoftSealOrchestrator(conn).soft_seal_if_polished(shot_id, run_id)
 
 
-def _gateway(conn: sqlite3.Connection) -> LLMGateway:
-    return LLMGateway(conn, provider=_CliDeterministicProvider())
+def _gateway(conn: sqlite3.Connection, args: argparse.Namespace) -> LLMGateway:
+    if args.llm_provider == "deterministic":
+        return LLMGateway(conn, provider=_CliDeterministicProvider(), provider_name="deterministic")
+    config = load_llm_provider_config(
+        provider=args.llm_provider,
+        base_url=args.llm_base_url,
+        api_key_env=args.llm_api_key_env,
+        timeout_seconds=args.llm_timeout,
+    )
+    return LLMGateway(conn, provider=build_model_provider(config), provider_name=config.provider)
 
 
 def _jsonable_result(value: object) -> object:

@@ -29,6 +29,30 @@ python -m pytest
 - 将 `ImportOrchestrator.finalize()` 做成幂等恢复：同一 `import_run_id` 已有 finalize 决策时返回既有结果，不重复写 human decision。
 - 补充防回归测试：chapter review 重跑、book check 重跑、import finalize 重跑、非法 payload 阻断、CLI session resume 执行与清空。
 
+## 2026-07-06 完成 P1 真实 LLM provider 配置入口
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_m0_core_contracts.py tests/test_cli.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- Provider/CLI 定向测试：`11 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`101 passed`
+
+### 已完成：P1 provider 配置入口
+
+- 增加 `LLMProviderConfig`、`load_llm_provider_config()`、`build_model_provider()`，默认配置仍为 `mock`。
+- 增加 `OpenAICompatibleProvider`，使用标准库 HTTP 调用 `/chat/completions`，不引入真实 provider SDK 依赖。
+- 扩展 `LLMGateway`，支持记录实际 `model_provider`，默认构造仍走 mock provider。
+- 扩展 CLI 全局参数：`--llm-provider`、`--llm-base-url`、`--llm-api-key-env`、`--llm-timeout`；CLI 默认仍为 deterministic provider，避免默认测试触发真实网络。
+- 补 fake HTTP provider 测试，验证请求体、鉴权头、idempotency key、token usage 和审计记录。
+
 ## 2026-07-05 完成本地 baseline 验收
 
 验证命令：

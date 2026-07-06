@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
 
 from ink.config import ProjectConfigValidator, load_project_config
-from ink.core.llm_gateway import LLMGateway
+from ink.core.llm_gateway import (
+    LLMGateway,
+    ModelResult,
+    OpenAICompatibleProvider,
+    build_model_provider,
+    load_llm_provider_config,
+)
 from ink.core.state_machine import transition
 from ink.core.text_repository import TextRepository
 from ink.database import connect
@@ -144,9 +151,100 @@ def test_llm_gateway_records_attempt_and_runtime_event() -> None:
     assert event[0] == "LLM_CALL_SUCCEEDED"
 
 
+def test_llm_provider_config_defaults_to_mock_and_rejects_incomplete_real_provider() -> None:
+    config = load_llm_provider_config(env={})
+
+    assert config.provider == "mock"
+    assert build_model_provider(config).__class__.__name__ == "MockProvider"
+
+    with pytest.raises(ConfigError, match="INK_LLM_BASE_URL"):
+        load_llm_provider_config(env={}, provider="openai-compatible")
+    with pytest.raises(ConfigError, match="INK_LLM_API_KEY"):
+        load_llm_provider_config(
+            env={"INK_LLM_BASE_URL": "https://llm.example/v1"},
+            provider="openai-compatible",
+        )
+
+
+def test_openai_compatible_provider_posts_chat_completion_and_records_provider() -> None:
+    conn = make_schema_db()
+    ids = insert_minimal_draft(conn)
+    seen = {}
+
+    def opener(request, *, timeout):
+        seen["url"] = request.full_url
+        seen["authorization"] = request.get_header("Authorization")
+        seen["idempotency_key"] = request.get_header("Idempotency-key")
+        seen["timeout"] = timeout
+        seen["body"] = json.loads(request.data.decode("utf-8"))
+        return _FakeHTTPResponse(
+            {
+                "model": "writer-real",
+                "choices": [{"message": {"content": "real provider text"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+            }
+        )
+
+    config = load_llm_provider_config(
+        env={"INK_LLM_BASE_URL": "https://llm.example/v1", "INK_LLM_API_KEY": "secret"},
+        provider="openai-compatible",
+        timeout_seconds=12.0,
+    )
+    provider = OpenAICompatibleProvider(
+        base_url=config.base_url,
+        api_key=config.api_key,
+        timeout_seconds=config.timeout_seconds,
+        opener=opener,
+    )
+
+    result = LLMGateway(conn, provider=provider, provider_name=config.provider).call(
+        project_id=int(ids["project_id"]),
+        shot_id=str(ids["shot_id"]),
+        run_id=int(ids["run_id"]),
+        call_type="draft",
+        prompt_id=int(ids["prompt_id"]),
+        prompt_text="write scene",
+        model_name="writer-real",
+        idempotency_key="draft-real-1",
+    )
+
+    assert result == ModelResult(
+        text="real provider text",
+        model_name="writer-real",
+        token_input=7,
+        token_output=3,
+        finish_reason="stop",
+    )
+    assert seen == {
+        "url": "https://llm.example/v1/chat/completions",
+        "authorization": "Bearer secret",
+        "idempotency_key": "draft-real-1",
+        "timeout": 12.0,
+        "body": {"model": "writer-real", "messages": [{"role": "user", "content": "write scene"}]},
+    }
+    assert conn.execute("SELECT model_provider, success FROM writing_ai_call_attempts").fetchone() == (
+        "openai-compatible",
+        1,
+    )
+
+
 class _Row:
     def __init__(self, data: dict) -> None:
         self._data = data
 
     def __getitem__(self, key):
         return self._data[key]
+
+
+class _FakeHTTPResponse:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
