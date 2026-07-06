@@ -1,6 +1,6 @@
 # 墨韵 InkFlow v2 — 完整生产重构
 
-> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳已完成本地验证（2026-07-05）
+> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳、非 shot resume、真实 LLM provider 配置和 manual 验收记录已完成本地验证（2026-07-06）
 > **目标**：从 0 构建完整生产版 InkFlow，根治旧系统“契约信号逐层丢失、门禁假放行、正文真相源绕过、崩溃恢复不可审计”的架构病。
 
 ## 这是什么
@@ -33,7 +33,9 @@
 | [optimization-review.md](docs/optimization-review.md) | 5 个专家视角的优化设计评审结论、P0/P1 收敛项 | 架构与实现负责人 |
 | [pitfall-checklist.md](docs/pitfall-checklist.md) | 必须保留的踩坑修复与新增防御清单 | 写 core/ 模块前必读 |
 | [migration-plan.md](docs/migration-plan.md) | Pre-M0 + M0-M6 完整实现顺序、验证清单、生产验收标准 | 执行者 |
-| [tasks.md](tasks.md) | P0 决策归档、Pre-M0 开工门禁任务、M0 开发任务队列 | 执行者 |
+| [tasks.md](tasks.md) | 当前未完成任务队列 | 执行者 |
+| [history.md](history.md) | 已完成任务归档与验收记录 | 执行者 |
+| [bugfix.md](bugfix.md) | 开发期缺陷、根因、修复和防回归测试 | 执行者 |
 
 ## 核心决策
 
@@ -81,4 +83,4 @@ M0 schema+codegen+lint+审计骨架
 cd ink && python -m pytest
 ```
 
-当前 CLI 薄壳覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，真实 LLM provider、nightly 成本记录和更细的交互式 setup 可作为后续产品化任务单独开启。
+当前 CLI 薄壳覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，真实 LLM provider 可通过 `--llm-provider openai-compatible` 接入；nightly/manual 验收可用 `ink-record-llm-acceptance` 记录成本、耗时、失败率和质量样例。更细的交互式 setup、CLI 易用性和阈值回放仍在后续产品化任务中。

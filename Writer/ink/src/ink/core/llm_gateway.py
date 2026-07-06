@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -151,16 +152,17 @@ class LLMGateway:
         )
         attempt_id = int(cursor.lastrowid)
 
+        started = time.perf_counter()
         try:
             result = self.provider.complete(prompt_text, model_name, idempotency_key)
         except Exception as exc:
             self.conn.execute(
                 """
                 UPDATE writing_ai_call_attempts
-                SET success = 0, error_category = ?
+                SET success = 0, error_category = ?, latency_ms = ?
                 WHERE attempt_id = ?
                 """,
-                (type(exc).__name__, attempt_id),
+                (type(exc).__name__, _elapsed_ms(started), attempt_id),
             )
             if budget is not None:
                 budget.record_call(shot_id, call_type, success=False, failure_type=type(exc).__name__)
@@ -174,10 +176,10 @@ class LLMGateway:
         self.conn.execute(
             """
             UPDATE writing_ai_call_attempts
-            SET success = 1, response_hash = ?, token_input = ?, token_output = ?, finish_reason = ?
+            SET success = 1, response_hash = ?, token_input = ?, token_output = ?, latency_ms = ?, finish_reason = ?
             WHERE attempt_id = ?
             """,
-            (response_hash, result.token_input, result.token_output, result.finish_reason, attempt_id),
+            (response_hash, result.token_input, result.token_output, _elapsed_ms(started), result.finish_reason, attempt_id),
         )
         self._write_event(project_id, shot_id, run_id, "LLM_CALL_SUCCEEDED", {"attempt_id": attempt_id})
         return result
@@ -202,6 +204,10 @@ class LLMGateway:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.perf_counter() - started) * 1000))
 
 
 def load_llm_provider_config(
