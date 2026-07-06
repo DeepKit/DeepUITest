@@ -21,6 +21,7 @@ uses
   DeepAxis.Pipeline.Calibration,
   DeepAxis.UI.RadarPanel, DeepAxis.UI.TagMatrixPanel,
   DeepAxis.UI.ScriptPanel, DeepAxis.UI.SendQueuePanel,
+  DeepAxis.UI.SetupForm,
   DeepAxis.UIA.Engine;
 
 type
@@ -178,10 +179,24 @@ begin
 end;
 
 procedure TDeepAxisMainForm.FormShow(Sender: TObject);
-var LPid: Cardinal;
+var LPid: Cardinal; LSetup: TDeepAxisSetupForm;
 begin
   ApplyLayout(dlDock);
   InitWeChatHook;
+
+  // ── 首次启动: 弹出配置向导 ──
+  if TDeepAxisConfig.GetWeChatDataPath = '' then
+  begin
+    LSetup := TDeepAxisSetupForm.Create(Self);
+    try
+      if LSetup.ShowModal = mrOk then
+        Log('初始设置完成: ' + TDeepAxisConfig.GetWeChatDataPath)
+      else
+        Log('初始设置已取消');
+    finally
+      LSetup.Free;
+    end;
+  end;
 
   LPid := FWeChatScanner.FindWeChatProcess;
   if LPid = 0 then
@@ -339,6 +354,14 @@ begin
   LBtn.Top := 3; LBtn.Left := LLeft; LBtn.Height := 28; LBtn.Width := 60;
   LBtn.Caption := '刷新';
   LBtn.OnClick := DoRefreshData;
+  Inc(LLeft, 66);
+
+  // 设置
+  LBtn := TButton.Create(FToolPanel);
+  LBtn.Parent := FToolPanel;
+  LBtn.Top := 3; LBtn.Left := LLeft; LBtn.Height := 28; LBtn.Width := 60;
+  LBtn.Caption := '设置';
+  LBtn.OnClick := DoSettings;
 end;
 
 procedure TDeepAxisMainForm.RefreshStepButtons;
@@ -727,10 +750,36 @@ begin
 end;
 
 procedure TDeepAxisMainForm.DoSettings(Sender: TObject);
+var
+  LSetup: TDeepAxisSetupForm;
 begin
-  MessageDlg('设置功能将在后续版本中实现。' + #13#10 +
-    '当前可通过 [微信→指定微信数据目录] 配置数据路径。',
-    mtInformation, [mbOK], 0);
+  LSetup := TDeepAxisSetupForm.Create(Self);
+  try
+    if LSetup.ShowModal = mrOk then
+    begin
+      Log('设置已保存: ' + TDeepAxisConfig.GetWeChatDataPath);
+      // Retry connection with new path
+      if FWeChatScanner.TrySavedKeysOnly then
+      begin
+        var LCP := FWeChatScanner.DecryptedContactPath;
+        var LMP := FWeChatScanner.DecryptedMessage0Path;
+        var LSP := FWeChatScanner.DecryptedSessionPath;
+        if (LCP <> '') and (LMP <> '') then
+        begin
+          StopPolling;
+          if FWeChatReader.OpenPaths(LCP, LMP, LSP) then
+          begin
+            FRadarPanel.SetWeChatConnected(True);
+            Log('已重新连接微信数据');
+            StartPolling;
+          end;
+        end;
+      end;
+      RefreshStepButtons;
+    end;
+  finally
+    LSetup.Free;
+  end;
 end;
 
 procedure TDeepAxisMainForm.DoAbout(Sender: TObject);

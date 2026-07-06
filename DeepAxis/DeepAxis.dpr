@@ -43,6 +43,7 @@ uses
   DeepAxis.Pipeline.SendQueue in 'src\pipeline\DeepAxis.Pipeline.SendQueue.pas',
   DeepAxis.Pipeline.Calibration in 'src\pipeline\DeepAxis.Pipeline.Calibration.pas',
   DeepAxis.Pipeline.TagManager in 'src\pipeline\DeepAxis.Pipeline.TagManager.pas',
+  DeepAxis.UI.SetupForm in 'src\ui\DeepAxis.UI.SetupForm.pas',
   DeepAxis.UI.RadarPanel in 'src\ui\DeepAxis.UI.RadarPanel.pas',
   DeepAxis.UI.TagMatrixPanel in 'src\ui\DeepAxis.UI.TagMatrixPanel.pas',
   DeepAxis.UI.ScriptPanel in 'src\ui\DeepAxis.UI.ScriptPanel.pas',
