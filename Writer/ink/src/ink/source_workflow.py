@@ -258,6 +258,28 @@ class SourceWorkflowStore:
             self.conn.execute("RELEASE process_file_manifest")
             return int(cursor.lastrowid)
 
+    def is_process_file_cleared(self, *, project_id: int, source_path: str) -> bool:
+        """查询某个过程文件是否已被清空（status='cleared' 且有 manifest）。
+
+        抽取并合并完成后清空文件、写 manifest；此后 prompt/contract 不得直接引用
+        已清空的过程文件原文——必须改走 atomic clauses / contract patches。
+        """
+        row = self.conn.execute(
+            """
+            SELECT d.status, (
+                SELECT count(*) FROM writing_process_file_manifests m
+                WHERE m.project_id = d.project_id AND m.source_path = d.source_path
+            )
+            FROM writing_source_documents d
+            WHERE d.project_id = ? AND d.source_path = ?
+            ORDER BY d.source_document_id DESC LIMIT 1
+            """,
+            (project_id, source_path),
+        ).fetchone()
+        if row is None:
+            return False
+        return str(row[0]) == "cleared" and int(row[1]) > 0
+
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)

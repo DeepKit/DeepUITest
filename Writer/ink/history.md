@@ -390,3 +390,42 @@ python -m compileall -q src tests
 - 契约版本递增：`_next_contract_version` 按 `(project_id, scope_type, scope_id)` 递增；`_resolve_base_contract_version_id` 把上一次 confirmed/locked 版本作为 patch base，首次确认为 NULL。
 - CLI `confirm-contract --decision-session-id`：新增 `--scope-type/--scope-id/--contract-json/--source-clause-ids/--source-hashes`，走 `confirm_and_apply` 路径；不传 `--decision-session-id` 时保留旧的直接写 human_decision 行为，保持冒烟测试兼容。
 - 测试：`test_decision_source_workflow.py` +4（原子写入、二次确认 base 链接、coverage gate 阻断、非 awaiting 拒绝）；`test_cli.py` +1（CLI 端到端审计链）。全量 124 passed。
+
+### 已完成：Task #4 选择式对话 CLI/API
+
+- CLI `decision-session` 子命令族：`start` / `parse` / `options` / `select` / `show` / `regenerate`，对应 implementation-contract-v1 §3.6a 选择式对话协议——`start` 收 human_text 置 `collecting`；`parse` 收 AI 解析的 patch + readback + source_hashes 置 `ai_parsed`；`options` 收 1-8 编号选项置 `awaiting_confirm`；`select N` 收作者选择（`0` 返回 `collecting` 并 cancel option set，`1-8` 置 `selected`，`9` 必须先 `regenerate`）。
+- 活跃 option set 回放：`show` 回放当前活跃 option set 的 options / recommended_option / regenerate_count，恢复时不依赖模型重新想一版，避免恢复点漂移。cancelled option set 不再活跃。
+- `regenerate`：生成新 option set 并把旧 set 置 superseded，`regenerate_count` 递增；`select 9` 在未先 regenerate 时返回非零退出码。
+- 测试：`test_cli.py` +3（start→parse→options→select→show 协议、select 0 返回 collecting、select 9 必须 regenerate）。全量 127 passed。
+
+### 已完成：Task #5 source coverage gate 集成
+
+- `confirm-contract --decision-session-id` 默认接入 `SourceWorkflowStore` 作为 coverage gate：blocking gap（`coverage_status IN ('gap','conflict')`）未清空时抛 `DataIntegrityError` 阻断确认，不写任何审计行。
+- `--skip-coverage-gate` 逃生阀：仅在无 source documents 记录时才真正无影响；有 gap 时仍按默认阻断。
+- CLI 输出统一 `{"ok": True/False, "command":..., "data":...}` 包装，测试通过 `_run_and_capture` 解析 `data` 字段断言。
+- 测试：`test_cli.py` +1（gate 阻断 → resolve → 放行端到端）。全量 128 passed。
+
+### 已完成：Task #6 双模型抽取执行器
+
+- `SourceExtractionOrchestrator.extract_dual()`：primary 与 crosscheck 两路独立调用 `LLMGateway` 抽取同一 source document，分别写 `writing_source_extraction_runs`（`extractor_slot='primary'/'crosscheck'`，记录 model_provider/model_name/source_hash/extracted_clause_ids/low_confidence_refs）。
+- 差异比对 `diff_extractions()`：按位置 key（clause_type + scope + 首个 source_ref，不含文本）去重——primary 独有 → primary run 的 low_confidence_refs 标 `primary_only:`；crosscheck 独有 → crosscheck run 标 `crosscheck_only:`；同位置不同文本 → 写 `writing_source_coverage_matrix`（`coverage_status='conflict'`，evidence 记两路文本）。
+- 两路一致的条款各写一条 `writing_atomic_source_clauses`（status=proposed），供后续 coverage 比对。
+- `DefaultSourceExtractionProtocol`：要求 LLM 输出 JSON 数组，容忍前后噪声；`clause_type` 默认 `style`（受 schema CHECK 约束）。
+- 测试：`test_source_extraction_orchestrator.py` +4（一致条款、crosscheck 漏抽 low_confidence、文本 conflict 写 coverage、primary 漏抽 low_confidence）。全量 132 passed。
+
+### 已完成：Task #7 过程文件清空执行器
+
+- `ProcessFileClearingOrchestrator.clear_process_file()`：将 `better.md` 等 process_scratch 文件作为抽取输入，在抽取并合并完成后清空磁盘文件内容（写空字节），写 `writing_process_file_manifests`（content_hash + processed_hash=空内容 sha256 + extracted_clause_ids/contract_patch_ids/decision_session_ids），并把 source document 置 `status='cleared'`。
+- `SourceWorkflowStore.is_process_file_cleared()`：查询某路径是否已清空（status='cleared' 且有 manifest），供 prompt/contract 写入点阻断直接引用已清空过程文件。
+- 幂等保护：重复清空同一文件抛 `DataIntegrityError`；相对路径拒绝（要求绝对路径）。
+- 清空只清磁盘 + 写 manifest，不删除已抽取的 atomic clauses / coverage 记录——保证 gate 仍能查到 gap。
+- 测试：`test_process_file_clearing.py` +4（清空写 manifest、相对路径拒绝、重复清空阻断、清空后引用阻断）。全量 136 passed。
+
+### 已完成：Task #8 防回归测试补充
+
+- `test_v1_1_integration_regression.py` +3 跨模块集成防回归测试，验证本次 v1.1 集成的关键不变量：
+  1. 双模型抽取产生 text conflict → coverage matrix 记 conflict → `confirm_and_apply` 被 gate 阻断（不写审计行）。
+  2. resolve conflict 后 gate 放行 → `confirm_and_apply` 成功写入审计链，且 human_decision 的 preconditions 记 `coverage_gate_checked=True`。
+  3. 过程文件清空后，已抽取的 atomic clauses 与 coverage gap 仍存在，gate 仍阻断；resolve 后放行。
+- 防回归点：抽取器 conflict 写入与 coverage gate 阻断查询的协同；清空执行器不污染已抽取条款；confirm 审计链记录 gate 检查痕迹。
+- 全量 139 passed。

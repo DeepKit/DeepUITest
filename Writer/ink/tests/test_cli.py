@@ -284,6 +284,78 @@ def test_cli_confirm_contract_via_decision_session_writes_audit_chain(tmp_path: 
     assert status[1] == data["after_hash"]
 
 
+def test_cli_confirm_contract_coverage_gate_blocks_then_releases(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "gate-demo", "--title", "Gate Demo"]) == 0
+
+    from ink.decision_sessions import DecisionSessionStore
+    from ink.source_workflow import SourceWorkflowStore
+
+    conn = sqlite3.connect(db_path)
+    try:
+        source_store = SourceWorkflowStore(conn)
+        source_document_id = source_store.register_source_document(
+            project_id=1, source_path="guide.md", source_kind="guide", content_hash="hash-guide",
+        )
+        clause_id = source_store.record_atomic_clause(
+            project_id=1, source_document_id=source_document_id, scope_type="book", scope_id=None,
+            clause_type="plot", severity="hard", clause_text="全书证据链必须先确认。",
+            source_refs=["guide.md#L1"], source_hashes=["hash-guide"],
+        )
+
+        store = DecisionSessionStore(conn)
+        session_id = store.start(
+            project_id=1, scope_type="book", scope_id=None,
+            target_type="BookContract", target_id="book", human_text="封基线",
+        )
+        store.record_ai_parse(
+            session_id, parsed_patch={"scope_type": "book"}, readback_text="封基线。",
+            source_hashes=["hash-guide"], before_hash="before-hash",
+        )
+        store.create_option_set(session_id, options=[{"label": "确认"}], recommended_option=1)
+        store.select_option(session_id, 1)
+        coverage_id = source_store.record_coverage(
+            project_id=1, contract_scope_type="book", contract_scope_id=None,
+            contract_field_path="BookContract.evidence_chain", coverage_status="gap",
+            atomic_clause_id=clause_id,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # blocking gap 存在时，confirm-contract 必须失败且不写任何审计行
+    rc = main([
+        "--db", str(db_path), "confirm-contract",
+        "--decision-session-id", str(session_id),
+        "--scope-type", "book",
+        "--contract-json", '{"identity":{"title":"Gate Demo"}}',
+        "--source-hashes", "hash-guide",
+    ])
+    assert rc != 0
+    assert _scalar(db_path, "SELECT count(*) FROM writing_contract_versions") == 0
+    assert _scalar(db_path, "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'contract_confirm'") == 0
+
+    # resolve coverage 后放行
+    conn = sqlite3.connect(db_path)
+    try:
+        SourceWorkflowStore(conn).resolve_coverage(
+            coverage_id, coverage_status="covered", evidence={"decision": "author_confirmed"},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    payload = _run_and_capture([
+        "--db", str(db_path), "confirm-contract",
+        "--decision-session-id", str(session_id),
+        "--scope-type", "book",
+        "--contract-json", '{"identity":{"title":"Gate Demo"}}',
+        "--source-hashes", "hash-guide",
+    ])
+    assert payload["ok"] is True
+    assert payload["data"]["contract_version_id"] > 0
+
+
 def _run_and_capture(argv: list[str]) -> dict:
     import io
     import contextlib
@@ -293,3 +365,116 @@ def _run_and_capture(argv: list[str]) -> dict:
         rc = main(argv)
     assert rc == 0
     return json.loads(buf.getvalue())
+
+
+def test_cli_decision_session_choice_protocol_start_parse_options_select_show(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "ds-protocol", "--title", "DS Protocol"]) == 0
+
+    start_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "start",
+        "--scope-type", "book",
+        "--target-type", "BookContract",
+        "--target-id", "book",
+        "--human-text", "封全书基线",
+    ])
+    session_id = start_payload["data"]["decision_session_id"]
+
+    parse_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "parse", str(session_id),
+        "--parsed-patch-json", '{"scope_type":"book","change_type":"refine"}',
+        "--readback-text", "我理解为封基线。",
+        "--source-hashes", "hash-guide",
+        "--before-hash", "before-hash",
+    ])
+    assert parse_payload["data"]["status"] == "ai_parsed"
+
+    options_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "options", str(session_id),
+        "--options-json", '[{"label":"确认基线"},{"label":"补充人物"}]',
+        "--recommended-option", "1",
+    ])
+    assert options_payload["data"]["status"] == "awaiting_confirm"
+    assert options_payload["data"]["recommended_option"] == 1
+    assert len(options_payload["data"]["options"]) == 2
+
+    # 恢复时 show 回放活跃 option set，不依赖模型重新想一版
+    show_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "show", str(session_id),
+    ])
+    session = show_payload["data"]["session"]
+    assert session["status"] == "awaiting_confirm"
+    assert session["readback_text"] == "我理解为封基线。"
+    option_set = show_payload["data"]["active_option_set"]
+    assert option_set["options"] == [{"label": "确认基线"}, {"label": "补充人物"}]
+    assert option_set["recommended_option"] == 1
+
+
+def test_cli_decision_session_select_zero_returns_to_collecting(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "ds-back", "--title", "DS Back"]) == 0
+
+    session_id = _run_and_capture([
+        "--db", str(db_path), "decision-session", "start",
+        "--scope-type", "chapter", "--scope-id", "1",
+        "--target-type", "ChapterContract", "--target-id", "1",
+        "--human-text", "调整钩子",
+    ])["data"]["decision_session_id"]
+    _run_and_capture([
+        "--db", str(db_path), "decision-session", "parse", str(session_id),
+        "--parsed-patch-json", '{"scope_type":"chapter"}',
+        "--readback-text", "调整钩子。",
+    ])
+    _run_and_capture([
+        "--db", str(db_path), "decision-session", "options", str(session_id),
+        "--options-json", '[{"label":"接受"}]',
+    ])
+
+    select_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "select", str(session_id), "0",
+    ])
+    assert select_payload["data"]["selected_option"] == 0
+    show_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "show", str(session_id),
+    ])
+    assert show_payload["data"]["session"]["status"] == "collecting"
+    assert show_payload["data"]["active_option_set"] is None
+
+
+def test_cli_decision_session_select_nine_requires_regenerate(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "ds-regen", "--title", "DS Regen"]) == 0
+
+    session_id = _run_and_capture([
+        "--db", str(db_path), "decision-session", "start",
+        "--scope-type", "book", "--target-type", "BookContract", "--target-id", "book",
+        "--human-text", "封基线",
+    ])["data"]["decision_session_id"]
+    _run_and_capture([
+        "--db", str(db_path), "decision-session", "parse", str(session_id),
+        "--parsed-patch-json", '{}', "--readback-text", "封基线。",
+    ])
+    _run_and_capture([
+        "--db", str(db_path), "decision-session", "options", str(session_id),
+        "--options-json", '[{"label":"A"},{"label":"B"}]',
+    ])
+
+    # 9 必须先 regenerate，直接 select 9 应失败
+    rc = main([
+        "--db", str(db_path), "decision-session", "select", str(session_id), "9",
+    ])
+    assert rc != 0
+
+    regen_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "regenerate", str(session_id),
+        "--options-json", '[{"label":"C"},{"label":"D"}]',
+        "--recommended-option", "2",
+    ])
+    assert regen_payload["data"]["option_set_id"] > 0
+    show_payload = _run_and_capture([
+        "--db", str(db_path), "decision-session", "show", str(session_id),
+    ])
+    option_set = show_payload["data"]["active_option_set"]
+    assert option_set["regenerate_count"] == 1
+    assert option_set["options"] == [{"label": "C"}, {"label": "D"}]
+    assert option_set["recommended_option"] == 2
