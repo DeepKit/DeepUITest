@@ -442,3 +442,25 @@ DeepAxisTestRunner.exe: ✅ 21/21 passed
   }
   ```
 
+---
+
+## 2026-07-04 — 联系人搜索过滤
+
+### 功能: RadarPanel 联系人列表搜索
+
+在联系人列表上方添加搜索栏，支持按名称、消息预览或 ContactId 实时过滤。
+
+**新增组件** (RadarPanel.pas):
+- `FSearchPanel: TPanel` — 24px 高搜索栏容器
+- `FSearchEdit: TEdit` — 带 TextHint 提示的搜索输入框
+- `FSearchClearBtn: TButton` — 清除搜索按钮（输入时自动显示）
+- `OnSearchChange(Sender)` — 实时过滤，自动恢复首项选中
+- `GetSearchFilter` — 返回 trim 后的搜索关键字
+- `UpdateContactList` — 过滤匹配联系人名称/消息预览/ContactId（大小写不敏感）
+
+**行为**:
+- 输入即时过滤，列表自动刷新
+- 匹配失败时显示 "(无匹配结果)"
+- 过滤变更时清空选择并自动选中首项
+- 搜索为空时显示全部联系人
+

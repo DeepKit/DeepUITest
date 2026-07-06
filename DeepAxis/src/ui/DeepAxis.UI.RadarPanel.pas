@@ -75,6 +75,9 @@ type
 
     // Zone ③: Bottom container
     FBottomPanel: TPanel;
+    FSearchPanel: TPanel;              // Search bar container
+    FSearchEdit: TEdit;                // Contact search/filter
+    FSearchClearBtn: TButton;          // Clear search
     FContactListBox: TListBox;
     FDetailPanel: TPanel;
 
@@ -97,6 +100,9 @@ type
     procedure UpdateContactList;
     procedure UpdateDetail;
     procedure OnContactListClick(Sender: TObject);
+    procedure OnSearchChange(Sender: TObject);
+    procedure OnSearchClear(Sender: TObject);
+    function GetSearchFilter: string;
     function GetHintTypeColor(const AHintType: TRadarHintType): TColor;
     function GetHintTypeEmoji(const AHintType: TRadarHintType): string;
   public
@@ -545,6 +551,39 @@ begin
   FContactListBox.Width := 126;
   FContactListBox.OnClick := OnContactListClick;
 
+  // Search panel (above contact list)
+  FSearchPanel := TPanel.Create(FBottomPanel);
+  FSearchPanel.Parent := FBottomPanel;
+  FSearchPanel.Align := alTop;
+  FSearchPanel.Height := 24;
+  FSearchPanel.BevelOuter := bvNone;
+  FSearchPanel.Padding.Left := 2;
+  FSearchPanel.Padding.Right := 2;
+  FSearchPanel.Padding.Top := 1;
+
+  FSearchEdit := TEdit.Create(FSearchPanel);
+  FSearchEdit.Parent := FSearchPanel;
+  FSearchEdit.Align := alClient;
+  FSearchEdit.Top := 1;
+  FSearchEdit.Left := 2;
+  FSearchEdit.Height := 22;
+  FSearchEdit.TextHint := '搜索联系人...';
+  FSearchEdit.OnChange := OnSearchChange;
+  FSearchEdit.TabStop := False;
+
+  FSearchClearBtn := TButton.Create(FSearchPanel);
+  FSearchClearBtn.Parent := FSearchPanel;
+  FSearchClearBtn.Align := alRight;
+  FSearchClearBtn.Top := 1;
+  FSearchClearBtn.Width := 22;
+  FSearchClearBtn.Height := 22;
+  FSearchClearBtn.Caption := '×';
+  FSearchClearBtn.Hint := '清除搜索';
+  FSearchClearBtn.ShowHint := True;
+  FSearchClearBtn.OnClick := OnSearchClear;
+  FSearchClearBtn.TabStop := False;
+  FSearchClearBtn.Visible := False;
+
   // Detail panel (right ~154px)
   FDetailPanel := TPanel.Create(FBottomPanel);
   FDetailPanel.Parent := FBottomPanel;
@@ -606,6 +645,29 @@ begin
   else
     FSelectedContactIndex := -1;
   UpdateDetail;
+end;
+
+function TDeepAxisRadarPanel.GetSearchFilter: string;
+begin
+  Result := Trim(FSearchEdit.Text);
+end;
+
+procedure TDeepAxisRadarPanel.OnSearchChange(Sender: TObject);
+begin
+  FSearchClearBtn.Visible := (FSearchEdit.Text <> '');
+  FSelectedContactIndex := -1;  // clear selection on filter change
+  UpdateContactList;
+  if FContactListBox.Items.Count > 0 then
+  begin
+    FContactListBox.ItemIndex := 0;
+    OnContactListClick(FContactListBox);
+  end;
+end;
+
+procedure TDeepAxisRadarPanel.OnSearchClear(Sender: TObject);
+begin
+  FSearchEdit.Text := '';
+  OnSearchChange(Sender);
 end;
 
 procedure TDeepAxisRadarPanel.SetData(const AData: TPollResult);
@@ -699,10 +761,11 @@ var
   LHint: TRadarHint;
   LContact: TContact;
   I, LHintIdx: Integer;
-  S, LPreview: string;
+  S, LPreview, LFilter: string;
   LRowToHint: TArray<Integer>;
   LRowCount: Integer;
   LTargetRow: Integer;
+  LMatchCount: Integer;
 begin
   // Show empty guide if no hints
   if Length(FCurrentData.Hints) = 0 then
@@ -726,11 +789,13 @@ begin
 
   // Has data — hide guide and populate list
   FEmptyGuideLabel.Visible := False;
+  LFilter := LowerCase(GetSearchFilter);
 
   FContactListBox.Items.BeginUpdate;
   try
     FContactListBox.Items.Clear;
     LRowCount := 0;
+    LMatchCount := 0;
     SetLength(LRowToHint, 0);
 
     LHintIdx := 0;
@@ -748,6 +813,19 @@ begin
         end;
       if S = '' then
         S := LHint.ContactId.Substring(0, 8);
+
+      // Apply search filter (case-insensitive match on name or preview)
+      if LFilter <> '' then
+      begin
+        if not (LowerCase(S).Contains(LFilter) or
+                LowerCase(LPreview).Contains(LFilter) or
+                LowerCase(LHint.ContactId).Contains(LFilter)) then
+        begin
+          Inc(LHintIdx);
+          Continue;
+        end;
+      end;
+      Inc(LMatchCount);
 
       // Add contact name with hint emoji — record the row→hint mapping
       FContactListBox.Items.Add(
@@ -768,6 +846,14 @@ begin
       end;
 
       Inc(LHintIdx);
+    end;
+
+    // Show filter-empty message if filter matched nothing
+    if (LFilter <> '') and (LMatchCount = 0) then
+    begin
+      FContactListBox.Items.Add('(无匹配结果)');
+      SetLength(LRowToHint, 1);
+      LRowToHint[0] := -1;
     end;
 
     FListBoxRowToHintIndex := LRowToHint;
