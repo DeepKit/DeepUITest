@@ -102,6 +102,7 @@ type
     procedure OnContactListClick(Sender: TObject);
     procedure OnSearchChange(Sender: TObject);
     procedure OnSearchClear(Sender: TObject);
+    procedure OnStatsLabelClick(Sender: TObject);
     function GetSearchFilter: string;
     function GetHintTypeColor(const AHintType: TRadarHintType): TColor;
     function GetHintTypeEmoji(const AHintType: TRadarHintType): string;
@@ -510,24 +511,44 @@ begin
   FFollowUpLabel.Align := alTop;
   FFollowUpLabel.Caption := '待跟进: 0人';
   FFollowUpLabel.Height := 28;
+  FFollowUpLabel.Cursor := crHandPoint;
+  FFollowUpLabel.Tag := 10;  // filter: cooling + long_silence
+  FFollowUpLabel.OnClick := OnStatsLabelClick;
+  FFollowUpLabel.Hint := '点击筛选待跟进联系人';
+  FFollowUpLabel.ShowHint := True;
 
   FReplyLabel := TLabel.Create(FStatsPanel);
   FReplyLabel.Parent := FStatsPanel;
   FReplyLabel.Align := alTop;
   FReplyLabel.Caption := '待回复: 0人';
   FReplyLabel.Height := 20;
+  FReplyLabel.Cursor := crHandPoint;
+  FReplyLabel.Tag := 11;  // filter: reactivated
+  FReplyLabel.OnClick := OnStatsLabelClick;
+  FReplyLabel.Hint := '点击筛选待回复联系人';
+  FReplyLabel.ShowHint := True;
 
   FCoolingLabel := TLabel.Create(FStatsPanel);
   FCoolingLabel.Parent := FStatsPanel;
   FCoolingLabel.Align := alTop;
   FCoolingLabel.Caption := '降温预警: 0人';
   FCoolingLabel.Height := 20;
+  FCoolingLabel.Cursor := crHandPoint;
+  FCoolingLabel.Tag := 12;  // filter: cooling only
+  FCoolingLabel.OnClick := OnStatsLabelClick;
+  FCoolingLabel.Hint := '点击筛选降温预警联系人';
+  FCoolingLabel.ShowHint := True;
 
   FIdleLabel := TLabel.Create(FStatsPanel);
   FIdleLabel.Parent := FStatsPanel;
   FIdleLabel.Align := alTop;
   FIdleLabel.Caption := '闲人可广告: 0人';
   FIdleLabel.Height := 20;
+  FIdleLabel.Cursor := crHandPoint;
+  FIdleLabel.Tag := 13;  // filter: idle
+  FIdleLabel.OnClick := OnStatsLabelClick;
+  FIdleLabel.Hint := '点击筛选空闲联系人';
+  FIdleLabel.ShowHint := True;
 
   // ── Separator ──────────────────────────────────────────────────
 
@@ -670,6 +691,28 @@ begin
   OnSearchChange(Sender);
 end;
 
+procedure TDeepAxisRadarPanel.OnStatsLabelClick(Sender: TObject);
+var
+  LTag: Integer;
+  LFilter: string;
+begin
+  LTag := TLabel(Sender).Tag;
+  // Toggle: if search already has this filter, clear it
+  case LTag of
+    10: LFilter := '[跟进]';     // cooling + long_silence
+    11: LFilter := '[回复]';     // reactivated
+    12: LFilter := '[降温]';     // cooling only
+    13: LFilter := '[闲人]';     // idle
+  else
+    LFilter := '';
+  end;
+
+  if FSearchEdit.Text = LFilter then
+    FSearchEdit.Text := ''  // toggle off
+  else
+    FSearchEdit.Text := LFilter;
+end;
+
 procedure TDeepAxisRadarPanel.SetData(const AData: TPollResult);
 begin
   FCurrentData := AData;
@@ -762,6 +805,8 @@ var
   LContact: TContact;
   I, LHintIdx: Integer;
   S, LPreview, LFilter: string;
+  LCategoryFilter: string;
+  LMatch: Boolean;
   LRowToHint: TArray<Integer>;
   LRowCount: Integer;
   LTargetRow: Integer;
@@ -814,10 +859,37 @@ begin
       if S = '' then
         S := LHint.ContactId.Substring(0, 8);
 
-      // Apply search filter (case-insensitive match on name or preview)
+      // Apply search filter
       if LFilter <> '' then
       begin
-        if not (LowerCase(S).Contains(LFilter) or
+        // Category filter: [跟进] [回复] [降温] [闲人]
+        if LFilter.StartsWith('[') and LFilter.EndsWith(']') then
+        begin
+          LCategoryFilter := Copy(LFilter, 2, Length(LFilter) - 2);
+          LMatch := False;
+          if LCategoryFilter = '跟进' then
+            LMatch := LHint.HintType in [rhtCooling, rhtLongSilence]
+          else if LCategoryFilter = '回复' then
+            LMatch := LHint.HintType = rhtReactivated
+          else if LCategoryFilter = '降温' then
+            LMatch := LHint.HintType = rhtCooling
+          else if LCategoryFilter = '闲人' then
+          begin
+            // Check if contact is idle
+            for LContact in FCurrentData.Contacts do
+              if LContact.ContactId = LHint.ContactId then
+              begin
+                LMatch := LContact.IsIdle;
+                Break;
+              end;
+          end;
+          if not LMatch then
+          begin
+            Inc(LHintIdx);
+            Continue;
+          end;
+        end
+        else if not (LowerCase(S).Contains(LFilter) or
                 LowerCase(LPreview).Contains(LFilter) or
                 LowerCase(LHint.ContactId).Contains(LFilter)) then
         begin
