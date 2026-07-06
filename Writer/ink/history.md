@@ -193,6 +193,28 @@ python -m pytest
 - 将测试文件从 `test_schema_contract` helper 导入迁移到共享工厂。
 - `test_schema_contract.py` 收缩为 schema 契约测试，不再承载跨文件 fixture/builder 实现。
 
+## 2026-07-06 完成 P2 性能基线
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_performance_baselines.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- 性能基线定向测试：`3 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`114 passed`
+
+### 已完成：P2 performance baselines
+
+- 新增 mock/deterministic 性能基线测试。
+- 覆盖单 shot pipeline、6 章 workflow smoke、CLI 一章流程。
+- 阈值设置为宽松上限，用于发现明显性能退化，不触发真实 LLM 或网络。
+
 ## 2026-07-05 完成本地 baseline 验收
 
 验证命令：

@@ -1,6 +1,6 @@
 # 墨韵 InkFlow v2 — 完整生产重构
 
-> **状态**：Pre-M0-M6 baseline、6 章 workflow smoke、CLI 薄壳、非 shot resume、真实 LLM provider 配置、manual 验收记录、参数化 setup、CLI JSON/dry-run 和阈值回放记录已完成本地验证（2026-07-06）
+> **状态**：Pre-M0-M6 baseline、P1 产品化队列、P2 架构增强队列已完成本地验证（2026-07-06）
 > **目标**：从 0 构建完整生产版 InkFlow，根治旧系统“契约信号逐层丢失、门禁假放行、正文真相源绕过、崩溃恢复不可审计”的架构病。
 
 ## 这是什么
@@ -84,4 +84,4 @@ M0 schema+codegen+lint+审计骨架
 cd ink && python -m pytest
 ```
 
-当前 CLI 覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，成功/错误输出使用统一 JSON envelope，常用写入命令支持 `--dry-run` 预检。真实 LLM provider 可通过 `--llm-provider openai-compatible` 接入；nightly/manual 验收可用 `ink-record-llm-acceptance` 记录成本、耗时、失败率和质量样例；`ink-replay-thresholds` 可离线回放质量阈值候选；`setup` 已支持项目元契约、章节节奏、shot 数量和核心风格约束输入。后续开发进入 P2 架构增强。
+当前 CLI 覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，成功/错误输出使用统一 JSON envelope，常用写入命令支持 `--dry-run` 预检。真实 LLM provider 可通过 `--llm-provider openai-compatible` 接入；nightly/manual 验收可用 `ink-record-llm-acceptance` 记录成本、耗时、失败率和质量样例；`ink-replay-thresholds` 可离线回放质量阈值候选；`setup` 已支持项目元契约、章节节奏、shot 数量和核心风格约束输入。PostgreSQL/RLS 迁移边界、共享测试工厂和性能基线也已补齐。
