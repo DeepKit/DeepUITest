@@ -7,6 +7,17 @@ from collections.abc import Callable, Mapping
 from ink.errors import DataIntegrityError
 
 
+VALID_RESUME_PHASES = {
+    "outline",
+    "drafting",
+    "jury",
+    "polish",
+    "soft_gate",
+    "chapter_review",
+    "book_check",
+    "import_finalize",
+}
+
 RESUME_MAP = {
     "soft_sealed": "skip",
     "hard_sealed": "skip",
@@ -79,13 +90,39 @@ class ResumeManager:
             raise DataIntegrityError(f"resume action handler is not configured: {action}")
         return handler(shot_id, run_id)
 
-    def parse_resume_point(self, resume_point: str) -> dict:
-        payload = json.loads(resume_point)
+    def parse_resume_point(self, resume_point: str | Mapping[str, object]) -> dict[str, object]:
+        if isinstance(resume_point, Mapping):
+            payload = dict(resume_point)
+        else:
+            try:
+                payload = json.loads(resume_point)
+            except json.JSONDecodeError as exc:
+                raise DataIntegrityError("resume point must be valid JSON") from exc
+        if not isinstance(payload, dict):
+            raise DataIntegrityError("resume point must be a JSON object")
         phase = payload.get("phase")
-        if phase not in {"outline", "drafting", "jury", "polish", "soft_gate", "chapter_review", "book_check"}:
+        if not isinstance(phase, str) or not phase:
+            raise DataIntegrityError("resume phase must be a non-empty string")
+        if phase not in VALID_RESUME_PHASES:
             raise DataIntegrityError(f"invalid resume phase: {phase}")
-        if "chapter_id" in payload and not isinstance(payload["chapter_id"], int):
+        if "chapter_id" in payload and not _is_strict_int(payload["chapter_id"]):
             raise DataIntegrityError("resume chapter_id must be an integer")
-        if "dimension_index" in payload and not isinstance(payload["dimension_index"], int):
+        if "dimension_index" in payload and not _is_strict_int(payload["dimension_index"]):
             raise DataIntegrityError("resume dimension_index must be an integer")
         return payload
+
+    def execute_resume_point(
+        self,
+        resume_point: str | Mapping[str, object],
+        handlers: Mapping[str, Callable[[Mapping[str, object]], object]],
+    ) -> object | None:
+        payload = self.parse_resume_point(resume_point)
+        phase = str(payload["phase"])
+        handler = handlers.get(phase)
+        if handler is None:
+            raise DataIntegrityError(f"resume point handler is not configured: {phase}")
+        return handler(payload)
+
+
+def _is_strict_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)

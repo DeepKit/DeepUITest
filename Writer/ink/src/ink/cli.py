@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -17,7 +18,7 @@ from ink.pipeline.import_orchestrator import ImportOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.polish_orchestrator import PolishOrchestrator
 from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
-from ink.pipeline.resume_handlers import build_shot_resume_handlers
+from ink.pipeline.resume_handlers import build_non_shot_resume_handlers, build_shot_resume_handlers
 from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.schema import initialize_schema
@@ -278,6 +279,13 @@ def _cmd_reject(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 def _cmd_resume(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, list[dict[str, object]]]:
     manager = ResumeManager(conn)
     handlers = build_shot_resume_handlers(conn, _gateway(conn))
+    session = conn.execute(
+        "SELECT resume_point FROM writing_sessions WHERE session_id = ?",
+        (args.session_id,),
+    ).fetchone()
+    if session is None:
+        raise SystemExit(f"session not found: {args.session_id}")
+    session_resume_point = session[0]
     rows = conn.execute(
         """
         SELECT s.shot_id, s.run_id
@@ -295,7 +303,16 @@ def _cmd_resume(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
         action = manager.resume_shot(args.session_id, shot_id, run_id)
         manager.execute_resume_action(shot_id, run_id, action, handlers)
         actions.append({"shot_id": shot_id, "run_id": run_id, "action": action})
-    return {"actions": actions}
+    session_actions = []
+    if session_resume_point:
+        payload = manager.parse_resume_point(str(session_resume_point))
+        result = manager.execute_resume_point(payload, build_non_shot_resume_handlers(conn))
+        conn.execute(
+            "UPDATE writing_sessions SET crashed = 0, resume_point = NULL WHERE session_id = ?",
+            (args.session_id,),
+        )
+        session_actions.append({"phase": payload["phase"], "result": _jsonable_result(result)})
+    return {"actions": actions, "session_actions": session_actions}
 
 
 def _cmd_import(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
@@ -367,6 +384,16 @@ def _run_shot_to_soft_sealed(conn: sqlite3.Connection, shot_id: str, run_id: int
 
 def _gateway(conn: sqlite3.Connection) -> LLMGateway:
     return LLMGateway(conn, provider=_CliDeterministicProvider())
+
+
+def _jsonable_result(value: object) -> object:
+    if value is None:
+        return None
+    if is_dataclass(value) and not isinstance(value, type):
+        return asdict(value)
+    if isinstance(value, dict | list | tuple | str | int | float | bool):
+        return value
+    return str(value)
 
 
 class _CliDeterministicProvider:

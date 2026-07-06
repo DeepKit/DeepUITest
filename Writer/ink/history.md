@@ -1,0 +1,127 @@
+# InkFlow v2 历史任务归档
+
+> **用途**：记录已经完成并验证的任务，保持 `tasks.md` 只呈现当前待办。
+> **最后更新**：2026-07-06
+
+---
+
+## 2026-07-06 完成非 shot 级 resume baseline
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_resume_handler_registry.py tests/test_m1_core_mechanisms.py tests/test_m6_import.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- 定向恢复测试：`21 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`99 passed`
+
+### 已完成：P0 非 shot 恢复调度
+
+- 实现非 shot 级 resume handler registry，覆盖 `chapter_review`、`book_check`、`import_finalize` 的结构化恢复调度。
+- 扩展 `ResumeManager`，支持 `import_finalize` phase、JSON 对象校验、通用 `execute_resume_point()` dispatch。
+- 扩展 CLI `resume`：先保持原 shot 级恢复循环，再执行 `writing_sessions.resume_point` 中的 session 级恢复点，成功后清空 `crashed/resume_point`。
+- 将 `ImportOrchestrator.finalize()` 做成幂等恢复：同一 `import_run_id` 已有 finalize 决策时返回既有结果，不重复写 human decision。
+- 补充防回归测试：chapter review 重跑、book check 重跑、import finalize 重跑、非法 payload 阻断、CLI session resume 执行与清空。
+
+## 2026-07-05 完成本地 baseline 验收
+
+验证命令：
+
+```bash
+cd ink && python -m pytest
+python -m compileall -q src tests
+```
+
+最近一次验收结果：
+
+- `python -m pytest`：`93 passed`
+- `python -m compileall -q src tests`：通过
+
+### 已完成：Pre-M0 开工门禁
+
+- 建立新源码骨架：`ink/src/ink/`、`ink/tests/`、`ink/sql/`、基础 `pyproject.toml`。
+- 从 `implementation-contract-v1.md` 抽取正式 `schema.sql` 到版本控制。
+- 添加 `test_schema_executes_all_ddl`，验证 40 张生产表、索引、触发器、视图可在内存 SQLite 执行。
+- 添加 schema 元测试：禁止旧 jury role 唯一约束、禁止 runtime event 旧时间字段、禁止从 shot 表按 session 直查。
+- 添加 jury round、自评阻断、orchestrator 入口签名、字段消费 lint、resume SQL 契约测试。
+- 统一 Pre-M0 开工策略：Pre-M0 未完成不进入 M0。
+
+### 已完成：M0 基础设施
+
+- 落地 40 张生产表、`v_current_text`、jury 自评 trigger、索引和 FK。
+- 实现 DB 连接与 schema 初始化入口，默认开启 `PRAGMA foreign_keys=ON`。
+- 实现 UTC ISO 时间源 `now_utc_iso()`。
+- 实现 schema/dataclass 代码生成器和生成 DTO。
+- 实现 `ProjectConfigValidator`、`TextRepository`、状态机入口、`LLMGateway`。
+- 接入字段消费 lint、SQL 访问 lint、状态更新 lint、LLM 访问 lint。
+- 建立 `invariant-traceability.md` 到测试文件的追踪检查。
+
+### 已完成：M1 核心机制
+
+- 实现 14 态状态机、终态阻断、CAS stale 更新阻断。
+- 实现 `SoftGateCounter`、`LLMCallBudget`、`ResumeManager`、`CheckpointManager`。
+- 接入 M2-M4 shot 级 resume handlers。
+- 实现 LLM 调用预算与 `LLMGateway.call()` 集成。
+
+### 已完成：M2 contract + outline baseline
+
+- 扩展契约 DTO 生成器覆盖 MetaContract / ShotContract / OutlineSpec / TaskCard / PromptSpec / DraftSpec / JuryInput。
+- 实现 `load_shot_contract(conn, shot_id, run_id)`，从 DB reload 完整投影。
+- 实现 task card 半句拒绝、supersede、prompt snapshot 二次编译。
+- 实现 CJK bigram drift 检测、outline 候选落库、winner 唯一。
+- 将 outline/task/prompt 接入 `PreDraftingOrchestrator` 与 resume。
+
+### 已完成：M3 writer baseline
+
+- 实现模型池读取和候选模型轮换。
+- 实现同 persona + 同 prompt + 换模型产稿。
+- 实现 creative extra、deviant sandbox、local fallback degraded 标记。
+- 实现 N=2 redo 候选产稿与 jury 翻盘事务。
+- 写入 prompt context snapshot 和裁剪原因。
+
+### 已完成：M4 review baseline
+
+- 实现两道 hard gate 与 `writing_draft_eligibility`。
+- 阻断 degraded / deviant 正式进入 jury。
+- 实现 3 裁判全评 12 维、raw scores 与 aggregates 分表。
+- 实现 writer/jury 隔离、winner 唯一、quality floor、dimension floor、judge disagreement 阻断。
+- 实现 hard failure 自动重试、polish_revision、polish 后重新过 hard gates + quality floor。
+- 实现 smart polish 不可降级、fact anchor gate、contract clause attribution、productive deviation 保护。
+
+### 已完成：M5 chapter review + human seal baseline
+
+- 实现章级 7 维 review 和硬质量门禁。
+- 实现 human accept 审计、不可覆盖硬质量失败、chapter hard seal。
+- 实现 human reject / revise：写 human decision，新建 run/shot contract/shot，旧 run 留档。
+- 补盲评/继续阅读失败不得 accepted 的防回归测试。
+
+### 已完成：M6 book/export/import baseline
+
+- 实现 book rolling check、blocking issue 阻断 accept/export。
+- 实现 export 只读 accepted canonical / hard-sealed 正文并清理结构标签。
+- 实现 import dry-run / finalize、source hash 校验和 human decision 审计。
+- 实现 6 章 workflow smoke，覆盖 write/review/reject/revise/accept/book check/export/import。
+- 实现 CLI 薄壳：`init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`。
+- 补 CLI 集成测试和最终 invariant 收口测试。
+
+### 已完成：P0 决策归档
+
+- D1 模型池 JSON 校验：DB 底线 + `ProjectConfigValidator` 完整校验。
+- D2 checkpoint `shot_id` 允许 NULL；非 NULL 必须含 run 后缀并满足 FK。
+- D3 jury raw scores 阻断裁判模型等于写手模型。
+- D4 仅 `TextRepository` 硬封版设置 `is_current=1`，partial unique index 保证唯一 current。
+- D5 所有业务时间字段统一 UTC ISO 8601。
+- E1 `ProjectConfig = WritingProject + MetaContract + ChapterSpecs`。
+- E2 shot 级 orchestrator 入口只收 `(shot_id, run_id)`。
+- E3 `TextRepository` 只公开 `read_current_text` / `write_revision` / `is_hard_sealed`。
+- E4 统一错误层级。
+- F1 测试分层：unit / integration / e2e。
+- F2 使用 builder/factory fixture + mock LLM。
+- F3 默认 CI 只测 mock 性能，真实 LLM 成本进手动/nightly。
+- F4 安全测试覆盖 SQL/lint/正文隔离/SDK 直连/import/export。

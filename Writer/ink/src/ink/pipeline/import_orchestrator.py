@@ -61,6 +61,9 @@ class ImportOrchestrator:
             return ImportDryRunResult(import_run_id=import_run_id, manifest_count=len(files), question_count=0)
 
     def finalize(self, import_run_id: int, *, actor: str, reason: str) -> ImportFinalizeResult:
+        existing = _load_existing_import_decision(self.conn, import_run_id)
+        if existing is not None:
+            return existing
         run = _load_import_run(self.conn, import_run_id)
         manifests = _load_manifests(self.conn, import_run_id)
         if not manifests:
@@ -145,6 +148,22 @@ def _load_import_run(conn: sqlite3.Connection, import_run_id: int) -> dict[str, 
     if str(row[3]) not in {"completed", "needs_human"}:
         raise DataIntegrityError(f"import run is not finalizable: {row[3]}")
     return {"project_id": int(row[0]), "mode": str(row[1]), "source_root": str(row[2]), "status": str(row[3])}
+
+
+def _load_existing_import_decision(conn: sqlite3.Connection, import_run_id: int) -> ImportFinalizeResult | None:
+    row = conn.execute(
+        """
+        SELECT import_decision_id, human_decision_id
+        FROM writing_import_decisions
+        WHERE import_run_id = ?
+        ORDER BY import_decision_id DESC
+        LIMIT 1
+        """,
+        (import_run_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return ImportFinalizeResult(import_decision_id=int(row[0]), human_decision_id=int(row[1]))
 
 
 def _load_manifests(conn: sqlite3.Connection, import_run_id: int) -> list[dict[str, object]]:

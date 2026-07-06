@@ -165,6 +165,10 @@ def test_resume_point_parser_requires_structured_fields() -> None:
         "chapter_id": 1,
         "dimension_index": 3,
     }
+    assert manager.parse_resume_point('{"phase":"import_finalize","import_run_id":1}') == {
+        "phase": "import_finalize",
+        "import_run_id": 1,
+    }
     with pytest.raises(DataIntegrityError):
         manager.parse_resume_point('{"phase":"bad"}')
 
