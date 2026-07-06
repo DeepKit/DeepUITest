@@ -6,7 +6,7 @@ from pathlib import Path
 from ink.database import connect
 from ink.threshold_replay import SHOT_DIMENSION_COLUMNS, build_threshold_replay_record
 from ink.tools.replay_thresholds import main as replay_thresholds_main
-from test_schema_contract import NOW, insert_minimal_draft, make_schema_db
+from factories import NOW, insert_minimal_draft, make_schema_db
 
 
 def test_threshold_replay_record_summarizes_candidate_thresholds() -> None:
@@ -153,3 +153,4 @@ def _insert_accept_quality_report(conn, *, reader_score: int, blind_pass_count: 
             NOW,
         ),
     )
+

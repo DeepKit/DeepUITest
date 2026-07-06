@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ink.core.resume_sql import SELECT_SESSION_SHOTS_SQL, load_session_shots
-from test_schema_contract import insert_minimal_draft, make_schema_db
+from factories import insert_minimal_draft, make_schema_db
 
 
 def test_resume_sql_filters_session_through_runs_not_shots() -> None:
@@ -19,3 +19,4 @@ def test_load_session_shots_uses_run_session_binding() -> None:
     rows = load_session_shots(conn, int(ids["session_id"]))
 
     assert [(row[0], row[1], row[2]) for row in rows] == [(ids["shot_id"], ids["run_id"], "pending")]
+

@@ -7,7 +7,7 @@ import pytest
 
 from ink.errors import DataIntegrityError
 from ink.pipeline.import_orchestrator import ImportOrchestrator
-from test_schema_contract import NOW, make_schema_db
+from factories import NOW, make_schema_db
 
 
 def test_import_dry_run_finalize(tmp_path: Path) -> None:
@@ -167,3 +167,4 @@ def _formal_body_counts(conn) -> dict[str, int]:
         "revisions": conn.execute("SELECT count(*) FROM writing_shot_revisions").fetchone()[0],
         "chapter_reviews": conn.execute("SELECT count(*) FROM writing_chapter_reviews").fetchone()[0],
     }
+

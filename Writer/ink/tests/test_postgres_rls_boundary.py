@@ -4,7 +4,7 @@ import pytest
 
 from ink.database import connect, transaction
 from ink.schema import project_root
-from test_schema_contract import NOW
+from factories import NOW
 
 
 def test_postgres_rls_boundary_doc_captures_required_adapter_contracts() -> None:
@@ -48,3 +48,4 @@ def _insert_project(conn, project_id: int, code: str) -> None:
         """,
         (project_id, code, code.title(), NOW),
     )
+

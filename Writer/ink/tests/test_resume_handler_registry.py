@@ -16,7 +16,7 @@ from test_m5_chapter_review import make_soft_sealed_chapter
 from test_m6_book_export import make_accepted_chapter
 from test_m6_import import make_import_project
 from test_m3_writer_pipeline import RecordingDraftProvider, make_prompt_compiled_shot
-from test_schema_contract import make_schema_db
+from factories import make_schema_db
 
 
 def test_shot_resume_handler_registry_covers_current_m2_to_m4_actions() -> None:
@@ -178,3 +178,4 @@ def _scalar(db_path: Path, sql: str):
         return conn.execute(sql).fetchone()[0]
     finally:
         conn.close()
+

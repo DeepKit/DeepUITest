@@ -11,7 +11,7 @@ from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
 from ink.pipeline.export_orchestrator import ExportOrchestrator
 from ink.pipeline.human_review_orchestrator import HumanReviewOrchestrator
 from ink.time import now_utc_iso
-from test_schema_contract import NOW, make_schema_db
+from factories import NOW, make_schema_db
 from test_m5_chapter_review import make_soft_sealed_chapter
 
 
@@ -170,3 +170,4 @@ def _ids(conn):
         "SELECT shot_id, run_id FROM writing_shots WHERE logical_shot_id = 'shot-001'"
     ).fetchone()
     return {"shot_id": row[0], "run_id": row[1]}
+

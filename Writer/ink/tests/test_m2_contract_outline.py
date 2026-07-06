@@ -14,7 +14,7 @@ from ink.outline.repository import OutlineRepository
 from ink.pipeline.outline_orchestrator import OutlineOrchestrator
 from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
-from test_schema_contract import NOW, insert_minimal_draft, make_schema_db
+from factories import NOW, insert_minimal_draft, make_schema_db
 
 
 def test_contract_loader_reloads_full_projection_from_db() -> None:
@@ -361,3 +361,4 @@ def insert_chinese_contract_children(conn, shot_contract_id: int) -> None:
         """,
         (shot_contract_id, json.dumps(["metaphor"])),
     )
+

@@ -171,6 +171,28 @@ python -m pytest
 - 补文档关键词测试，防止 RLS/advisory lock/SQL 方言边界说明丢失。
 - 补最小兼容测试：`connect()` 返回 mapping-style row，`transaction()` 正常提交、异常回滚。
 
+## 2026-07-06 完成 P2 共享测试工厂
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/test_schema_contract.py tests/test_m1_core_mechanisms.py tests/test_threshold_replay.py tests/test_manual_acceptance.py
+python -m compileall -q src tests
+python -m pytest
+```
+
+最近一次验收结果：
+
+- 工厂迁移定向测试：`23 passed`
+- `python -m compileall -q src tests`：通过
+- `python -m pytest`：`111 passed`
+
+### 已完成：P2 test factories
+
+- 新增 `tests/factories.py`，集中 `NOW`、`SCORE_COLUMNS`、`make_schema_db()`、`insert_minimal_draft()`、`insert_raw_score()`。
+- 将测试文件从 `test_schema_contract` helper 导入迁移到共享工厂。
+- `test_schema_contract.py` 收缩为 schema 契约测试，不再承载跨文件 fixture/builder 实现。
+
 ## 2026-07-05 完成本地 baseline 验收
 
 验证命令：

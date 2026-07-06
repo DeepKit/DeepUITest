@@ -9,7 +9,7 @@ from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
 from test_m2_contract_outline import insert_chinese_contract_children
-from test_schema_contract import insert_minimal_draft, make_schema_db
+from factories import insert_minimal_draft, make_schema_db
 
 
 def test_write_orchestrator_produces_same_persona_same_prompt_with_distinct_models_and_deviant() -> None:
@@ -209,3 +209,4 @@ class FailFirstDraftProvider(RecordingDraftProvider):
             self.calls.append((model_name, idempotency_key))
             raise RuntimeError("provider down")
         return super().complete(prompt_text, model_name, idempotency_key)
+

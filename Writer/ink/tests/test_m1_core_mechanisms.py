@@ -10,7 +10,7 @@ from ink.core.resume import ResumeManager
 from ink.core.retry_budget import LLMCallBudget, SoftGateCounter
 from ink.errors import LLMProviderError
 from ink.errors import DataIntegrityError
-from test_schema_contract import NOW, insert_minimal_draft, insert_raw_score, make_schema_db
+from factories import NOW, insert_minimal_draft, insert_raw_score, make_schema_db
 
 
 def test_soft_gate_counter_db_authority_and_threshold_levels() -> None:
@@ -235,3 +235,4 @@ class FailOnceProvider:
         if self.calls == 1:
             raise RuntimeError("temporary failure")
         return ModelResult(text="ok", model_name=model_name, token_input=1, token_output=1)
+

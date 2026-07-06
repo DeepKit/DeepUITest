@@ -23,7 +23,7 @@ from ink.errors import (
     IllegalTransitionError,
     TerminalStateError,
 )
-from test_schema_contract import NOW, insert_minimal_draft, make_schema_db
+from factories import NOW, insert_minimal_draft, make_schema_db
 
 
 def test_database_connect_initializes_schema_and_enables_foreign_keys() -> None:
@@ -248,3 +248,4 @@ class _FakeHTTPResponse:
 
     def read(self) -> bytes:
         return json.dumps(self.payload).encode("utf-8")
+

@@ -20,7 +20,7 @@ from ink.pipeline.resume_handlers import build_shot_resume_handlers
 from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from test_m2_contract_outline import insert_chinese_contract_children
-from test_schema_contract import NOW, make_schema_db
+from factories import NOW, make_schema_db
 
 
 PROJECT_ID = 1
@@ -239,3 +239,4 @@ class WorkflowProvider:
             token_input=len(prompt_text.split()),
             token_output=1,
         )
+

@@ -10,7 +10,7 @@ from ink.database import connect
 from ink.errors import LLMProviderError
 from ink.manual_acceptance import append_jsonl_record, build_llm_acceptance_record
 from ink.tools.record_llm_acceptance import main as record_llm_acceptance_main
-from test_schema_contract import NOW, insert_minimal_draft, make_schema_db
+from factories import NOW, insert_minimal_draft, make_schema_db
 
 
 def test_manual_acceptance_record_summarizes_llm_attempts_and_quality_samples() -> None:
@@ -142,3 +142,4 @@ def test_record_llm_acceptance_tool_writes_jsonl(tmp_path: Path) -> None:
 class _FailingProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         raise RuntimeError("provider down")
+
