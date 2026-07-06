@@ -1,0 +1,38 @@
+# DeepAxis 配置模板
+# 复制此文件为 DeepAxis.ini 并修改为你的实际路径
+# DeepAxis.ini 已在 .gitignore 中排除，不会被提交
+
+[DeepAxis]
+# 当前 Profile: personal_full, external_safe, strict_compliance
+Profile=personal_full
+
+# 轮询间隔 (ms)
+PollForeground=5000
+PollBackground=60000
+
+# 广告最大次数
+AdMaxCount=3
+
+# 微信路径 (根据实际安装位置修改)
+WeChatPath=D:\Program Files\Tencent\Weixin\Weixin.exe
+
+# 微信数据目录 (自动检测，通常无需修改)
+# WeChatDataPath=D:\xwechat_files\...\db_storage
+
+# 解密数据临时目录 (程序自动管理，通常无需修改)
+# DecryptedDataPath=
+
+[Capabilities]
+# 能力开关：on / off / explicit_consent / per_contact_confirm / confirm_each_batch
+# 每个 Profile 有默认值，此处的值会覆盖
+wechat.m0.metadata_read=on
+wechat.m1.body_read=off
+wechat.m2.writeback_tag_remark=off
+wechat.m3.uia_paste=off
+wechat.final_send=off
+contact.delete=off
+bulk.prepare_queue=off
+bulk.wave_sending=off
+llm.local=on
+llm.cloud=off
+export.report=on

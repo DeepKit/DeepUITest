@@ -15,9 +15,10 @@ uses
   Winapi.ShlObj;
 
 { ═══════════════════════════════════════════════════════════════
-  WxDecryptProbe v0.2 — BCrypt Edition (Zero external DLL)
+  WxDecryptProbe v0.3 — Weixin 4.x diagnostic edition
 
   Key recovery: ReadProcessMemory → entropy scan → key candidates
+  Scope: module inventory + readable process memory + hex key strings
   Key derivation: BCrypt PBKDF2-HMAC-SHA1
   Decryption: BCrypt AES-256-CBC per-page (SQLCipher-compatible)
   Integrity: BCrypt HMAC-SHA1
@@ -35,6 +36,9 @@ const
   IV_SIZE        = 16;
   HMAC_SHA1_SIZE = 20;
   AES_BLOCK      = 16;
+  MAX_KEY_CANDIDATES = 1024;
+  RAW_KEY_ENTROPY_MIN = 4.55; // 32-byte sample max is log2(32)=5.0
+  MEM_SCAN_MAX_BYTES: UInt64 = UInt64(1536) * 1024 * 1024;
 
 type
   TScanResult = record
@@ -50,6 +54,21 @@ type
     Key: TBytes;
     Address: UInt64;
     Entropy: Double;
+    Source: string;
+  end;
+
+  TModuleEntry = record
+    Name: string;
+    Path: string;
+    Base: UInt64;
+    Size: Cardinal;
+  end;
+
+  TMemoryScanStats = record
+    RegionsSeen: Integer;
+    RegionsScanned: Integer;
+    BytesScanned: UInt64;
+    ReadFailures: Integer;
   end;
 
   { ─── BCrypt API (from bcrypt.h, built into Windows) ─── }
@@ -112,6 +131,70 @@ begin
     raise Exception.CreateFmt('%s (0x%x)', [Msg, Status]);
 end;
 
+function BytesToHex(const AData: TBytes; AMaxBytes: Integer = MaxInt): string;
+var
+  I, N: Integer;
+begin
+  Result := '';
+  N := Min(Length(AData), AMaxBytes);
+  for I := 0 to N - 1 do
+    Result := Result + IntToHex(AData[I], 2);
+end;
+
+function BytesToSpacedHex(const AData: TBytes; AMaxBytes: Integer): string;
+var
+  I, N: Integer;
+begin
+  Result := '';
+  N := Min(Length(AData), AMaxBytes);
+  for I := 0 to N - 1 do
+  begin
+    if I > 0 then
+      Result := Result + ' ';
+    Result := Result + IntToHex(AData[I], 2);
+  end;
+end;
+
+function BytesToAsciiPreview(const AData: TBytes; AMaxBytes: Integer): string;
+var
+  I, N: Integer;
+begin
+  Result := '';
+  N := Min(Length(AData), AMaxBytes);
+  for I := 0 to N - 1 do
+    if (AData[I] >= 32) and (AData[I] <= 126) then
+      Result := Result + Char(AData[I])
+    else
+      Result := Result + '.';
+end;
+
+function IsHexByte(C: Byte): Boolean; inline;
+begin
+  Result := ((C >= Ord('0')) and (C <= Ord('9'))) or
+            ((C >= Ord('a')) and (C <= Ord('f'))) or
+            ((C >= Ord('A')) and (C <= Ord('F')));
+end;
+
+function HexNibble(C: Byte): Byte; inline;
+begin
+  if (C >= Ord('0')) and (C <= Ord('9')) then
+    Result := C - Ord('0')
+  else if (C >= Ord('a')) and (C <= Ord('f')) then
+    Result := C - Ord('a') + 10
+  else
+    Result := C - Ord('A') + 10;
+end;
+
+function Hex64ToBytes(const AData: TBytes; AOffset: Integer): TBytes;
+var
+  I: Integer;
+begin
+  SetLength(Result, KEY_SIZE);
+  for I := 0 to KEY_SIZE - 1 do
+    Result[I] := (HexNibble(AData[AOffset + I * 2]) shl 4) or
+                 HexNibble(AData[AOffset + I * 2 + 1]);
+end;
+
 { ─── Process ─── }
 
 function GetProcessIdByName(const AName: string): DWORD;
@@ -156,6 +239,73 @@ begin
   end;
 end;
 
+function EnumerateProcessModules(const APid: DWORD): TArray<TModuleEntry>;
+var
+  Snap: THandle;
+  ME: TModuleEntry32;
+  M: TModuleEntry;
+begin
+  Result := [];
+  Snap := CreateToolhelp32Snapshot(TH32CS_SNAPMODULE or TH32CS_SNAPMODULE32, APid);
+  if Snap = INVALID_HANDLE_VALUE then Exit;
+  try
+    FillChar(ME, SizeOf(ME), 0);
+    ME.dwSize := SizeOf(ME);
+    if Module32First(Snap, ME) then
+      repeat
+        M.Name := ME.szModule;
+        M.Path := ME.szExePath;
+        M.Base := UInt64(ME.modBaseAddr);
+        M.Size := ME.modBaseSize;
+        SetLength(Result, Length(Result) + 1);
+        Result[High(Result)] := M;
+      until not Module32Next(Snap, ME);
+  finally
+    CloseHandle(Snap);
+  end;
+end;
+
+function FindModuleByName(const AModules: TArray<TModuleEntry>;
+  const AName: string; out AModule: TModuleEntry): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  AModule.Name := '';
+  AModule.Path := '';
+  AModule.Base := 0;
+  AModule.Size := 0;
+  for I := 0 to High(AModules) do
+    if SameText(AModules[I].Name, AName) then
+    begin
+      AModule := AModules[I];
+      Exit(True);
+    end;
+end;
+
+procedure PrintModuleInventory(const AModules: TArray<TModuleEntry>);
+var
+  I, J: Integer;
+  Sorted: TArray<TModuleEntry>;
+  Tmp: TModuleEntry;
+begin
+  Sorted := Copy(AModules, 0, Length(AModules));
+  for I := 0 to High(Sorted) - 1 do
+    for J := I + 1 to High(Sorted) do
+      if Sorted[J].Size > Sorted[I].Size then
+      begin
+        Tmp := Sorted[I];
+        Sorted[I] := Sorted[J];
+        Sorted[J] := Tmp;
+      end;
+
+  WriteLn('  Modules: ', Length(Sorted));
+  for I := 0 to Min(High(Sorted), 24) do
+    WriteLn('    ', Format('%6.1f MB  0x%s  %s',
+      [Sorted[I].Size / 1024 / 1024, IntToHex(Sorted[I].Base, 16),
+       Sorted[I].Name]));
+end;
+
 function ReadProcessBytes(const AHandle: THandle; const AAddr: UInt64;
   out ABuf: TBytes; const ASize: Integer): Boolean;
 var
@@ -189,26 +339,134 @@ end;
 
 { ─── Memory Scan ─── }
 
-function ScanForKeyInProcess(const AHandle: THandle; const ABase: UInt64;
-  const ASize: NativeUInt): TArray<TKeyCandidate>;
-
-  function LooksLikeKey(const B: TBytes): Boolean;
-  var
-    Zeros, I: Integer;
+function LooksLikeRawKey(const B: TBytes): Boolean;
+var
+  Freq: array[0..255] of Integer;
+  I, Zeros, Unique, MaxFreq: Integer;
+begin
+  if Length(B) <> KEY_SIZE then Exit(False);
+  FillChar(Freq, SizeOf(Freq), 0);
+  Zeros := 0;
+  for I := 0 to KEY_SIZE - 1 do
   begin
-    if Length(B) <> KEY_SIZE then Exit(False);
-    Zeros := 0;
-    for I := 0 to KEY_SIZE - 1 do
-      if B[I] = 0 then Inc(Zeros);
-    Result := (Zeros < 24) and (CalcEntropy(B) > 7.0);
+    if B[I] = 0 then Inc(Zeros);
+    Inc(Freq[B[I]]);
   end;
 
+  Unique := 0;
+  MaxFreq := 0;
+  for I := 0 to 255 do
+    if Freq[I] > 0 then
+    begin
+      Inc(Unique);
+      if Freq[I] > MaxFreq then
+        MaxFreq := Freq[I];
+    end;
+
+  Result := (Zeros <= 3) and (Unique >= 24) and (MaxFreq <= 4) and
+            (CalcEntropy(B) >= RAW_KEY_ENTROPY_MIN);
+end;
+
+procedure AddKeyCandidate(var AList: TArray<TKeyCandidate>; const AKey: TBytes;
+  AAddress: UInt64; const ASource: string);
+var
+  KC: TKeyCandidate;
+  I, MinIndex: Integer;
+  MinEntropy: Double;
+begin
+  if not LooksLikeRawKey(AKey) then Exit;
+
+  KC.Key := Copy(AKey, 0, Length(AKey));
+  KC.Address := AAddress;
+  KC.Entropy := CalcEntropy(AKey);
+  KC.Source := ASource;
+
+  for I := 0 to High(AList) do
+    if (AList[I].Source = KC.Source) and
+       (Abs(Int64(AList[I].Address) - Int64(KC.Address)) <= 64) then
+    begin
+      if KC.Entropy > AList[I].Entropy then
+        AList[I] := KC;
+      Exit;
+    end;
+
+  if Length(AList) < MAX_KEY_CANDIDATES then
+  begin
+    SetLength(AList, Length(AList) + 1);
+    AList[High(AList)] := KC;
+    Exit;
+  end;
+
+  MinIndex := 0;
+  MinEntropy := AList[0].Entropy;
+  for I := 1 to High(AList) do
+    if AList[I].Entropy < MinEntropy then
+    begin
+      MinEntropy := AList[I].Entropy;
+      MinIndex := I;
+    end;
+
+  if KC.Entropy > MinEntropy then
+    AList[MinIndex] := KC;
+end;
+
+function ScanBufferForKeys(const ABuf: TBytes; ABase: UInt64;
+  const ASource: string; ARawStep: Integer): TArray<TKeyCandidate>;
+var
+  I, J: Integer;
+  Candidate: TBytes;
+  IsHexRun: Boolean;
+begin
+  Result := [];
+  if ARawStep < 1 then
+    ARawStep := 1;
+
+  I := 0;
+  while I <= Length(ABuf) - KEY_SIZE do
+  begin
+    Candidate := Copy(ABuf, I, KEY_SIZE);
+    AddKeyCandidate(Result, Candidate, ABase + UInt64(I), ASource + ':raw32');
+    Inc(I, ARawStep);
+  end;
+
+  I := 0;
+  while I <= Length(ABuf) - KEY_SIZE * 2 do
+  begin
+    IsHexRun := True;
+    for J := 0 to KEY_SIZE * 2 - 1 do
+      if not IsHexByte(ABuf[I + J]) then
+      begin
+        IsHexRun := False;
+        Break;
+      end;
+
+    if IsHexRun then
+    begin
+      Candidate := Hex64ToBytes(ABuf, I);
+      AddKeyCandidate(Result, Candidate, ABase + UInt64(I), ASource + ':hex64');
+      Inc(I, KEY_SIZE * 2);
+    end
+    else
+      Inc(I);
+  end;
+end;
+
+procedure AppendCandidates(var ADest: TArray<TKeyCandidate>;
+  const ASource: TArray<TKeyCandidate>);
+var
+  I: Integer;
+begin
+  for I := 0 to High(ASource) do
+    AddKeyCandidate(ADest, ASource[I].Key, ASource[I].Address, ASource[I].Source);
+end;
+
+function ScanForKeyInProcess(const AHandle: THandle; const ABase: UInt64;
+  const ASize: NativeUInt): TArray<TKeyCandidate>;
 const
-  BUF_SIZE = 262144;  // 256KB chunks for speed
+  BUF_SIZE = 1048576;  // 1MB chunks
 var
   Buf: TBytes;
   Offset, Remaining, ChunkSize: NativeUInt;
-  I, StepSize, CandidatesPerChunk: Integer;
   Pct, LastPct: Integer;
 begin
   Result := [];
@@ -217,32 +475,14 @@ begin
   Remaining := ASize;
   LastPct := -1;
 
-  // Step through every 8th byte for speed (key alignment doesn't matter for entropy)
-  StepSize := 8;
-
-  while (Remaining > 0) and (Length(Result) < 10) do
+  while (Remaining > 0) and (Length(Result) < MAX_KEY_CANDIDATES) do
   begin
     ChunkSize := Min(NativeUInt(BUF_SIZE), Remaining);
     if not ReadProcessBytes(AHandle, ABase + Offset, Buf, Integer(ChunkSize)) then
       Break;
 
-    CandidatesPerChunk := 0;
-    I := 0;
-    while (I <= Integer(ChunkSize) - KEY_SIZE) and (Length(Result) < 10) do
-    begin
-      var Candidate := Copy(Buf, I, KEY_SIZE);
-      if LooksLikeKey(Candidate) then
-      begin
-        var KC: TKeyCandidate;
-        KC.Key := Candidate;
-        KC.Address := ABase + Offset + UInt64(I);
-        KC.Entropy := CalcEntropy(Candidate);
-        SetLength(Result, Length(Result) + 1);
-        Result[High(Result)] := KC;
-        Inc(CandidatesPerChunk);
-      end;
-      Inc(I, StepSize);
-    end;
+    AppendCandidates(Result, ScanBufferForKeys(Copy(Buf, 0, Integer(ChunkSize)),
+      ABase + Offset, 'module', 4));
 
     Inc(Offset, ChunkSize);
     if ChunkSize < Remaining then
@@ -260,6 +500,102 @@ begin
   Write(#13'  Scanning: 100% (', Length(Result), ' candidates)   ');
 end;
 
+function IsReadableProtect(AProtect: DWORD): Boolean;
+var
+  BaseProtect: DWORD;
+begin
+  if (AProtect and PAGE_GUARD) <> 0 then Exit(False);
+  if (AProtect and PAGE_NOACCESS) <> 0 then Exit(False);
+
+  BaseProtect := AProtect and $FF;
+  Result := BaseProtect in [
+    PAGE_READONLY,
+    PAGE_READWRITE,
+    PAGE_WRITECOPY,
+    PAGE_EXECUTE_READ,
+    PAGE_EXECUTE_READWRITE,
+    PAGE_EXECUTE_WRITECOPY
+  ];
+end;
+
+function IsWritableProtect(AProtect: DWORD): Boolean;
+var
+  BaseProtect: DWORD;
+begin
+  if (AProtect and PAGE_GUARD) <> 0 then Exit(False);
+  if (AProtect and PAGE_NOACCESS) <> 0 then Exit(False);
+
+  BaseProtect := AProtect and $FF;
+  Result := BaseProtect in [
+    PAGE_READWRITE,
+    PAGE_WRITECOPY,
+    PAGE_EXECUTE_READWRITE,
+    PAGE_EXECUTE_WRITECOPY
+  ];
+end;
+
+function ScanReadableMemoryForKeys(const AHandle: THandle;
+  out AStats: TMemoryScanStats): TArray<TKeyCandidate>;
+const
+  BUF_SIZE = 1048576;
+var
+  MBI: TMemoryBasicInformation;
+  Addr, NextAddr, RegionBase, RegionSize, RegionOffset, ChunkSize: UInt64;
+  Buf: TBytes;
+  BytesRead: NativeUInt;
+begin
+  Result := [];
+  FillChar(AStats, SizeOf(AStats), 0);
+  Addr := 0;
+  SetLength(Buf, BUF_SIZE);
+
+  while (Addr < High(NativeUInt)) and
+        (AStats.BytesScanned < MEM_SCAN_MAX_BYTES) do
+  begin
+    if VirtualQueryEx(AHandle, Pointer(NativeUInt(Addr)), MBI, SizeOf(MBI)) = 0 then
+      Break;
+
+    Inc(AStats.RegionsSeen);
+    RegionBase := UInt64(NativeUInt(MBI.BaseAddress));
+    RegionSize := UInt64(MBI.RegionSize);
+    NextAddr := RegionBase + RegionSize;
+    if NextAddr <= Addr then
+      Break;
+
+    if (MBI.State = MEM_COMMIT) and (MBI.Type_9 = MEM_PRIVATE) and
+       IsWritableProtect(MBI.Protect) then
+    begin
+      Inc(AStats.RegionsScanned);
+      RegionOffset := 0;
+      while (RegionOffset < RegionSize) and
+            (AStats.BytesScanned < MEM_SCAN_MAX_BYTES) do
+      begin
+        ChunkSize := Min(UInt64(BUF_SIZE), RegionSize - RegionOffset);
+        if AStats.BytesScanned + ChunkSize > MEM_SCAN_MAX_BYTES then
+          ChunkSize := MEM_SCAN_MAX_BYTES - AStats.BytesScanned;
+
+        BytesRead := 0;
+        if ReadProcessMemory(AHandle, Pointer(NativeUInt(RegionBase + RegionOffset)),
+          @Buf[0], NativeUInt(ChunkSize), BytesRead) and (BytesRead > 0) then
+        begin
+          AppendCandidates(Result, ScanBufferForKeys(Copy(Buf, 0, Integer(BytesRead)),
+            RegionBase + RegionOffset, 'mem', 8));
+          Inc(AStats.BytesScanned, BytesRead);
+        end
+        else
+        begin
+          Inc(AStats.ReadFailures);
+          Inc(AStats.BytesScanned, ChunkSize);
+        end;
+
+        Inc(RegionOffset, ChunkSize);
+      end;
+    end;
+
+    Addr := NextAddr;
+  end;
+end;
+
 { ─── BCrypt Key Derivation ─── }
 
 procedure DeriveSQLCipherKey(const ARawKey, ASalt: TBytes;
@@ -274,7 +610,8 @@ begin
 
   // Step 1: Open SHA1 algorithm provider
   CheckNTSTATUS(
-    BCryptOpenAlgorithmProvider(hSha1, BCRYPT_SHA1_ALGORITHM, nil, 0),
+    BCryptOpenAlgorithmProvider(hSha1, BCRYPT_SHA1_ALGORITHM, nil,
+      BCRYPT_ALG_HANDLE_HMAC_FLAG),
     'BCryptOpenAlgorithmProvider(SHA1)');
 
   try
@@ -338,7 +675,7 @@ end;
 { ─── BCrypt AES-256-CBC Decrypt ─── }
 
 function DecryptPage(const AEncrypted: TBytes; const AKey: TBytes;
-  const AIV: TBytes; APageNum, AReserve: Integer): TBytes;
+  const AIV: TBytes; APageNum, AReserve, APageSize: Integer): TBytes;
 var
   hAes: BCRYPT_ALG_HANDLE;
   hKey: BCRYPT_KEY_HANDLE;
@@ -350,7 +687,7 @@ var
 const
   ChainStr: string = 'ChainingModeCBC';
 begin
-  SetLength(Result, PAGE_SIZE);
+  SetLength(Result, APageSize);
 
   if APageNum = 1 then
   begin
@@ -377,7 +714,7 @@ begin
         @AKey[0], KEY_SIZE, 0),
       'GenKey');
     try
-      InLen := PAGE_SIZE - AReserve - Offset;
+      InLen := APageSize - AReserve - Offset;
       SetLength(IVCopy, Length(AIV));
       Move(AIV[0], IVCopy[0], Length(AIV));
 
@@ -387,7 +724,7 @@ begin
           @IVCopy[0], Length(IVCopy), @Result[Offset], InLen, OutLen, 0),
         'Decrypt');
 
-      Move(AEncrypted[PAGE_SIZE - AReserve], Result[PAGE_SIZE - AReserve], AReserve);
+      Move(AEncrypted[APageSize - AReserve], Result[APageSize - AReserve], AReserve);
     finally
       BCryptDestroyKey(hKey);
     end;
@@ -399,7 +736,7 @@ end;
 { ─── Database Decryption ─── }
 
 function TryDecryptDB(const ADbPath, AOutPath: string;
-  const AKey, AMacKey: TBytes): Boolean;
+  const AKey, AMacKey: TBytes; APageSize: Integer): Boolean;
 var
   InStream, OutStream: TFileStream;
   FileSize: Int64;
@@ -423,22 +760,25 @@ begin
     if (Reserve mod AES_BLOCK) <> 0 then
       Reserve := ((Reserve div AES_BLOCK) + 1) * AES_BLOCK;
 
-    NumPages := FileSize div PAGE_SIZE;
+    if (FileSize < APageSize) or ((FileSize mod APageSize) <> 0) then
+      Exit;
+
+    NumPages := FileSize div APageSize;
     InStream.Position := 0;
 
-    SetLength(PageBuf, PAGE_SIZE);
+    SetLength(PageBuf, APageSize);
     SetLength(ExpectedMac, HMAC_SHA1_SIZE);
     SetLength(IV, IV_SIZE);
-    DataLen := PAGE_SIZE - Reserve;
+    DataLen := APageSize - Reserve;
 
     OutStream := TFileStream.Create(AOutPath, fmCreate);
     try
       for Page := 1 to NumPages do
       begin
-        InStream.Read(PageBuf[0], PAGE_SIZE);
+        InStream.Read(PageBuf[0], APageSize);
 
         // Extract expected HMAC from page trailer
-        Move(PageBuf[PAGE_SIZE - Reserve + IV_SIZE], ExpectedMac[0], HMAC_SHA1_SIZE);
+        Move(PageBuf[APageSize - Reserve + IV_SIZE], ExpectedMac[0], HMAC_SHA1_SIZE);
 
         // Verify HMAC
         var DataForHMAC := Copy(PageBuf, 0, DataLen);
@@ -447,11 +787,11 @@ begin
           Exit; // HMAC verification failed
 
         // Extract IV
-        Move(PageBuf[PAGE_SIZE - Reserve], IV[0], IV_SIZE);
+        Move(PageBuf[APageSize - Reserve], IV[0], IV_SIZE);
 
         // Decrypt page
-        DecPage := DecryptPage(PageBuf, AKey, IV, Page, Reserve);
-        OutStream.Write(DecPage[0], PAGE_SIZE);
+        DecPage := DecryptPage(PageBuf, AKey, IV, Page, Reserve, APageSize);
+        OutStream.Write(DecPage[0], APageSize);
 
         if Page mod 200 = 0 then
           Write(#13'  ', Page, '/', NumPages);
@@ -465,6 +805,143 @@ begin
   finally
     InStream.Free;
   end;
+end;
+
+function VerifySQLCipherFirstPage(const ADbPath: string; const AKey, AMacKey: TBytes;
+  APageSize: Integer): Boolean;
+var
+  InStream: TFileStream;
+  FileSize: Int64;
+  PageBuf, ExpectedMac, ComputedMac, IV, DecPage: TBytes;
+  Reserve, DataLen: Integer;
+begin
+  Result := False;
+  if not TFile.Exists(ADbPath) then Exit;
+
+  InStream := TFileStream.Create(ADbPath, fmOpenRead or fmShareDenyNone);
+  try
+    FileSize := InStream.Size;
+    if (FileSize < APageSize) or ((FileSize mod APageSize) <> 0) then
+      Exit;
+
+    Reserve := IV_SIZE + HMAC_SHA1_SIZE;
+    if (Reserve mod AES_BLOCK) <> 0 then
+      Reserve := ((Reserve div AES_BLOCK) + 1) * AES_BLOCK;
+    DataLen := APageSize - Reserve;
+
+    SetLength(PageBuf, APageSize);
+    SetLength(ExpectedMac, HMAC_SHA1_SIZE);
+    SetLength(IV, IV_SIZE);
+    InStream.Read(PageBuf[0], APageSize);
+
+    Move(PageBuf[APageSize - Reserve + IV_SIZE], ExpectedMac[0], HMAC_SHA1_SIZE);
+    ComputedMac := ComputeHMAC(Copy(PageBuf, 0, DataLen), AMacKey, 1);
+    if not CompareMem(@ComputedMac[0], @ExpectedMac[0], HMAC_SHA1_SIZE) then
+      Exit;
+
+    Move(PageBuf[APageSize - Reserve], IV[0], IV_SIZE);
+    DecPage := DecryptPage(PageBuf, AKey, IV, 1, Reserve, APageSize);
+    Result := CompareMem(@DecPage[0], PAnsiChar(SQLITE_HEADER), Length(SQLITE_HEADER));
+  finally
+    InStream.Free;
+  end;
+end;
+
+function TryCandidateOnDB(const ADbPath: string; const ARawKey: TBytes;
+  out AAesKey, AMacKey: TBytes; out APageSize: Integer): Boolean;
+const
+  PAGE_SIZES: array[0..3] of Integer = (1024, 2048, 4096, 8192);
+var
+  I: Integer;
+  Salt: TBytes;
+  FS: TFileStream;
+begin
+  Result := False;
+  APageSize := 0;
+  SetLength(Salt, 16);
+
+  FS := TFileStream.Create(ADbPath, fmOpenRead or fmShareDenyNone);
+  try
+    if FS.Size < 1024 then
+      Exit;
+    FS.Read(Salt[0], 16);
+  finally
+    FS.Free;
+  end;
+
+  DeriveSQLCipherKey(ARawKey, Salt, AAesKey, AMacKey);
+  for I := Low(PAGE_SIZES) to High(PAGE_SIZES) do
+    if VerifySQLCipherFirstPage(ADbPath, AAesKey, AMacKey, PAGE_SIZES[I]) then
+    begin
+      APageSize := PAGE_SIZES[I];
+      Exit(True);
+    end;
+end;
+
+procedure ReportDatabaseFingerprint(const ADbPath: string);
+const
+  PAGE_SIZES: array[0..5] of Integer = (512, 1024, 2048, 4096, 8192, 16384);
+var
+  FS: TFileStream;
+  Header: TBytes;
+  FileSize: Int64;
+  I: Integer;
+  Mods: string;
+begin
+  if not TFile.Exists(ADbPath) then Exit;
+
+  FS := TFileStream.Create(ADbPath, fmOpenRead or fmShareDenyNone);
+  try
+    FileSize := FS.Size;
+    SetLength(Header, Min(64, Integer(FileSize)));
+    if Length(Header) > 0 then
+      FS.Read(Header[0], Length(Header));
+  finally
+    FS.Free;
+  end;
+
+  Mods := '';
+  for I := Low(PAGE_SIZES) to High(PAGE_SIZES) do
+  begin
+    if Mods <> '' then
+      Mods := Mods + ', ';
+    if (FileSize mod PAGE_SIZES[I]) = 0 then
+      Mods := Mods + IntToStr(PAGE_SIZES[I]) + ':yes'
+    else
+      Mods := Mods + IntToStr(PAGE_SIZES[I]) + ':no';
+  end;
+
+  WriteLn('  Size: ', FileSize div 1024, ' KB');
+  WriteLn('  Header hex: ', BytesToSpacedHex(Header, 32));
+  WriteLn('  Header txt: ', BytesToAsciiPreview(Header, 32));
+  WriteLn('  File mod page-size: ', Mods);
+  if (Length(Header) >= 16) and
+     CompareMem(@Header[0], PAnsiChar(SQLITE_HEADER), Length(SQLITE_HEADER)) then
+    WriteLn('  Header verdict: plaintext SQLite')
+  else
+    WriteLn('  Header verdict: encrypted or non-SQLite container');
+end;
+
+function GetTargetDbPriority(const ADbPath: string): Integer;
+var
+  DBName: string;
+begin
+  DBName := TPath.GetFileName(ADbPath).ToLower;
+  Result := 100;
+  if DBName = 'message_0.db' then
+    Result := 0
+  else if DBName = 'micromsg.db' then
+    Result := 1
+  else if DBName = 'contact.db' then
+    Result := 2
+  else if DBName.StartsWith('message_') and DBName.EndsWith('.db') then
+    Result := 3
+  else if DBName.StartsWith('msg') and DBName.EndsWith('.db') then
+    Result := 4
+  else if DBName.Contains('chat') and DBName.EndsWith('.db') then
+    Result := 5
+  else if DBName = 'key_info.db' then
+    Result := 20;
 end;
 
 { ─── User Profile Scan ─── }
@@ -507,7 +984,6 @@ var
   Root, Dir, AccountId, MsgDir, DB: string;
   SR: TScanResult;
   RelevantDBs: TList<string>;
-  I: Integer;
   DBName: string;
 begin
   SetLength(Result, 0);
@@ -520,6 +996,7 @@ begin
 
     for Dir in Dirs do
     begin
+      AllDBs := nil;
       AccountId := TPath.GetFileName(Dir);
       // Skip system dirs
       if AccountId.StartsWith('.') then Continue;
@@ -539,27 +1016,64 @@ begin
       end;
 
       if Length(AllDBs) = 0 then Continue;
+      WriteLn('  Candidate: ', AccountId, ' (', Length(AllDBs), ' raw DBs)');
       RelevantDBs := TList<string>.Create;
       try
         for DB in AllDBs do
         begin
           DBName := TPath.GetFileName(DB).ToLower;
-          if DBName.Contains('msg') or DBName.Contains('contact') or
-             DBName.Contains('micro') or DBName.Contains('chat') then
+          if DBName.Contains('message') or DBName.Contains('msg') or
+             DBName.Contains('contact') or DBName.Contains('micro') or
+             DBName.Contains('chat') or SameText(DBName, 'key_info.db') then
             RelevantDBs.Add(DB);
         end;
 
         if RelevantDBs.Count = 0 then Continue;
 
-        FillChar(SR, SizeOf(SR), 0);
+        SR.Path := '';
+        SR.AccountId := '';
+        SR.Version := '';
+        SR.DbFiles := nil;
+        SR.KeyFound := False;
+        SR.KeyHex := '';
         SR.Path := Dir;
         SR.AccountId := AccountId;
         SR.DbFiles := RelevantDBs.ToArray;
-        SR.KeyFound := False;
 
         WriteLn('  Account: ', AccountId, ' (', RelevantDBs.Count, ' DBs)');
         SetLength(Result, Length(Result) + 1);
         Result[High(Result)] := SR;
+      finally
+        RelevantDBs.Free;
+      end;
+    end;
+
+    if Root.ToLower.Contains('xwechat_files') then
+    begin
+      AllDBs := TDirectory.GetFiles(Root, '*.db', TSearchOption.soAllDirectories);
+      RelevantDBs := TList<string>.Create;
+      try
+        for DB in AllDBs do
+        begin
+          DBName := TPath.GetFileName(DB).ToLower;
+          if DBName.Contains('message') or DBName.Contains('msg') or
+             DBName.Contains('contact') or DBName.Contains('micro') or
+             DBName.Contains('chat') or SameText(DBName, 'key_info.db') then
+            RelevantDBs.Add(DB);
+        end;
+
+        if RelevantDBs.Count > 0 then
+        begin
+          SR.Path := Root;
+          SR.AccountId := 'xwechat_files';
+          SR.Version := '4.x';
+          SR.DbFiles := RelevantDBs.ToArray;
+          SR.KeyFound := False;
+          SR.KeyHex := '';
+          WriteLn('  Aggregate: xwechat_files (', RelevantDBs.Count, ' DBs)');
+          SetLength(Result, Length(Result) + 1);
+          Result[High(Result)] := SR;
+        end;
       finally
         RelevantDBs.Free;
       end;
@@ -574,20 +1088,22 @@ var
   Accounts: TArray<TScanResult>;
   Pid: DWORD;
   HProcess: THandle;
-  DllBase: UInt64;
   KeyList: TArray<TKeyCandidate>;
-  DecryptDir, TargetDB, DBName: string;
-  Salt, AesKey, MacKey: TBytes;
-  FS: TFileStream;
-  Found: Boolean;
-  I, J, K: Integer;
+  MemKeyList: TArray<TKeyCandidate>;
+  Modules: TArray<TModuleEntry>;
+  MainModule: TModuleEntry;
+  MemStats: TMemoryScanStats;
+  DecryptDir, TargetDB: string;
+  AesKey, MacKey: TBytes;
+  Found, Has4xSource: Boolean;
+  I, J, K, PageSize, MaxTest, TargetPriority, CandidatePriority: Integer;
   KeyBuf: TBytes;
   KnownOffsets: TArray<UInt64>;
-  ModInfo: TModuleInfo;
+  VerboseKey: Boolean;
 begin
   WriteLn('═══════════════════════════════════════════');
-  WriteLn('  DeepAxis WxDecryptProbe v0.2 (BCrypt)');
-  WriteLn('  WeChat SQLCipher Probe - No ext deps');
+  WriteLn('  DeepAxis WxDecryptProbe v0.3 (Weixin 4.x)');
+  WriteLn('  SQLCipher/WCDB diagnostic probe - no ext deps');
   WriteLn('═══════════════════════════════════════════');
   WriteLn;
 
@@ -621,56 +1137,55 @@ begin
   end;
   WriteLn('  WeChat PID: ', Pid);
 
-  DllBase := GetModuleBaseAddress(Pid, WECHAT_DLL);
-  if DllBase = 0 then
+  Modules := EnumerateProcessModules(Pid);
+  PrintModuleInventory(Modules);
+  if not FindModuleByName(Modules, WECHAT_DLL, MainModule) then
   begin
-    WriteLn('ERROR: Cannot find WeChatWin.dll.');
+    WriteLn('ERROR: Cannot find ', WECHAT_DLL, '.');
     CloseHandle(HProcess);
     Exit;
   end;
-  WriteLn('  WeChatWin.dll base: 0x', IntToHex(DllBase, 16));
+  WriteLn('  ', WECHAT_DLL, ' base: 0x', IntToHex(MainModule.Base, 16),
+    ' size: ', MainModule.Size div 1024, ' KB');
 
   // A2: Memory scan
   WriteLn;
-  WriteLn('[A2] Scanning WeChat memory for key...');
-  FillChar(ModInfo, SizeOf(ModInfo), 0);
-  if not GetModuleInformation(HProcess, THandle(DllBase), @ModInfo,
-    SizeOf(ModInfo)) then
-  begin
-    WriteLn('ERROR: Cannot get WeChatWin.dll module info.');
-    CloseHandle(HProcess);
-    Exit;
-  end;
+  WriteLn('[A2] Static module candidate scan skipped by default.');
+  WriteLn('  Reason: ', WECHAT_DLL,
+    ' image produces high-entropy code/data false positives.');
+  KeyList := [];
 
-  WriteLn('  Module size: ', ModInfo.SizeOfImage div 1024, ' KB');
-  Write('  Scanning... ');
-  KeyList := ScanForKeyInProcess(HProcess, DllBase, ModInfo.SizeOfImage);
-  WriteLn(Length(KeyList), ' high-entropy 32B candidates found');
-
-  if Length(KeyList) = 0 then
+  WriteLn('  Adding known-offset probes...');
+  KnownOffsets := TArray<UInt64>.Create(
+    $1131B64,    // v2.6.6.25
+    $1A30000,    // v3.0-3.6
+    $1F0B000,    // v3.9.0-3.9.5
+    $1F30000,    // v3.9.6-3.9.12
+    $2100000     // v4.0.x
+  );
+  for I := 0 to High(KnownOffsets) do
   begin
-    WriteLn('  Attempting known offsets...');
-    KnownOffsets := TArray<UInt64>.Create(
-      $1131B64,    // v2.6.6.25
-      $1A30000,    // v3.0-3.6
-      $1F0B000,    // v3.9.0-3.9.5
-      $1F30000,    // v3.9.6-3.9.12
-      $2100000     // v4.0.x
-    );
-    for I := 0 to High(KnownOffsets) do
+    if ReadProcessBytes(HProcess, MainModule.Base + KnownOffsets[I], KeyBuf, KEY_SIZE) then
     begin
-      if ReadProcessBytes(HProcess, DllBase + KnownOffsets[I], KeyBuf, KEY_SIZE) then
-      begin
-        var KC: TKeyCandidate;
-        KC.Key := KeyBuf;
-        KC.Address := DllBase + KnownOffsets[I];
-        KC.Entropy := CalcEntropy(KeyBuf);
-        SetLength(KeyList, Length(KeyList) + 1);
-        KeyList[High(KeyList)] := KC;
-      end;
+      var KC: TKeyCandidate;
+      KC.Key := Copy(KeyBuf, 0, Length(KeyBuf));
+      KC.Address := MainModule.Base + KnownOffsets[I];
+      KC.Entropy := CalcEntropy(KeyBuf);
+      KC.Source := 'known-offset';
+      SetLength(KeyList, Length(KeyList) + 1);
+      KeyList[High(KeyList)] := KC;
     end;
-    WriteLn('  Fallback: ', Length(KeyList), ' candidates');
   end;
+
+  WriteLn;
+  WriteLn('[A2b] Scanning readable process memory for key candidates...');
+  MemKeyList := ScanReadableMemoryForKeys(HProcess, MemStats);
+  AppendCandidates(KeyList, MemKeyList);
+  WriteLn('  Regions: ', MemStats.RegionsScanned, '/', MemStats.RegionsSeen,
+    ' scanned, ', MemStats.ReadFailures, ' read failures');
+  WriteLn('  Bytes scanned: ', MemStats.BytesScanned div 1024 div 1024, ' MB');
+  WriteLn('  Memory candidates: ', Length(MemKeyList));
+  WriteLn('  Total candidates: ', Length(KeyList));
 
   CloseHandle(HProcess);
 
@@ -698,73 +1213,83 @@ begin
   DecryptDir := TPath.GetTempPath + 'DeepAxisProbe\';
   ForceDirectories(DecryptDir);
 
+  Has4xSource := False;
+  for I := 0 to High(Accounts) do
+    if SameText(Accounts[I].Version, '4.x') then
+      Has4xSource := True;
+
   for I := 0 to High(Accounts) do
   begin
+    if Has4xSource and not SameText(Accounts[I].Version, '4.x') then
+    begin
+      WriteLn('  Skipping legacy source while 4.x source is present: ',
+        Accounts[I].AccountId);
+      Continue;
+    end;
+
     TargetDB := '';
+    TargetPriority := MaxInt;
     for J := 0 to High(Accounts[I].DbFiles) do
     begin
-      DBName := TPath.GetFileName(Accounts[I].DbFiles[J]).ToLower;
-      // WeChat 4.x: message_0.db + contact.db, WeChat 3.x: MicroMsg.db
-      if (DBName = 'message_0.db') or (DBName = 'contact.db') or (DBName = 'microMsg.db') then
+      CandidatePriority := GetTargetDbPriority(Accounts[I].DbFiles[J]);
+      if CandidatePriority < TargetPriority then
       begin
         TargetDB := Accounts[I].DbFiles[J];
-        Break;
+        TargetPriority := CandidatePriority;
       end;
     end;
 
     if TargetDB = '' then
     begin
-      WriteLn('  No MicroMsg.db for ', Accounts[I].AccountId);
+      WriteLn('  No supported message/contact DB for ', Accounts[I].AccountId);
       Continue;
     end;
 
     WriteLn;
     WriteLn('  Account: ', Accounts[I].AccountId);
     WriteLn('  DB: ', TargetDB);
-    WriteLn('  Size: ', TFile.GetSize(TargetDB) div 1024, ' KB');
-
-    // Read salt
-    SetLength(Salt, 16);
-    FS := TFileStream.Create(TargetDB, fmOpenRead or fmShareDenyNone);
-    try
-      FS.Read(Salt[0], 16);
-    finally
-      FS.Free;
-    end;
+    ReportDatabaseFingerprint(TargetDB);
 
     Found := False;
-    var MaxTest := Length(KeyList);
-    if MaxTest > 10 then MaxTest := 10;
+    MaxTest := Length(KeyList);
 
     for K := 0 to MaxTest - 1 do
     begin
-      Write('    Key[', K+1, '] 0x', IntToHex(KeyList[K].Address, 16),
-        ' E=', KeyList[K].Entropy:4:2, ' ... ');
+      VerboseKey := (K < 20) or (((K + 1) mod 100) = 0) or (K = MaxTest - 1);
+      if VerboseKey then
+        Write('    Key[', K+1, '/', MaxTest, '] 0x',
+          IntToHex(KeyList[K].Address, 16), ' E=', KeyList[K].Entropy:4:2,
+          ' ', KeyList[K].Source, ' ... ');
 
-      var OutFile := DecryptDir + 'MicroMsg_' + Accounts[I].AccountId + '_decrypted.db';
-      if TFile.Exists(OutFile) then TFile.Delete(OutFile);
-
-      DeriveSQLCipherKey(KeyList[K].Key, Salt, AesKey, MacKey);
-
-      if TryDecryptDB(TargetDB, OutFile, AesKey, MacKey) then
+      if TryCandidateOnDB(TargetDB, KeyList[K].Key, AesKey, MacKey, PageSize) then
       begin
-        WriteLn('OK');
+        if not VerboseKey then
+          Write('    Key[', K+1, '/', MaxTest, '] 0x',
+            IntToHex(KeyList[K].Address, 16), ' E=', KeyList[K].Entropy:4:2,
+            ' ', KeyList[K].Source, ' ... ');
+        WriteLn('OK page=', PageSize);
         WriteLn('    Key addr: 0x', IntToHex(KeyList[K].Address, 16));
-        Write('    Raw key: ');
-        for var B in KeyList[K].Key do
-          Write(IntToHex(B, 2));
-        WriteLn;
-        WriteLn('    Decrypted: ', OutFile,
-          ' (', TFile.GetSize(OutFile) div 1024, ' KB)');
+
+        var OutFile := DecryptDir + Accounts[I].AccountId + '_' +
+          TPath.GetFileNameWithoutExtension(TargetDB) + '_decrypted.db';
+        if TFile.Exists(OutFile) then TFile.Delete(OutFile);
+        if TryDecryptDB(TargetDB, OutFile, AesKey, MacKey, PageSize) then
+          WriteLn('    Decrypted: ', OutFile,
+            ' (', TFile.GetSize(OutFile) div 1024, ' KB)')
+        else
+          WriteLn('    First page matched, full decrypt failed.');
+
+        WriteLn('    Raw key: ', BytesToHex(KeyList[K].Key));
+        WriteLn('    Source: ', KeyList[K].Source);
 
         Accounts[I].KeyFound := True;
-        Accounts[I].KeyHex := '';
-        for var B in KeyList[K].Key do
-          Accounts[I].KeyHex := Accounts[I].KeyHex + IntToHex(B, 2);
+        Accounts[I].KeyHex := BytesToHex(KeyList[K].Key);
         Found := True;
         Break;
       end;
-      WriteLn('no match');
+
+      if VerboseKey then
+        WriteLn('no match');
     end;
 
     if not Found then
@@ -790,16 +1315,20 @@ end;
 begin
   try
     RunProbe;
-    WriteLn;
-    Write('Press Enter...');
-    ReadLn;
+    if FindCmdLineSwitch('pause', True) then
+    begin
+      WriteLn;
+      Write('Press Enter...');
+      ReadLn;
+    end;
   except
     on E: Exception do
     begin
       WriteLn;
       WriteLn('FATAL: ', E.Message);
       WriteLn(E.ClassName);
-      ReadLn;
+      if FindCmdLineSwitch('pause', True) then
+        ReadLn;
     end;
   end;
 end.
