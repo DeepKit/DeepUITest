@@ -4,7 +4,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.DateUtils, System.Math, System.JSON,
-  System.Generics.Collections,
+  System.Generics.Collections, System.Generics.Defaults,
   Winapi.Windows,
   Vcl.Controls, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Graphics, Vcl.Forms,
   DeepBase.AIErrorHandler,
@@ -837,6 +837,17 @@ begin
   FEmptyGuideLabel.Visible := False;
   LFilter := LowerCase(GetSearchFilter);
 
+  // Sort hints by urgency: cooling > long_silence > reactivated > others
+  var LSortedHints := Copy(FCurrentData.Hints);
+  TArray.Sort<TRadarHint>(LSortedHints,
+    TComparer<TRadarHint>.Construct(
+      function(const A, B: TRadarHint): Integer
+      begin
+        Result := Ord(A.HintType) - Ord(B.HintType);
+        // rhtCooling=0, rhtLongSilence=1 — these are highest urgency
+        // Others stay in default order
+      end));
+
   FContactListBox.Items.BeginUpdate;
   try
     FContactListBox.Items.Clear;
@@ -845,7 +856,7 @@ begin
     SetLength(LRowToHint, 0);
 
     LHintIdx := 0;
-    for LHint in FCurrentData.Hints do
+    for LHint in LSortedHints do
     begin
       // Find contact name and preview
       S := '';
