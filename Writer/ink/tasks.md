@@ -63,7 +63,7 @@
 1. ~~**真实 LLM 端到端集成测试**~~ ✅ 已完成（iFLYTEK 14 模型连通 + Gateway/抽取集成；见 history.md 2026-07-07）
 2. **6 章流水线真实模型跑通**：用 iFLYTEK 标准模型池（`xopglm52`/`xopdeepseekv4pro`/`xopkimik26`）跑完整 6 章生成，验证抽取/回读/冲突检测在真实模型下的行为。
 3. ~~**推理模型 max_tokens 适配**~~ ✅ 已完成（`_is_reasoning_model` 自动注入 max_tokens=2000；`content` 空时回退 `reasoning_content`；`--llm-max-tokens` / `INK_LLM_MAX_TOKENS` 全局覆盖）
-4. **DecisionSession 并发控制**：多作者同时修订不同 scope 时的锁策略和冲突合并。
+4. ~~**DecisionSession 并发控制**~~ ✅ 已完成（scope 级 partial unique index + start 自动填 before_hash + confirm 冲突检测 + session 标 stale + 生产迁移脚本）
 5. ~~**Stale 传播自动触发**~~ ✅ 已完成（`confirm_and_apply(stale_manager=...)` 在 SAVEPOINT 释放后自动调用；CLI `confirm-contract` 默认接入，`--no-auto-stale` 可关闭）
 6. ~~**Coverage gate 可视化**~~ ✅ 已完成（`SourceWorkflowStore.list_coverage_gaps` + CLI `coverage-gaps` 子命令，返回 gap/conflict 字段明细 + 建议源条款）
 7. ~~**`init` 命令支持自定义模型池**~~ ✅ 已完成（`--writer-models`/`--jury-models` 逗号分隔，去重保序，默认池兜底）

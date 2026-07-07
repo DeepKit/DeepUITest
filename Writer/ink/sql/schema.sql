@@ -99,6 +99,8 @@ CREATE TABLE writing_chapter_specs (
     chapter_spec_id INTEGER PRIMARY KEY,
     project_id INTEGER NOT NULL,
     chapter_id INTEGER NOT NULL,
+    volume_id TEXT,                                    -- 所属卷 ID（逻辑分组，可为 NULL）
+    part_id TEXT,                                      -- 所属部分 ID（逻辑分组，可为 NULL）
     rhythm_curve_target TEXT NOT NULL,               -- JSON 节奏曲线目标
     hook_target TEXT,                                -- 章末钩子目标
     motif_density_target REAL,
@@ -217,6 +219,7 @@ CREATE TABLE writing_prompt_snapshots (
     full_prompt_text TEXT NOT NULL,
     prompt_size_bytes INTEGER NOT NULL,              -- 评审 #31：超 writing_projects.prompt_archive_size_bytes 时迁到独立文件
     relaxed_soft INTEGER NOT NULL DEFAULT 0,         -- 仅 deviant
+    is_stale INTEGER NOT NULL DEFAULT 0,             -- stale 传播标记
     superseded_at TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (task_card_id) REFERENCES writing_shot_task_cards(task_card_id) ON DELETE CASCADE
@@ -229,6 +232,8 @@ CREATE TABLE writing_shots (
     shot_id TEXT PRIMARY KEY,                        -- {logical}@{run} 隔离
     project_id INTEGER NOT NULL,
     chapter_id INTEGER NOT NULL,
+    volume_id TEXT,                                    -- 所属卷 ID（冗余，便于 stale 传播精确筛选）
+    part_id TEXT,                                      -- 所属部分 ID（冗余，便于 stale 传播精确筛选）
     shot_contract_id INTEGER,
     run_id INTEGER NOT NULL,
     logical_shot_id TEXT NOT NULL,                   -- 评审 #6：N 计数绑 logical_shot_id（跨 run 累积）
@@ -253,6 +258,8 @@ CREATE TABLE writing_shots (
 );
 CREATE INDEX idx_shots_logical ON writing_shots(logical_shot_id);
 CREATE INDEX idx_shots_run ON writing_shots(run_id);
+CREATE INDEX idx_shots_volume ON writing_shots(project_id, volume_id);
+CREATE INDEX idx_shots_part ON writing_shots(project_id, part_id);
 
 -- 14. writing_soft_gate_counters
 -- 唯一权威源：每 (project_id, logical_shot_id, gate_name) 一行，N 计数原子累加。
@@ -305,6 +312,7 @@ CREATE TABLE writing_drafts (
     failure_category TEXT,
     retry_count INTEGER NOT NULL DEFAULT 0,
     is_deviant INTEGER NOT NULL DEFAULT 0,           -- deviant 沙盒稿
+    is_stale INTEGER NOT NULL DEFAULT 0,             -- stale 传播标记
     byte_count INTEGER NOT NULL,
     source_revision_id INTEGER,                      -- 评审 #12/#21：B92 stale 检测，指向 revisions
     created_at TEXT NOT NULL,
@@ -495,6 +503,7 @@ CREATE TABLE writing_chapter_reviews (
     chapter_id INTEGER NOT NULL,
     run_id INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending','accepted','rejected','revised')),
+    is_stale INTEGER NOT NULL DEFAULT 0,             -- stale 传播标记
     -- 章级 7 维（accepted 前全部必须达标），0-100
     chapter_continuity_hard INTEGER CHECK (chapter_continuity_hard IS NULL OR chapter_continuity_hard BETWEEN 0 AND 100),
     pov_consistency INTEGER CHECK (pov_consistency IS NULL OR pov_consistency BETWEEN 0 AND 100),
@@ -614,6 +623,7 @@ CREATE TABLE writing_book_check_results (
     check_sequence INTEGER NOT NULL,                 -- 第 k 次检测
     chapter_range_start INTEGER NOT NULL,            -- 本次检测起始章
     chapter_range_end INTEGER NOT NULL,              -- 本次检测截止章（= 当前章）
+    is_stale INTEGER NOT NULL DEFAULT 0,             -- stale 传播标记
     -- 6 维全书级检测分数
     longline_suspense_closure REAL,                  -- 长线悬念闭环
     character_arc_completeness REAL,                 -- 角色弧光完整
@@ -645,7 +655,7 @@ CREATE TABLE writing_ai_call_attempts (
     project_id INTEGER NOT NULL,
     shot_id TEXT,
     run_id INTEGER,
-    call_type TEXT NOT NULL CHECK (call_type IN ('outline','task_card','prompt','draft','polish','gate1_semantic','gate2','jury','chapter_review','book_check','import')),
+    call_type TEXT NOT NULL CHECK (call_type IN ('outline','task_card','prompt','draft','polish','gate1_semantic','gate2','jury','chapter_review','book_check','import','source_extraction')),
     model_provider TEXT NOT NULL,
     model_name TEXT NOT NULL,
     prompt_id INTEGER,
@@ -942,6 +952,9 @@ CREATE TABLE writing_decision_sessions (
 CREATE UNIQUE INDEX idx_active_decision_session_target
 ON writing_decision_sessions(project_id, target_type, COALESCE(target_id, ''))
 WHERE status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed');
+CREATE UNIQUE INDEX idx_active_decision_session_scope
+ON writing_decision_sessions(project_id, scope_type, COALESCE(scope_id, ''))
+WHERE status IN ('collecting','ai_parsed','awaiting_confirm','needs_human','retryable_failed');
 CREATE INDEX idx_decision_sessions_scope ON writing_decision_sessions(project_id, scope_type, scope_id, status);
 
 -- 45. writing_decision_option_sets（1-8/0/9 选择式对话）
@@ -1045,3 +1058,34 @@ CREATE TABLE writing_process_file_manifests (
     FOREIGN KEY (source_document_id) REFERENCES writing_source_documents(source_document_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_process_file_manifest_source ON writing_process_file_manifests(source_document_id, cleared_at);
+
+-- 50. writing_decision_session_events（append-only 事件日志，用于状态回放）
+CREATE TABLE writing_decision_session_events (
+    event_id INTEGER PRIMARY KEY,
+    decision_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'created','input_received','ai_parsed','option_set_created',
+        'option_selected','option_regenerated','confirmed','cancelled','stale'
+    )),
+    payload_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(payload_json)),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (decision_session_id) REFERENCES writing_decision_sessions(decision_session_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_session_events_session ON writing_decision_session_events(decision_session_id, created_at);
+
+-- 51. writing_contract_version_events（append-only 契约版本事件日志）
+CREATE TABLE writing_contract_version_events (
+    event_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    contract_version_id INTEGER,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'created','confirmed','locked','superseded','stale'
+    )),
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('book','volume','part','chapter','shot')),
+    scope_id TEXT,
+    payload_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(payload_json)),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (contract_version_id) REFERENCES writing_contract_versions(contract_version_id)
+);
+CREATE INDEX idx_version_events_scope ON writing_contract_version_events(project_id, scope_type, scope_id, created_at);

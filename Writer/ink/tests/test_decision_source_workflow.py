@@ -6,7 +6,7 @@ import pytest
 
 from factories import NOW, make_schema_db
 from ink.decision_sessions import ConfirmedContractResult, DecisionSessionStore
-from ink.errors import DataIntegrityError
+from ink.errors import ConcurrentModificationError, DataIntegrityError
 from ink.source_workflow import SourceWorkflowStore
 
 
@@ -23,7 +23,7 @@ def test_decision_session_enforces_single_active_target_and_option_regeneration(
         target_id="book",
         human_text="按这个方向封全书基线",
     )
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(DataIntegrityError, match="active decision session already exists"):
         store.start(
             project_id=1,
             scope_type="book",
@@ -251,7 +251,6 @@ def _prepare_awaiting_session(store: DecisionSessionStore, *, scope_type: str = 
         parsed_patch={"scope_type": scope_type, "change_type": "refine"},
         readback_text="我理解为封基线。",
         source_hashes=["hash-guide"],
-        before_hash="before-hash",
     )
     store.create_option_set(session_id, options=[{"label": "确认基线"}], recommended_option=1)
     store.select_option(session_id, 1)
@@ -333,7 +332,7 @@ def test_confirm_and_apply_atomically_writes_full_audit_chain() -> None:
         """,
         (result.contract_changelog_id,),
     ).fetchone()
-    assert changelog_row[0] == "before-hash"
+    assert changelog_row[0] is None  # 首次确认，无 base version → before_hash 为 None
     assert changelog_row[1] == result.after_hash
     assert changelog_row[2] == result.human_decision_id
 
@@ -537,3 +536,173 @@ def test_list_coverage_gaps_filters_by_scope() -> None:
     )
     assert len(chapter_gaps) == 1
     assert chapter_gaps[0].scope_id == "5"
+
+
+# ── 并发控制 ──────────────────────────────────────────────
+
+
+def test_start_rejects_same_scope_different_target() -> None:
+    """同 scope 不同 target 的第二个活跃 session 应被拒绝（scope 级互斥）。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+
+    store.start(
+        project_id=1, scope_type="chapter", scope_id="ch-1",
+        target_type="ChapterContract", target_id="ch-1",
+        human_text="改第一章",
+    )
+    # 同 scope(chapter/ch-1) 不同 target(ch-2) 应被拒
+    with pytest.raises(DataIntegrityError, match="active decision session already exists"):
+        store.start(
+            project_id=1, scope_type="chapter", scope_id="ch-1",
+            target_type="ChapterContract", target_id="ch-2",
+            human_text="同 scope 第二个活跃会话不应允许",
+        )
+
+
+def test_start_allows_different_scope_concurrent() -> None:
+    """不同 scope 的活跃 session 可共存（验证并发度）。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+
+    s1 = store.start(
+        project_id=1, scope_type="book", scope_id=None,
+        target_type="BookContract", target_id="book",
+        human_text="改全书基线",
+    )
+    s2 = store.start(
+        project_id=1, scope_type="chapter", scope_id="ch-1",
+        target_type="ChapterContract", target_id="ch-1",
+        human_text="改第一章",
+    )
+    assert s1 != s2
+
+
+def test_start_allows_new_session_after_stale() -> None:
+    """stale 状态的 session 不阻止同 scope 开新 session。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+
+    s1 = store.start(
+        project_id=1, scope_type="chapter", scope_id="ch-1",
+        target_type="ChapterContract", target_id="ch-1",
+        human_text="第一个",
+    )
+    store.record_ai_parse(
+        s1, parsed_patch={"scope_type": "chapter"}, readback_text="测试",
+        source_hashes=[], before_hash="bh",
+    )
+    store.create_option_set(s1, options=[{"label": "确认"}], recommended_option=1)
+    store.select_option(s1, 1)
+
+    # 直接标 stale（绕过 confirm，模拟外部触发 stale）
+    conn.execute(
+        "UPDATE writing_decision_sessions SET status='stale' WHERE decision_session_id=?",
+        (s1,),
+    )
+
+    # stale 不在活跃集合，同 scope 可开新 session
+    s2 = store.start(
+        project_id=1, scope_type="chapter", scope_id="ch-1",
+        target_type="ChapterContract", target_id="ch-1",
+        human_text="第二个",
+    )
+    assert s2 != s1
+
+
+def test_start_auto_fills_before_hash_from_latest_version() -> None:
+    """首次确认后，新 session 的 before_hash 自动填为最新 version 的 hash。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+
+    # 首次确认
+    s1 = store.start(
+        project_id=1, scope_type="book", scope_id=None,
+        target_type="BookContract", target_id="book",
+        human_text="封基线",
+    )
+    assert conn.execute(
+        "SELECT before_hash FROM writing_decision_sessions WHERE decision_session_id=?",
+        (s1,),
+    ).fetchone()[0] is None  # 首次确认前无 base version
+
+    store.record_ai_parse(s1, parsed_patch={"scope_type": "book"}, readback_text="基线", source_hashes=["h"])
+    store.create_option_set(s1, options=[{"label": "确认"}], recommended_option=1)
+    store.select_option(s1, 1)
+    result = store.confirm_and_apply(
+        s1, actor="author", reason="封",
+        contract_scope_type="book", contract_scope_id=None,
+        contract_payload={"identity": {"title": "Demo"}},
+        source_hashes=["h"],
+    )
+    confirmed_hash = result.after_hash
+
+    # 新 session 的 before_hash 应等于已确认 version 的 hash
+    s2 = store.start(
+        project_id=1, scope_type="book", scope_id=None,
+        target_type="BookContract", target_id="book",
+        human_text="细化",
+    )
+    assert conn.execute(
+        "SELECT before_hash FROM writing_decision_sessions WHERE decision_session_id=?",
+        (s2,),
+    ).fetchone()[0] == confirmed_hash
+
+
+def test_confirm_rejects_when_base_changed() -> None:
+    """base version 在 session 存续期间被改 → ConcurrentModificationError + session 标 stale。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = DecisionSessionStore(conn)
+
+    # 先确认一个版本（v1）
+    s1 = store.start(
+        project_id=1, scope_type="book", scope_id=None,
+        target_type="BookContract", target_id="book",
+        human_text="封基线",
+    )
+    store.record_ai_parse(s1, parsed_patch={"scope_type": "book"}, readback_text="基线", source_hashes=["h"])
+    store.create_option_set(s1, options=[{"label": "确认"}], recommended_option=1)
+    store.select_option(s1, 1)
+    store.confirm_and_apply(
+        s1, actor="author", reason="封",
+        contract_scope_type="book", contract_scope_id=None,
+        contract_payload={"identity": {"title": "Demo"}},
+        source_hashes=["h"],
+    )
+
+    # 开第二个 session（before_hash 自动填为 v1 hash）
+    s2 = store.start(
+        project_id=1, scope_type="book", scope_id=None,
+        target_type="BookContract", target_id="book",
+        human_text="细化",
+    )
+    store.record_ai_parse(
+        s2, parsed_patch={"scope_type": "book"}, readback_text="细化",
+        source_hashes=["h"],
+    )
+    store.create_option_set(s2, options=[{"label": "确认"}], recommended_option=1)
+    store.select_option(s2, 1)
+
+    # 模拟外部篡改 base version hash（现实中不可能发生，因为 scope 互斥阻止并发）
+    conn.execute(
+        "UPDATE writing_contract_versions SET contract_hash='tampered-hash'",
+    )
+
+    with pytest.raises(ConcurrentModificationError, match="contract version changed"):
+        store.confirm_and_apply(
+            s2, actor="author", reason="细化",
+            contract_scope_type="book", contract_scope_id=None,
+            contract_payload={"identity": {"title": "Demo"}, "evidence_chain": "v2"},
+            source_hashes=["h"],
+        )
+
+    # session 应被标 stale
+    assert conn.execute(
+        "SELECT status FROM writing_decision_sessions WHERE decision_session_id=?",
+        (s2,),
+    ).fetchone()[0] == "stale"

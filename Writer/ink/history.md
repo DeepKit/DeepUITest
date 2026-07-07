@@ -1,7 +1,23 @@
 # InkFlow v2 历史任务归档
 
 > **用途**：记录已经完成并验证的任务，保持 `tasks.md` 只呈现当前待办。
-> **最后更新**：2026-07-07
+> **最后更新**：2026-07-08
+
+---
+
+## 2026-07-08 DecisionSession 并发控制
+
+**完成 tasks.md 第 4 项**：
+
+- `sql/schema.sql` 新增 scope 级 partial unique index `idx_active_decision_session_scope`（`project_id, scope_type, COALESCE(scope_id,'')` WHERE 活跃）——同 scope 只能有一个活跃 session
+- `DecisionSessionStore.start` 自动填 `before_hash`（取当前 scope 最新 confirmed/locked version 的 hash；首次确认前为 None）
+- `start` 捕获 `sqlite3.IntegrityError` 转 `DataIntegrityError`，消息含 "active decision session already exists"
+- `confirm_and_apply` 冲突检测：若 base version hash ≠ session 的 before_hash，标 session stale 并抛 `ConcurrentModificationError`
+- 新增 helper：`_current_scope_version_hash`、`_version_hash_by_id`、`_mark_session_stale`
+- 新增迁移脚本 `sql/migrations/2026-07-08_scope_unique_index.sql`（含冲突数据检查 SQL）
+- 新增 5 测试（同 scope 互斥 / 不同 scope 并发 / stale 后可重开 / before_hash 自动填 / 冲突检测）
+- 更新 4 处既有测试：schema index 计数 62→63；helper 去掉显式 before_hash 依��自动填充；IntegrityError 断言改为 DataIntegrityError
+- 全量 325 离线 passed
 
 ---
 

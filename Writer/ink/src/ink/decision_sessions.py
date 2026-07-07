@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from ink.contract.patch_engine import ContractPatchEngine, PatchApplicationResult
-from ink.errors import ContractPatchError, DataIntegrityError
+from ink.errors import ConcurrentModificationError, ContractPatchError, DataIntegrityError
 from ink.event_log import EventLog
 from ink.time import now_utc_iso
 
@@ -55,25 +55,42 @@ class DecisionSessionStore:
         parent_decision_session_id: int | None = None,
     ) -> int:
         now = now_utc_iso()
-        cursor = self.conn.execute(
-            """
-            INSERT INTO writing_decision_sessions
-                (project_id, scope_type, scope_id, target_type, target_id,
-                 parent_decision_session_id, status, human_text, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'collecting', ?, ?, ?)
-            """,
-            (
-                project_id,
-                scope_type,
-                scope_id,
-                target_type,
-                target_id,
-                parent_decision_session_id,
-                human_text,
-                now,
-                now,
-            ),
+        # 自动记录当前 scope 最新 confirmed/locked version 的 hash，供 confirm 时做冲突检测。
+        # 首次确认前无 base version，before_hash 为 None，confirm 时跳过冲突检测。
+        before_hash = _current_scope_version_hash(
+            self.conn, project_id=project_id,
+            scope_type=scope_type, scope_id=scope_id,
         )
+        try:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO writing_decision_sessions
+                    (project_id, scope_type, scope_id, target_type, target_id,
+                     parent_decision_session_id, status, human_text, before_hash,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'collecting', ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    scope_type,
+                    scope_id,
+                    target_type,
+                    target_id,
+                    parent_decision_session_id,
+                    human_text,
+                    before_hash,
+                    now,
+                    now,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            # scope 级 partial unique index (idx_active_decision_session_scope) 命中：
+            # 同 scope 已有活跃 session。target 级 index 命中也会走到这里（同 target 重复）。
+            raise DataIntegrityError(
+                f"an active decision session already exists for scope "
+                f"{scope_type}/{scope_id} in project {project_id}; "
+                f"cancel or confirm it first"
+            ) from exc
         session_id = int(cursor.lastrowid)
         self._event_log.log_session_event(
             session_id,
@@ -376,6 +393,28 @@ class DecisionSessionStore:
             )
 
         now = now_utc_iso()
+
+        # ── 冲突检测：base version hash 必须与 session 记录的 before_hash 一致 ──
+        # start 时自动把当前 scope 最新 version 的 hash 写入 before_hash；
+        # 若此后有人改过同 scope 的契约（base hash 变了），这里拒绝并标 session stale。
+        # before_hash 为 None（首次确认、无 base version）时跳过检测。
+        if before_hash is not None:
+            base_version_id = _resolve_base_contract_version_id(
+                self.conn,
+                project_id=project_id,
+                scope_type=contract_scope_type,
+                scope_id=contract_scope_id,
+            )
+            if base_version_id is not None:
+                base_hash = _version_hash_by_id(self.conn, base_version_id)
+                if base_hash != before_hash:
+                    self._mark_session_stale(decision_session_id)
+                    raise ConcurrentModificationError(
+                        f"contract version changed since this session started "
+                        f"(expected {before_hash[:8]}, got {str(base_hash)[:8]}); "
+                        f"session marked stale, please re-open"
+                    )
+
         try:
             self.conn.execute("SAVEPOINT decision_confirm_apply")
 
@@ -538,6 +577,23 @@ class DecisionSessionStore:
                 stale_mark=stale_mark,
             )
 
+    def _mark_session_stale(self, decision_session_id: int) -> None:
+        """把 awaiting_confirm 的 session 标记为 stale。
+
+        用于冲突检测拒绝路径：base version 在 session 存续期间被改过，
+        标 stale 后同 scope 可开新 session（stale 不在互斥 index 的活跃集合内）。
+        """
+        now = now_utc_iso()
+        self.conn.execute(
+            """
+            UPDATE writing_decision_sessions
+            SET status = 'stale', updated_at = ?
+            WHERE decision_session_id = ? AND status = 'awaiting_confirm'
+            """,
+            (now, decision_session_id),
+        )
+        self._event_log.log_session_event(decision_session_id, "stale", {"reason": "base_version_changed"})
+
     def _return_to_collecting(self, decision_session_id: int, option_set_id: int) -> None:
         now = now_utc_iso()
         try:
@@ -673,6 +729,41 @@ def _resolve_base_contract_version_id(
         (project_id, scope_type, scope_id),
     ).fetchone()
     return None if row is None else int(row[0])
+
+
+def _current_scope_version_hash(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int,
+    scope_type: str,
+    scope_id: str | None,
+) -> str | None:
+    """返回当前 scope 最新 confirmed/locked version 的 contract_hash；首次确认前为 None。
+
+    在 ``start`` 时调用，把 base version 的 hash 写入 session 的 before_hash，
+    供 ``confirm_and_apply`` 检测期间是否有人改过同一 scope 的契约。
+    """
+    row = conn.execute(
+        """
+        SELECT contract_hash
+        FROM writing_contract_versions
+        WHERE project_id = ? AND scope_type = ? AND COALESCE(scope_id, '') = COALESCE(?, '')
+          AND status IN ('confirmed','locked')
+        ORDER BY version DESC
+        LIMIT 1
+        """,
+        (project_id, scope_type, scope_id),
+    ).fetchone()
+    return None if row is None else str(row[0])
+
+
+def _version_hash_by_id(conn: sqlite3.Connection, version_id: int) -> str | None:
+    """按 contract_version_id 取 contract_hash。"""
+    row = conn.execute(
+        "SELECT contract_hash FROM writing_contract_versions WHERE contract_version_id = ?",
+        (version_id,),
+    ).fetchone()
+    return None if row is None else str(row[0])
 
 
 def _next_contract_version(
