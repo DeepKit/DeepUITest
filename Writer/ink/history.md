@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-07-07 Coverage gate 可视化
+
+**完成 tasks.md 第 6 项**：
+
+- `SourceWorkflowStore.list_coverage_gaps` 返回 gap/conflict 字段明细（field_path、status、scope、atomic_clause_id、evidence）
+- `_suggest_clauses_for_field` 按 field_path 顶层组匹配同 scope 的 atomic clause，最多 5 条
+- 新增 `CoverageGap` dataclass
+- CLI 新增 `coverage-gaps` 子命令（`--scope-type`/`--scope-id` 过滤），输出 `total_gaps` + `gaps` 数组
+- 新增 4 测试（store 2 + CLI 2）
+- 全量 320 离线 passed
+
+---
+
 ## 2026-07-07 Stale 传播自动触发
 
 **完成 tasks.md 第 5 项**：

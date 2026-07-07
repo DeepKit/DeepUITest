@@ -65,7 +65,7 @@
 3. ~~**推理模型 max_tokens 适配**~~ ✅ 已完成（`_is_reasoning_model` 自动注入 max_tokens=2000；`content` 空时回退 `reasoning_content`；`--llm-max-tokens` / `INK_LLM_MAX_TOKENS` 全局覆盖）
 4. **DecisionSession 并发控制**：多作者同时修订不同 scope 时的锁策略和冲突合并。
 5. ~~**Stale 传播自动触发**~~ ✅ 已完成（`confirm_and_apply(stale_manager=...)` 在 SAVEPOINT 释放后自动调用；CLI `confirm-contract` 默认接入，`--no-auto-stale` 可关闭）
-6. **Coverage gate 可视化**：CLI 输出未覆盖字段的明细和建议的 source clause。
+6. ~~**Coverage gate 可视化**~~ ✅ 已完成（`SourceWorkflowStore.list_coverage_gaps` + CLI `coverage-gaps` 子命令，返回 gap/conflict 字段明细 + 建议源条款）
 7. ~~**`init` 命令支持自定义模型池**~~ ✅ 已完成（`--writer-models`/`--jury-models` 逗号分隔，去重保序，默认池兜底）
 
 ### P2 可扩展性

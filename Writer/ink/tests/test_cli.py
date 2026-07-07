@@ -562,3 +562,52 @@ def test_cli_decision_session_select_nine_requires_regenerate(tmp_path: Path) ->
     assert option_set["regenerate_count"] == 1
     assert option_set["options"] == [{"label": "C"}, {"label": "D"}]
     assert option_set["recommended_option"] == 2
+
+
+def test_cli_coverage_gaps_lists_uncovered_fields_and_suggested_clauses(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "cov-demo", "--title", "Cov Demo"]) == 0
+
+    from ink.source_workflow import SourceWorkflowStore
+
+    conn = sqlite3.connect(db_path)
+    try:
+        store = SourceWorkflowStore(conn)
+        doc_id = store.register_source_document(
+            project_id=1, source_path="guide.md", source_kind="guide",
+            content_hash="h1",
+        )
+        clause_id = store.record_atomic_clause(
+            project_id=1, source_document_id=doc_id, scope_type="book", scope_id=None,
+            clause_type="plot", severity="hard", clause_text="主角必须登场。",
+            source_refs=["guide.md#L1"], source_hashes=["h1"], status="confirmed",
+        )
+        store.record_coverage(
+            project_id=1, contract_scope_type="book", contract_scope_id=None,
+            contract_field_path="must_land.protagonist", coverage_status="gap",
+            atomic_clause_id=clause_id, evidence={"reason": "missing"},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    payload = _run_and_capture([
+        "--db", str(db_path), "coverage-gaps", "--scope-type", "book",
+    ])
+    data = payload["data"]
+    assert data["total_gaps"] == 1
+    gap = data["gaps"][0]
+    assert gap["field_path"] == "must_land.protagonist"
+    assert gap["status"] == "gap"
+    assert gap["atomic_clause_id"] == clause_id
+    assert clause_id in gap["suggested_clause_ids"]
+
+
+def test_cli_coverage_gaps_empty_when_no_gaps(tmp_path: Path) -> None:
+    db_path = tmp_path / "ink.sqlite"
+    assert main(["--db", str(db_path), "init", "--code", "cov-empty", "--title", "Empty"]) == 0
+
+    payload = _run_and_capture(["--db", str(db_path), "coverage-gaps"])
+    data = payload["data"]
+    assert data["total_gaps"] == 0
+    assert data["gaps"] == []

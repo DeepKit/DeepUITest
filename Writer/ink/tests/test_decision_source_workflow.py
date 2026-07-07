@@ -461,3 +461,79 @@ def test_confirm_and_apply_rejects_non_awaiting_session() -> None:
             contract_payload={},
             source_hashes=[],
         )
+
+
+def test_list_coverage_gaps_returns_gap_detail_and_suggested_clauses() -> None:
+    """list_coverage_gaps 返回 gap 明细 + 建议源条款。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = SourceWorkflowStore(conn)
+
+    doc_id = store.register_source_document(
+        project_id=1, source_path="guide.md", source_kind="guide",
+        content_hash="h1",
+    )
+    # 两条同 scope 的 atomic clause，clause_type 含 "must_land"
+    clause_a = store.record_atomic_clause(
+        project_id=1, source_document_id=doc_id, scope_type="book", scope_id=None,
+        clause_type="plot", severity="hard", clause_text="主角必须登场。",
+        source_refs=["guide.md#L1"], source_hashes=["h1"], status="confirmed",
+    )
+    clause_b = store.record_atomic_clause(
+        project_id=1, source_document_id=doc_id, scope_type="book", scope_id=None,
+        clause_type="forbidden", severity="hard", clause_text="禁止反派视角。",
+        source_refs=["guide.md#L2"], source_hashes=["h1"], status="confirmed",
+    )
+    # 一个 gap（关联 clause_a）+ 一个 conflict
+    store.record_coverage(
+        project_id=1, contract_scope_type="book", contract_scope_id=None,
+        contract_field_path="must_land.protagonist", coverage_status="gap",
+        atomic_clause_id=clause_a, evidence={"reason": "missing"},
+    )
+    store.record_coverage(
+        project_id=1, contract_scope_type="book", contract_scope_id=None,
+        contract_field_path="anti_write.villain_pov", coverage_status="conflict",
+        evidence={"conflict": "two_sources"},
+    )
+    # 一个 covered，不应出现在结果里
+    store.record_coverage(
+        project_id=1, contract_scope_type="book", contract_scope_id=None,
+        contract_field_path="tone.dramatic", coverage_status="covered",
+    )
+
+    gaps = store.list_coverage_gaps(project_id=1, contract_scope_type="book")
+    assert len(gaps) == 2
+    # 按 field_path 排序：anti_write 在前
+    assert gaps[0].field_path == "anti_write.villain_pov"
+    assert gaps[0].status == "conflict"
+    assert gaps[1].field_path == "must_land.protagonist"
+    assert gaps[1].status == "gap"
+    assert gaps[1].atomic_clause_id == clause_a
+    # must_land 顶层组应优先匹配 clause_type LIKE %must_land% 的 clause_a
+    assert clause_a in gaps[1].suggested_clause_ids
+
+
+def test_list_coverage_gaps_filters_by_scope() -> None:
+    """scope 过滤：只返回指定 scope 的 gap。"""
+    conn = make_schema_db()
+    _insert_project(conn)
+    store = SourceWorkflowStore(conn)
+
+    store.record_coverage(
+        project_id=1, contract_scope_type="book", contract_scope_id=None,
+        contract_field_path="BookContract.logline", coverage_status="gap",
+    )
+    store.record_coverage(
+        project_id=1, contract_scope_type="chapter", contract_scope_id="5",
+        contract_field_path="ShotContract.scene", coverage_status="gap",
+    )
+
+    book_gaps = store.list_coverage_gaps(project_id=1, contract_scope_type="book")
+    assert len(book_gaps) == 1
+    assert book_gaps[0].scope_type == "book"
+
+    chapter_gaps = store.list_coverage_gaps(
+        project_id=1, contract_scope_type="chapter", contract_scope_id="5",
+    )
+    assert len(chapter_gaps) == 1
+    assert chapter_gaps[0].scope_id == "5"

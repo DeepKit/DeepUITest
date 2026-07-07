@@ -147,6 +147,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_dry_run(confirm_cmd)
     confirm_cmd.set_defaults(handler=_cmd_confirm_contract)
 
+    cov_cmd = subcommands.add_parser(
+        "coverage-gaps",
+        help="List uncovered/conflicting contract fields and suggested source clauses",
+    )
+    cov_cmd.add_argument("--scope-type", choices=("book", "volume", "part", "chapter", "shot"))
+    cov_cmd.add_argument("--scope-id", help="Scope id to filter (e.g. chapter id)")
+    cov_cmd.set_defaults(handler=_cmd_coverage_gaps)
+
     write_cmd = subcommands.add_parser("write")
     _add_chapter_run_args(write_cmd)
     _add_dry_run(write_cmd)
@@ -531,6 +539,34 @@ def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Names
             "affected_check_ids": list(sm.affected_check_ids),
         }
     return payload
+
+
+def _cmd_coverage_gaps(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    """列出未覆盖/冲突字段明细 + 建议源条款。"""
+    project_id = _project_id(conn, args)
+    store = SourceWorkflowStore(conn)
+    gaps = store.list_coverage_gaps(
+        project_id=project_id,
+        contract_scope_type=args.scope_type,
+        contract_scope_id=args.scope_id,
+    )
+    return {
+        "project_id": project_id,
+        "total_gaps": len(gaps),
+        "gaps": [
+            {
+                "coverage_id": g.coverage_id,
+                "scope_type": g.scope_type,
+                "scope_id": g.scope_id,
+                "field_path": g.field_path,
+                "status": g.status,
+                "atomic_clause_id": g.atomic_clause_id,
+                "suggested_clause_ids": list(g.suggested_clause_ids),
+                "evidence": g.evidence,
+            }
+            for g in gaps
+        ],
+    }
 
 
 def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
