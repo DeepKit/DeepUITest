@@ -1,9 +1,123 @@
 # InkFlow v2 历史任务归档
 
 > **用途**：记录已经完成并验证的任务，保持 `tasks.md` 只呈现当前待办。
-> **最后更新**：2026-07-06
+> **最后更新**：2026-07-07
 
 ---
+
+## 2026-07-07 接入 iFLYTEK Coding Plan 真实 LLM
+
+**里程碑**：InkFlow 首次跑通真实 LLM provider，14 个讯飞模型全部可达。
+
+新增：
+- `tests/test_iflytek_integration.py`（5 测试：连通性 + Gateway + 子句抽取；无 `IFLYTEK_API_KEY` 时 skip）
+- `docs/iflytek-model-config.md`（模型分类、推荐池配置、已知限制）
+- `.env.iflytek.example`（环境变量模板）
+
+验证结论：
+- 端点 `https://maas-coding-api.cn-huabei-1.xf-yun.com/v2`，鉴权用整串 `appId:apiKey` 作 Bearer token
+- 14/14 模型可达：11 标准模型直接产 content，3 推理模型（MiniMax-M2.5 / Spark-X2 / Spark-X2-Flash）需 `max_tokens≥500`
+- `OpenAICompatibleProvider` + `LLMGateway.call()` + `LLMExtractionAdapter` 全链路通过
+- 全量 298 测试（295 离线 + 4 联网通过 + 1 联网 skip）
+
+修复：
+- `tests/test_debug_view.py::TestStaleChain` fixture 重复插入 project_id=1 导致 UNIQUE 冲突，移除冗余 `_insert_project` 调用
+
+验证命令：
+
+```bash
+# 离线全量
+cd ink && python -m pytest -p no:rtk --ignore=tests/test_iflytek_integration.py
+# 联网集成（需真实 API key）
+set IFLYTEK_API_KEY=<appId:apiKey整串>
+cd ink && python -m pytest tests/test_iflytek_integration.py -v -p no:rtk
+```
+
+---
+
+## 2026-07-06 完成 6 项架构增强（Task #21-#26）
+
+验证命令：
+
+```bash
+cd ink && python -m compileall -q src tests
+cd ink && python -m pytest tests/ -o "addopts="
+```
+
+最近一次验收结果：
+
+- 全量测试：`295 passed`（257 基线 + 38 新增）
+- Schema：51 tables, 62 indexes, 2 triggers, 1 view
+
+### 已完成：Task #21 专家模式可展开审计
+
+- `src/ink/debug_view.py`：实现 `DebugView` 类和 4 个审计视图 dataclass（`SessionAudit` / `ContractTimelineEntry` / `ShotTrace` / `StaleChain`）。
+- 4 个查询方法：
+  - `show_session_audit(session_id)`：聚合 session 事件 + patches + contract versions。
+  - `show_contract_timeline(project_id, scope_type, scope_id)`：聚合版本事件 + session 事件为时间线。
+  - `show_shot_full_trace(shot_id)`：追踪 shot 的 prompt → draft → review → runtime events。
+  - `show_stale_chain(project_id)`：查询所有 stale 标记的传播链。
+- CLI `debug` 子命令组：`audit` / `timeline` / `trace` / `stale`，handler 输出 JSON envelope。
+- 测试：`tests/test_debug_view.py` +6（session audit、contract timeline、shot trace、stale chain）。
+
+### 已完成：Task #22 强事件溯源（轻量 append-only event log）
+
+- `sql/schema.sql` 新增 2 张表：
+  - `writing_decision_session_events`：session 级事件（created/ai_parsed/option_set_created/option_selected/confirmed/cancelled/stale）。
+  - `writing_contract_version_events`：版本级事件（created/confirmed/locked/superseded/stale）。
+- `src/ink/event_log.py`：实现 `EventLog` 类，提供 `log_session_event` / `log_version_event` / `replay_session` / `replay_version` / `latest_session_event` / `count_*` 方法。
+- `src/ink/decision_sessions.py` 集成：在 `start()` / `record_ai_parse()` / `create_option_set()` / `select_option()` / `confirm_and_apply()` 中追加 event log 写入（不改现有 UPDATE 逻辑）。
+- 修复 `_load_session_for_confirm` 缺少 `scope_type` / `scope_id` 列，导致 `confirm_and_apply` KeyError。
+- 测试：`tests/test_event_log.py` +13（session events、version events、validation、counts）。
+
+### 已完成：Task #23 接入真实 LLM Gateway
+
+- `src/ink/source_normalizer.py` 新增 `LLMExtractionAdapter`：
+  - 接收 `LLMGateway`，构造抽取 prompt，解析 LLM 返回的 JSON 数组。
+  - 支持 markdown 代码块剥离、回退 JSON 数组提取、字段规范化。
+  - `__call__(content, filename)` 签名兼容 `SourceNormalizer.extraction_fn`。
+- `sql/schema.sql`：`writing_ai_call_attempts.call_type` CHECK 新增 `'source_extraction'`。
+- 测试：`tests/test_llm_integration.py` +8（响应解析、markdown 剥离、gateway 调用、集成到 SourceNormalizer）。
+- Fixture：`tests/fixtures/llm_extraction_response.json`。
+
+### 已完成：Task #24 真实写作指南目录
+
+- 新增 3 个 fixture 文件，覆盖全部 source_kind：
+  - `tests/fixtures/sample_guides/world_setting.md`（world kind）
+  - `tests/fixtures/sample_guides/process_scratch.md`（process_scratch kind）
+  - `tests/fixtures/sample_guides/style_reference.txt`（other kind）
+- 目录现在 6 个文件，覆盖 guide/outline/character/world/process_scratch/other 全部 6 种 source_kind。
+- E2E 测试 `registered_source_ids >= 2` 断言仍通过。
+
+### 已完成：Task #25 volume/part 层级精确化
+
+- `sql/schema.sql`：
+  - `writing_shots` 新增 `volume_id TEXT` / `part_id TEXT` 列。
+  - `writing_chapter_specs` 新增 `volume_id TEXT` / `part_id TEXT` 列。
+  - 新增索引 `idx_shots_volume` / `idx_shots_part`。
+- `src/ink/stale_propagation.py`：
+  - 新增 `_find_chapters_in_volume()` / `_find_chapters_in_part()`：精确查询 `writing_shots.volume_id/part_id`。
+  - 新增 `_mark_prompts_for_chapters()` / `_mark_drafts_for_chapters()` / `_mark_reviews_for_chapters()`（plural）：遍历多章调用单章标记方法。
+  - volume/part scope 不再退化为全部，按 volume_id/part_id 精确筛选。
+- 测试：`tests/test_stale_propagation.py` 更新 volume/part 测试（精确筛选 + 无匹配返回空 + book_check 全书级标记）。
+
+### 已完成：Task #26 ShotContract 字段 schema 扩展
+
+- `src/ink/contract/fields.py`：
+  - `CONTRACT_FIELD_SCHEMAS` 新增 `"shot"` 键，对齐 5 张结构化子表：
+    - `must_land`：events / beats / information_releases
+    - `anti_write`：forbidden_facts / forbidden_words / pov_only
+    - `scene_contract`：location / time_of_day / characters_present / character_positions
+    - `persona`：persona / intensity / is_creative_shot / is_suspense_shot
+    - `soft_constraints`：relaxable_rules / deviation_budget
+  - 更新模块文档。
+- 测试：`tests/test_contract_field_projection.py` +9（5 子表路径校验、payload 校验、未知字段拒绝）。
+
+### 关键成果
+
+- **全量测试**：295 passed（257 基线 + 38 新增）
+- **Schema 扩展**：49 → 51 表，58 → 62 索引
+- **6 项架构增强全部完成**：事件溯源、专家审计、LLM Gateway、volume/part 精确化、Shot 字段、真实指南目录
 
 ## 2026-07-06 完成 P1 DecisionSession/source coverage 持久化基础层
 
@@ -429,3 +543,126 @@ python -m compileall -q src tests
   3. 过程文件清空后，已抽取的 atomic clauses 与 coverage gap 仍存在，gate 仍阻断；resolve 后放行。
 - 防回归点：抽取器 conflict 写入与 coverage gate 阻断查询的协同；清空执行器不污染已抽取条款；confirm 审计链记录 gate 检查痕迹。
 - 全量 139 passed。
+
+### 已完成：Task #9 自然语言到契约 patch（厚应用层 + JSON-Patch）
+
+- `ContractPatchEngine` 厚应用层核心，实现 6 步校验流水线：
+  0. **形态校验**（`validate_patch_shape`）：在 `record_ai_parse` 时提前拒绝格式非法 patch。
+  1. **Schema 白名单校验**：严格校验 patch 的每个 path 是否在 scope_type 的白名单内。
+  2. **Intra-conflict 检测**：同 patch 多个 op 改同 path → 报错。
+  3. **加载 base contract**：从 `writing_contract_versions` 加载最新 confirmed/locked 版本。
+  4. **应用 patch**：调 `apply_patch` 把 JSON-Patch 应用到 base payload。
+  5. **必填字段检查**：确认新 payload 包含 scope 的所有必填字段。
+  6. **回读一致性校验**（可选）：调 `ReadbackVerifier` 比对 readback 与 patch 语义一致性。
+- RFC 6902 JSON-Patch 子集（`src/ink/contract/jsonpatch.py`）：支持 `add`/`remove`/`replace`/`move` 四操作，点分路径（如 `identity.title`，不用 `/` 前缀）。纯标准库实现。
+- 层级契约字段 schema（`src/ink/contract/fields.py`）：定义 Book/Volume/Part/ChapterContract 的字段路径、类型、必填。严格白名单语义，对齐 `docs/implementation-contract-v1.md:2015-2018`。
+- `ReadbackVerifier` 协议 + `LLMReadbackVerifier` 默认实现：调 `LLMGateway` 比对 readback 与 patch 语义一致性，仅输出 `true`/`false`。测试用 `_ScriptedReadbackVerifier` mock。
+- `decision_sessions.py` 集成：
+  - `record_ai_parse` 新增 `patch_engine` 参数，传入时调 `validate_patch_shape` 提前拒绝非法 patch。
+  - `confirm_and_apply` 新增 `patch_engine` 参数，传入时自动派生 `contract_payload`（不要求调用方传），并在同一 SAVEPOINT 内更新 coverage matrix。
+  - `_load_session_for_confirm` 扩展返回 `readback_text` 和 `source_hashes_json`，供 patch_engine 使用。
+- `source_workflow.py` 新增 `update_coverage_for_patch`：批量把指定 field_paths 的 coverage 置 `covered`。
+- 测试：`test_jsonpatch.py` +16（apply_patch 四操作边界 + patch_paths）；`test_contract_patch_engine.py` +35（形态校验、schema 白名单、intra-conflict、必填字段、6 步流水线、集成测试）。全量 190 passed。
+
+## 2026-07-06 完成主编台产品化全链路（Task #15-#20）
+
+验证命令：
+
+```bash
+cd ink && python -m pytest tests/ -o "addopts="
+```
+
+最近一次验收结果：
+
+- 全量测试：`257 passed`（190 基线 + 67 新增）
+
+### 已完成：Task #15 WorkflowConductor 薄调度状态机
+
+- `src/ink/workflow_conductor.py`：实现 5 角色调度层（DecisionSessionHost / ContractSteward / Gatekeeper / CanonicalKeeper / AuditLedger）。
+- `WorkflowConductor.step()` 状态机：`collecting → ai_parsed → awaiting_confirm → confirmed`，根据状态自动选择下一步角色方法。
+- 角色职责分离：
+  - `DecisionSessionHost.parse()`：解析 human_text 为 JSON-Patch（mock 模式或 LLM 模式）。
+  - `ContractSteward.apply()`：写契约版本、patch、changelog，自动派生 contract_payload。
+  - `Gatekeeper.validate()`：校验 schema、coverage gate、stale 状态。
+  - `AuditLedger.record_event()`：追加审计记录到 `writing_runtime_events`。
+- 测试：`test_workflow_conductor.py` +12（状态机推进、角色调度、审计记录）。
+
+### 已完成：Task #16 ScopedDecisionSession 多作用域修订
+
+- `src/ink/scoped_sessions.py`：实现 `ScopedDecisionPatch` dataclass 和 `ScopedDecisionSessionStore`。
+- `start_scoped()`：启动带作用域的修订会话，支持 `parent_decision_session_id` 关联父会话。
+- `record_affected_scopes()`：记录 `affected_scopes_json` 和 `stale_downstream_json` 到 `writing_contract_patches`。
+- `create_scoped_decision_patch()`：辅助方法，构造 `ScopedDecisionPatch` 实例。
+- 测试：`test_scoped_sessions.py` +6（多作用域启动、affected_scopes 记录、stale_downstream 记录）。
+
+### 已完成：Task #17 契约字段投影集成
+
+- `src/ink/contract/fields.py` 新增：
+  - `validate_contract_payload(scope_type, payload)`：校验 payload 是否符合 schema，返回错误列表。
+  - `extract_field_paths_from_payload(scope_type, payload)`：提取所有已定义的字段路径（用于追踪）。
+- 集成到 `DecisionSessionStore.confirm_and_apply`：确认后调 `validate_contract_payload` 校验，不合规抛 `ContractPatchError`。
+- 测试：`test_contract_field_projection.py` +13（payload 校验、字段路径提取、集成测试）。
+
+### 已完成：Task #18 stale 传播实现
+
+- `sql/schema.sql` 新增 `is_stale INTEGER NOT NULL DEFAULT 0` 字段：
+  - `writing_prompt_snapshots`
+  - `writing_drafts`
+  - `writing_chapter_reviews`
+  - `writing_book_check_results`
+- `src/ink/stale_propagation.py`：实现 `StalePropagationManager` 和 `StaleMarkResult` dataclass。
+- 传播矩阵：
+  - `book` scope → 全部 prompt/draft/review/book_check
+  - `volume` / `part` scope → 当前 schema 无分组列，退化为全部
+  - `chapter` scope → 本章 prompt/draft/review + 全部 book_check
+  - `source` 变化 → 通过 contract patches 关联的 decision sessions 传播
+- `check_stale(shot_id)`：查询某 shot 是否 stale（用于 gate 阻断）。
+- 标记幂等：重复调用不会重复计数。
+- 测试：`test_stale_propagation.py` +14（book/chapter/volume/part scope、source 变化、check_stale 查询）。
+
+### 已完成：Task #19 源文档规范化算法
+
+- `src/ink/source_normalizer.py`：实现 `SourceNormalizer` 和相关 dataclass（`NormalizeResult` / `Conflict` / `ConflictQuestion`）。
+- `normalize_source_directory()`：
+  - 遍历目录中的 `.md` / `.txt` 文件
+  - 计算 `content_hash`（SHA-256）
+  - 推断 `source_kind`（从文件名关键词）
+  - 注册为 `writing_source_documents`
+  - 调用抽取器生成原子条款（默认规则抽取器或注入自定义抽取器）
+  - 记录抽取运行到 `writing_source_extraction_runs`
+- `merge_and_deduplicate()`：同 source_document 内 `clause_text` 完全相同的条款去重，保留最先出现的，其余标记为 `superseded`。
+- `detect_conflicts()`：简化规则（同 scope + type + severity=hard 超过 1 条 → 标记冲突）。
+- `generate_conflict_questions()`：为每个冲突生成 1 个 `DecisionSession`，4 个选项（保留 A / 保留 B / 合并 / 删除）。
+- 测试：`test_source_normalizer.py` +17（目录读取、kind 推断、抽取、去重、冲突检测、选择题生成）。
+
+### 已完成：Task #20 前 6 章端到端验收
+
+- `tests/fixtures/sample_guides/`：创建测试用写作指南目录（`writing_guide.md` / `character_bible.md` / `outline_ch1-6.md`）。
+- `tests/test_e2e_six_chapters.py`：5 个端到端集成测试：
+  1. `test_full_pipeline`：完整流水线（注册 → 抽取 → 冲突检测 → 选择 → 确认 → 下游写入）。
+  2. `test_stale_propagation_after_contract_change`：契约变更后标记下游 stale。
+  3. `test_recovery_point`：模拟崩溃后恢复（从 DB 读取状态）。
+  4. `test_interaction_burden`：验证交互负担（DecisionSession 数量 ≤ 预期）。
+  5. `test_coverage_gate`：验证 coverage gate 阻断与解除。
+- 验证点：
+  - 源文档注册 + 原子条款抽取
+  - 冲突检测 + 选择题生成 + 用户选择模拟
+  - WorkflowConductor 状态机推进到 `confirmed`
+  - 6 章的 prompt/draft/review 全部写入
+  - 契约版本创建
+  - stale 传播标记
+  - 恢复点验证
+  - 交互负担 ≤ 3 个 session
+  - coverage gate 阻断与解除
+
+### 关键成果
+
+- **全量测试**：257 passed（190 基线 + 67 新增）
+- **主编台产品化全链路完成**：
+  - WorkflowConductor 薄调度（5 角色）
+  - ScopedDecisionSession 多作用域修订
+  - 契约字段投影校验
+  - stale 传播矩阵
+  - 源文档规范化算法
+  - 前 6 章端到端验收
+- **P1 任务全部完成**：所有计划内的 P1 产品化任务已实现并验证。

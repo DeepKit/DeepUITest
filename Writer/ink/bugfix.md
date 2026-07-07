@@ -1,11 +1,188 @@
 # InkFlow v2 Bugfix 记录
 
 > **用途**：记录开发中发现的缺陷、根因、修复和防回归测试。
-> **最后更新**：2026-07-06
+> **最后更新**：2026-07-07
 
 ---
 
-## 2026-07-06
+## 2026-07-07（iFLYTEK 真实 LLM 接入阶段）
+
+### BFX-024 iFLYTEK API 401 Unauthorized（鉴权格式错误）
+
+- **现象**：用 `apiKey`（冒号后半段）作 Bearer token，返回 `401 Unauthorized`。
+- **根因**：iFLYTEK MaaS Coding API 要求 Bearer token 是**整串 `appId:apiKey`**，不是只用 apiKey 部分。
+- **修复**：所有调用改用 `Authorization: Bearer 83e14cca3d4042e045c62358f11ffdfa:ZmFkMzNhMWVkOTY0NzYyYmZjZWFmYjFl`。
+- **防回归**：`tests/test_iflytek_integration.py` 的连通性测试隐式验证鉴权。
+
+### BFX-025 iFLYTEK API 404（路径前缀错误）
+
+- **现象**：用 `/v1/chat/completions` 返回 404。
+- **根因**：iFLYTEK 端点前缀是 `/v2`，不是 OpenAI 默认的 `/v1`。
+- **修复**：`base_url` 用 `https://maas-coding-api.cn-huabei-1.xf-yun.com/v2`，`OpenAICompatibleProvider` 自动拼 `/chat/completions`。
+
+### BFX-026 推理模型 content 为空（max_tokens 不足）
+
+- **现象**：`xminimaxm25` / `xsparkx2` / `xsparkx2flash` 在 `max_tokens=100` 时 `content` 为空，只有 `reasoning_content`。
+- **根因**：推理模型先把 token 预算花在思维链上，剩余预算不足以产出可见 content。
+- **修复**：推理模型需 `max_tokens≥500`。当前 `OpenAICompatibleProvider` 不传 `max_tokens`（依赖模型默认值），标准模型正常；推理模型在池中慎用，待 tasks.md 第 3 项适配。
+- **防回归**：`test_reasoning_models_reachable` 用 `_BoundedMaxTokensProvider` 注入 `max_tokens=500`。
+
+### BFX-027 iFLYTEK API 503 限流（code:10310）
+
+- **现象**：连续高频调用返回 `503 {"error":{"code":10310,"message":"The system is busy"}}`。
+- **根因**：套餐有并发/频率限制，批量调用需间隔。
+- **修复**：批量测试加 `time.sleep(2-5)`，重试 3 次（每次用新 idempotency key），仍失败则 `pytest.skip`。
+- **防回归**：`test_all_standard_models_reachable` / `test_reasoning_models_reachable` 内置重试 + skip。
+
+### BFX-028 writing_ai_call_attempts UNIQUE 约束冲突（重试时 key 复用）
+
+- **现象**：503 重试时，`LLMGateway.call()` 在 HTTP 调用前 INSERT `writing_ai_call_attempts(idempotency_key=...)`，同一 key 二次 INSERT 触发 UNIQUE 冲突。
+- **根因**：`LLMGateway.call()` 先写 DB 再发 HTTP，重试时 key 必须变更。
+- **修复**：测试重试时用 `f"iflytek-std-{model_id}-{attempt}"`（含 attempt 序号）生成新 key。
+- **防回归**：上述重试逻辑覆盖。
+
+### BFX-029 TestStaleChain fixture 重复插入 project（UNIQUE 冲突）
+
+- **现象**：`tests/test_debug_view.py::TestStaleChain` fixture 同时调用 `_insert_project(c)` 和 `insert_minimal_draft(c)`，后者也插 `project_id=1`，触发 `sqlite3.IntegrityError: UNIQUE constraint failed: writing_projects.project_id`。
+- **根因**：`insert_minimal_draft` 已自带 project 插入，fixture 又额外插一次。
+- **修复**：移除 `TestStaleChain` fixture 中的 `_insert_project(c)` 调用，依赖 `insert_minimal_draft` 建 project。
+- **防回归**：`test_no_stale` / `test_stale_after_book_change` 重新通过。
+
+---
+
+## 2026-07-06（架构增强阶段）
+
+### BFX-016 _find_chapters_in_volume/_find_chapters_in_part 方法缺失
+
+- **现象**：`StalePropagationManager.mark_stale_after_contract_change()` 在 volume/part scope 分支调用 `self._find_chapters_in_volume()` / `self._find_chapters_in_part()`，触发 `AttributeError: 'StalePropagationManager' object has no attribute '_find_chapters_in_volume'`。
+- **根因**：之前文件重写时丢失了这两个方法；volume/part 代码分支调用了不存在的方法。
+- **修复**：重新添加两个方法，查询 `writing_shots.volume_id` / `writing_shots.part_id`。
+- **防回归**：`tests/test_stale_propagation.py::TestVolumePartScopeStale` 全部通过。
+
+### BFX-017 _mark_*_for_chapters（plural）方法缺失
+
+- **现象**：volume/part scope 调用 `self._mark_prompts_for_chapters(chapter_ids)` 触发 `AttributeError: 'StalePropagationManager' object has no attribute '_mark_prompts_for_chapters'`。
+- **根因**：只有单数版 `_mark_prompts_for_chapter(project_id, chapter_id)` 存在，volume/part 需要批量标记多章，但没有 plural 版方法。
+- **修复**：添加 `_mark_prompts_for_chapters()` / `_mark_drafts_for_chapters()` / `_mark_reviews_for_chapters()`，内部遍历 chapter_ids 调用单数版。
+- **防回归**：`tests/test_stale_propagation.py::TestVolumePartScopeStale` 全部通过。
+
+### BFX-018 _load_session_for_confirm 缺少 scope_type/scope_id 导致 KeyError
+
+- **现象**：`DecisionSessionStore.confirm_and_apply()` 读取 `session["scope_type"]` 触发 `KeyError: 'scope_type'`。
+- **根因**：`_load_session_for_confirm()` 的 SELECT 和返回字典只包含 4 个字段，没有 `scope_type` / `scope_id`。
+- **修复**：扩展 `_load_session_for_confirm` 的 SELECT 语句和返回字典，包含 `scope_type` 和 `scope_id`。
+- **防回归**：所有涉及 `confirm_and_apply` 的测试通过（13 个测试之前因 KeyError 失败）。
+
+### BFX-019 writing_ai_call_attempts.call_type CHECK 不包含 'source_extraction'
+
+- **现象**：`LLMExtractionAdapter.__call__()` 调用 `LLMGateway.call(call_type='source_extraction', ...)` 触发 `CHECK constraint failed: call_type IN (...)`。
+- **根因**：`writing_ai_call_attempts.call_type` 的 CHECK 约束只列出原有 11 种 call_type，没有 `source_extraction`。
+- **修复**：DDL 中 CHECK 新增 `'source_extraction'`。
+- **防回归**：`tests/test_llm_integration.py` 全部通过。
+
+### BFX-020 ** 解包与三元运算符语法错误
+
+- **现象**：`debug_view.py` 中 `**json.loads(str(row[2])) if row[2] else {}` 触发 `SyntaxError: invalid syntax`。
+- **根因**：Python 不允许 `**expr if cond else default` 这种形式，三元运算符优先级低于 `**` 解包。
+- **修复**：加括号 `**(json.loads(str(row[2])) if row[2] else {})`。
+- **防回归**：语法错误在编译期被捕获；`python -m compileall` 通过。
+
+### BFX-021 writing_runtime_events 列名错误
+
+- **现象**：`DebugView.show_shot_full_trace()` 查询 `writing_runtime_events.payload_json` 触发 `sqlite3.OperationalError: no such column: payload_json`。
+- **根因**：该表的 JSON 列名为 `event_payload`，不是 `payload_json`。
+- **修复**：SELECT 和解析改为 `event_payload`。
+- **防回归**：`tests/test_debug_view.py::TestShotTrace` 全部通过。
+
+### BFX-022 ModelResult 字段名错误
+
+- **现象**：`_ScriptedProvider` 构造 `ModelResult(tokens_used=42, ...)` 触发 `TypeError: __init__ got an unexpected keyword argument 'tokens_used'`。
+- **根因**：`ModelResult` 使用 `token_input` / `token_output`，不是 `tokens_used`。
+- **修复**：测试改为 `token_input=10, token_output=32`。
+- **防回归**：`tests/test_llm_integration.py` 全部通过。
+
+### BFX-023 writing_chapter_reviews 无 created_at 列
+
+- **现象**：`DebugView.show_stale_chain()` 查询 `writing_chapter_reviews.created_at` 触发 `sqlite3.OperationalError: no such column: created_at`。
+- **根因**：该表的时间列名为 `reviewed_at`，不是通用的 `created_at`。
+- **修复**：SELECT 和输出字段改为 `reviewed_at`。
+- **防回归**：`tests/test_debug_view.py::TestStaleChain` 全部通过。
+
+---
+
+## 2026-07-06（主编台产品化阶段）
+
+### BFX-011 StalePropagationManager frozen dataclass 赋值错误
+
+- **现象**：`StalePropagationManager.mark_stale_after_contract_change()` 返回 `StaleMarkResult` 时，尝试给 `result.affected_prompt_ids` 赋值，触发 `FrozenInstanceError: cannot assign to field`。
+- **根因**：`@dataclass(frozen=True)` 创建的 dataclass 字段不可变，但代码中需要动态构建列表并赋值。
+- **修复**：`StaleMarkResult` 改为 `@dataclass`（移除 `frozen=True`）。
+- **防回归**：`tests/test_stale_propagation.py` 全部通过。
+
+### BFX-012 extractor_slot 违反 CHECK 约束
+
+- **现象**：`SourceNormalizer.normalize_source_directory()` 调用 `record_extraction_run()` 时传入 `extractor_slot="default"`，触发 `CHECK constraint failed: extractor_slot IN ('primary','crosscheck')`。
+- **根因**：`writing_source_extraction_runs.extractor_slot` DDL 约束只允许 `'primary'` 或 `'crosscheck'`，代码使用了不存在的 `'default'`。
+- **修复**：改为 `extractor_slot="primary"`。
+- **防回归**：`tests/test_source_normalizer.py` 全部通过。
+
+### BFX-013 writing_contract_patches 无 scope_type 列
+
+- **现象**：`StalePropagationManager.mark_stale_after_source_change()` 查询 `writing_contract_patches` 时 SELECT `scope_type, scope_id`，触发 `sqlite3.OperationalError: no such column: scope_type`。
+- **根因**：`writing_contract_patches` 表只存 `decision_session_id`，不直接存 `scope_type/scope_id`；需要通过 JOIN `writing_decision_sessions` 获取。
+- **修复**：查询改为 `JOIN writing_decision_sessions ds ON ds.decision_session_id = cp.decision_session_id`，SELECT `ds.scope_type, ds.scope_id`。
+- **防回归**：`tests/test_stale_propagation.py::TestSourceChangeStale` 全部通过。
+
+### BFX-014 WorkflowConductor.step() 返回值类型错误
+
+- **现象**：端到端测试中用 `result["next_action"]` 访问返回值，触发 `TypeError: 'WorkflowStep' object is not subscriptable`。
+- **根因**：`WorkflowConductor.step()` 返回 `WorkflowStep` dataclass，不是 dict；应该用 `result.next_action` 访问。
+- **修复**：测试代码改为 `result1.next_action`。
+- **防回归**：`tests/test_e2e_six_chapters.py` 全部通过。
+
+### BFX-015 WorkflowConductor.step() 缺少 human_text 参数
+
+- **现象**：端到端测试调用 `conductor.step(project_id=1, session_id=session_id)` 后，session 状态仍为 `collecting`，未推进到 `awaiting_confirm`。
+- **根因**：`step()` 在 `status == "collecting"` 时检查 `human_text is None`，如果为 None 则返回 `wait_for_input` 而不推进状态；必须传入 `human_text` 才能触发解析。
+- **修复**：测试改为 `conductor.step(project_id=1, session_id=session_id, human_text="封全书基线契约")`。
+- **防回归**：`tests/test_e2e_six_chapters.py::test_full_pipeline` 和 `test_recovery_point` 通过。
+
+### BFX-010 ContractPatchEngine 开发中发现的缺陷
+
+#### BFX-010a 测试辅助函数 _insert_project 违反 CHECK 约束
+
+- **现象**：`test_contract_patch_engine.py` 的 `_insert_project` 用 `'["a"]'` 和 `'["b"]'` 写 `writer_model_pool` 和 `jury_model_pool`，触发 `CHECK constraint failed: json_array_length(writer_model_pool) >= draft_count`。
+- **根因**：未复用 `test_decision_source_workflow.py` 中已有的正确格式（`'["writer-a","writer-b","writer-c"]'`），假设数组长度 ≥ 1 即可。
+- **修复**：改用 3 个 writer + 5 个 judge 的标准格式。
+- **防回归**：所有新测试通过。
+
+#### BFX-010b regex 不匹配实际错误消息
+
+- **现象**：`test_rejects_unsupported_op` 的 `match="unsupported op"` 不匹配实际消息 `"op #0 has unsupported or missing op: 'copy'"`。
+- **根因**：`validate_patch_shape` 的错误消息更精确（包含 "or missing"），测试 regex 未同步。
+- **修复**：regex 改为 `"unsupported or missing op"`。
+- **防回归**：`test_contract_patch_engine.py::TestValidatePatchShape::test_rejects_unsupported_op`。
+
+#### BFX-010c intra-conflict 检测使用去重后的路径列表
+
+- **现象**：`_check_intra_patch_conflicts` 用 `patch_paths(patch)` 返回去重后的列表，导致 `len(paths) != len(set(paths))` 永远为 False，冲突检测失效。
+- **根因**：`patch_paths` 的设计意图是提取所有影响的 path 用于 coverage 更新，天然去重；冲突检测需要统计每个 path 的出现次数。
+- **修复**：改为直接统计 `path_counts`，重复则报错。
+- **防回归**：`test_contract_patch_engine.py::TestIntraPatchConflicts::test_duplicate_path_raises`。
+
+#### BFX-010d _load_session_for_confirm 缺少 readback_text 和 source_hashes_json
+
+- **现象**：`confirm_and_apply` 在 patch_engine 模式下读取 `session["readback_text"]` 和 `session["source_hashes_json"]`，但 `_load_session_for_confirm` 只返回 4 个字段，导致 KeyError 或空字符串。
+- **根因**：原有代码只需 `parsed_patch_json`，新增 patch_engine 模式后需要 readback 和 source_hashes 但未更新 SQL 查询。
+- **修复**：`_load_session_for_confirm` 扩展 SELECT 和返回字典，包含 `readback_text` 和 `source_hashes_json`。
+- **防回归**：`test_contract_patch_engine.py::TestIntegrationWithDecisionSession::test_confirm_and_apply_with_patch_engine_full_audit`。
+
+#### BFX-010e _load_session_for_confirm 返回字典时多余闭合括号
+
+- **现象**：编辑 `_load_session_for_confirm` 添加新字段后，第 562 行有多余的 `}`，导致 `SyntaxError: unmatched '}'`。
+- **根因**：复制粘贴时没有注意到原代码末尾已有字典闭合括号，重复添加。
+- **修复**：删除多余的 `}`。
+- **防回归**：所有测试通过（语法错误在编译期就会被捕获）。
 
 ### BFX-009 DecisionSession active 唯一索引误含 status
 
