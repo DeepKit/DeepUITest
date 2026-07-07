@@ -64,14 +64,18 @@
 
 ### 配置方式
 
-`init` 命令当前硬编码默认池，需通过 SQL 更新：
+`ink init` 支持 `--writer-models` / `--jury-models`（逗号分隔，自动去重保序）：
 
-```sql
-UPDATE writing_projects
-SET writer_model_pool = '["xopglm51","xopdeepseekv4pro","xopkimik26"]',
-    jury_model_pool = '["xopglm51","xopdeepseekv4pro","xopqwen36v35b","xopkimik26","xopqwen35397b"]'
-WHERE code = '<your-project-code>';
+```bash
+ink --db ink.sqlite init \
+    --code my-novel --title "My Novel" \
+    --writer-models xopglm51,xopdeepseekv4pro,xopkimik26 \
+    --jury-models xopglm51,xopdeepseekv4pro,xopqwen36v35b,xopkimik26,xopqwen35397b
 ```
+
+不传时回落到默认池 `["writer-a","writer-b","writer-c"]` / `["judge-a",...]`。
+
+> **DB CHECK 约束**：`writer_model_pool` 数量须 ≥ `draft_count`（默认 3），`jury_model_pool` 数量须 ≥ `jury_model_pool_min`（默认 3）。自定义池不满足时 INSERT 会抛 CHECK 失败。
 
 ## 4. 运行时调用
 

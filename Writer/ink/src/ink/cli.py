@@ -25,6 +25,7 @@ from ink.pipeline.resume_handlers import build_non_shot_resume_handlers, build_s
 from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.schema import initialize_schema
+from ink.source_workflow import SourceWorkflowStore
 from ink.time import now_utc_iso
 
 
@@ -71,6 +72,16 @@ def build_parser() -> argparse.ArgumentParser:
     init_cmd = subcommands.add_parser("init")
     init_cmd.add_argument("--code", required=True)
     init_cmd.add_argument("--title", required=True)
+    init_cmd.add_argument(
+        "--writer-models",
+        help="Comma-separated writer model IDs (writer_model_pool); "
+        "default: writer-a,writer-b,writer-c",
+    )
+    init_cmd.add_argument(
+        "--jury-models",
+        help="Comma-separated jury model IDs (jury_model_pool); "
+        "default: judge-a,judge-b,judge-c,judge-d,judge-e",
+    )
     init_cmd.set_defaults(handler=_cmd_init)
 
     setup_cmd = subcommands.add_parser("setup")
@@ -117,6 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
     confirm_cmd.add_argument("--contract-json", help="Confirmed contract payload JSON for DecisionSession confirmation")
     confirm_cmd.add_argument("--source-clause-ids", help="Comma-separated atomic source clause ids backing this contract")
     confirm_cmd.add_argument("--source-hashes", help="Comma-separated source hashes backing this contract")
+    confirm_cmd.add_argument(
+        "--skip-coverage-gate",
+        action="store_true",
+        help="Skip source coverage gate check (only with --decision-session-id; blocking gaps still block by default)",
+    )
     _add_dry_run(confirm_cmd)
     confirm_cmd.set_defaults(handler=_cmd_confirm_contract)
 
@@ -171,7 +187,91 @@ def build_parser() -> argparse.ArgumentParser:
     export_cmd.add_argument("--output")
     _add_dry_run(export_cmd)
     export_cmd.set_defaults(handler=_cmd_export)
+
+    _add_decision_session_subcommands(subcommands)
+    _add_debug_subcommands(subcommands)
     return parser
+
+
+def _add_debug_subcommands(subcommands: argparse._SubParsersAction) -> None:
+    """专家模式可展开审计：debug audit / timeline / trace / stale。"""
+    from ink.debug_view import DebugView
+
+    dbg_cmd = subcommands.add_parser("debug", help="专家模式审计视图")
+    dbg_sub = dbg_cmd.add_subparsers(dest="debug_action", required=True)
+
+    audit = dbg_sub.add_parser("audit", help="Session 审计聚合")
+    audit.add_argument("--session-id", type=int, required=True)
+    audit.set_defaults(handler=_cmd_debug_audit)
+
+    timeline = dbg_sub.add_parser("timeline", help="契约版本时间线")
+    timeline.add_argument("--project-id", type=int, required=True)
+    timeline.add_argument("--scope-type", required=True)
+    timeline.add_argument("--scope-id")
+    timeline.set_defaults(handler=_cmd_debug_timeline)
+
+    trace = dbg_sub.add_parser("trace", help="Shot 完整链路")
+    trace.add_argument("--shot-id", required=True)
+    trace.set_defaults(handler=_cmd_debug_trace)
+
+    stale = dbg_sub.add_parser("stale", help="Stale 传播链")
+    stale.add_argument("--project-id", type=int, required=True)
+    stale.set_defaults(handler=_cmd_debug_stale)
+
+
+def _add_decision_session_subcommands(subcommands: argparse._SubParsersAction) -> None:
+    """选择式对话协议 CLI：start / parse / options / regenerate / select / show。
+
+    主编台用 1-8 编号选项、0 返回、9 重新生成；恢复时 show 回放原 option set，
+    不依赖模型重新想一版。
+    """
+    ds_cmd = subcommands.add_parser("decision-session", help="DecisionSession 选择式对话协议")
+    ds_sub = ds_cmd.add_subparsers(dest="ds_action", required=True)
+
+    start = ds_sub.add_parser("start")
+    start.add_argument("--project-id", type=int)
+    start.add_argument("--scope-type", required=True, choices=("book", "volume", "part", "chapter", "shot", "review", "import", "source"))
+    start.add_argument("--scope-id")
+    start.add_argument("--target-type", required=True)
+    start.add_argument("--target-id")
+    start.add_argument("--human-text", required=True)
+    start.add_argument("--parent-decision-session-id", type=int)
+    _add_dry_run(start)
+    start.set_defaults(handler=_cmd_ds_start)
+
+    parse = ds_sub.add_parser("parse")
+    parse.add_argument("decision_session_id", type=int)
+    parse.add_argument("--parsed-patch-json", required=True)
+    parse.add_argument("--readback-text", required=True)
+    parse.add_argument("--source-hashes", help="Comma-separated source hashes")
+    parse.add_argument("--before-hash")
+    _add_dry_run(parse)
+    parse.set_defaults(handler=_cmd_ds_parse)
+
+    options = ds_sub.add_parser("options")
+    options.add_argument("decision_session_id", type=int)
+    options.add_argument("--options-json", required=True, help="JSON array of 1-8 option objects")
+    options.add_argument("--recommended-option", type=int)
+    _add_dry_run(options)
+    options.set_defaults(handler=_cmd_ds_options)
+
+    regenerate = ds_sub.add_parser("regenerate")
+    regenerate.add_argument("decision_session_id", type=int)
+    regenerate.add_argument("--options-json", required=True)
+    regenerate.add_argument("--recommended-option", type=int)
+    _add_dry_run(regenerate)
+    regenerate.set_defaults(handler=_cmd_ds_regenerate)
+
+    select = ds_sub.add_parser("select")
+    select.add_argument("decision_session_id", type=int)
+    select.add_argument("selected_option", type=int, help="1-8 to choose, 0 to return, 9 requires regenerate")
+    _add_dry_run(select)
+    select.set_defaults(handler=_cmd_ds_select)
+
+    show = ds_sub.add_parser("show")
+    show.add_argument("decision_session_id", type=int)
+    _add_dry_run(show)
+    show.set_defaults(handler=_cmd_ds_show)
 
 
 def _add_chapter_run_args(parser: argparse.ArgumentParser) -> None:
@@ -227,16 +327,41 @@ def _exit_code(exc: SystemExit) -> int:
     return int(exc.code) if isinstance(exc.code, int) else 1
 
 
+def _parse_model_pool(raw: str | None, *, default: list[str]) -> list[str]:
+    """Parse a comma-separated model list into a deduped, order-preserving list."""
+    if raw is None or not raw.strip():
+        return list(default)
+    models: list[str] = []
+    seen: set[str] = set()
+    for token in raw.split(","):
+        mid = token.strip()
+        if mid and mid not in seen:
+            seen.add(mid)
+            models.append(mid)
+    if not models:
+        return list(default)
+    return models
+
+
 def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
     now = now_utc_iso()
+    writer_pool = _parse_model_pool(
+        getattr(args, "writer_models", None),
+        default=["writer-a", "writer-b", "writer-c"],
+    )
+    jury_pool = _parse_model_pool(
+        getattr(args, "jury_models", None),
+        default=["judge-a", "judge-b", "judge-c", "judge-d", "judge-e"],
+    )
+    writer_pool_json = json.dumps(writer_pool, ensure_ascii=False)
+    jury_pool_json = json.dumps(jury_pool, ensure_ascii=False)
     project_cursor = conn.execute(
         """
         INSERT INTO writing_projects
             (code, title, writer_model_pool, jury_model_pool, created_at)
-        VALUES (?, ?, '["writer-a","writer-b","writer-c"]',
-                '["judge-a","judge-b","judge-c","judge-d","judge-e"]', ?)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (args.code, args.title, now),
+        (args.code, args.title, writer_pool_json, jury_pool_json, now),
     )
     project_id = int(project_cursor.lastrowid)
     session_cursor = conn.execute(
@@ -360,6 +485,9 @@ def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Names
         raise SystemExit(f"--contract-json must be valid JSON: {exc}") from exc
     if not isinstance(contract_payload, dict):
         raise SystemExit("--contract-json must be a JSON object")
+    # 默认接入 source coverage gate：blocking gap 未清空时阻断确认。
+    # --skip-coverage-gate 仅在无 source documents 记录时才真正无影响；有 gap 时仍按默认阻断。
+    coverage_gate = None if args.skip_coverage_gate else SourceWorkflowStore(conn)
     result = DecisionSessionStore(conn).confirm_and_apply(
         args.decision_session_id,
         actor=args.actor,
@@ -369,6 +497,7 @@ def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Names
         contract_payload=contract_payload,
         source_clause_ids=_csv_ints(args.source_clause_ids),
         source_hashes=_csv_strings(args.source_hashes),
+        coverage_gate=coverage_gate,
     )
     return {
         "decision_session_id": result.decision_session_id,
@@ -530,6 +659,161 @@ def _cmd_export(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
         Path(args.output).write_text(artifact, encoding="utf-8")
         return {"project_id": project_id, "output": args.output, "bytes": len(artifact.encode("utf-8"))}
     return {"project_id": project_id, "artifact": artifact}
+
+
+def _cmd_ds_start(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    if args.dry_run:
+        return {"project_id": project_id, "planned": "start"}
+    session_id = DecisionSessionStore(conn).start(
+        project_id=project_id,
+        scope_type=args.scope_type,
+        scope_id=args.scope_id,
+        target_type=args.target_type,
+        target_id=args.target_id,
+        human_text=args.human_text,
+        parent_decision_session_id=args.parent_decision_session_id,
+    )
+    return {"decision_session_id": session_id, "status": "collecting"}
+
+
+def _cmd_ds_parse(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    if args.dry_run:
+        return {"decision_session_id": args.decision_session_id, "planned": "parse"}
+    try:
+        parsed_patch = json.loads(args.parsed_patch_json)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"--parsed-patch-json must be valid JSON: {exc}") from exc
+    if not isinstance(parsed_patch, dict):
+        raise SystemExit("--parsed-patch-json must be a JSON object")
+    DecisionSessionStore(conn).record_ai_parse(
+        args.decision_session_id,
+        parsed_patch=parsed_patch,
+        readback_text=args.readback_text,
+        source_hashes=_csv_strings(args.source_hashes),
+        before_hash=args.before_hash,
+    )
+    return {"decision_session_id": args.decision_session_id, "status": "ai_parsed"}
+
+
+def _cmd_ds_options(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    if args.dry_run:
+        return {"decision_session_id": args.decision_session_id, "planned": "options"}
+    options = _parse_options_json(args.options_json)
+    option_set_id = DecisionSessionStore(conn).create_option_set(
+        args.decision_session_id,
+        options=options,
+        recommended_option=args.recommended_option,
+    )
+    return {
+        "decision_session_id": args.decision_session_id,
+        "option_set_id": option_set_id,
+        "status": "awaiting_confirm",
+        "options": options,
+        "recommended_option": args.recommended_option,
+    }
+
+
+def _cmd_ds_regenerate(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    if args.dry_run:
+        return {"decision_session_id": args.decision_session_id, "planned": "regenerate"}
+    options = _parse_options_json(args.options_json)
+    option_set_id = DecisionSessionStore(conn).regenerate_options(
+        args.decision_session_id,
+        options=options,
+        recommended_option=args.recommended_option,
+    )
+    return {
+        "decision_session_id": args.decision_session_id,
+        "option_set_id": option_set_id,
+        "status": "awaiting_confirm",
+        "options": options,
+        "recommended_option": args.recommended_option,
+    }
+
+
+def _cmd_ds_select(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    if args.dry_run:
+        return {"decision_session_id": args.decision_session_id, "planned": "select"}
+    DecisionSessionStore(conn).select_option(args.decision_session_id, args.selected_option)
+    return {
+        "decision_session_id": args.decision_session_id,
+        "selected_option": args.selected_option,
+    }
+
+
+def _cmd_ds_show(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    """回放 DecisionSession 当前状态与活跃 option set，供断点续接不依赖聊天上下文。"""
+    row = conn.execute(
+        """
+        SELECT decision_session_id, project_id, scope_type, scope_id, target_type, target_id,
+               status, human_text, readback_text, selected_option, before_hash, after_hash,
+               parent_decision_session_id
+        FROM writing_decision_sessions
+        WHERE decision_session_id = ?
+        """,
+        (args.decision_session_id,),
+    ).fetchone()
+    if row is None:
+        raise SystemExit(f"decision session not found: {args.decision_session_id}")
+    session = {
+        "decision_session_id": int(row[0]),
+        "project_id": int(row[1]),
+        "scope_type": str(row[2]),
+        "scope_id": None if row[3] is None else str(row[3]),
+        "target_type": str(row[4]),
+        "target_id": None if row[5] is None else str(row[5]),
+        "status": str(row[6]),
+        "human_text": str(row[7]),
+        "readback_text": str(row[8]),
+        "selected_option": None if row[9] is None else int(row[9]),
+        "before_hash": None if row[10] is None else str(row[10]),
+        "after_hash": None if row[11] is None else str(row[11]),
+        "parent_decision_session_id": None if row[12] is None else int(row[12]),
+    }
+    option_set = _load_active_option_set_for_show(conn, args.decision_session_id)
+    if args.dry_run:
+        return {"session": session, "active_option_set": option_set, "dry_run": True}
+    return {"session": session, "active_option_set": option_set}
+
+
+def _parse_options_json(raw: str) -> list[dict[str, object]]:
+    try:
+        options = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"--options-json must be valid JSON: {exc}") from exc
+    if not isinstance(options, list) or not options:
+        raise SystemExit("--options-json must be a non-empty JSON array")
+    if len(options) > 8:
+        raise SystemExit("--options-json must contain at most 8 options")
+    for index, option in enumerate(options):
+        if not isinstance(option, dict):
+            raise SystemExit(f"option #{index + 1} must be a JSON object")
+    return options
+
+
+def _load_active_option_set_for_show(conn: sqlite3.Connection, decision_session_id: int) -> dict[str, object] | None:
+    row = conn.execute(
+        """
+        SELECT option_set_id, version, options_json, recommended_option, regenerate_count, status
+        FROM writing_decision_option_sets
+        WHERE decision_session_id = ?
+          AND status IN ('active','selected')
+        ORDER BY version DESC
+        LIMIT 1
+        """,
+        (decision_session_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "option_set_id": int(row[0]),
+        "version": int(row[1]),
+        "options": json.loads(str(row[2])),
+        "recommended_option": None if row[3] is None else int(row[3]),
+        "regenerate_count": int(row[4]),
+        "status": str(row[5]),
+    }
 
 
 def _project_id(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
@@ -871,6 +1155,78 @@ def _csv_strings(raw: str | None) -> list[str]:
 
 def _json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+# ---------------------------------------------------------------------------
+# debug 子命令 handlers
+# ---------------------------------------------------------------------------
+
+
+def _cmd_debug_audit(conn: sqlite3.Connection, args: argparse.Namespace) -> dict:
+    from ink.debug_view import DebugView
+    dv = DebugView(conn)
+    audit = dv.show_session_audit(args.session_id)
+    return {
+        "session_id": audit.session_id,
+        "event_count": len(audit.events),
+        "patch_count": len(audit.patches),
+        "version_count": len(audit.contract_versions),
+        "events": audit.events,
+        "patches": audit.patches,
+        "contract_versions": audit.contract_versions,
+    }
+
+
+def _cmd_debug_timeline(conn: sqlite3.Connection, args: argparse.Namespace) -> dict:
+    from ink.debug_view import DebugView
+    dv = DebugView(conn)
+    entries = dv.show_contract_timeline(args.project_id, args.scope_type, args.scope_id)
+    return {
+        "project_id": args.project_id,
+        "scope_type": args.scope_type,
+        "scope_id": args.scope_id,
+        "entry_count": len(entries),
+        "entries": [
+            {
+                "timestamp": e.timestamp,
+                "event_type": e.event_type,
+                "source": e.source,
+                "payload": e.payload,
+            }
+            for e in entries
+        ],
+    }
+
+
+def _cmd_debug_trace(conn: sqlite3.Connection, args: argparse.Namespace) -> dict:
+    from ink.debug_view import DebugView
+    dv = DebugView(conn)
+    trace = dv.show_shot_full_trace(args.shot_id)
+    return {
+        "shot_id": trace.shot_id,
+        "prompt_snapshot": trace.prompt_snapshot,
+        "draft": trace.draft,
+        "review": trace.review,
+        "event_count": len(trace.events),
+        "events": trace.events,
+    }
+
+
+def _cmd_debug_stale(conn: sqlite3.Connection, args: argparse.Namespace) -> dict:
+    from ink.debug_view import DebugView
+    dv = DebugView(conn)
+    chain = dv.show_stale_chain(args.project_id)
+    return {
+        "project_id": args.project_id,
+        "stale_prompt_count": len(chain.stale_prompts),
+        "stale_draft_count": len(chain.stale_drafts),
+        "stale_review_count": len(chain.stale_reviews),
+        "stale_check_count": len(chain.stale_checks),
+        "stale_prompts": chain.stale_prompts,
+        "stale_drafts": chain.stale_drafts,
+        "stale_reviews": chain.stale_reviews,
+        "stale_checks": chain.stale_checks,
+    }
 
 
 if __name__ == "__main__":

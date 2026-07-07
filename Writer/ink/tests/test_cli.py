@@ -188,6 +188,90 @@ def test_cli_outputs_json_envelope_and_setup_dry_run_does_not_write(tmp_path: Pa
     assert _scalar(db_path, "SELECT count(*) FROM writing_shots") == 0
 
 
+def test_cli_init_accepts_custom_model_pools(tmp_path: Path) -> None:
+    """``init --writer-models`` / ``--jury-models`` 持久化自定义模型池。"""
+    db_path = tmp_path / "ink.sqlite"
+
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "init",
+                "--code",
+                "pool-demo",
+                "--title",
+                "Pool Demo",
+                "--writer-models",
+                "xopglm51,xopdeepseekv4pro,xopkimik26",
+                "--jury-models",
+                "xopglm51,xopdeepseekv4pro,xopqwen36v35b,xopkimik26,xopqwen35397b",
+            ]
+        )
+        == 0
+    )
+
+    row = _row(
+        db_path,
+        "SELECT writer_model_pool, jury_model_pool FROM writing_projects WHERE code = 'pool-demo'",
+    )
+    assert json.loads(row[0]) == ["xopglm51", "xopdeepseekv4pro", "xopkimik26"]
+    assert json.loads(row[1]) == [
+        "xopglm51",
+        "xopdeepseekv4pro",
+        "xopqwen36v35b",
+        "xopkimik26",
+        "xopqwen35397b",
+    ]
+
+
+def test_cli_init_dedupes_and_preserves_model_order(tmp_path: Path) -> None:
+    """``--writer-models`` 去重并保留首次出现的顺序。"""
+    db_path = tmp_path / "ink.sqlite"
+
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "init",
+                "--code",
+                "dedup-demo",
+                "--title",
+                "Dedup Demo",
+                "--writer-models",
+                "m1, m2 ,m1,, m3",
+            ]
+        )
+        == 0
+    )
+
+    row = _row(
+        db_path,
+        "SELECT writer_model_pool FROM writing_projects WHERE code = 'dedup-demo'",
+    )
+    assert json.loads(row[0]) == ["m1", "m2", "m3"]
+
+
+def test_cli_init_uses_defaults_when_pools_omitted(tmp_path: Path) -> None:
+    """未传 ``--writer-models``/``--jury-models`` 时回落到默认池。"""
+    db_path = tmp_path / "ink.sqlite"
+
+    assert (
+        main(
+            ["--db", str(db_path), "init", "--code", "default-demo", "--title", "Default Demo"]
+        )
+        == 0
+    )
+
+    row = _row(
+        db_path,
+        "SELECT writer_model_pool, jury_model_pool FROM writing_projects WHERE code = 'default-demo'",
+    )
+    assert json.loads(row[0]) == ["writer-a", "writer-b", "writer-c"]
+    assert json.loads(row[1]) == ["judge-a", "judge-b", "judge-c", "judge-d", "judge-e"]
+
+
 def test_cli_errors_are_json(tmp_path: Path, capsys) -> None:
     db_path = tmp_path / "ink.sqlite"
 

@@ -66,7 +66,7 @@
 4. **DecisionSession 并发控制**：多作者同时修订不同 scope 时的锁策略和冲突合并。
 5. **Stale 传播自动触发**：契约确认/patch 写入后自动调用 `StalePropagationManager`，不需要手动触发。
 6. **Coverage gate 可视化**：CLI 输出未覆盖字段的明细和建议的 source clause。
-7. **`init` 命令支持自定义模型池**：当前 `writer_model_pool`/`jury_model_pool` 硬编码，需加 `--writer-models`/`--jury-models` 参数或读 `INK_WRITER_MODELS` 环境变量。
+7. ~~**`init` 命令支持自定义模型池**~~ ✅ 已完成（`--writer-models`/`--jury-models` 逗号分隔，去重保序，默认池兜底）
 
 ### P2 可扩展性
 
