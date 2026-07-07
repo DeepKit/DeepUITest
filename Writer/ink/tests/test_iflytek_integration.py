@@ -40,19 +40,21 @@ IFLYTEK_BASE_URL = "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2"
 
 IFLYTEK_API_KEY_ENV = "IFLYTEK_API_KEY"
 
-# 11 standard (non-reasoning) models — produce content directly
+# 13 standard (non-reasoning) models — produce content directly
 STANDARD_MODELS: list[str] = [
-    "xopglm52",         # GLM-5.2 (Zhipu)
-    "xopglm51",         # GLM-5.1 (Zhipu)
+    "xopglm52",         # GLM-5.2 (Zhipu) — 卡，写作默认用 xopglm51
+    "xopglm51",         # GLM-5.1 (Zhipu) — 写作主模型
     "xopglm5",          # GLM-5 (Zhipu)
     "xopkimik26",       # Kimi-K2.6 (Moonshot)
     "xopkimik25",       # Kimi-K2.5 (Moonshot)
     "xopdeepseekv4pro", # DeepSeek-V4-Pro
     "xopdeepseekv4flash", # DeepSeek-V4-Flash
     "xopdeepseekv32",   # DeepSeek-V3.2
-    "xopqwen36v35b",   # Qwen-3.6-35B (Alibaba)
+    "xopqwen36v35b",    # Qwen-3.6-35B-A3B (Alibaba)
+    "xopqwen35v35b",    # Qwen-3.5-35B-A3B (Alibaba)
+    "xopqwen35397b",    # Qwen-3.5-397B-A17B (Alibaba) — 大模型，审阅用
     "xopglmv47flash",   # GLM-4.7-Flash (Zhipu)
-    "xop3qwencodernext", # Qwen-Coder-Next (Alibaba)
+    "xop3qwencodernext", # Qwen3-Coder-Next (Alibaba)
 ]
 
 # 3 reasoning models — consume extra tokens for chain-of-thought
@@ -63,6 +65,13 @@ REASONING_MODELS: list[str] = [
 ]
 
 ALL_MODELS: list[str] = STANDARD_MODELS + REASONING_MODELS
+
+# 写作/裁判模型池推荐配置（见 docs/iflytek-model-config.md）
+WRITER_MODEL_POOL: list[str] = ["xopglm51", "xopdeepseekv4pro", "xopkimik26"]
+JURY_MODEL_POOL: list[str] = [
+    "xopglm51", "xopdeepseekv4pro", "xopqwen36v35b",
+    "xopkimik26", "xopqwen35397b",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -201,12 +210,12 @@ class TestIFlytekConnectivity:
         self,
         provider: OpenAICompatibleProvider,
     ) -> None:
-        """GLM-5.2 (``xopglm52``) responds to a trivial prompt."""
+        """GLM-5.1 (``xopglm51``,写作主模型) responds to a trivial prompt."""
         from ink.errors import LLMProviderError
         try:
             result = provider.complete(
                 prompt_text="Reply with exactly: OK",
-                model_name="xopglm52",
+                model_name="xopglm51",
                 idempotency_key="iflytek-smoke-001",
             )
         except LLMProviderError as exc:
@@ -214,7 +223,7 @@ class TestIFlytekConnectivity:
                 pytest.skip("iFLYTEK API overloaded — skipping smoke test")
             raise
         assert isinstance(result.text, str)
-        assert result.text.strip(), "GLM-5.2 returned empty text"
+        assert result.text.strip(), "GLM-5.1 returned empty text"
         assert result.model_name, "response should include a model name"
 
     def test_all_standard_models_reachable(
@@ -283,7 +292,7 @@ class TestLLMGatewayIntegration:
                 call_type="source_extraction",
                 prompt_id=None,
                 prompt_text="Write a haiku about the moon.",
-                model_name="xopglm52",
+                model_name="xopglm51",
                 idempotency_key="iflytek-gw-complete-001",
             )
         except LLMProviderError as exc:
@@ -304,7 +313,7 @@ class TestLLMGatewayIntegration:
         time.sleep(5)
         adapter = LLMExtractionAdapter(
             gateway,
-            model_name="xopglm52",
+            model_name="xopglm51",
             project_id=0,
         )
         sample_text = (
