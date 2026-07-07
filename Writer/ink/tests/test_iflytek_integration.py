@@ -11,9 +11,9 @@ Run locally::
 
 The test suite covers:
 
-* Direct provider reachability for the primary model (GLM-5.2).
-* Reachability sweep across the 11 standard (non-reasoning) models.
-* Reachability sweep for the 3 reasoning models (max_tokens capped at 500).
+* Direct provider reachability for the primary model (GLM-5.1).
+* Reachability sweep across the 13 standard (non-reasoning) models.
+* Reachability sweep for the 3 reasoning models (provider auto-injects max_tokens).
 * End-to-end ``LLMGateway.call()`` through an ``OpenAICompatibleProvider``.
 * ``LLMExtractionAdapter`` clause extraction via iFLYTEK.
 """
@@ -78,57 +78,6 @@ JURY_MODEL_POOL: list[str] = [
 # Helpers
 # ---------------------------------------------------------------------------
 
-class _BoundedMaxTokensProvider(OpenAICompatibleProvider):
-    """``OpenAICompatibleProvider`` subclass that injects ``max_tokens``."""
-
-    def __init__(self, *, base_url: str, api_key: str, max_tokens: int) -> None:
-        super().__init__(base_url=base_url, api_key=api_key)
-        self._max_tokens = max_tokens
-
-    def complete(
-        self,
-        prompt_text: str,
-        model_name: str,
-        idempotency_key: str,
-    ) -> ModelResult:
-        # Inject max_tokens into the payload before the upstream call.
-        import json
-        import urllib.error
-        import urllib.request
-
-        from ink.errors import LLMProviderError
-
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt_text}],
-            "max_tokens": self._max_tokens,
-        }
-        request = urllib.request.Request(
-            self.endpoint,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "Idempotency-Key": idempotency_key,
-            },
-            method="POST",
-        )
-        try:
-            with self._opener(request, timeout=self.timeout_seconds) as response:
-                response_payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise LLMProviderError(f"provider HTTP {exc.code}: {body[:200]}") from exc
-        except urllib.error.URLError as exc:
-            raise LLMProviderError(f"provider request failed: {exc.reason}") from exc
-        except json.JSONDecodeError as exc:
-            raise LLMProviderError("provider returned invalid JSON") from exc
-
-        # Re-use the gateway's response parser.
-        from ink.core.llm_gateway import _parse_chat_completion_response
-
-        return _parse_chat_completion_response(response_payload, fallback_model=model_name)
-
 
 def _insert_project(conn, project_id: int = 0) -> None:
     """Insert the minimal ``writing_projects`` row needed by LLMGateway FKs.
@@ -176,12 +125,12 @@ def provider(api_key: str) -> OpenAICompatibleProvider:
 
 
 @pytest.fixture()
-def bounded_provider(api_key: str) -> _BoundedMaxTokensProvider:
-    """Provider that injects ``max_tokens=500`` for reasoning models."""
-    return _BoundedMaxTokensProvider(
+def reasoning_provider(api_key: str) -> OpenAICompatibleProvider:
+    """Provider for reasoning models — auto-injects max_tokens via _is_reasoning_model."""
+    return OpenAICompatibleProvider(
         base_url=IFLYTEK_BASE_URL,
         api_key=api_key,
-        max_tokens=500,
+        # 不传 max_tokens：推理模型由 _is_reasoning_model 自动注入默认值
     )
 
 
@@ -250,14 +199,14 @@ class TestIFlytekConnectivity:
 
     def test_reasoning_models_reachable(
         self,
-        bounded_provider: _BoundedMaxTokensProvider,
+        reasoning_provider: OpenAICompatibleProvider,
     ) -> None:
-        """The 3 reasoning models respond with ``max_tokens=500``."""
+        """Reasoning models respond — provider auto-injects max_tokens via _is_reasoning_model."""
         from ink.errors import LLMProviderError
         for model_id in REASONING_MODELS:
             for attempt in range(3):
                 try:
-                    result = bounded_provider.complete(
+                    result = reasoning_provider.complete(
                         prompt_text="Explain 2+2=4 in one sentence.",
                         model_name=model_id,
                         idempotency_key=f"iflytek-rsn-{model_id}-{attempt}",

@@ -67,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-base-url", help="Base URL for openai-compatible providers")
     parser.add_argument("--llm-api-key-env", help="Environment variable that stores the provider API key")
     parser.add_argument("--llm-timeout", type=float, help="Provider request timeout in seconds")
+    parser.add_argument(
+        "--llm-max-tokens",
+        type=int,
+        help="Max output tokens for all models; reasoning models auto-inject a default if unset",
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     init_cmd = subcommands.add_parser("init")
@@ -871,6 +876,7 @@ def _gateway(conn: sqlite3.Connection, args: argparse.Namespace) -> LLMGateway:
         base_url=args.llm_base_url,
         api_key_env=args.llm_api_key_env,
         timeout_seconds=args.llm_timeout,
+        max_tokens=args.llm_max_tokens,
     )
     return LLMGateway(conn, provider=build_model_provider(config), provider_name=config.provider)
 

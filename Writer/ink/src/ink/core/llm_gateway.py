@@ -36,6 +36,7 @@ class LLMProviderConfig:
     base_url: str | None = None
     api_key: str | None = None
     timeout_seconds: float = 60.0
+    max_tokens: int | None = None
 
 
 class MockProvider:
@@ -48,6 +49,17 @@ class MockProvider:
         )
 
 
+# 推理模型：响应含 reasoning_content，token 预算要先满足思维链再产出 content。
+# 命名空间内的推理模型子串匹配（如 "xsparkx2"、"xminimaxm25"）。
+_REASONING_MODEL_HINTS: tuple[str, ...] = ("sparkx2", "minimaxm")
+_REASONING_DEFAULT_MAX_TOKENS: int = 2000
+
+
+def _is_reasoning_model(model_name: str) -> bool:
+    lowered = model_name.lower()
+    return any(hint in lowered for hint in _REASONING_MODEL_HINTS)
+
+
 class OpenAICompatibleProvider:
     def __init__(
         self,
@@ -56,6 +68,7 @@ class OpenAICompatibleProvider:
         api_key: str,
         timeout_seconds: float = 60.0,
         opener: Callable[..., object] | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         if not base_url.strip():
             raise ConfigError("LLM provider base_url must be non-empty")
@@ -63,16 +76,26 @@ class OpenAICompatibleProvider:
             raise ConfigError("LLM provider api_key must be non-empty")
         if timeout_seconds <= 0:
             raise ConfigError("LLM provider timeout_seconds must be positive")
+        if max_tokens is not None and max_tokens <= 0:
+            raise ConfigError("LLM provider max_tokens must be positive")
         self.endpoint = f"{base_url.rstrip('/')}/chat/completions"
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
+        self.max_tokens = max_tokens
         self._opener = opener or urllib.request.urlopen
 
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
-        payload = {
+        payload: dict[str, object] = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt_text}],
         }
+        # 推理模型必须显式给足 max_tokens，否则 token 全花在 reasoning_content 上，
+        # content 字段为空。显式 max_tokens 优先；否则推理模型注入默认值。
+        effective_max_tokens = self.max_tokens
+        if effective_max_tokens is None and _is_reasoning_model(model_name):
+            effective_max_tokens = _REASONING_DEFAULT_MAX_TOKENS
+        if effective_max_tokens is not None:
+            payload["max_tokens"] = effective_max_tokens
         request = urllib.request.Request(
             self.endpoint,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -218,6 +241,7 @@ def load_llm_provider_config(
     api_key: str | None = None,
     api_key_env: str | None = None,
     timeout_seconds: float | None = None,
+    max_tokens: int | None = None,
 ) -> LLMProviderConfig:
     source = os.environ if env is None else env
     provider_name = (provider or source.get("INK_LLM_PROVIDER") or "mock").strip().lower().replace("_", "-")
@@ -237,6 +261,19 @@ def load_llm_provider_config(
     if resolved_timeout <= 0:
         raise ConfigError("INK_LLM_TIMEOUT_SECONDS must be positive")
 
+    # 可选 max_tokens：CLI 参数优先，否则读 INK_LLM_MAX_TOKENS 环境变量。
+    # 对所有模型生效；推理模型未显式设置时也会自动注入默认值。
+    resolved_max_tokens: int | None = max_tokens
+    if resolved_max_tokens is None:
+        max_tokens_raw: object = source.get("INK_LLM_MAX_TOKENS")
+        if max_tokens_raw is not None and str(max_tokens_raw).strip():
+            try:
+                resolved_max_tokens = int(max_tokens_raw)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError("INK_LLM_MAX_TOKENS must be an integer") from exc
+            if resolved_max_tokens <= 0:
+                raise ConfigError("INK_LLM_MAX_TOKENS must be positive")
+
     if not resolved_base_url:
         raise ConfigError("openai-compatible provider requires INK_LLM_BASE_URL or --llm-base-url")
     if not resolved_api_key:
@@ -246,6 +283,7 @@ def load_llm_provider_config(
         base_url=resolved_base_url,
         api_key=resolved_api_key,
         timeout_seconds=resolved_timeout,
+        max_tokens=resolved_max_tokens,
     )
 
 
@@ -259,6 +297,7 @@ def build_model_provider(config: LLMProviderConfig) -> ModelProvider:
             base_url=config.base_url,
             api_key=config.api_key,
             timeout_seconds=config.timeout_seconds,
+            max_tokens=config.max_tokens,
         )
     raise ConfigError(f"unsupported LLM provider: {config.provider}")
 
@@ -274,6 +313,12 @@ def _parse_chat_completion_response(payload: object, *, fallback_model: str) -> 
         raise LLMProviderError("provider response choice must be an object")
     message = choice.get("message")
     text = message.get("content") if isinstance(message, dict) else choice.get("text")
+    # 推理模型在 max_tokens 不足时 content 可能为空，但 reasoning_content 有值。
+    # 回退到 reasoning_content，避免直接抛错丢失思维链输出。
+    if (not isinstance(text, str) or not text) and isinstance(message, dict):
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning:
+            text = reasoning
     if not isinstance(text, str) or not text:
         raise LLMProviderError("provider response missing text content")
     usage = payload.get("usage")

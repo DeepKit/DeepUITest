@@ -62,7 +62,7 @@
 
 1. ~~**真实 LLM 端到端集成测试**~~ ✅ 已完成（iFLYTEK 14 模型连通 + Gateway/抽取集成；见 history.md 2026-07-07）
 2. **6 章流水线真实模型跑通**：用 iFLYTEK 标准模型池（`xopglm52`/`xopdeepseekv4pro`/`xopkimik26`）跑完整 6 章生成，验证抽取/回读/冲突检测在真实模型下的行为。
-3. **推理模型 max_tokens 适配**：`OpenAICompatibleProvider` 当前不传 `max_tokens`，导致推理模型 content 为空；需为推理模型注入 `max_tokens≥500` 或读 `reasoning_content` 兜底。
+3. ~~**推理模型 max_tokens 适配**~~ ✅ 已完成（`_is_reasoning_model` 自动注入 max_tokens=2000；`content` 空时回退 `reasoning_content`；`--llm-max-tokens` / `INK_LLM_MAX_TOKENS` 全局覆盖）
 4. **DecisionSession 并发控制**：多作者同时修订不同 scope 时的锁策略和冲突合并。
 5. **Stale 传播自动触发**：契约确认/patch 写入后自动调用 `StalePropagationManager`，不需要手动触发。
 6. **Coverage gate 可视化**：CLI 输出未覆盖字段的明细和建议的 source clause。

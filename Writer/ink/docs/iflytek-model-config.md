@@ -35,7 +35,7 @@
 
 > 套餐**没有 MiniMax-M3、没有 Qwen3.7**——最新是 MiniMax-M2.5、Qwen-3.6-35B。
 
-**推理模型注意**：`max_tokens` 需 ≥ 500，否则 token 被 `reasoning_content` 吃光，`content` 为空。InkFlow 当前 `OpenAICompatibleProvider` 不传 `max_tokens`（依赖模型默认值），对推理模型可能返回空 content。小说写作**优先用标准模型**。
+**推理模型已适配**：`OpenAICompatibleProvider` 通过 `_is_reasoning_model()` 识别推理模型（sparkx2/minimaxm 子串匹配），自动注入 `max_tokens=2000`；若 `content` 为空则回退读 `reasoning_content`，避免丢失思维链输出。可用 `--llm-max-tokens` 或 `INK_LLM_MAX_TOKENS` 全局覆盖。小说写作仍**优先用标准模型**（更快、更便宜）。
 
 ## 3. 推荐的模型池配置
 
@@ -99,5 +99,5 @@ ink --llm-provider openai-compatible \
 ## 5. 已知限制
 
 1. **API 限流**：连续高频调用返回 `503 code:10310 "The system is busy"`。批量测试需间隔 ≥ 2-3 秒。集成测试已内置 3 次重试 + skip。
-2. **推理模型 content 为空**：`max_tokens` 不足时。当前 `OpenAICompatibleProvider` 不传 `max_tokens`，故池中推理模型需后续增强（见 tasks.md 待办）。
+2. **推理模型**：已自动注入 `max_tokens=2000` 并支持 `reasoning_content` 回退（见第 2 节）。如需更大上下文用 `--llm-max-tokens` 覆盖。
 3. **Idempotency-Key**：重试时必须用新 key，否则 DB UNIQUE 约束冲突。

@@ -20,12 +20,12 @@
 - **根因**：iFLYTEK 端点前缀是 `/v2`，不是 OpenAI 默认的 `/v1`。
 - **修复**：`base_url` 用 `https://maas-coding-api.cn-huabei-1.xf-yun.com/v2`，`OpenAICompatibleProvider` 自动拼 `/chat/completions`。
 
-### BFX-026 推理模型 content 为空（max_tokens 不足）
+### BFX-026 推理模型 content 为空（max_tokens 不足）✅ 已修复
 
 - **现象**：`xminimaxm25` / `xsparkx2` / `xsparkx2flash` 在 `max_tokens=100` 时 `content` 为空，只有 `reasoning_content`。
 - **根因**：推理模型先把 token 预算花在思维链上，剩余预算不足以产出可见 content。
-- **修复**：推理模型需 `max_tokens≥500`。当前 `OpenAICompatibleProvider` 不传 `max_tokens`（依赖模型默认值），标准模型正常；推理模型在池中慎用，待 tasks.md 第 3 项适配。
-- **防回归**：`test_reasoning_models_reachable` 用 `_BoundedMaxTokensProvider` 注入 `max_tokens=500`。
+- **修复**（2026-07-07）：`OpenAICompatibleProvider` 新增 `_is_reasoning_model()`（sparkx2/minimaxm 子串匹配），自动注入 `max_tokens=2000`；`_parse_chat_completion_response` 在 `content` 为空时回退读 `reasoning_content`。可用 `--llm-max-tokens` / `INK_LLM_MAX_TOKENS` 全局覆盖。
+- **防回归**：`tests/test_openai_provider.py` 14 个单测覆盖 max_tokens 注入与 reasoning_content 回退。
 
 ### BFX-027 iFLYTEK API 503 限流（code:10310）
 

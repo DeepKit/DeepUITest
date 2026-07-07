@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-07-07 init 自定义模型池 + 推理模型适配
+
+**完成 tasks.md 第 3、7 项**：
+
+- `ink init` 新增 `--writer-models` / `--jury-models`（逗号分隔、去重保序、默认池兜底）
+- `OpenAICompatibleProvider` 新增 `max_tokens` 参数 + `_is_reasoning_model()` 自动注入推理模型默认 `max_tokens=2000`
+- `_parse_chat_completion_response` content 空时回退 `reasoning_content`
+- CLI 新增 `--llm-max-tokens`，env 新增 `INK_LLM_MAX_TOKENS`
+- 模型池改用 GLM-5.1（5.2 卡），补全 Qwen3.5-35B/397B 两个模型（共 16 个可用）
+- 新增 `tests/test_openai_provider.py`（14 单测），iFLYTEK 集成测试移除 `_BoundedMaxTokensProvider` 绕过
+- 全量 314 离线 passed + 5 联网集成测试
+
+---
+
 ## 2026-07-07 接入 iFLYTEK Coding Plan 真实 LLM
 
 **里程碑**：InkFlow 首次跑通真实 LLM provider，14 个讯飞模型全部可达。
