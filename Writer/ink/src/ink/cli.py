@@ -26,6 +26,7 @@ from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
 from ink.schema import initialize_schema
 from ink.source_workflow import SourceWorkflowStore
+from ink.stale_propagation import StalePropagationManager
 from ink.time import now_utc_iso
 
 
@@ -137,6 +138,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-coverage-gate",
         action="store_true",
         help="Skip source coverage gate check (only with --decision-session-id; blocking gaps still block by default)",
+    )
+    confirm_cmd.add_argument(
+        "--no-auto-stale",
+        action="store_true",
+        help="Skip automatic stale propagation after contract confirm (default: auto-mark downstream stale)",
     )
     _add_dry_run(confirm_cmd)
     confirm_cmd.set_defaults(handler=_cmd_confirm_contract)
@@ -493,6 +499,7 @@ def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Names
     # 默认接入 source coverage gate：blocking gap 未清空时阻断确认。
     # --skip-coverage-gate 仅在无 source documents 记录时才真正无影响；有 gap 时仍按默认阻断。
     coverage_gate = None if args.skip_coverage_gate else SourceWorkflowStore(conn)
+    stale_manager = None if args.no_auto_stale else StalePropagationManager(conn)
     result = DecisionSessionStore(conn).confirm_and_apply(
         args.decision_session_id,
         actor=args.actor,
@@ -503,8 +510,9 @@ def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Names
         source_clause_ids=_csv_ints(args.source_clause_ids),
         source_hashes=_csv_strings(args.source_hashes),
         coverage_gate=coverage_gate,
+        stale_manager=stale_manager,
     )
-    return {
+    payload = {
         "decision_session_id": result.decision_session_id,
         "human_decision_id": result.human_decision_id,
         "contract_version_id": result.contract_version_id,
@@ -512,6 +520,17 @@ def _confirm_via_decision_session(conn: sqlite3.Connection, args: argparse.Names
         "contract_changelog_id": result.contract_changelog_id,
         "after_hash": result.after_hash,
     }
+    if result.stale_mark is not None:
+        sm = result.stale_mark
+        payload["stale_mark"] = {
+            "scope_type": sm.scope_type,
+            "scope_id": sm.scope_id,
+            "affected_prompt_ids": list(sm.affected_prompt_ids),
+            "affected_draft_ids": list(sm.affected_draft_ids),
+            "affected_review_ids": list(sm.affected_review_ids),
+            "affected_check_ids": list(sm.affected_check_ids),
+        }
+    return payload
 
 
 def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:

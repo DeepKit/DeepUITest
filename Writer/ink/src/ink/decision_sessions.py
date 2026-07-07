@@ -6,7 +6,9 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Sequence
 
-from ink.errors import DataIntegrityError
+from ink.contract.patch_engine import ContractPatchEngine, PatchApplicationResult
+from ink.errors import ContractPatchError, DataIntegrityError
+from ink.event_log import EventLog
 from ink.time import now_utc_iso
 
 
@@ -24,6 +26,7 @@ class ConfirmedContractResult:
     """``confirm_and_apply`` 的原子写入结果。
 
     所有 ID 在同一 SAVEPOINT 内产生；任一写入失败整体回滚，不会返回半状态。
+    ``stale_mark`` 在 SAVEPOINT 释放后由 ``stale_manager`` 产生（若传入）。
     """
 
     decision_session_id: int
@@ -32,11 +35,13 @@ class ConfirmedContractResult:
     contract_patch_id: int
     contract_changelog_id: int
     after_hash: str
+    stale_mark: object | None = None  # StaleMarkResult | None
 
 
 class DecisionSessionStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
+        self._event_log = EventLog(conn)
 
     def start(
         self,
@@ -69,17 +74,32 @@ class DecisionSessionStore:
                 now,
             ),
         )
-        return int(cursor.lastrowid)
+        session_id = int(cursor.lastrowid)
+        self._event_log.log_session_event(
+            session_id,
+            "created",
+            {"scope_type": scope_type, "scope_id": scope_id, "target_type": target_type, "target_id": target_id},
+        )
+        return session_id
 
     def record_ai_parse(
         self,
         decision_session_id: int,
         *,
-        parsed_patch: dict[str, object],
+        parsed_patch: object,
         readback_text: str,
         source_hashes: Sequence[str],
         before_hash: str | None = None,
+        patch_engine: ContractPatchEngine | None = None,
     ) -> None:
+        # 解析时形态校验（可选）：尽早拒绝格式非法 patch
+        if patch_engine is not None:
+            try:
+                patch_engine.validate_patch_shape(parsed_patch)
+            except ContractPatchError as exc:
+                raise DataIntegrityError(
+                    f"rejected malformed patch for session {decision_session_id}: {exc}"
+                ) from exc
         now = now_utc_iso()
         updated = self.conn.execute(
             """
@@ -104,6 +124,11 @@ class DecisionSessionStore:
         ).rowcount
         if updated != 1:
             raise DataIntegrityError(f"decision session is not parseable: {decision_session_id}")
+        self._event_log.log_session_event(
+            decision_session_id,
+            "ai_parsed",
+            {"readback_text": readback_text, "source_hashes": list(source_hashes)},
+        )
 
     def create_option_set(
         self,
@@ -142,7 +167,13 @@ class DecisionSessionStore:
             raise
         else:
             self.conn.execute("RELEASE decision_option_set")
-            return int(cursor.lastrowid)
+            option_set_id = int(cursor.lastrowid)
+            self._event_log.log_session_event(
+                decision_session_id,
+                "option_set_created",
+                {"option_set_id": option_set_id, "option_count": len(options)},
+            )
+            return option_set_id
 
     def regenerate_options(
         self,
@@ -229,6 +260,11 @@ class DecisionSessionStore:
             raise
         else:
             self.conn.execute("RELEASE decision_option_select")
+            self._event_log.log_session_event(
+                decision_session_id,
+                "option_selected",
+                {"selected_option": selected_option},
+            )
 
     def confirm(self, decision_session_id: int, *, after_hash: str) -> None:
         row = self.conn.execute(
@@ -251,6 +287,11 @@ class DecisionSessionStore:
         ).rowcount
         if updated != 1:
             raise DataIntegrityError(f"decision session cannot be confirmed: {decision_session_id}")
+        self._event_log.log_session_event(
+            decision_session_id,
+            "confirmed",
+            {"after_hash": after_hash},
+        )
 
     def confirm_and_apply(
         self,
@@ -260,13 +301,15 @@ class DecisionSessionStore:
         reason: str,
         contract_scope_type: str,
         contract_scope_id: str | None,
-        contract_payload: dict[str, object],
+        contract_payload: dict[str, object] | None = None,
         change_type: str = "refine",
         source_clause_ids: Sequence[int] = (),
         affected_scopes: Sequence[dict[str, object]] = (),
         stale_downstream: Sequence[dict[str, object]] = (),
         source_hashes: Sequence[str] = (),
         coverage_gate=None,
+        patch_engine: ContractPatchEngine | None = None,
+        stale_manager=None,
     ) -> ConfirmedContractResult:
         """原子写入 confirmed 审计链。
 
@@ -278,13 +321,49 @@ class DecisionSessionStore:
         4. ``writing_contract_patches``（status='confirmed'，关联 base/target version）
         5. ``writing_contract_changelog``（old_hash/new_hash/human_decision_id）
         6. DecisionSession 置 ``confirmed`` + after_hash
+        7. （仅 ``patch_engine`` 模式）coverage matrix 置 ``covered``
 
-        任一写入失败整体回滚，不允许 human decision 已写但契约未更新的半状态。
+        :param patch_engine: 传入时执行 AI patch → 程序校验应用流水线，
+            ``contract_payload`` 自动派生，调用方无需传（传了也忽略）。
+            不传时保持原行为（显式要求 ``contract_payload``）。
+        :param contract_payload: 非 patch_engine 模式时必填。
+        :param stale_manager: 传入 ``StalePropagationManager`` 时，在 SAVEPOINT
+            释放后自动调用 ``mark_stale_after_contract_change``，标记下游
+            prompt/draft/review/book check stale；结果挂在返回值的 ``stale_mark``。
+            不传时保持原行为（调用方需手动触发 stale 传播）。
         """
         session = _load_session_for_confirm(self.conn, decision_session_id)
         project_id = int(session["project_id"])
         before_hash = session["before_hash"]
-        parsed_patch = session["parsed_patch_json"]
+        parsed_patch_raw = session["parsed_patch_json"]
+
+        # ── patch_engine 分支（接管 contract_payload 派生） ──
+        if patch_engine is not None:
+            patch_list = json.loads(str(parsed_patch_raw)) if isinstance(parsed_patch_raw, str) else parsed_patch_raw
+            if not source_hashes:
+                raw = session.get("source_hashes_json")
+                source_hashes = list(json.loads(str(raw))) if raw else []
+            engine_result = patch_engine.apply_and_validate(
+                project_id=project_id,
+                scope_type=contract_scope_type,
+                scope_id=contract_scope_id,
+                patch=patch_list,
+                readback_text=str(session.get("readback_text", "")),
+                source_clause_ids=source_clause_ids,
+                source_hashes=source_hashes,
+            )
+            contract_payload = dict(engine_result.new_payload)
+            if not affected_scopes and engine_result.affected_field_paths:
+                affected_scopes = [{
+                    "scope_type": contract_scope_type,
+                    "scope_id": contract_scope_id,
+                    "field_paths": engine_result.affected_field_paths,
+                }]
+        elif contract_payload is None:
+            raise DataIntegrityError(
+                "either contract_payload or patch_engine must be provided"
+            )
+
         new_hash = _contract_hash(contract_payload, source_hashes)
 
         if coverage_gate is not None and coverage_gate.has_blocking_coverage_gaps(
@@ -364,7 +443,7 @@ class DecisionSessionStore:
                     base_contract_version_id,
                     contract_version_id,
                     change_type,
-                    parsed_patch,
+                    parsed_patch_raw,
                     _json(list(affected_scopes)),
                     _json(list(stale_downstream)),
                     _json(list(source_clause_ids)),
@@ -372,6 +451,19 @@ class DecisionSessionStore:
                 ),
             )
             contract_patch_id = int(patch_cursor.lastrowid)
+
+            # ── patch_engine 模式：更新 coverage matrix ──
+            if patch_engine is not None and coverage_gate is not None:
+                for path in engine_result.affected_field_paths:
+                    coverage_gate.record_coverage(
+                        project_id=project_id,
+                        contract_scope_type=contract_scope_type,
+                        contract_scope_id=contract_scope_id,
+                        contract_field_path=path,
+                        coverage_status="covered",
+                        decision_session_id=decision_session_id,
+                        evidence={"source": "patch_engine", "patch_id": contract_patch_id},
+                    )
 
             changelog_cursor = self.conn.execute(
                 """
@@ -410,6 +502,32 @@ class DecisionSessionStore:
             raise
         else:
             self.conn.execute("RELEASE decision_confirm_apply")
+            self._event_log.log_session_event(
+                decision_session_id,
+                "confirmed",
+                {
+                    "after_hash": new_hash,
+                    "contract_version_id": contract_version_id,
+                    "contract_patch_id": contract_patch_id,
+                },
+            )
+            self._event_log.log_version_event(
+                project_id=session["project_id"],
+                event_type="confirmed",
+                scope_type=session["scope_type"],
+                payload={"contract_version_id": contract_version_id},
+                contract_version_id=contract_version_id,
+                scope_id=session.get("scope_id"),
+            )
+            # ── 自动 stale 传播（SAVEPOINT 已释放，契约已确认）──
+            stale_mark = None
+            if stale_manager is not None:
+                stale_mark = stale_manager.mark_stale_after_contract_change(
+                    project_id=project_id,
+                    scope_type=contract_scope_type,
+                    scope_id=contract_scope_id,
+                    contract_version_id=contract_version_id,
+                )
             return ConfirmedContractResult(
                 decision_session_id=decision_session_id,
                 human_decision_id=human_decision_id,
@@ -417,6 +535,7 @@ class DecisionSessionStore:
                 contract_patch_id=contract_patch_id,
                 contract_changelog_id=contract_changelog_id,
                 after_hash=new_hash,
+                stale_mark=stale_mark,
             )
 
     def _return_to_collecting(self, decision_session_id: int, option_set_id: int) -> None:
@@ -482,7 +601,8 @@ def _load_active_option_set(conn: sqlite3.Connection, decision_session_id: int) 
 def _load_session_for_confirm(conn: sqlite3.Connection, decision_session_id: int) -> dict[str, object]:
     row = conn.execute(
         """
-        SELECT project_id, status, before_hash, parsed_patch_json
+        SELECT project_id, status, before_hash, parsed_patch_json,
+               readback_text, source_hashes_json, scope_type, scope_id
         FROM writing_decision_sessions
         WHERE decision_session_id = ?
         """,
@@ -499,6 +619,10 @@ def _load_session_for_confirm(conn: sqlite3.Connection, decision_session_id: int
         "status": str(row[1]),
         "before_hash": None if row[2] is None else str(row[2]),
         "parsed_patch_json": str(row[3]),
+        "readback_text": str(row[4]) if row[4] is not None else "",
+        "source_hashes_json": str(row[5]) if row[5] is not None else "[]",
+        "scope_type": str(row[6]),
+        "scope_id": None if row[7] is None else str(row[7]),
     }
 
 

@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-07-07 Stale 传播自动触发
+
+**完成 tasks.md 第 5 项**：
+
+- `DecisionSessionStore.confirm_and_apply` 新增 `stale_manager` 可选参数
+- SAVEPOINT 释放后自动调用 `mark_stale_after_contract_change`，标记下游 prompt/draft/review/book check stale
+- `ConfirmedContractResult.stale_mark` 携带结果
+- CLI `confirm-contract` 默认注入 `StalePropagationManager`，`--no-auto-stale` 可关闭
+- 返回 JSON 含 `stale_mark` 摘要（affected_prompt_ids 等）
+- 新增 `TestConfirmAutoStalePropagation`（2 测试：自动标记 / 不传则不标记）
+- 全量 316 离线 passed
+
+---
+
 ## 2026-07-07 init 自定义模型池 + 推理模型适配
 
 **完成 tasks.md 第 3、7 项**：
