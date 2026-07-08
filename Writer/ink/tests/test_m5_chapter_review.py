@@ -14,7 +14,7 @@ from ink.pipeline.human_review_orchestrator import HumanReviewOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.polish_orchestrator import PolishOrchestrator
 from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
-from test_m4_review_pipeline import PolishProvider, make_winner_selected_shot
+from test_m4_review_pipeline import PolishProvider, _jury_gateway, make_winner_selected_shot
 
 
 def test_chapter_quality_gate_blocks_accept() -> None:
@@ -178,7 +178,7 @@ def make_soft_sealed_chapter():
         int(ids["run_id"]),
     )
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
-    JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
     SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
     return conn
 

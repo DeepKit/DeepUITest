@@ -43,6 +43,7 @@ def test_hard_gate_orchestrator_records_two_gate_eligibility_and_blocks_degraded
 
 def test_jury_scores_three_models_all_dimensions_and_selects_winner() -> None:
     conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider())).produce_drafts(
         str(ids["shot_id"]),
@@ -50,7 +51,7 @@ def test_jury_scores_three_models_all_dimensions_and_selects_winner() -> None:
     )
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
-    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "winner_selected"
     assert winner.is_deviant is False
@@ -84,7 +85,7 @@ def test_redo_candidates_merge_with_existing_pool_and_can_flip_winner() -> None:
         int(ids["run_id"]),
     )
 
-    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     assert winner.draft_id != original_winner
     assert winner.retry_count == 1
@@ -185,6 +186,7 @@ def test_quality_blocking_soft_gate_n3_fails_without_diagnostic_downgrade() -> N
 
 def test_creative_shot_passes_deviant_reference_to_jury_aggregate_without_scoring_deviant() -> None:
     conn = make_prompt_compiled_shot(creative=True)
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider())).produce_drafts(
         str(ids["shot_id"]),
@@ -196,7 +198,7 @@ def test_creative_shot_passes_deviant_reference_to_jury_aggregate_without_scorin
     ).fetchone()[0]
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
-    JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     payload = conn.execute("SELECT weight_used FROM writing_jury_aggregates LIMIT 1").fetchone()[0]
     assert json.loads(payload)["_deviant_reference_draft_id"] == deviant_id
@@ -327,7 +329,7 @@ def test_polished_winner_repasses_quality_before_soft_seal() -> None:
     )
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
-    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
     revision_id = SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
 
     assert winner.writer_model == "smart-polish"
@@ -350,6 +352,7 @@ def test_polished_winner_repasses_quality_before_soft_seal() -> None:
 
 def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=LowQualityDraftProvider())).produce_drafts(
@@ -359,7 +362,7 @@ def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
     with pytest.raises(DataIntegrityError):
-        JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+        JuryOrchestrator(conn, _jury_gateway(conn, draft_marker="low-quality")).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "failed"
     rows = conn.execute(
@@ -372,6 +375,7 @@ def test_jury_quality_floor_failure_cannot_select_winner() -> None:
 
 def test_jury_quality_failure_auto_retries_and_selects_retry_winner() -> None:
     conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     conn.execute("UPDATE writing_projects SET min_eligible_candidates = 2, max_retries_per_gate = 1 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=LowQualityDraftProvider())).produce_drafts(
@@ -380,7 +384,7 @@ def test_jury_quality_failure_auto_retries_and_selects_retry_winner() -> None:
     )
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
-    winner = JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     assert winner.retry_count == 1
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "winner_selected"
@@ -392,6 +396,7 @@ def test_jury_quality_failure_auto_retries_and_selects_retry_winner() -> None:
 
 def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=DimensionFailDraftProvider())).produce_drafts(
@@ -401,7 +406,7 @@ def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
     with pytest.raises(DataIntegrityError):
-        JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+        JuryOrchestrator(conn, _jury_gateway(conn, draft_marker="dimension-fail")).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     rows = conn.execute("SELECT scene_visual_median, quality_gate_reasons, is_winner FROM writing_jury_aggregates").fetchall()
     assert rows
@@ -411,6 +416,7 @@ def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
 
 def test_jury_disagreement_failure_cannot_select_winner() -> None:
     conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
     WriteOrchestrator(conn, LLMGateway(conn, provider=DisagreementDraftProvider())).produce_drafts(
@@ -420,7 +426,7 @@ def test_jury_disagreement_failure_cannot_select_winner() -> None:
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
     with pytest.raises(DataIntegrityError):
-        JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+        JuryOrchestrator(conn, _jury_gateway(conn, draft_marker="disagreement")).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
 
     rows = conn.execute("SELECT judge_disagreement_max, quality_gate_reasons, is_winner FROM writing_jury_aggregates").fetchall()
     assert rows
@@ -458,13 +464,14 @@ def _ids(conn):
 
 def make_winner_selected_shot():
     conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
     ids = _ids(conn)
     WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider())).produce_drafts(
         str(ids["shot_id"]),
         int(ids["run_id"]),
     )
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
-    JuryOrchestrator(conn).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
     return conn
 
 
@@ -543,3 +550,91 @@ class UnavailablePolishProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         assert model_name == "smart-polish"
         raise RuntimeError("smart model unavailable")
+
+
+# jury 真实化后的评分 mock provider：按 draft.text 里的桩标记 + idempotency_key 的 slot
+# 返回 12 维评分 JSON，复现原桩评分语义（low-quality/dimension-fail/disagreement 不过 gate，
+# redo-better/默认过 gate）。3 judge 各 slot 返回不同值以驱动 disagreement 判定。
+_JURY_DIMS = (
+    "scene_visual", "rhythm_pacing", "dialogue_subtext", "suspense_tension",
+    "language_texture", "emotional_progression", "character_believability",
+    "structure_landing", "reading_fluency", "motif_theme_fit", "chapter_continuity",
+    "creative_boundary",
+)
+
+
+class JuryScoreProvider:
+    """注入式 jury 评分 provider（测试用）。按 draft.text 标记 + slot 返回 12 维 JSON。
+
+    jury 调用（``idempotency_key`` 以 ``jury:`` 开头）按 prompt_text 里的 draft 标记
+    返回 12 维评分 JSON，复现原桩语义（low-quality/dimension-fail/disagreement 不过 gate，
+    redo-better/默认过 gate）。三 judge 各 slot 返回不同值以驱动 disagreement 判定。
+
+    draft/redo/quality-retry 调用（``idempotency_key`` 以 ``draft:`` / ``redo:`` /
+    ``quality-retry:`` 开头）返回带标记的 draft 文本，使 jury retry 路径
+    （``_handle_quality_retry_or_fail`` 用 ``WriteOrchestrator(self.conn, self.gateway)``
+    复用 jury gateway 生成 retry draft）生成的 draft 也带对应标记，从而 jury 再评时
+    返回对应低分→retry 仍 fail。``draft_marker`` 控制返回文本的标记：空串→无标记（过 gate）。
+    """
+
+    def __init__(self, *, draft_marker: str = "") -> None:
+        self.draft_marker = draft_marker
+
+    def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        # jury retry 路径复用本 gateway 生成 retry draft：draft/redo/quality-retry 调用
+        # 返回带标记文本（复现原 draft provider 语义），使 retry draft 也带标记。
+        if idempotency_key.startswith(("draft:", "redo:", "quality-retry:")):
+            if self.draft_marker:
+                text = f"[{self.draft_marker}] {model_name}:{idempotency_key}"
+            else:
+                text = f"scene text {model_name} {idempotency_key}"
+            return ModelResult(text=text, model_name=model_name, token_input=1, token_output=1)
+
+        slot = 2  # 默认中位 slot
+        if ":r1:" in idempotency_key:
+            slot = int(idempotency_key.rsplit(":r1:", 1)[1])
+        if "[low-quality]" in prompt_text:
+            # 原桩：final=70，全维 median=70 → 70<80 不过 shot_quality_floor（不触发 dimension）
+            scores = {dim: 70 for dim in _JURY_DIMS}
+        elif "[dimension-fail]" in prompt_text:
+            # 原桩：final=84，全维 median=84，scene_visual=60<65 → dimension_below_floor
+            scores = {dim: 84 for dim in _JURY_DIMS}
+            scores["scene_visual"] = 60
+        elif "[disagreement]" in prompt_text:
+            # 原桩 offsets=(-14,0,16) on median 84 → slot1=70 / slot2=84 / slot3=100
+            # median=84≥80 过 shot_quality_floor，但 disagreement=100-70=30>25 → fail
+            base = {1: 70, 2: 84, 3: 100}[slot]
+            scores = {dim: base for dim in _JURY_DIMS}
+        elif "[redo-better]" in prompt_text:
+            scores = {dim: 92 for dim in _JURY_DIMS}
+        elif "[fact-violation]" in prompt_text:
+            # fact-violation 不影响 jury 评分（gate 另判），给默认过 gate 分
+            scores = {dim: 84 for dim in _JURY_DIMS}
+        else:
+            scores = {dim: 84 for dim in _JURY_DIMS}
+        return ModelResult(
+            text=json.dumps(scores, ensure_ascii=False),
+            model_name=model_name,
+            token_input=1,
+            token_output=1,
+        )
+
+
+def _jury_gateway(conn, *, draft_marker: str = "") -> LLMGateway:
+    """构造注入 JuryScoreProvider 的 gateway，供 m4/m5/m6 jury 测试复用。
+
+    ``draft_marker`` 决定 retry draft 文本标记：空串（默认）→ 无标记 → jury 评 84 过 gate
+    （用于 retry 后选 winner 的测试）；"low-quality" 等 → retry draft 带标记 → jury 评低分
+    → retry 仍 fail（用于 retry-fail 测试）。
+    """
+    return LLMGateway(conn, provider=JuryScoreProvider(draft_marker=draft_marker))
+
+
+def _relax_llm_budget(conn) -> None:
+    """jury 真实化后每个 judge 调一次 gateway.call，3 draft×3 judge=9 次 jury 调用
+    超 schema 默认 max_calls_per_shot=8 会触发 per_type_exceeded 熔断。测试放宽预算。"""
+    conn.execute(
+        "UPDATE writing_projects SET max_calls_per_shot = 50, max_total_llm_calls = 200, "
+        "consecutive_failure_circuit_break = 100 WHERE project_id = 1"
+    )
+

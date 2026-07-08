@@ -1,6 +1,6 @@
 # InkFlow v2 当前任务队列
 
-> **状态**：v1.1 主编台产品化全链路 + iFLYTEK 真实 LLM 接入 + 真实 6 章实跑链路打通(provider 退避重试 + smart-polish 别名正式路由 + outline drift 阈值适配)。
+> **状态**：v1.1 主编台产品化全链路 + iFLYTEK 真实 LLM 接入 + 真实 6 章实跑链路打通。**当前重心：质量门真实化——jury 已真实化（阶段 A/B/C 完成），下一步 chapter_review + book_check 桩换真实 gateway.call（阶段 D）。**
 > **最后更新**：2026-07-08
 
 ---
@@ -14,12 +14,17 @@
 
 ---
 
-## P0 当前任务
+## P0 当前任务：质量门真实化 + 模型角色主备兜底
 
-- ~~**阶段 4 实跑验证真实 6 章生产**~~ ✅ 已完成(provider 退避重试 BFX-031 + smart-polish 别名正式路由 BFX-030 落实 + outline drift 阈值适配 BFX-032;`test_real_six_chapter_pipeline` passed 573s 全程真实 iFLYTEK,6 章 write→jury→polish→soft seal→review→accept→export 跑通;见 history.md 2026-07-08)。
-- **阶段 5 jury escalation 质量增强**(待启动):3 裁不一致时的升级机制(加裁判/加维度/人工裁决),见 P2 #11。
-- **阶段 6 后置项**(待启动):Event log replay UI(P2 #9)、Shot 级 coverage 追踪(P2 #10)、bugfix 收尾。
-- **阶段 7 文档对齐**(待启动):README/CLAUDE.md 反映别名路由 + 重试 + drift 阈值 CLI。
+> 设计 plan：`C:\Users\Administrator\.claude\plans\effervescent-pondering-puzzle.md`。用户硬要求：每个 `call_type` 的 LLM 角色都必须配「主/备/兜底」三模型，尽量跨供应商，独立模块管理；调用失败(provider 重试耗尽)才主→备→兜底逐个切，三都失败才判失败并提示调供应商/api-key。
+
+- ~~**阶段 4 实跑验证真实 6 章生产**~~ ✅ 已完成（见 history.md 2026-07-08）。
+- ~~**阶段 A 模型角色配置模块（主备兜底）**~~ ✅ 已完成（见 history.md 2026-07-08）。
+- ~~**阶段 B gateway 接 failover（不污染熔断）**~~ ✅ 已完成（见 history.md 2026-07-08）。
+- ~~**阶段 C jury 真实化 + LLM 失败分流**~~ ✅ 已完成（见 history.md 2026-07-08）。
+- **阶段 D chapter_review + book_check 真实化**：桩换成真实 gateway.call，解析维度分 + issues，blocking 即拦 accept。当前 `chapter_review`/`book_check` 仍用桩评分，需对齐 jury 的真实化模式（3 tier failover + 维度解析 + 失败分流）。
+- **阶段 E task_card 注入 book 层上下文**：loader 新增 `load_book_context` 查 `writing_meta_contracts` + `writing_atomic_source_clauses`（character/world confirmed），task_card 渲染注入 World/Character/Narrative/Motif 段喂 writer（修正：book 层无实体表，走 atomic clauses）。
+- **阶段 F 实跑验证 + 文档对齐**：配跨供应商 role-config，真实跑 6 章验证；造 failover 验证主备切换 + 全失败抛「调供应商」；tasks→history 归档，bugfix 记桩评分 + 死代码缺陷。
 
 ## P1 产品化任务
 
@@ -71,7 +76,7 @@
 6. ~~**Coverage gate 可视化**~~ ✅ 已完成（`SourceWorkflowStore.list_coverage_gaps` + CLI `coverage-gaps` 子命令，返回 gap/conflict 字段明细 + 建议源条款）
 7. ~~**`init` 命令支持自定义模型池**~~ ✅ 已完成（`--writer-models`/`--jury-models` 逗号分隔，去重保序，默认池兜底）
 
-> 离线基线核对：`339 passed, 2 skipped`（2026-07-08，含 +7 provider 重试用例;2 skipped 为需 `IFLYTEK_API_KEY` 的联网集成测试）。
+> 离线基线核对：`357 passed, 7 skipped`（2026-07-08，含 jury 真实化 + role-config failover + max_calls_per_shot 预算自调；7 skipped 为需 `IFLYTEK_API_KEY` 的联网集成测试）。
 
 ### P2 可扩展性
 

@@ -1091,3 +1091,26 @@ CREATE TABLE writing_contract_version_events (
     FOREIGN KEY (contract_version_id) REFERENCES writing_contract_versions(contract_version_id)
 );
 CREATE INDEX idx_version_events_scope ON writing_contract_version_events(project_id, scope_type, scope_id, created_at);
+
+-- 52. writing_model_role_configs（v1.1 按 call_type 的模型角色主/备/兜底配置）
+-- 每个 call_type 三行（primary/secondary/tertiary），尽量跨供应商；
+-- LLMGateway.call 按 (project_id, call_type) 取主备兜底，失败逐 tier 切。
+-- api_key 存环境变量名（api_key_env），不落明文 key。
+CREATE TABLE writing_model_role_configs (
+    role_config_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    call_type TEXT NOT NULL,                          -- outline/draft/jury/polish/chapter_review/book_check/
+                                                     -- source_extract_primary/source_extract_crosscheck/
+                                                     -- readback_verify/decision_session_parse
+    tier TEXT NOT NULL CHECK (tier IN ('primary','secondary','tertiary')),
+    model_name TEXT NOT NULL,                         -- 真实模型名（不存别名，别名路由在 tier 内翻译）
+    provider TEXT NOT NULL,                           -- openai-compatible（DeepSeek/Qwen 各自 base_url）
+    base_url TEXT,
+    api_key_env TEXT NOT NULL,                        -- 环境变量名，运行时 os.environ 取明文 key
+    max_tokens INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (project_id, call_type, tier),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_role_configs_project_call ON writing_model_role_configs(project_id, call_type, tier);

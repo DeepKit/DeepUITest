@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -192,6 +193,13 @@ def make_six_chapter_project():
                 NOW,
             ),
         )
+    # jury 真实化后每个 judge 调一次 gateway.call（3 draft×3 judge=9 次 / 每轮，两轮重评=18 次），
+    # 超 schema 默认 max_calls_per_shot=8 会触发 per_type_exceeded 熔断。测试放宽预算。
+    conn.execute(
+        "UPDATE writing_projects SET max_calls_per_shot = 50, max_total_llm_calls = 200, "
+        "consecutive_failure_circuit_break = 100 WHERE project_id = ?",
+        (PROJECT_ID,),
+    )
     return conn
 
 
@@ -216,10 +224,10 @@ def _run_shot_to_soft_sealed(conn, shot_id: str, run_id: int, gateway: LLMGatewa
         manager.execute_resume_action(shot_id, run_id, action, build_shot_resume_handlers(conn, gateway))
     WriteOrchestrator(conn, gateway).produce_drafts(shot_id, run_id)
     HardGateOrchestrator(conn).run_both_gates(shot_id, run_id)
-    JuryOrchestrator(conn).score_and_select_winner(shot_id, run_id)
+    JuryOrchestrator(conn, gateway).score_and_select_winner(shot_id, run_id)
     PolishOrchestrator(conn, gateway).polish_winner(shot_id, run_id)
     HardGateOrchestrator(conn).run_both_gates(shot_id, run_id)
-    JuryOrchestrator(conn).score_and_select_winner(shot_id, run_id)
+    JuryOrchestrator(conn, gateway).score_and_select_winner(shot_id, run_id)
     SoftSealOrchestrator(conn).soft_seal_if_polished(shot_id, run_id)
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (shot_id,)).fetchone()[0] == "soft_sealed"
 
@@ -231,6 +239,11 @@ class WorkflowProvider:
             text = f"{source} 推进"
         elif idempotency_key.startswith("polish:"):
             text = f"polished text {idempotency_key}"
+        elif idempotency_key.startswith("jury:"):
+            # jury 真实化后评分返回 12 维 JSON（全 84，过 quality_floor 80 + dimension_floor 65）
+            from test_m4_review_pipeline import _JURY_DIMS
+
+            text = json.dumps({dim: 84 for dim in _JURY_DIMS}, ensure_ascii=False)
         else:
             text = f"scene text {model_name} {idempotency_key}"
         return ModelResult(

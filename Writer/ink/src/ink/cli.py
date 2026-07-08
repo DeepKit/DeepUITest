@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from dataclasses import asdict, dataclass, is_dataclass
@@ -9,6 +10,14 @@ from pathlib import Path
 from typing import Sequence
 
 from ink.core.llm_gateway import LLMGateway, ModelResult, build_model_provider, load_llm_provider_config
+from ink.jury.scores import SCORE_COLUMNS
+from ink.core.model_role_config import (
+    TIER_ORDER,
+    list_role_configs,
+    load_role_chain,
+    upsert_role_config,
+    validate_role_chain,
+)
 from ink.core.resume import ResumeManager
 from ink.database import connect
 from ink.decision_sessions import DecisionSessionStore
@@ -97,6 +106,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--model-aliases",
         help='Model alias mapping JSON, e.g. \'{"smart-polish":"xopglm51"}\'. '
         "Translates production aliases to real model names at the gateway layer.",
+    )
+    init_cmd.add_argument(
+        "--role-config",
+        help=(
+            "Per-call_type model role chain JSON: "
+            '{"<call_type>": {"primary": {"model_name","provider","base_url","api_key_env","max_tokens"}, '
+            '"secondary": {...}, "tertiary": {...}}, ...}. '
+            "Each call_type gets primary/secondary/tertiary tiers (failover: primary -> secondary -> tertiary). "
+            "Cross-vendor recommended. If omitted, init auto-generates draft/jury primary-only rows from "
+            "--writer-models/--jury-models for backward compatibility."
+        ),
     )
     init_cmd.add_argument(
         "--min-eligible-outlines",
@@ -231,7 +251,88 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_decision_session_subcommands(subcommands)
     _add_debug_subcommands(subcommands)
+    _add_role_config_subcommands(subcommands)
     return parser
+
+
+def _add_role_config_subcommands(subcommands: argparse._SubParsersAction) -> None:
+    """模型角色主/备/兜底配置：role-config set / get / validate。
+
+    每 call_type 三档（primary/secondary/tertiary），尽量跨供应商；gateway 失败逐 tier 切。
+    """
+    rc_cmd = subcommands.add_parser(
+        "role-config", help="按 call_type 的模型角色主/备/兜底配置"
+    )
+    rc_sub = rc_cmd.add_subparsers(dest="role_config_action", required=True)
+
+    set_cmd = rc_sub.add_parser("set", help="设置/更新单条 role config（UPSERT）")
+    set_cmd.add_argument("--project-id", type=int, required=True)
+    set_cmd.add_argument("--call-type", required=True, help="outline/draft/jury/polish/chapter_review/book_check/...")
+    set_cmd.add_argument("--tier", required=True, choices=list(TIER_ORDER))
+    set_cmd.add_argument("--model-name", required=True, help="真实模型名（不存别名）")
+    set_cmd.add_argument("--provider", required=True, help="openai-compatible 或 mock")
+    set_cmd.add_argument("--base-url", help="openai-compatible 的 base_url")
+    set_cmd.add_argument("--api-key-env", required=True, help="环境变量名（不存明文 key）")
+    set_cmd.add_argument("--max-tokens", type=int)
+    set_cmd.set_defaults(handler=_cmd_role_config_set)
+
+    get_cmd = rc_sub.add_parser("get", help="列出某项目的 role config")
+    get_cmd.add_argument("--project-id", type=int, required=True)
+    get_cmd.add_argument("--call-type", help="可选，限定单 call_type")
+    get_cmd.set_defaults(handler=_cmd_role_config_get)
+
+    val_cmd = rc_sub.add_parser("validate", help="校验某 call_type 的 role chain 完整性")
+    val_cmd.add_argument("--project-id", type=int, required=True)
+    val_cmd.add_argument("--call-type", required=True)
+    val_cmd.set_defaults(handler=_cmd_role_config_validate)
+
+
+def _cmd_role_config_set(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    rc_id = upsert_role_config(
+        conn,
+        project_id=args.project_id,
+        call_type=args.call_type,
+        tier=args.tier,
+        model_name=args.model_name,
+        provider=args.provider,
+        api_key_env=args.api_key_env,
+        base_url=args.base_url,
+        max_tokens=args.max_tokens,
+    )
+    return {"role_config_id": rc_id, "call_type": args.call_type, "tier": args.tier}
+
+
+def _cmd_role_config_get(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    configs = list_role_configs(
+        conn,
+        project_id=args.project_id,
+        call_type=getattr(args, "call_type", None),
+    )
+    return {
+        "configs": [
+            {
+                "call_type": c.call_type,
+                "tier": c.tier,
+                "model_name": c.model_name,
+                "provider": c.provider,
+                "base_url": c.base_url,
+                "api_key_env": c.api_key_env,
+                "max_tokens": c.max_tokens,
+            }
+            for c in configs
+        ]
+    }
+
+
+def _cmd_role_config_validate(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    chain = load_role_chain(conn, project_id=args.project_id, call_type=args.call_type)
+    errors = validate_role_chain(chain)
+    return {
+        "call_type": args.call_type,
+        "chain": [{"tier": c.tier, "model_name": c.model_name, "provider": c.provider} for c in chain],
+        "valid": not errors,
+        "errors": errors,
+    }
 
 
 def _add_debug_subcommands(subcommands: argparse._SubParsersAction) -> None:
@@ -384,6 +485,45 @@ def _parse_model_pool(raw: str | None, *, default: list[str]) -> list[str]:
     return models
 
 
+def _seed_primary_from_pool(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int,
+    call_type: str,
+    model_name: str,
+) -> None:
+    """向后兼容：无 --role-config 时，用旧池首个模型生成 draft/jury primary 单档。
+
+    provider/base_url/api_key_env 取当前 INK_LLM_* 环境变量默认值（与 LLMGateway 默认一致）。
+    failover 链只有 1 档，不跨供应商——用户后续用 'ink role-config set' 补齐 secondary/tertiary。
+    """
+    env = os.environ
+    provider = (env.get("INK_LLM_PROVIDER") or "mock").strip().lower().replace("_", "-")
+    if provider == "mock":
+        # mock 环境无真实 key_env，用占位 env 名（gateway 走 MockProvider 不读 key）。
+        upsert_role_config(
+            conn,
+            project_id=project_id,
+            call_type=call_type,
+            tier="primary",
+            model_name=model_name,
+            provider="mock",
+            api_key_env="INK_LLM_API_KEY",
+        )
+        return
+    upsert_role_config(
+        conn,
+        project_id=project_id,
+        call_type=call_type,
+        tier="primary",
+        model_name=model_name,
+        provider="openai-compatible",
+        base_url=env.get("INK_LLM_BASE_URL"),
+        api_key_env=env.get("INK_LLM_API_KEY_ENV") or "INK_LLM_API_KEY",
+        max_tokens=env.get("INK_LLM_MAX_TOKENS") or None,
+    )
+
+
 def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
     now = now_utc_iso()
     writer_pool = _parse_model_pool(
@@ -429,6 +569,58 @@ def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, i
             f"UPDATE writing_projects SET {assignments} WHERE project_id = ?",
             (*updates.values(), project_id),
         )
+
+    # jury 真实化后单 shot jury 调用 = 3 裁判 × (draft_count 候选 + 1 polished 稿) × 两轮（首评 + polish 后重评）。
+    # 默认 draft_count=3 → 3×4×2=24，超 schema 默认 max_calls_per_shot=8。按此放宽 jury 单类型预算，
+    # +3 余量容 escalation 重评。max_total_llm_calls 默认 40 亦需同步上调覆盖 draft+polish+gate+两轮 jury。
+    draft_count = int(
+        conn.execute("SELECT draft_count FROM writing_projects WHERE project_id = ?", (project_id,)).fetchone()[0]
+    )
+    jury_budget = max(8, 6 * (draft_count + 1) + 3)
+    conn.execute(
+        "UPDATE writing_projects SET max_calls_per_shot = ?, max_total_llm_calls = ? WHERE project_id = ?",
+        (jury_budget, max(40, jury_budget * 2 + 12), project_id),
+    )
+
+    # 模型角色主/备/兜底配置：--role-config JSON 显式配，或从旧 --writer-models/--jury-models
+    # 自动生成 draft/jury 的 primary 单档（向后兼容）。gateway.call 按 call_type 取链 failover。
+    role_cfg_raw = getattr(args, "role_config", None)
+    if role_cfg_raw:
+        try:
+            role_cfg = json.loads(role_cfg_raw)
+        except json.JSONDecodeError as exc:
+            raise ConfigError(f"--role-config JSON parse failed: {exc}") from exc
+        if not isinstance(role_cfg, dict):
+            raise ConfigError("--role-config must be a JSON object {call_type: {tier: {...}}}")
+        for call_type, tiers in role_cfg.items():
+            if not isinstance(tiers, dict):
+                raise ConfigError(f"--role-config[{call_type}] must be a JSON object {tier: {...}}")
+            for tier, spec in tiers.items():
+                if tier not in TIER_ORDER:
+                    raise ConfigError(f"--role-config[{call_type}] tier must be one of {TIER_ORDER}, got {tier!r}")
+                if not isinstance(spec, dict):
+                    raise ConfigError(f"--role-config[{call_type}][{tier}] must be a JSON object")
+                try:
+                    upsert_role_config(
+                        conn,
+                        project_id=project_id,
+                        call_type=str(call_type),
+                        tier=tier,
+                        model_name=str(spec["model_name"]),
+                        provider=str(spec["provider"]),
+                        api_key_env=str(spec["api_key_env"]),
+                        base_url=spec.get("base_url"),
+                        max_tokens=spec.get("max_tokens"),
+                    )
+                except KeyError as exc:
+                    raise ConfigError(
+                        f"--role-config[{call_type}][{tier}] missing required key: {exc}"
+                    ) from exc
+    else:
+        # 向后兼容：无 role-config 时，用旧池首个模型生成 draft/jury primary 单档。
+        # 跨供应商 failover 需用户后续用 'ink role-config set' 补齐 secondary/tertiary。
+        _seed_primary_from_pool(conn, project_id=project_id, call_type="draft", model_name=writer_pool[0])
+        _seed_primary_from_pool(conn, project_id=project_id, call_type="jury", model_name=jury_pool[0])
 
     session_cursor = conn.execute(
         "INSERT INTO writing_sessions (project_id, started_at) VALUES (?, ?)",
@@ -963,10 +1155,10 @@ def _run_shot_to_soft_sealed(conn: sqlite3.Connection, shot_id: str, run_id: int
     PreDraftingOrchestrator(conn, gateway).run_until_prompt_compiled(shot_id, run_id)
     WriteOrchestrator(conn, gateway).produce_drafts(shot_id, run_id)
     HardGateOrchestrator(conn).run_both_gates(shot_id, run_id)
-    JuryOrchestrator(conn).score_and_select_winner(shot_id, run_id)
+    JuryOrchestrator(conn, gateway).score_and_select_winner(shot_id, run_id)
     PolishOrchestrator(conn, gateway).polish_winner(shot_id, run_id)
     HardGateOrchestrator(conn).run_both_gates(shot_id, run_id)
-    JuryOrchestrator(conn).score_and_select_winner(shot_id, run_id)
+    JuryOrchestrator(conn, gateway).score_and_select_winner(shot_id, run_id)
     SoftSealOrchestrator(conn).soft_seal_if_polished(shot_id, run_id)
 
 
@@ -1032,6 +1224,11 @@ class _CliDeterministicProvider:
             text = f"{source} outline"
         elif idempotency_key.startswith("polish:"):
             text = f"polished text {idempotency_key}"
+        elif idempotency_key.startswith("jury:"):
+            # jury 真实化后 _score_draft 解析 12 维 JSON。polished draft 给 90 确保重评时 winner 仍是
+            # polished（soft seal 契约 winner.writer_model == "smart-polish"），未 polish 给 84。
+            score = 90 if "polished text" in prompt_text else 84
+            text = json.dumps({col: score for col in SCORE_COLUMNS}, ensure_ascii=False)
         else:
             text = f"scene text {model_name} {idempotency_key}"
         return ModelResult(text=text, model_name=model_name, token_input=len(prompt_text.split()), token_output=1)

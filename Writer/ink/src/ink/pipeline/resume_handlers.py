@@ -29,7 +29,7 @@ def build_shot_resume_handlers(
         PreDraftingOrchestrator(conn, gateway),
         WriteOrchestrator(conn, gateway),
         HardGateOrchestrator(conn),
-        JuryOrchestrator(conn),
+        JuryOrchestrator(conn, gateway),
         GateOrchestrator(conn),
         PolishOrchestrator(conn, gateway),
     )

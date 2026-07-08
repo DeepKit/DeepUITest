@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-07-08（质量门真实化阶段 — 缺陷登记，修复随阶段 A-F 推进）
+
+### BFX-033 jury/chapter_review/book_check 评分全是桩，质量门形同虚设（实跑 6 章后暴露）
+
+- **现象**：6 章实跑链路「跑通」并产出 novel.md，但 jury/chapter_review/book_check 三处评分函数从不调 LLM，靠桩算分：`jury_orchestrator._score_for_draft`/`_median_scores_for_draft`/`_raw_scores_for_slot`（`jury_orchestrator.py:349-375`）按 `draft.text` 里的 `[low-quality]`/`[dimension-fail]` 标记字符串算分，真实 draft 无标记时一律 `84+index`；`chapter_review_orchestrator._score_chapter`（`:154-163`）、`book_rolling_check_orchestrator._book_scores/_book_issues`（`:150-167`）恒 82+、恒无 blocking。导致 `quality_gate_passed` 恒真、`has_blocking_issues` 恒假，`accept_chapter` 闸门（`human_review_orchestrator.py:29-32`）永远放行——质量门是装饰。
+- **根因**：架构就绪（jury schema 12 维 + CHECK + winner 索引 + escalation 全建好）但评分实现是占位桩，实跑时没人发现「分都是假的」，因为 6 章 accept/export 流程表面跑通。属「集成测试覆盖了流程未覆盖真实性」的盲区。
+- **修复计划**（阶段 C/D）：桩换成真实 `gateway.call`（call_type=jury/chapter_review/book_check）→ 解析 12/7/6 维分 → 落 raw_scores+aggregate；blocking issue 非 0 即拦 accept。复用现有 schema/quality_gate/winner。
+- **防回归**：`tests/test_jury_real_scores.py`（mock gateway 验证 3 裁判真实分落库 + median + quality_gate 按真实分判）、`tests/test_chapter_review_real.py`/`test_book_check_real.py`。
+
+### BFX-034 `_DEFAULT_ORCHESTRATOR` 单例从未赋值，是死代码（gateway 注入点误判）
+
+- **现象**：原计划给 `JuryOrchestrator.__init__` 加 `gateway` 参数并经 `_DEFAULT_ORCHESTRATOR` 注入。审查发现 `_DEFAULT_ORCHESTRATOR`（`jury_orchestrator.py:14`）只有声明 `= None`，全仓 grep `_DEFAULT_ORCHESTRATOR =`（赋值）零命中；模块级 `score_and_select_winner(shot_id, run_id)`（`:60-63`）一调就抛 `DataIntegrityError("jury orchestrator is not configured")`。outline/write/hard_gate/polish 的同名单例同理全是死代码。
+- **根因**：真实调用路径是调用方直接构造（`cli.py:966,969` 的 `JuryOrchestrator(conn)`、`resume_handlers.py:32`），不经单例。`JuryOrchestrator` 是 `_run_shot_to_soft_sealed` 里唯一没传 gateway 的（其余 PreDrafting/Write/Polish 都传了）——这才是真实 jury 不调 LLM 的直接原因（用 `LLMGateway(conn)` 默认 mock provider）。
+- **修复计划**（阶段 C）：改真实构造点 `cli.py:966,969` + `resume_handlers.py:32` 传 gateway；`_handle_quality_retry_or_fail:115` 的 `WriteOrchestrator(self.conn)` 改 `WriteOrchestrator(self.conn, self.gateway)`；删 `_DEFAULT_ORCHESTRATOR` 死代码 + 模块级 `score_and_select_winner`。测试脚本同步传注入式 gateway。
+
+### BFX-035 failover 三 tier 失败污染熔断计数（设计性，未实现先纠）
+
+- **现象（预判）**：若 failover 内每个 tier 失败都调 `budget.record_call`，因 `retry_budget.py:155-164` 的 `check_circuit` 连续失败查询只按 `shot_id` 聚合（不按 call_type 过滤）、`record_call`（`:124-135`）按 `(shot_id, call_type, failure_type)` 计数且三 tier 同抛 `LLMProviderError`，三 tier 失败累加同一行 `consecutive_count`。默认 `consecutive_failure_circuit_break=3`（`schema.sql:27`）→ jury 3 裁判每个都 failover 时，第 2 个裁判一进来 `check_circuit` 就直接熔断，连主 tier 都不试。
+- **根因**：熔断设计假设「一次 record_call = 一次逻辑调用」，failover 把一次逻辑调用拆成多次物理 tier 调用，计数语义错配。
+- **修复计划**（阶段 B）：failover 内 tier 失败**不调 `record_call`**，只在逻辑调用整体成功（重置计数）/ 整体失败（记一次 `LLMProviderError`）后调。tier 切换信息走 `writing_runtime_events`（`model_role_failover`），`writing_ai_call_attempts` 不加 tier 列（避免迁移 + 破 SoftSeal 契约）。
+- **防回归**：`tests/test_model_role_config.py` 验证 failover 切换不污染 `consecutive_count`。
+
+---
+
 ## 2026-07-08（6 章流水线真实模型版阶段）
 
 ### BFX-030 PolishOrchestrator 硬编码 `smart-polish` 模型名（真实 provider 不认）
@@ -273,3 +297,21 @@
 - **根因**：M4 baseline 先实现了 hard gate 框架，未补事实锚点与条款审计链。
 - **修复**：hard gate2 对 `[fact-violation]` + confirmed fact anchor 执行阻断，并写入 `writing_failure_attributions.contract_clause_id`。
 - **防回归**：`tests/test_m4_review_pipeline.py::test_fact_anchor_gate_and_failure_attribution_clause_link`。
+
+---
+
+## 2026-07-08（质量门真实化阶段 A/B/C）
+
+### BFX-036 jury 真实化后 max_calls_per_shot 预算不足致第二轮 jury 全失败
+
+- **现象**：jury 桩换真实 LLM 调用后，CLI `write` 跑到 polish 后第二轮 jury 抛 `jury 评分全部 LLM 调用失败，疑似供应商故障`；DB 回滚后 shot `status=pending`、`llm_call_count=0`（main 异常回滚掩盖了真实进度）。
+- **根因**：jury 真实化后单 shot jury 调用数 = 3 裁判 × draft 候选数 × 两轮（首评 + polish 后重评）。polish 会新增 1 个 smart-polish draft，故实际 draft 数 = `draft_count + 1`，两轮 jury = `3 × (draft_count+1) × 2`。默认 `draft_count=3` → 24 次，远超 schema 默认 `max_calls_per_shot=8`。第二轮 jury 评到第 12 个调用时 `llm_call_breakdown.jury` 计数超 per_type 上限 → budget blocked → 该 draft 3 裁判只成功 2 个 → `judge_count < 3` 抛 `JuryLLMFailure` → 该 draft 不落 aggregate → winner 选了未 polish 的 84 分稿 → `SoftSealOrchestrator` 抛 `winner must be a polished smart-model draft before soft seal`。
+- **修复**：`cli.py` `setup` 阶段按公式 `max(8, 6×(draft_count+1)+3)` 自动放宽 `max_calls_per_shot`（默认 draft_count=3 → 27），并同步上调 `max_total_llm_calls = max(40, jury_budget×2+12)` 覆盖 draft+polish+gate+两轮 jury。
+- **防回归**：`tests/test_cli.py::test_cli_chapter_revise_export_import_flow`、`tests/test_performance_baselines.py::test_cli_one_chapter_performance_baseline`、`tests/test_resume_handler_registry.py::test_cli_resume_executes_session_level_chapter_review`（完整两轮 jury + soft seal 端到端）。
+
+### BFX-037 mock/deterministic jury 评分不区分 polished draft 致 winner 选错
+
+- **现象**：BFX-036 修预算后，第二轮 jury 仍偶发选未 polish 稿作 winner → soft seal 失败。查 `writing_jury_aggregates`：polished draft（writer_model=smart-polish）有 raw_scores（90）但 aggregate 为 None，未参与 winner 选择。
+- **根因**：`MockProvider` / `_CliDeterministicProvider` 的 jury 分支对所有 draft 返回全 84 同分，无法区分 polished（应更高分）与未 polish 稿。当 budget 恰好让 polished draft 的第 3 裁判 blocked（judge_count=2 < 3）时，该 draft 不落 aggregate，winner 落到 84 分的未 polish 稿。
+- **修复**：jury 分支从 prompt_text 检测 "polished text"（deterministic polish 产出的文本标记）给 90 分、否则 84，确保 polished draft 评分更高 → 重评时 winner 仍是 smart-polish 稿（满足 soft seal 契约 `winner.writer_model == "smart-polish"`）。`MockProvider`（`llm_gateway.py`）与 `_CliDeterministicProvider`（`cli.py`）两处同步改。
+- **防回归**：同 BFX-036 三个端到端测试（验证两轮 jury 后 winner 为 polished 稿且 soft seal 通过）。

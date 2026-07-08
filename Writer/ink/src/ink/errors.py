@@ -35,3 +35,6 @@ class LLMError(InkError):
 
 class LLMProviderError(LLMError):
     """Underlying provider failed."""
+
+class ContractPatchError(InkError):
+    """A contract patch failed schema, conflict, or readback validation."""

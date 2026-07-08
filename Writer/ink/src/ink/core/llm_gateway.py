@@ -15,6 +15,33 @@ from ink.core.retry_budget import LLMCallBudget
 from ink.errors import ConfigError, LLMProviderError
 from ink.time import now_utc_iso
 
+# 按 call_type 的主/备/兜底模型角色配置；lazy import 避免循环依赖（model_role_config 不依赖 gateway）。
+def _load_role_chain(conn, *, project_id, call_type):
+    from ink.core.model_role_config import load_role_chain as _load
+
+    return _load(conn, project_id=project_id, call_type=call_type)
+
+
+def _reorder_chain_from_tier(chain, tier_hint: str):
+    """按 tier_hint 起算 wrap 重排 failover 链。
+
+    chain 是 [primary, secondary, tertiary] 顺序（load_role_chain 已补位保证三档）。
+    tier_hint=secondary → [secondary, tertiary, primary]：从 secondary 起调，失败切 tertiary，
+    再切 primary。jury 3 裁判各传 primary/secondary/tertiary 实现投票多样性 + 单 judge 容灾。
+    tier_hint 不在 TIER_ORDER 时原序返回（保守）。
+    """
+    from ink.core.model_role_config import TIER_ORDER
+
+    idx = {cfg.tier: i for i, cfg in enumerate(chain) if cfg.tier in TIER_ORDER}
+    if tier_hint not in idx:
+        return chain
+    start = idx[tier_hint]
+    # 按 TIER_ORDER 全集 wrap：从 start 起，循环到 start-1
+    order = [TIER_ORDER[(start + i) % len(TIER_ORDER)] for i in range(len(TIER_ORDER))]
+    by_tier = {cfg.tier: cfg for cfg in chain}
+    reordered = [by_tier[t] for t in order if t in by_tier]
+    return reordered or chain
+
 
 @dataclass(frozen=True)
 class ModelResult:
@@ -42,8 +69,18 @@ class LLMProviderConfig:
 
 class MockProvider:
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
+        if idempotency_key.startswith("jury:"):
+            # jury 真实化后 _score_draft 解析 12 维 JSON。polished draft 文本含 "polished text"，
+            # 给更高分确保第二轮 jury 重评时 winner 仍是 polished draft（soft seal 契约要求
+            # winner.writer_model == "smart-polish"）。未 polish draft 给 84（过 quality_floor 但低于 polished）。
+            from ink.jury.scores import SCORE_COLUMNS
+
+            score = 90 if "polished text" in prompt_text else 84
+            text = json.dumps({col: score for col in SCORE_COLUMNS}, ensure_ascii=False)
+        else:
+            text = f"[mock:{model_name}:{idempotency_key}] generated draft"
         return ModelResult(
-            text=f"[mock:{model_name}:{idempotency_key}] generated draft",
+            text=text,
             model_name=model_name,
             token_input=len(prompt_text.split()),
             token_output=1,
@@ -172,6 +209,9 @@ class LLMGateway:
         # 构造时可注入；未注入时 call 内按 project_id 从 writing_projects.model_aliases 懒加载。
         self._model_aliases: dict[str, str] | None = dict(model_aliases) if model_aliases else None
         self._aliases_cache: dict[int, dict[str, str]] = {}
+        # 按 (provider, base_url, api_key_env) 缓存 ModelProvider 实例，避免每 tier 重复构造。
+        # key 用 api_key_env 而非明文 key（不落明文 key 到内存 dict 的 key 里）。
+        self._provider_cache: dict[tuple[str, str | None, str], ModelProvider] = {}
 
     def call(
         self,
@@ -185,7 +225,15 @@ class LLMGateway:
         model_name: str,
         idempotency_key: str,
         model_provider: str | None = None,
+        tier_hint: str | None = None,
     ) -> ModelResult:
+        """调一次 LLM。配了 role_config 的 call_type 走主→备→兜底 failover（跨供应商容灾）；
+        未配走注入式单 provider 老逻辑（测试 / 旧项目）。
+
+        ``tier_hint``（'primary'/'secondary'/'tertiary'）仅在有 role_config 时生效：指定
+        failover 的起调 tier，链按该 tier 起算 wrap 排列（例 hint=secondary → secondary,tertiary,primary）。
+        jury 3 裁判各传不同 tier_hint 实现投票多样性（3 个不同模型各评一次）+ 单 judge 失败切下一 tier 容灾。
+        """
         budget = LLMCallBudget(self.conn, project_id) if shot_id is not None and run_id is not None else None
         if budget is not None:
             allowed, reason = budget.check_circuit(shot_id, run_id)
@@ -193,6 +241,54 @@ class LLMGateway:
                 self._write_event(project_id, shot_id, run_id, "LLM_BUDGET_BLOCKED", {"reason": reason})
                 raise LLMProviderError(f"LLM budget blocked: {reason}")
 
+        # 分派：配了 role_configs 的 call_type 走 failover（主→备→兜底，跨供应商）；
+        # 未配（注入式 provider 的测试 / 旧项目）走单 provider 老逻辑。
+        try:
+            chain = _load_role_chain(self.conn, project_id=project_id, call_type=call_type)
+        except ConfigError:
+            chain = []
+        if chain:
+            ordered = _reorder_chain_from_tier(chain, tier_hint) if tier_hint else chain
+            return self._call_with_role_chain(
+                chain=ordered,
+                budget=budget,
+                project_id=project_id,
+                shot_id=shot_id,
+                run_id=run_id,
+                call_type=call_type,
+                prompt_id=prompt_id,
+                prompt_text=prompt_text,
+                idempotency_key=idempotency_key,
+                original_model_name=model_name,
+            )
+        return self._call_with_injected_provider(
+            budget=budget,
+            project_id=project_id,
+            shot_id=shot_id,
+            run_id=run_id,
+            call_type=call_type,
+            prompt_id=prompt_id,
+            prompt_text=prompt_text,
+            model_name=model_name,
+            model_provider=model_provider,
+            idempotency_key=idempotency_key,
+        )
+
+    def _call_with_injected_provider(
+        self,
+        *,
+        budget: LLMCallBudget | None,
+        project_id: int,
+        shot_id: str | None,
+        run_id: int | None,
+        call_type: str,
+        prompt_id: int | None,
+        prompt_text: str,
+        model_name: str,
+        model_provider: str | None,
+        idempotency_key: str,
+    ) -> ModelResult:
+        """单 provider 老逻辑：无 role_config 时回退。落一次 attempt + 一次 record_call。"""
         now = now_utc_iso()
         prompt_hash = _sha256(prompt_text)
         cursor = self.conn.execute(
@@ -256,6 +352,155 @@ class LLMGateway:
         )
         self._write_event(project_id, shot_id, run_id, "LLM_CALL_SUCCEEDED", {"attempt_id": attempt_id})
         return result
+
+    def _call_with_role_chain(
+        self,
+        *,
+        chain: list,  # list[ModelRoleConfig]
+        budget: LLMCallBudget | None,
+        project_id: int,
+        shot_id: str | None,
+        run_id: int | None,
+        call_type: str,
+        prompt_id: int | None,
+        prompt_text: str,
+        idempotency_key: str,
+        original_model_name: str,
+    ) -> ModelResult:
+        """failover 编排：按 role chain 逐 tier 试，主→备→兜底。
+
+        关键（BFX-035）：tier 失败**不调 record_call、不落 attempt**——避免污染 consecutive_count
+        熔断（retry_budget 按 shot_id 聚合，三 tier 同 LLMProviderError 会累加同一行致误熔断）。
+        只在逻辑调用整体成功（落 attempt + record success）/ 整体失败（落 attempt + record fail）
+        后调一次。tier 切换走 model_role_failover event，writing_ai_call_attempts 不加 tier 列
+        （避免迁移 + 破 SoftSeal 契约）。
+        """
+        from ink.core.model_role_config import ModelRoleConfig
+
+        tried: list[dict] = []
+        last_exc: Exception | None = None
+        for idx, cfg in enumerate(chain):  # ModelRoleConfig
+            provider = self._get_or_build_provider(cfg)
+            real_name = self._resolve_model_alias(project_id, cfg.model_name)
+            started = time.perf_counter()
+            try:
+                result = provider.complete(prompt_text, real_name, idempotency_key)
+            except Exception as exc:  # noqa: BLE001 —— 任何 provider 异常都触发 failover
+                tried.append({
+                    "tier": cfg.tier,
+                    "model_name": cfg.model_name,
+                    "provider": cfg.provider,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "latency_ms": _elapsed_ms(started),
+                })
+                # budget-blocked 不 failover（已是熔断态，直接 raise 让上层处理）
+                if isinstance(exc, LLMProviderError) and "budget blocked" in str(exc).lower():
+                    raise
+                last_exc = exc
+                # 只在前 N-1 个 tier 失败时写 failover event（切换到下一 tier）；
+                # 最后一个 tier 失败不写——整体失败由下方 LLM_CALL_FAILED event 覆盖，避免重复。
+                if idx < len(chain) - 1:
+                    self._write_event(
+                        project_id, shot_id, run_id, "model_role_failover",
+                        {
+                            "call_type": call_type, "from_tier": cfg.tier,
+                            "model_name": cfg.model_name, "provider": cfg.provider,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        },
+                    )
+                continue
+            # 成功：落一次 attempt（记实际命中的 model/provider）+ record success（重置连续失败）。
+            now = now_utc_iso()
+            response_hash = _sha256(result.text)
+            cursor = self.conn.execute(
+                """
+                INSERT INTO writing_ai_call_attempts
+                    (project_id, shot_id, run_id, call_type, model_provider, model_name, idempotency_key,
+                     prompt_id, prompt_hash, success, response_hash, token_input, token_output,
+                     latency_ms, finish_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id, shot_id, run_id, call_type, cfg.provider, cfg.model_name,
+                    idempotency_key, prompt_id, _sha256(prompt_text), response_hash,
+                    result.token_input, result.token_output, _elapsed_ms(started),
+                    result.finish_reason, now,
+                ),
+            )
+            attempt_id = int(cursor.lastrowid)
+            if budget is not None:
+                budget.record_call(shot_id, call_type, success=True)
+                budget.check_circuit(shot_id, run_id)
+            self._write_event(
+                project_id, shot_id, run_id, "LLM_CALL_SUCCEEDED",
+                {"attempt_id": attempt_id, "call_type": call_type, "tier": cfg.tier,
+                 "model_name": cfg.model_name, "failover_tried": tried[:-1] if tried else []},
+            )
+            # 还原成 original_model_name（保持调用方期望的 model_name 契约，如 soft seal 别名）。
+            if cfg.model_name != original_model_name:
+                result = replace(result, model_name=original_model_name)
+            return result
+
+        # 三 tier 全失败：落一次 attempt（fail）+ record fail（只记一次，逻辑调用级）。
+        now = now_utc_iso()
+        cursor = self.conn.execute(
+            """
+            INSERT INTO writing_ai_call_attempts
+                (project_id, shot_id, run_id, call_type, model_provider, model_name, idempotency_key,
+                 prompt_id, prompt_hash, success, error_category, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                project_id, shot_id, run_id, call_type, chain[0].provider, chain[0].model_name,
+                idempotency_key, prompt_id, _sha256(prompt_text),
+                type(last_exc).__name__ if last_exc else "UnknownError", now,
+            ),
+        )
+        attempt_id = int(cursor.lastrowid)
+        if budget is not None:
+            budget.record_call(shot_id, call_type, success=False, failure_type="LLMProviderError")
+        self._write_event(
+            project_id, shot_id, run_id, "LLM_CALL_FAILED",
+            {"attempt_id": attempt_id, "call_type": call_type, "tried_tiers": tried},
+        )
+        names = ", ".join(f"{c.tier}={c.model_name}({c.provider})" for c in chain)
+        key_envs = ", ".join(sorted({c.api_key_env for c in chain}))
+        raise LLMProviderError(
+            f"all tiers failed for call_type={call_type}; 已尝试主/备/兜底: {names}; "
+            f"请检查供应商可用性与 api-key 配置（env: {key_envs}）"
+        ) from last_exc
+
+    def _get_or_build_provider(self, cfg) -> ModelProvider:  # cfg: ModelRoleConfig
+        """按 (provider, base_url, api_key_env) 缓存构造 ModelProvider。"""
+        cache_key = (cfg.provider, cfg.base_url, cfg.api_key_env)
+        cached = self._provider_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if cfg.provider == "mock":
+            provider: ModelProvider = MockProvider()
+        elif cfg.provider == "openai-compatible":
+            api_key = os.environ.get(cfg.api_key_env)
+            if not api_key:
+                raise LLMProviderError(
+                    f"api_key_env {cfg.api_key_env} 未在环境变量中设置（tier={cfg.tier}, "
+                    f"model={cfg.model_name}）；请设置该环境变量或用 'ink role-config' 改配"
+                )
+            if not cfg.base_url:
+                raise LLMProviderError(
+                    f"provider=openai-compatible 但 base_url 为空（tier={cfg.tier}）"
+                )
+            config = LLMProviderConfig(
+                provider="openai-compatible",
+                base_url=cfg.base_url,
+                api_key=api_key,
+                max_tokens=cfg.max_tokens,
+                max_retries=4,  # openai-compatible 默认退避重试扛限流
+            )
+            provider = build_model_provider(config)
+        else:
+            raise LLMProviderError(f"unsupported provider in role config: {cfg.provider}")
+        self._provider_cache[cache_key] = provider
+        return provider
 
     def _resolve_model_alias(self, project_id: int, model_name: str) -> str:
         """把生产别名（如 smart-polish）翻译成真实模型名。

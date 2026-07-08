@@ -22,7 +22,7 @@ def test_schema_executes_all_ddl() -> None:
         ).fetchall()
     )
 
-    assert counts == {"index": 63, "table": 51, "trigger": 2, "view": 1}
+    assert counts == {"index": 65, "table": 52, "trigger": 2, "view": 1}
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 
 

@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-07-08 质量门真实化阶段 A/B/C（模型角色主备兜底 + gateway failover + jury 真实化）
+
+**完成 tasks.md P0 阶段 A/B/C**（设计 plan：`C:\Users\Administrator\.claude\plans\effervescent-pondering-puzzle.md`）。用户硬要求：每个 `call_type` 的 LLM 角色配「主/备/兜底」三模型（尽量跨供应商），调用失败逐 tier 切，三都失败才判失败并提示调供应商/api-key。
+
+### 阶段 A：模型角色配置模块（主备兜底）
+
+- 新表 `writing_model_role_configs`（`project_id × call_type × tier`，tier=primary/secondary/tertiary，跨供应商：每档独立 `provider`/`base_url`/`api_key_env`/`max_tokens`）。
+- 新模块 `src/ink/core/model_role_config.py`：`load_role_chain`（按 tier 顺序返回 1-3 档，缺档滚动补位保证三档非空，向后兼容只配 primary 的旧项目）/ `upsert_role_config` / `list_role_configs` / `TIER_ORDER`。
+- CLI 接入：`init --role-config <JSON>` 写三档；`role-config set/get/validate` 子命令运行时增删查校；无 `--role-config` 时 `_seed_primary_from_pool` 从旧 `--writer-models`/`--jury-models` 池首模型自动生成 draft/jury primary 单档（向后兼容）。
+
+### 阶段 B：gateway 接 failover（不污染熔断）
+
+- `LLMGateway.call` 重写为 failover 编排：按 `call_type` 查 role chain，按 `tier_hint`（jury 3 裁判各传 primary/secondary/tertiary 实现 3 模型投票 + 单 judge 容灾）wrap 重排起调 tier，失败逐 tier 切。
+- **BFX-035 熔断污染修复**：tier 失败**不调 `record_call`、不落 attempt**——`retry_budget.check_circuit` 只按 `shot_id` 聚合，三 tier 同 `LLMProviderError` 累加同一行会误熔断。只在逻辑调用整体成功（落 attempt + record success）/ 整体失败（落 attempt + record fail）后调一次。tier 切换走 `model_role_failover` event，`writing_ai_call_attempts` 不加 tier 列（避免迁移 + 破 SoftSeal 契约）。
+- 注入式 provider（测试 `--llm-provider deterministic`）保留：`call_type` 有 role_config 走 failover，无则走注入式（polish 等未配 role_config 的 call_type 仍用 deterministic）。
+
+### 阶段 C：jury 真实化 + LLM 失败分流
+
+- 删 jury 四个桩（`_stub_jury_scores` 等），`JuryOrchestrator._score_draft` 换 3 裁判真实调 `gateway.call(call_type=jury, tier_hint=slot_tiers[slot-1])` → `_parse_jury_scores` 解析 12 维 JSON → 落 `writing_jury_raw_scores` + `writing_jury_aggregates`。
+- **失败分流**：3 裁判全 LLM 失败 → `JuryLLMFailure` → `transition failed` 抛「调供应商」错（**不走重写**，区别于「评了不过 gate」）；任一 judge 成功但 `judge_count < 3` 也抛 `JuryLLMFailure`（schema CHECK `judge_count >= 3`，部分成功无法落 aggregate）；质量不过 gate 才走 `_handle_quality_retry_or_fail` 重写。
+- `_score_draft` 重评前清旧 `jury:{draft_id}:r1:*` raw_scores + aggregate + attempts（idempotency_key UNIQUE 约束，重评需先清）。
+- `cli.py` + `resume_handlers.py` 所有 JuryOrchestrator 构造点传 gateway；删 `_DEFAULT_ORCHESTRATOR` 死代码单例。
+
+### BFX-036/037：jury 真实化暴露的预算 + 评分区分缺陷
+
+真实化后暴露两个生产级 bug（见 bugfix.md）：
+
+- **BFX-036 max_calls_per_shot 预算不足**：jury 单 shot 调用 = 3 裁判 × (draft_count 候选 + 1 polished) × 两轮（首评 + polish 后重评），默认 draft_count=3 → 24 次，超 schema 默认 `max_calls_per_shot=8`。`setup` 按公式 `6×(draft_count+1)+3` 自动放宽 jury 预算 + 同步上调 `max_total_llm_calls`。
+- **BFX-037 mock/deterministic jury 不区分 polished draft**：provider 返回全 84 同分，第二轮 jury 无法选出 polished draft → winner 落未 polish 稿 → soft seal 失败。改 jury 分支按 prompt 含 "polished text" 给 90、否则 84，确保重评时 winner 仍是 smart-polish 稿。
+
+### 验收
+
+- 离线全量 `357 passed, 7 skipped`（+jury 真实化 / role-config failover / 预算自调用例；7 skipped 为需 `IFLYTEK_API_KEY` 的联网集成测试）。
+- 3 个 CLI 端到端测试恢复绿：`test_cli_chapter_revise_export_import_flow` / `test_cli_one_chapter_performance_baseline` / `test_cli_resume_executes_session_level_chapter_review`（完整跑 produce_drafts → hard_gate → jury → polish → 第二轮 jury → soft seal）。
+- 阶段 D/E/F 待办：chapter_review + book_check 桩换真实 gateway.call；task_card 注入 book 层上下文；跨供应商 role-config 实跑验证。
+
+---
+
 ## 2026-07-08 6 章流水线真实模型版端到端测试
 
 **完成 tasks.md 第 2 项**(P1 主编台深化):
