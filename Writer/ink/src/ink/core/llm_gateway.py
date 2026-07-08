@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from ink.core.retry_budget import LLMCallBudget
@@ -37,6 +37,7 @@ class LLMProviderConfig:
     api_key: str | None = None
     timeout_seconds: float = 60.0
     max_tokens: int | None = None
+    max_retries: int = 0
 
 
 class MockProvider:
@@ -69,6 +70,8 @@ class OpenAICompatibleProvider:
         timeout_seconds: float = 60.0,
         opener: Callable[..., object] | None = None,
         max_tokens: int | None = None,
+        max_retries: int = 0,
+        retry_base_delay: float = 1.0,
     ) -> None:
         if not base_url.strip():
             raise ConfigError("LLM provider base_url must be non-empty")
@@ -78,10 +81,14 @@ class OpenAICompatibleProvider:
             raise ConfigError("LLM provider timeout_seconds must be positive")
         if max_tokens is not None and max_tokens <= 0:
             raise ConfigError("LLM provider max_tokens must be positive")
+        if max_retries < 0:
+            raise ConfigError("LLM provider max_retries must be non-negative")
         self.endpoint = f"{base_url.rstrip('/')}/chat/completions"
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self.max_tokens = max_tokens
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
         self._opener = opener or urllib.request.urlopen
 
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
@@ -96,27 +103,56 @@ class OpenAICompatibleProvider:
             effective_max_tokens = _REASONING_DEFAULT_MAX_TOKENS
         if effective_max_tokens is not None:
             payload["max_tokens"] = effective_max_tokens
-        request = urllib.request.Request(
-            self.endpoint,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "Idempotency-Key": idempotency_key,
-            },
-            method="POST",
-        )
-        try:
-            with self._opener(request, timeout=self.timeout_seconds) as response:
-                response_payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise LLMProviderError(f"provider HTTP {exc.code}: {body[:200]}") from exc
-        except urllib.error.URLError as exc:
-            raise LLMProviderError(f"provider request failed: {exc.reason}") from exc
-        except json.JSONDecodeError as exc:
-            raise LLMProviderError("provider returned invalid JSON") from exc
-        return _parse_chat_completion_response(response_payload, fallback_model=model_name)
+        body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        # 退避重试：仅对瞬时错误(429 限流 / 5xx 服务端繁忙 / 超时)重试。
+        # Idempotency-Key 保证重试安全(服务端去重)，故同 key 重发不会产生重复副作用。
+        # 认证/参数类错误(401/400/402/404)立即抛，不重试。
+        max_attempts = self.max_retries + 1
+        # 用 idempotency_key 哈希做确定性抖动种子，避免所有请求同时重试加剧限流(不引入 random)。
+        jitter_seed = int(hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest(), 16) % 1000 / 1000.0
+        last_exc: Exception | None = None
+        for attempt in range(max_attempts):
+            request = urllib.request.Request(
+                self.endpoint,
+                data=body_bytes,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": idempotency_key,
+                },
+                method="POST",
+            )
+            try:
+                with self._opener(request, timeout=self.timeout_seconds) as response:
+                    response_payload = json.loads(response.read().decode("utf-8"))
+                return _parse_chat_completion_response(response_payload, fallback_model=model_name)
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                last_exc = LLMProviderError(f"provider HTTP {exc.code}: {body[:200]}")
+                if exc.code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                    self._backoff_sleep(attempt, jitter_seed)
+                    continue
+                raise last_exc from exc
+            except urllib.error.URLError as exc:
+                last_exc = LLMProviderError(f"provider request failed: {exc.reason}")
+                # 超时/连接错误视为瞬时，可重试
+                if attempt < self.max_retries:
+                    self._backoff_sleep(attempt, jitter_seed)
+                    continue
+                raise last_exc from exc
+            except json.JSONDecodeError as exc:
+                last_exc = LLMProviderError("provider returned invalid JSON")
+                if attempt < self.max_retries:
+                    self._backoff_sleep(attempt, jitter_seed)
+                    continue
+                raise last_exc from exc
+        assert last_exc is not None  # 循环走完必有过异常(成功已在循环内 return)
+        raise last_exc
+
+    def _backoff_sleep(self, attempt: int, jitter_seed: float) -> None:
+        """指数退避 + 确定性抖动：base * 2^attempt * (1 + jitter)。"""
+        delay = self.retry_base_delay * (2 ** attempt) * (1.0 + jitter_seed)
+        time.sleep(delay)
 
 
 class LLMGateway:
@@ -126,10 +162,16 @@ class LLMGateway:
         provider: ModelProvider | None = None,
         *,
         provider_name: str | None = None,
+        model_aliases: Mapping[str, str] | None = None,
     ) -> None:
         self.conn = conn
         self.provider = provider or MockProvider()
         self.provider_name = provider_name or ("mock" if provider is None else provider.__class__.__name__)
+        # 模型别名路由：把生产别名（如 "smart-polish"）翻译成真实模型名调 provider，
+        # 但 DB 记录与返回的 ModelResult.model_name 保持原别名（SoftSealOrchestrator 校验契约）。
+        # 构造时可注入；未注入时 call 内按 project_id 从 writing_projects.model_aliases 懒加载。
+        self._model_aliases: dict[str, str] | None = dict(model_aliases) if model_aliases else None
+        self._aliases_cache: dict[int, dict[str, str]] = {}
 
     def call(
         self,
@@ -176,8 +218,12 @@ class LLMGateway:
         attempt_id = int(cursor.lastrowid)
 
         started = time.perf_counter()
+        # 别名路由：把 model_name（可能是生产别名如 "smart-polish"）翻译成真实模型名调 provider。
+        # DB 记录的 model_name（上方 INSERT）保持原别名，便于审计追踪；返回的 ModelResult 也还原成别名，
+        # 以满足 SoftSealOrchestrator 校验 winner.writer_model == "smart-polish" 的生产契约。
+        real_name = self._resolve_model_alias(project_id, model_name)
         try:
-            result = self.provider.complete(prompt_text, model_name, idempotency_key)
+            result = self.provider.complete(prompt_text, real_name, idempotency_key)
         except Exception as exc:
             self.conn.execute(
                 """
@@ -191,6 +237,10 @@ class LLMGateway:
                 budget.record_call(shot_id, call_type, success=False, failure_type=type(exc).__name__)
             self._write_event(project_id, shot_id, run_id, "LLM_CALL_FAILED", {"attempt_id": attempt_id})
             raise LLMProviderError(str(exc)) from exc
+
+        # 还原别名：provider 返回的 model_name 可能是 real_name，统一改回原始 model_name 保持契约。
+        if real_name != model_name:
+            result = replace(result, model_name=model_name)
 
         response_hash = _sha256(result.text)
         if budget is not None:
@@ -206,6 +256,37 @@ class LLMGateway:
         )
         self._write_event(project_id, shot_id, run_id, "LLM_CALL_SUCCEEDED", {"attempt_id": attempt_id})
         return result
+
+    def _resolve_model_alias(self, project_id: int, model_name: str) -> str:
+        """把生产别名（如 smart-polish）翻译成真实模型名。
+
+        优先用构造时注入的 model_aliases；否则按 project_id 从
+        writing_projects.model_aliases 懒加载（按 project 缓存，避免每次 call 查 DB）。
+        未命中别名的模型名原样返回。
+        """
+        aliases = self._model_aliases
+        if aliases is None:
+            aliases = self._aliases_cache.get(project_id)
+            if aliases is None:
+                aliases = self._load_project_aliases(project_id)
+                self._aliases_cache[project_id] = aliases
+        return aliases.get(model_name, model_name)
+
+    def _load_project_aliases(self, project_id: int) -> dict[str, str]:
+        row = self.conn.execute(
+            "SELECT model_aliases FROM writing_projects WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        if row is None or not row[0]:
+            return {}
+        try:
+            raw = json.loads(row[0])
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ConfigError(f"invalid model_aliases JSON for project {project_id}: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise ConfigError(f"model_aliases for project {project_id} must be a JSON object")
+        # 键值统一字符串化，防御 {"smart-polish": 123} 之类的坏数据。
+        return {str(k): str(v) for k, v in raw.items() if v}
 
     def _write_event(
         self,
@@ -242,6 +323,7 @@ def load_llm_provider_config(
     api_key_env: str | None = None,
     timeout_seconds: float | None = None,
     max_tokens: int | None = None,
+    max_retries: int | None = None,
 ) -> LLMProviderConfig:
     source = os.environ if env is None else env
     provider_name = (provider or source.get("INK_LLM_PROVIDER") or "mock").strip().lower().replace("_", "-")
@@ -274,6 +356,21 @@ def load_llm_provider_config(
             if resolved_max_tokens <= 0:
                 raise ConfigError("INK_LLM_MAX_TOKENS must be positive")
 
+    # 重试次数：CLI 参数优先，否则读 INK_LLM_MAX_RETRIES，openai-compatible 实跑默认 4 次
+    # （iFLYTEK 等网关常 429/503 限流，退避重试是实跑链路必要基础设施）。
+    resolved_max_retries: int | None = max_retries
+    if resolved_max_retries is None:
+        retries_raw: object = source.get("INK_LLM_MAX_RETRIES")
+        if retries_raw is not None and str(retries_raw).strip():
+            try:
+                resolved_max_retries = int(retries_raw)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError("INK_LLM_MAX_RETRIES must be an integer") from exc
+            if resolved_max_retries < 0:
+                raise ConfigError("INK_LLM_MAX_RETRIES must be non-negative")
+    if resolved_max_retries is None:
+        resolved_max_retries = 4
+
     if not resolved_base_url:
         raise ConfigError("openai-compatible provider requires INK_LLM_BASE_URL or --llm-base-url")
     if not resolved_api_key:
@@ -284,6 +381,7 @@ def load_llm_provider_config(
         api_key=resolved_api_key,
         timeout_seconds=resolved_timeout,
         max_tokens=resolved_max_tokens,
+        max_retries=resolved_max_retries,
     )
 
 
@@ -298,6 +396,7 @@ def build_model_provider(config: LLMProviderConfig) -> ModelProvider:
             api_key=config.api_key,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
+            max_retries=config.max_retries,
         )
     raise ConfigError(f"unsupported LLM provider: {config.provider}")
 

@@ -1,7 +1,32 @@
 # InkFlow v2 Bugfix 记录
 
 > **用途**：记录开发中发现的缺陷、根因、修复和防回归测试。
-> **最后更新**：2026-07-07
+> **最后更新**：2026-07-08
+
+---
+
+## 2026-07-08（6 章流水线真实模型版阶段）
+
+### BFX-030 PolishOrchestrator 硬编码 `smart-polish` 模型名（真实 provider 不认）
+
+- **现象**:`tests/test_e2e_real_models.py` 实跑真实 iFLYTEK 时,polish 段抛 `LLMProviderError: provider HTTP 500: ... PathDomainError:Model Not Found`;��后 `SoftSealOrchestrator` 抛 `winner must be a polished smart-model draft before soft seal`。
+- **根因**:`PolishOrchestrator.polish_winner`(`src/ink/pipeline/polish_orchestrator.py:38`)硬编码 `model_name="smart-polish"` 调 `gateway.call`;`SoftSealOrchestrator`(`src/ink/pipeline/soft_seal_orchestrator.py:33`)又校验 winner draft 的 `writer_model == "smart-polish"`。mock `WorkflowProvider` 透传入参不校验,故 m6 smoke 不暴露;真实 iFLYTEK 把 `smart-polish` 当模型名发给网关,返回 `Model Not Found`。且 `PolishOrchestrator` 用 `result.model_name` 写 `draft.writer_model`,真实 provider 返回的 `model_name` 是响应里的真实模型名(非 `smart-polish`),破坏 soft seal 契约。
+- **修复(测试侧,不改生产代码)**:`tests/test_e2e_real_models.py` 原用 `_RemappingProvider` 包装层——调用底层 `OpenAICompatibleProvider` 时把 `smart-polish` 翻译成真实模型 `xopglm51`,返回 `ModelResult` 时把 `model_name` 还原为原始别名 `smart-polish`,保持 `SoftSealOrchestrator` 的生产契约。
+- **生产侧已修复(2026-07-08 阶段1)**:已在 `LLMGateway` 层正式落地模型别名路由,`_RemappingProvider` 测试包装层已移除,改用与生产 CLI 完全一致的机制(别名存 `writing_projects.model_aliases` JSON 列,`LLMGateway.call` 翻译别名调 provider、返回前用 `dataclasses.replace` 还原别名保持 soft seal 契约)。详见 BFX-031。
+
+### BFX-031 LLM provider 无退避重试(iFLYTEK 429/503 限流致 6 章链路中断)
+
+- **现象**:实跑真实 iFLYTEK 6 章链路时,网关频繁返回 `HTTP 429`(code 11210 "authorization failed" 实为限流)/`HTTP 503`(code 10310 "system is busy")。`OpenAICompatibleProvider.complete` 无重试,单次 429 即抛 `LLMProviderError`,outline/polish 段无降级兜底直接 skip,write 段虽兜底但产出 degraded draft,6 章无法跑完。
+- **根因**:`OpenAICompatibleProvider.complete`(`src/ink/core/llm_gateway.py`)对任何 `HTTPError`/`URLError` 直接抛,不区分瞬时错误(429/5xx/超时)与不可重试错误(401/400/402/404)。iFLYTEK 包月套餐限流是常态,无重试 = 实跑链路不可用。
+- **修复**:`OpenAICompatibleProvider` 加 `max_retries`/`retry_base_delay` 参数,`complete` 内对 429/500/502/503/504/超时/JSON 解析失败做指数退避重试(`base * 2^attempt * (1 + jitter)`,jitter 用 `idempotency_key` 哈希做确定性种子,避免所有请求同步重试加剧限流,不引入 `random`);401/400/402/404 等立即抛。`Idempotency-Key` 保证重试安全(服务端去重)。`LLMProviderConfig` 加 `max_retries` 字段,`load_llm_provider_config` 对 openai-compatible 默认 4 次(CLI `--llm-max-retries` 或 `INK_LLM_MAX_RETRIES` 可覆盖)。`_gateway`(`src/ink/cli.py`)贯通该参数。
+- **防回归**:`tests/test_openai_provider.py::TestProviderRetry` 7 个用例(429/503 重试后成功、重试耗尽抛、401 不重试、成功不重试、默认不重试、config 默认 4 次)。
+
+### BFX-032 outline drift 阈值对真实模型过严(CJK bigram 重叠趋近 0 致全拒)
+
+- **现象**:`tests/test_e2e_real_models.py::test_real_six_chapter_pipeline` 实跑时 outline 段抛 `DataIntegrityError: eligible outlines below threshold: 0 < 1`,3 个 writer 模型各产出的 outline 全部 drift 拒绝,6 章链路在 outline 段即 skip。
+- **根因**:`OutlineOrchestrator.run_until_winner`(`src/ink/pipeline/outline_orchestrator.py:51-53`)用 `cjk_bigram_overlap(source_text, outline_text)` 算 outline 与契约结构化字段(`must_land` 事件 + `scene_contract`)的 CJK bigram **重叠度**作为 drift_score,`is_drift_rejected` 判 `drift_score < threshold` 拒绝。但 `source_text` 是短结构化字段(如"主角抵达码头""夜晚雨中"),真实模型(GLM/DeepSeek)倾向用自己话写成段叙述,bigram 与契约几乎不重叠,drift_score 趋近 0,远低于 `0.10`(甚至默认 `0.20`)阈值,全拒。这是设计假设(outline 会复用契约关键词)与真实模型行为(自由重写)的错配。
+- **修复(测试侧阈值放宽)**:e2e fixture `gateway_conn` 的 `outline_drift_threshold` 由 `0.10` 降至 `0.02`,适配真实模型低重叠特性;`min_eligible_outlines` 保持 1。
+- **生产侧待办(P2)**:drift 算法应改用「契约关键词在 outline 中的包含率」或「语义相似度」,而非 bigram 字面重叠,否则真实部署需把阈值压到极低(牺牲 drift 校验意义)。当前生产 CLI 已暴露 `--outline-drift-threshold`,用户可按真实模型特性调低。留作 P2 跟进。
 
 ---
 

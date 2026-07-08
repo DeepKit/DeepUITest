@@ -12,7 +12,7 @@ from ink.core.llm_gateway import LLMGateway, ModelResult, build_model_provider, 
 from ink.core.resume import ResumeManager
 from ink.database import connect
 from ink.decision_sessions import DecisionSessionStore
-from ink.errors import InkError
+from ink.errors import ConfigError, InkError
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
 from ink.pipeline.export_orchestrator import ExportOrchestrator
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
@@ -73,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Max output tokens for all models; reasoning models auto-inject a default if unset",
     )
+    parser.add_argument(
+        "--llm-max-retries",
+        type=int,
+        help="Retry count for transient provider errors (429/5xx/timeout); default 4 for openai-compatible",
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     init_cmd = subcommands.add_parser("init")
@@ -87,6 +92,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--jury-models",
         help="Comma-separated jury model IDs (jury_model_pool); "
         "default: judge-a,judge-b,judge-c,judge-d,judge-e",
+    )
+    init_cmd.add_argument(
+        "--model-aliases",
+        help='Model alias mapping JSON, e.g. \'{"smart-polish":"xopglm51"}\'. '
+        "Translates production aliases to real model names at the gateway layer.",
+    )
+    init_cmd.add_argument(
+        "--min-eligible-outlines",
+        type=int,
+        help="Minimum eligible outlines to proceed (default 1; schema default 1). "
+        "Real-model outlines often drift below threshold, 2 is too strict.",
+    )
+    init_cmd.add_argument(
+        "--outline-drift-threshold",
+        type=float,
+        help="CJK bigram overlap rejection threshold (default 0.10; schema default 0.10). "
+        "Real-model outlines easily fall below 0.20.",
     )
     init_cmd.set_defaults(handler=_cmd_init)
 
@@ -383,6 +405,31 @@ def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, i
         (args.code, args.title, writer_pool_json, jury_pool_json, now),
     )
     project_id = int(project_cursor.lastrowid)
+
+    # 可选运营参数：仅在 CLI 显式提供时覆盖 schema 默认值。
+    updates: dict[str, object] = {}
+    aliases_raw = getattr(args, "model_aliases", None)
+    if aliases_raw:
+        try:
+            aliases = json.loads(aliases_raw)
+        except json.JSONDecodeError as exc:
+            raise ConfigError(f"--model-aliases JSON parse failed: {exc}") from exc
+        if not isinstance(aliases, dict):
+            raise ConfigError("--model-aliases must be a JSON object {alias: real_model}")
+        updates["model_aliases"] = json.dumps(
+            {str(k): str(v) for k, v in aliases.items() if v}, ensure_ascii=False
+        )
+    if args.min_eligible_outlines is not None:
+        updates["min_eligible_outlines"] = args.min_eligible_outlines
+    if args.outline_drift_threshold is not None:
+        updates["outline_drift_threshold"] = args.outline_drift_threshold
+    if updates:
+        assignments = ", ".join(f"{col} = ?" for col in updates)
+        conn.execute(
+            f"UPDATE writing_projects SET {assignments} WHERE project_id = ?",
+            (*updates.values(), project_id),
+        )
+
     session_cursor = conn.execute(
         "INSERT INTO writing_sessions (project_id, started_at) VALUES (?, ?)",
         (project_id, now),
@@ -932,6 +979,7 @@ def _gateway(conn: sqlite3.Connection, args: argparse.Namespace) -> LLMGateway:
         api_key_env=args.llm_api_key_env,
         timeout_seconds=args.llm_timeout,
         max_tokens=args.llm_max_tokens,
+        max_retries=args.llm_max_retries,
     )
     return LLMGateway(conn, provider=build_model_provider(config), provider_name=config.provider)
 

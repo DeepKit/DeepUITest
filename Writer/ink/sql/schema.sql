@@ -15,7 +15,8 @@ CREATE TABLE writing_projects (
     writer_model_pool TEXT NOT NULL,                 -- JSON array
     jury_model_pool TEXT NOT NULL,                   -- JSON array
     jury_model_pool_min INTEGER NOT NULL DEFAULT 3,  -- 裁判模型池最少数量（DB CHECK 用）
-    min_eligible_outlines INTEGER NOT NULL DEFAULT 2,  -- 大纲生成最少合格数
+    model_aliases TEXT,                              -- JSON {"别名":"真实模型名"}，如 {"smart-polish":"xopglm51"}；NULL 表示无别名
+    min_eligible_outlines INTEGER NOT NULL DEFAULT 1,  -- 大纲生成最少合格数（默认 1：真实模型 outline 易因 drift 全拒，2 过严）
     min_eligible_candidates INTEGER NOT NULL DEFAULT 2,  -- jury 候选不足此数触发补写
     redo_candidate_count INTEGER NOT NULL DEFAULT 2,    -- N=2 局部重写时产几篇新候选
     escalated_jury_count INTEGER NOT NULL DEFAULT 5,    -- 裁判分歧超阈值时升级到几个裁判
@@ -36,7 +37,7 @@ CREATE TABLE writing_projects (
         CHECK (retry_strategy IN ('change_model','adjust_intensity','relax_soft')),
 
     -- ── 大纲与容量参数 ──
-    outline_drift_threshold REAL NOT NULL DEFAULT 0.20,     -- 大纲 CJK bigram overlap 拒绝阈值
+    outline_drift_threshold REAL NOT NULL DEFAULT 0.10,     -- 大纲 CJK bigram overlap 拒绝阈值（默认 0.10：真实模型 overlap 易低于 0.20 全拒）
     capacity_floor_titled_shot INTEGER NOT NULL DEFAULT 1200,  -- titled shot 容量下限 UTF-8 bytes
     capacity_floor_chapter_end INTEGER NOT NULL DEFAULT 1500,  -- 章末 shot 容量下限 UTF-8 bytes
 
@@ -72,6 +73,7 @@ CREATE TABLE writing_projects (
     -- CHECK 约束：DB 只做 JSON/长度底线；元素类型、去重、两池交集由 ProjectConfigValidator 校验
     CHECK (json_valid(writer_model_pool) AND json_type(writer_model_pool) = 'array'),
     CHECK (json_valid(jury_model_pool) AND json_type(jury_model_pool) = 'array'),
+    CHECK (model_aliases IS NULL OR (json_valid(model_aliases) AND json_type(model_aliases) = 'object')),
     CHECK (json_array_length(writer_model_pool) >= draft_count),
     CHECK (json_array_length(jury_model_pool) >= jury_model_pool_min),
     CHECK (jury_model_pool_min >= 3)

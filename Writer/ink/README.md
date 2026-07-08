@@ -89,3 +89,5 @@ cd ink && python -m pytest
 ```
 
 当前 CLI 覆盖 `init/setup/confirm-contract/write/review/revise/reject/accept/resume/import/export`，成功/错误输出使用统一 JSON envelope，常用写入命令支持 `--dry-run` 预检。真实 LLM provider 可通过 `--llm-provider openai-compatible` 接入；nightly/manual 验收可用 `ink-record-llm-acceptance` 记录成本、耗时、失败率和质量样例；`ink-replay-thresholds` 可离线回放质量阈值候选；`setup` 已支持项目元契约、章节节奏、shot 数量和核心风格约束输入。PostgreSQL/RLS 迁移边界、共享测试工厂和性能基线也已补齐。
+
+**真实模型实跑链路**(2026-07-08 打通):provider 退避重试(`--llm-max-retries` / `INK_LLM_MAX_RETRIES`,默认 4,对 429/5xx/超时指数退避 + 确定性抖动,Idempotency-Key 保证重试安全);`smart-polish` 等生产别名经 `writing_projects.model_aliases` JSON 列由 `LLMGateway` 正式路由(`init`/`setup` 写入,翻译别名调 provider、返回前还原保持 soft seal 契约);outline drift 阈值 `--outline-drift-threshold` / `--min-eligible-outlines` 可按真实模型特性调低(真实模型自由重写致 CJK bigram 重叠趋近 0,见 `bugfix.md` BFX-032)。`tests/test_e2e_real_models.py` 全程真实 iFLYTEK 驱动 6 章 write→jury→polish→soft seal→review→accept→export。

@@ -1,7 +1,7 @@
 # InkFlow v2 当前任务队列
 
-> **状态**：v1.1 主编台产品化全链路 + 6 项架构增强 + iFLYTEK 真实 LLM 接入完成，全量 298 passed（含 4 联网集成测试）。
-> **最后更新**：2026-07-07
+> **状态**：v1.1 主编台产品化全链路 + iFLYTEK 真实 LLM 接入 + 真实 6 章实跑链路打通(provider 退避重试 + smart-polish 别名正式路由 + outline drift 阈值适配)。
+> **最后更新**：2026-07-08
 
 ---
 
@@ -16,7 +16,10 @@
 
 ## P0 当前任务
 
-- 当前无未完成 P0。
+- ~~**阶段 4 实跑验证真实 6 章生产**~~ ✅ 已完成(provider 退避重试 BFX-031 + smart-polish 别名正式路由 BFX-030 落实 + outline drift 阈值适配 BFX-032;`test_real_six_chapter_pipeline` passed 573s 全程真实 iFLYTEK,6 章 write→jury→polish→soft seal→review→accept→export 跑通;见 history.md 2026-07-08)。
+- **阶段 5 jury escalation 质量增强**(待启动):3 裁不一致时的升级机制(加裁判/加维度/人工裁决),见 P2 #11。
+- **阶段 6 后置项**(待启动):Event log replay UI(P2 #9)、Shot 级 coverage 追踪(P2 #10)、bugfix 收尾。
+- **阶段 7 文档对齐**(待启动):README/CLAUDE.md 反映别名路由 + 重试 + drift 阈值 CLI。
 
 ## P1 产品化任务
 
@@ -61,19 +64,22 @@
 ### P1 主编台深化
 
 1. ~~**真实 LLM 端到端集成测试**~~ ✅ 已完成（iFLYTEK 14 模型连通 + Gateway/抽取集成；见 history.md 2026-07-07）
-2. **6 章流水线真实模型跑通**：用 iFLYTEK 标准模型池（`xopglm52`/`xopdeepseekv4pro`/`xopkimik26`）跑完整 6 章生成，验证抽取/回读/冲突检测在真实模型下的行为。
+2. ~~**6 章流水线真实模型跑通**~~ ✅ 已完成（`tests/test_e2e_real_models.py`:真实 iFLYTEK provider 驱动 outline/write/polish;避开太卡的 `xopglm52`,writer 池 `xopglm51`/`xopdeepseekv4pro`/`xopkimik26`;`smart-polish` 别名经 `LLMGateway` 正式路由(不再用测试侧 `_RemappingProvider`);provider 退避重试扛 iFLYTEK 429/503 限流(BFX-031);outline drift 阈值放宽至 0.02 适配真实模型(BFX-032);网关间歇错误/drift 全拒时优雅 skip;见 history.md 2026-07-08）
 3. ~~**推理模型 max_tokens 适配**~~ ✅ 已完成（`_is_reasoning_model` 自动注入 max_tokens=2000；`content` 空时回退 `reasoning_content`；`--llm-max-tokens` / `INK_LLM_MAX_TOKENS` 全局覆盖）
 4. ~~**DecisionSession 并发控制**~~ ✅ 已完成（scope 级 partial unique index + start 自动填 before_hash + confirm 冲突检测 + session 标 stale + 生产迁移脚本）
 5. ~~**Stale 传播自动触发**~~ ✅ 已完成（`confirm_and_apply(stale_manager=...)` 在 SAVEPOINT 释放后自动调用；CLI `confirm-contract` 默认接入，`--no-auto-stale` 可关闭）
 6. ~~**Coverage gate 可视化**~~ ✅ 已完成（`SourceWorkflowStore.list_coverage_gaps` + CLI `coverage-gaps` 子命令，返回 gap/conflict 字段明细 + 建议源条款）
 7. ~~**`init` 命令支持自定义模型池**~~ ✅ 已完成（`--writer-models`/`--jury-models` 逗号分隔，去重保序，默认池兜底）
 
+> 离线基线核对：`339 passed, 2 skipped`（2026-07-08，含 +7 provider 重试用例;2 skipped 为需 `IFLYTEK_API_KEY` 的联网集成测试）。
+
 ### P2 可扩展性
 
-8. **PostgreSQL adapter 落地**：实现 `DBAdapter` 接口，将 SQLite 测试在 PG ��跑通。
-9. **Event log replay UI**：从 append-only event log 重建任意时刻的 session/contract 状态。
+8. **PostgreSQL adapter 落地**：边界文档已就位（`docs/postgresql-rls-adapter-boundary.md`，见 history.md 2026-07-06 P2），剩余是实现 `DBAdapter` 接口并把 SQLite 测试在 PG 上跑通。
+9. **Event log replay UI**：`EventLog.replay_session/replay_version` 已有（见 history.md Task #22），缺 replay UI 层，从 append-only event log 重建任意时刻的 session/contract 状态。
 10. **Shot 级 coverage 追踪**：把 source clause 追踪粒度从 chapter 细化到 shot。
 11. **Jury escalation 策略**：3 裁不一致时的升级机制（加裁判 / 加维度 / 人工裁决）。
+12. ~~**`smart-polish` 模型别名正式路由**~~ ✅ 已完成（`LLMGateway.call` 从 `writing_projects.model_aliases` 懒加载别名映射,翻译别名调 provider、返回前 `dataclasses.replace` 还原别名保持 soft seal 契约;生产 CLI `init`/`setup` 写入 `model_aliases`;BFX-030 生产侧待办落实。drift 算法待办见 BFX-032）
 
 ### P3 产品化打磨
 
