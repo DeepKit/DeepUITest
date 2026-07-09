@@ -37,7 +37,7 @@ RAW_SCORE_INSERT_SQL = """
          language_texture, emotional_progression, character_believability,
          structure_landing, reading_fluency, motif_theme_fit,
          chapter_continuity, creative_boundary, evaluated_at)
-    VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 AGGREGATE_INSERT_SQL = """
     INSERT INTO writing_jury_aggregates
@@ -48,7 +48,7 @@ AGGREGATE_INSERT_SQL = """
          motif_theme_fit_median, chapter_continuity_median, creative_boundary_median,
          weight_used, final_score, quality_gate_passed,
          quality_gate_reasons, judge_disagreement_max, is_winner, evaluated_at)
-    VALUES (?, ?, ?, 1, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
 """
 ELIGIBLE_BASE_CANDIDATES_SQL = """
     SELECT d.draft_id
@@ -272,11 +272,15 @@ class JuryOrchestrator:
             except LLMProviderError:
                 # 该 judge 三 tier 全失败——跳过（不落 raw_score）。3 全失败在循环后判。
                 continue
-            dim_scores = _parse_jury_scores(result.text)  # 解析失败抛 LLMProviderError，交 gateway failover
+            try:
+                dim_scores = _parse_jury_scores(result.text)  # 容错：缺单维已用中位填充；非 JSON/无有效维度仍抛
+            except LLMProviderError:
+                # gateway 返回了不可解析文本（非 JSON 或无有效维度）——当该 judge 失败，降级用其余 judge。
+                continue
             judge_count += 1
             self.conn.execute(
                 RAW_SCORE_INSERT_SQL,
-                (draft.draft_id, context.shot_contract_id, slot, judge_model, role, *dim_scores, now_utc_iso()),
+                (draft.draft_id, context.shot_contract_id, 1, slot, judge_model, role, *dim_scores, now_utc_iso()),
             )
             for i, val in enumerate(dim_scores):
                 per_dim_scores[i].append(val)
@@ -296,6 +300,54 @@ class JuryOrchestrator:
             (max(vals) - min(vals)) for vals in per_dim_scores if len(vals) >= 2
         ) if judge_count >= 2 else 0
 
+        # 升级判定：基础轮分差超阈值 → 扩到 escalated_jury_count 裁判重评（jury_round=2）。
+        # 升级轮成功时直接返回其结果（aggregate 已在升级方法里落库 jury_round_used=2），
+        # 跳过基础轮 aggregate 落库；升级后仍分歧则升级轮 aggregate 标 escalation_exhausted。
+        if (
+            context.escalated_jury_count > 3
+            and judge_disagreement_max > context.judge_disagreement_max
+        ):
+            escalation_result = self._run_escalation_round(
+                context, draft, tuple(judges), per_dim_scores
+            )
+            if escalation_result is not None:
+                return escalation_result
+            # 升级失败（可用裁判不足 3）→ 落基础轮 aggregate 但标 escalation_exhausted + 不过 gate。
+            weight_used = {column: round(1 / len(SCORE_COLUMNS), 6) for column in SCORE_COLUMNS}
+            weight_used["_intensity_5d"] = context.intensity
+            weight_used["_judge_count"] = judge_count
+            if context.deviant_reference_draft_id is not None:
+                weight_used["_deviant_reference_draft_id"] = context.deviant_reference_draft_id
+            weight_used["_escalation"] = "failed_insufficient_judges"
+            quality_gate_reasons = _quality_gate_reasons(
+                context, final_score, medians, judge_disagreement_max
+            ) + ["escalation_exhausted"]
+            quality_gate_passed = 0
+            self.conn.execute(
+                AGGREGATE_INSERT_SQL,
+                (
+                    context.shot_id,
+                    draft.draft_id,
+                    context.shot_contract_id,
+                    1,  # jury_round_used：基础轮（升级失败回退）
+                    judge_count,  # judge_count：基础轮 = 3
+                    *medians,
+                    json.dumps(weight_used, ensure_ascii=False, sort_keys=True),
+                    float(final_score),
+                    quality_gate_passed,
+                    json.dumps(quality_gate_reasons, sort_keys=True),
+                    judge_disagreement_max,
+                    now_utc_iso(),
+                ),
+            )
+            return _ScoreResult(
+                final_score=final_score,
+                medians=medians,
+                judge_disagreement_max=judge_disagreement_max,
+                passed=False,
+                reasons=quality_gate_reasons,
+            )
+
         weight_used = {column: round(1 / len(SCORE_COLUMNS), 6) for column in SCORE_COLUMNS}
         weight_used["_intensity_5d"] = context.intensity
         weight_used["_judge_count"] = judge_count
@@ -309,6 +361,126 @@ class JuryOrchestrator:
                 context.shot_id,
                 draft.draft_id,
                 context.shot_contract_id,
+                1,  # jury_round_used：基础轮
+                judge_count,  # judge_count：基础轮 = 3
+                *medians,
+                json.dumps(weight_used, ensure_ascii=False, sort_keys=True),
+                float(final_score),
+                quality_gate_passed,
+                json.dumps(quality_gate_reasons, sort_keys=True),
+                judge_disagreement_max,
+                now_utc_iso(),
+            ),
+        )
+        return _ScoreResult(
+            final_score=final_score,
+            medians=medians,
+            judge_disagreement_max=judge_disagreement_max,
+            passed=bool(quality_gate_passed),
+            reasons=quality_gate_reasons,
+        )
+
+    def _run_escalation_round(
+        self,
+        context: "_JuryContext",
+        draft: DraftSpecDTO,
+        base_judge_models: tuple[str, ...],
+        base_per_dim_scores: list[list[int]],
+    ) -> "_ScoreResult | None":
+        """升级轮：扩到 ``escalated_jury_count`` 裁判重评（jury_round=2）。
+
+        用升级轮全部分重算 medians/final_score/judge_disagreement_max 并覆盖 aggregate
+        （先清旧 aggregate 行再插 jury_round_used=2）。基础轮 raw_score（round=1）保留，
+        审计可见两轮。
+
+        返回 ``None`` 表示升级失败（可用裁判 < 3 无法满足 schema judge_count >= 3），
+        由调用方回退落基础轮 aggregate 并标 ``escalation_exhausted``。
+        """
+        escalation_judges = _select_judges_for_escalation(
+            context.jury_models,
+            draft.writer_model,
+            context.escalated_jury_count,
+            base_judge_models,
+        )
+        if len(escalation_judges) < 3:
+            return None  # 可用裁判不足，无法满足 judge_count >= 3
+
+        # 升级轮清旧：raw_scores round=2、aggregate 全清（升级覆盖基础轮 aggregate）。
+        self.conn.execute(
+            "DELETE FROM writing_jury_raw_scores WHERE draft_id = ? AND jury_round = 2",
+            (draft.draft_id,),
+        )
+        self.conn.execute("DELETE FROM writing_jury_aggregates WHERE draft_id = ?", (draft.draft_id,))
+        self.conn.execute(
+            "DELETE FROM writing_ai_call_attempts WHERE call_type = 'jury' AND idempotency_key LIKE ?",
+            (f"jury:{draft.draft_id}:r2:%",),
+        )
+
+        contract_summary = _load_shot_contract_summary(self.conn, context.shot_contract_id)
+        per_dim_scores: list[list[int]] = [[] for _ in SCORE_COLUMNS]
+        judge_count = 0
+        slot_tiers = ("primary", "secondary", "tertiary")
+        for slot, judge_model in enumerate(escalation_judges, start=1):
+            role = JUDGE_ROLES[(slot - 1) % len(JUDGE_ROLES)]
+            prompt_text = _jury_prompt(draft, contract_summary, role, context)
+            idem = f"jury:{draft.draft_id}:r2:{slot}"
+            try:
+                result = self.gateway.call(
+                    project_id=context.project_id,
+                    shot_id=context.shot_id,
+                    run_id=context.run_id,
+                    call_type="jury",
+                    prompt_id=None,
+                    prompt_text=prompt_text,
+                    model_name=judge_model,
+                    idempotency_key=idem,
+                    tier_hint=slot_tiers[(slot - 1) % len(slot_tiers)],
+                )
+            except LLMProviderError:
+                continue
+            dim_scores = _parse_jury_scores(result.text)
+            judge_count += 1
+            self.conn.execute(
+                RAW_SCORE_INSERT_SQL,
+                (draft.draft_id, context.shot_contract_id, 2, slot, judge_model, role, *dim_scores, now_utc_iso()),
+            )
+            for i, val in enumerate(dim_scores):
+                per_dim_scores[i].append(val)
+
+        if judge_count < 3:
+            return None  # 升级轮成功裁判不足 3，无法满足 judge_count >= 3
+
+        medians = [_median(vals) for vals in per_dim_scores]
+        final_score = round(sum(medians) / len(medians), 6)
+        judge_disagreement_max = max(
+            (max(vals) - min(vals)) for vals in per_dim_scores if len(vals) >= 2
+        ) if judge_count >= 2 else 0
+
+        escalated_count = len(escalation_judges)
+        weight_used = {column: round(1 / len(SCORE_COLUMNS), 6) for column in SCORE_COLUMNS}
+        weight_used["_intensity_5d"] = context.intensity
+        weight_used["_judge_count"] = judge_count
+        weight_used["_jury_round"] = 2
+        if len(escalation_judges) < context.escalated_jury_count:
+            weight_used["_escalation_capped_to"] = escalated_count
+        if context.deviant_reference_draft_id is not None:
+            weight_used["_deviant_reference_draft_id"] = context.deviant_reference_draft_id
+        quality_gate_passed = int(_quality_gate_passes(context, final_score, medians, judge_disagreement_max))
+        quality_gate_reasons = _quality_gate_reasons(
+            context, final_score, medians, judge_disagreement_max
+        )
+        # 升级后仍分歧 → 标 escalation_exhausted，走现有重写/fail 分流（人工裁决二期）。
+        if judge_disagreement_max > context.judge_disagreement_max:
+            quality_gate_reasons = quality_gate_reasons + ["escalation_exhausted"]
+            quality_gate_passed = 0
+        self.conn.execute(
+            AGGREGATE_INSERT_SQL,
+            (
+                context.shot_id,
+                draft.draft_id,
+                context.shot_contract_id,
+                2,  # jury_round_used：升级轮
+                judge_count,  # judge_count：升级轮实际数
                 *medians,
                 json.dumps(weight_used, ensure_ascii=False, sort_keys=True),
                 float(final_score),
@@ -327,6 +499,7 @@ class JuryOrchestrator:
         )
 
 
+
 class _JuryContext:
     def __init__(
         self,
@@ -343,6 +516,7 @@ class _JuryContext:
         shot_quality_floor: int,
         dimension_floor: int,
         judge_disagreement_max: int,
+        escalated_jury_count: int,
         deviant_reference_draft_id: int | None,
         intensity: dict[str, object],
     ) -> None:
@@ -358,6 +532,7 @@ class _JuryContext:
         self.shot_quality_floor = shot_quality_floor
         self.dimension_floor = dimension_floor
         self.judge_disagreement_max = judge_disagreement_max
+        self.escalated_jury_count = escalated_jury_count
         self.deviant_reference_draft_id = deviant_reference_draft_id
         self.intensity = intensity
 
@@ -368,6 +543,7 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         SELECT s.shot_contract_id, p.jury_model_pool, p.min_eligible_candidates, p.redo_candidate_count,
                p.auto_retry_on_hard_failure, p.max_retries_per_gate,
                p.shot_quality_floor, p.dimension_floor, p.judge_disagreement_max,
+               p.escalated_jury_count,
                pa.intensity, pa.is_creative_shot, p.project_id
         FROM writing_shots s
         JOIN writing_projects p ON p.project_id = s.project_id
@@ -381,7 +557,7 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
     return _JuryContext(
         shot_id=shot_id,
         run_id=run_id,
-        project_id=int(row[11]),
+        project_id=int(row[12]),
         shot_contract_id=int(row[0]),
         jury_models=tuple(str(item) for item in json.loads(row[1])),
         min_eligible_candidates=int(row[2]),
@@ -391,8 +567,9 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         shot_quality_floor=int(row[6]),
         dimension_floor=int(row[7]),
         judge_disagreement_max=int(row[8]),
-        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[10]) == 1 else None,
-        intensity=json.loads(row[9]),
+        escalated_jury_count=int(row[9]),
+        deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[11]) == 1 else None,
+        intensity=json.loads(row[10]),
     )
 
 
@@ -409,6 +586,25 @@ def _select_judges(jury_models: tuple[str, ...], writer_model: str, count: int) 
     if len(judges) < count:
         raise DataIntegrityError("not enough jury models after excluding writer_model")
     return judges[:count]
+
+
+def _select_judges_for_escalation(
+    jury_models: tuple[str, ...],
+    writer_model: str,
+    count: int,
+    base_used: tuple[str, ...],
+) -> tuple[str, ...]:
+    """升级轮裁判选取：排除 writer_model 后，优先用基础轮未参与模型增多样性，
+    不足则复用基础轮模型；按 (draft_id, jury_round=2, judge_model) UNIQUE 去重（pool 本身
+    无重复，天然满足）；取 ``min(count, 可用数)`` 个。pool 过小（如 5/writer 在内→4 可用）
+    时降级到实际可取数，调用方据此记录 capped。
+    """
+    pool = [m for m in jury_models if m != writer_model]
+    fresh = [m for m in pool if m not in base_used]
+    reused = [m for m in pool if m in base_used]
+    ordered = fresh + reused
+    return tuple(ordered[: min(count, len(ordered))])
+
 
 
 def _redo_in_progress(conn: sqlite3.Connection, shot_id: str, run_id: int) -> bool:
@@ -471,7 +667,7 @@ class _ScoreResult:
 _DIMENSION_LABELS = {
     "scene_visual": "场景画面感",
     "rhythm_pacing": "节奏与步调",
-    "dialogue_subtext": "对话潜台词",
+    "dialogue_subtext": "对话潜台词（无对白场景见下方准则）",
     "suspense_tension": "悬疑张力",
     "language_texture": "语言质感",
     "emotional_progression": "情感推进",
@@ -510,16 +706,27 @@ def _parse_jury_scores(text: str) -> list[int]:
     except json.JSONDecodeError as exc:
         raise LLMProviderError(f"jury 评分 JSON 解析失败：{exc}") from exc
     scores: list[int] = []
+    parsed: list[int | None] = []
     for col in SCORE_COLUMNS:
         if col not in obj:
-            raise LLMProviderError(f"jury 评分缺维度：{col}")
+            # 真实模型偶尔漏返个别维度（实测 character_believability 偶发缺失）。
+            # 整体丢该 judge 会让 judge_count<3 触发 JuryLLMFailure、中断该 draft 评分。
+            # 容错：先记 None，下方用该 judge 其余维度中位填充，保 judge_count=3 链路不崩。
+            parsed.append(None)
+            continue
         val = obj[col]
         if not isinstance(val, (int, float)) or isinstance(val, bool):
             raise LLMProviderError(f"jury 评分维度 {col} 非数值：{val!r}")
         iv = int(val)
         if iv < 0 or iv > 100:
             raise LLMProviderError(f"jury 评分维度 {col} 越界(0-100)：{iv}")
-        scores.append(iv)
+        parsed.append(iv)
+    present = [v for v in parsed if v is not None]
+    if not present:
+        # 该 judge 一个有效维度都没返——真废，交调用方当单 judge 失败处理。
+        raise LLMProviderError("jury 评分无任何有效维度")
+    fill = int(_median(present))
+    scores = [(v if v is not None else fill) for v in parsed]
     return scores
 
 
@@ -560,6 +767,19 @@ def _jury_prompt(draft: DraftSpecDTO, contract_summary: str, role: str, context:
         f"## shot 契约要点\n{contract_summary or '（无契约摘要）'}\n\n"
         f"## 待评草案（writer_model={draft.writer_model}）\n{draft.text}\n\n"
         f"## 评分维度（共 12 维，每维 0-100 整数）\n{dims_block}\n\n"
+        "## 评分准则\n"
+        "1. 每维独立评 0-100，仅依据该维度本身的质量，不要因别的维度好坏连带扣分。\n"
+        "2. 维度适用性——某些场景天生不含某类元素，此时该维按“中性偏高”给分，**不得因元素缺失而低分**：\n"
+        "   - dialogue_subtext：若本段无对白或对白极少（独处、追逐、纯环境叙事等场景），"
+        "给 75-82，视为“该场景无需对白，不构成缺陷”。仅在确有对白但潜台词单薄/直白时才扣分。\n"
+        "   - 其他维度同理：场景不涉及某元素时给中性分，而非 0-40。\n"
+        "3. 分歧控制：你的打分应落在该稿该维的合理区间内。若你与同伴的判断可能相差很大，"
+        "取你心中区间的中位值，避免极端高/低分拉高整体分歧。\n"
+        "4. **悬疑张力（suspense_tension）专审**：若上方“shot 契约要点”含【章节悬疑约束】，"
+        "据此对照——追读类型是否达成（追查型看线索推进、倒计时型看时间压力是否落地）、"
+        "沉默点是否真正对读者隐藏而非直说、物理因果锚点是否让读者可复盘后果链、"
+        "章末钩子是否制造翻页欲。约束缺失或落实不到位时 suspense_tension 应明显扣分（<65）；"
+        "无章节悬疑约束（纯铺垫章）则按中性偏高给分。\n\n"
         "## 输出要求\n"
         "严格输出一个 JSON 对象，**仅**含上述 12 个维度键，值为 0-100 整数，不要任何额外文本、"
         "不要 markdown 代码围栏、不要 evidence 字段。示例：\n"

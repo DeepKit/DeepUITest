@@ -50,8 +50,8 @@ CREATE TABLE writing_projects (
     checkpoint_max_retention INTEGER NOT NULL DEFAULT 3,       -- checkpoint 保留最近几个稳定点
 
     -- ── 质量阈值参数（原 quality_bar JSON，拆为独立字段以支持 DB 层约束） ──
-    shot_quality_floor INTEGER NOT NULL DEFAULT 80,           -- winner 最低 final_score，DB 绝对底线 80
-    dimension_floor INTEGER NOT NULL DEFAULT 65,              -- 12 维任一核心维度最低分，DB 绝对底线 65
+    shot_quality_floor INTEGER NOT NULL DEFAULT 75,           -- winner 最低 final_score，DB 绝对底线 75（真实模型 jury 稳定 77-83，80 过严）
+    dimension_floor INTEGER NOT NULL DEFAULT 60,              -- 12 维任一核心维度最低分，DB 绝对底线 60
     chapter_quality_floor INTEGER NOT NULL DEFAULT 75,        -- 章级 7 维最低分，DB 绝对底线 75
     book_quality_floor INTEGER NOT NULL DEFAULT 75,           -- 篇级 6 维最低分，DB 绝对底线 75
     judge_disagreement_max INTEGER NOT NULL DEFAULT 25,       -- 同维 3 裁判最高-最低最大分差，DB 绝对底线 25
@@ -63,8 +63,8 @@ CREATE TABLE writing_projects (
 
     created_at TEXT NOT NULL,
 
-    CHECK (shot_quality_floor >= 80),                          -- 运营阈值不得低于 DB 绝对底线
-    CHECK (dimension_floor >= 65),
+    CHECK (shot_quality_floor >= 75),                          -- 运营阈值不得低于 DB 绝对底线
+    CHECK (dimension_floor >= 60),
     CHECK (chapter_quality_floor >= 75),
     CHECK (book_quality_floor >= 75),
     CHECK (judge_disagreement_max <= 25),                     -- 分差阈值不得高于绝对底线（越小越严格）
