@@ -95,7 +95,28 @@
      逐章滚动暂停，等 A 实施后重产第2章验证同构消除，再续第3章及之后。
      B/C 涉及大纲修改，属作者裁定项，不在流程侧擅自改。
 
-3. **Day4-11：逐章滚动生产（第2-5章 + 序章）**【暂停，待 P0-1 context 重做】
+2.6. **【阻塞·P0 架构根因】契约层接线重做（BFX-079，2026-07-15）**
+   - 详见 `docs/contract-layer-rewire-design.md` + BFX-079。摘要：
+   - **根因**：设计定义了契约层（五级+四层+架构师/复审师审查闭环），早期也建
+     了工具，但契约层只挂在需人工手动触发的 CLI 上，**从未接线进 produce-chapter
+     生产链路**。`_ensure_scene_and_contract` 用"死线策略"docstring 跳过双盲审查、
+     建空壳契约；`brief_builder` 裸拼大纲；`record_contract_review` 零生产调用方
+     （死代码）。降级无恢复点→错误前提被固化成架构。P0-1/2/3 是此根的三表现。
+   - **方案（建硬约束，非补丁）**：
+     - A. produce-chapter 前置契约为硬 gate（无 confirmed Chapter 级契约→拒绝产稿）
+     - B. 契约层下沉进生产子步骤：draft_contract→record_contract_review→confirm_and_apply
+     - C. 加降级门+debt_marker，清"死线策略"docstring
+     - D. 契约成唯一真相源：brief_builder 改读契约表（卷级三表+章级四层），撤大纲
+       裸拼+前章正文 context（BFX-078 正解）
+     - E. 加成篇连贯门（coherence_gate 查同构/视角越界/未来回环分布）+jury 连贯维度
+   - **落地顺序**：B→A→C→D→E。B/C/D/E 是纯代码接线。
+   - **卡点（作者裁定项）**：卷级三表内容——章节功能分工表（修P0-1）/视角信息
+     分配表（修P0-2）/未来回环分布表（修P0-3）。属作者设定权，代码层只做读表
+     注入+门校验。作者定完三表，B/C/D/E 即可开工。
+   - **BFX-078 降级**：原"context 注入正文原文→结构化前情摘要"是 BFX-079 的
+     表层补丁，并入方案 D（撤正文 context），不再单列。
+
+3. **Day4-11：逐章滚动生产（第2-5章 + 序章）**【暂停，待 BFX-079 契约层接线】
    - **生产线库**：新建正式白灯线库 `baideng_prod.db`（project_id=1，真模型池
      deepseek/glm/kimi 已 seed，2026-07-15 建）。不复用诊断库 baideng_bfx074_diag。
    - **【已完成】跨章 context 注入**（2026-07-15，详见 history 同日条目）：

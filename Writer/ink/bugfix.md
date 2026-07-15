@@ -850,3 +850,56 @@
 
 **关联**：memory `ink-context-injection-raw-text-backfires`；评审报告
 `D:\_Progs\.BetterCiv\09_工程脚本\ai_workbench\runs\AWT-20260715-171440-5aaf49\amy-review-synthesis.md`。
+
+## BFX-079：契约层未接线进生产链路（架构根因，P0，2026-07-15）
+
+**症状**：P0-1 章节同构、P0-2 完整因果链、P0-3 科幻锚点缺失——五专家连续评审
+（AWT-20260715-171440）三个 P0，深挖到架构根因。
+
+**根因**：设计文档（design.md §2/§3.1）定义了契约层（五级 Book/Volume/Part/
+Chapter/Scene + 四层 clause + 架构师起草/复审师审查/返工闭环），早期也建了契约
+工具（confirm_and_apply / DecisionSession / record_contract_review / stale 传播，
+提交 1b93f3c5 / 259145e2）。但契约层只挂在需人工手动触发的 CLI 命令
+（confirm-contract / decision-session）上，**从未接线进自动生产链路
+（produce-chapter）**。
+
+**直接证据（代码自白）**：
+- `_ensure_scene_and_contract` docstring："Dead-line policy skips the dual-blind
+  self_check / independent review; the human actor activation is the seal." 它建的
+  契约是空壳：contract_hash=sha256(brief)、source_bundle_hash 同一 hash，四层
+  clause 一个没落。
+- `brief_builder.py:8`："死线收口用：不落 chapter contract payload / scene contract
+  四层 clause"。
+- `record_contract_review` 零生产调用方（死代码）。
+- git 考古：契约层工具早期建好即搁置，brief_builder 今天新建直接裸拼大纲未接。
+
+**真根因三层**：
+1. 表面 = 死线降级（7-30 投稿死线）。
+2. 机制 = 契约层（CLI 旁路工具）与生产层（produce-chapter）两套独立建的工具，
+   中间无接线。
+3. 真 = 无"契约贯穿生产"硬约束 + 降级不可逆。第一次降级（跳双盲审查）无追责无
+   回补，后续 brief 裸拼 / context 注入正文都在"契约已缺位"错误前提上继续固化，
+   错误前提被固化成架构。
+
+**P0-1/2/3 统一解释**：缺 Chapter 级"结构职责"契约→同构；缺 Chapter 级"知情边界"
+契约→全知；缺 Volume/Book 级"未来回环分布"契约→无科幻。一个根，三个表现。
+
+**修复方案**（非补丁，建硬约束，详见 docs/contract-layer-rewire-design.md）：
+1. produce-chapter 前置契约为硬 gate：无 confirmed 的 Chapter 级契约（含四层
+   payload）则拒绝产稿，不降级。
+2. 契约层下沉进生产子步骤：draft_contract → record_contract_review →
+   confirm_and_apply，做进 produce-chapter 内部，不再靠人���跑 CLI。
+3. 加降级门：跳契约步骤留 debt_marker，入口校验存在则警告/拒绝；清"死线策略"
+   docstring。
+4. 契约成唯一真相源：brief_builder 改读契约表（卷级三表+章级四层），撤大纲
+   裸拼+前章正文 context（BFX-078 的正解）。
+5. 加成篇连贯门（coherence_gate 查同构/视角越界/未来回环分布）+ jury"与前章
+   连贯"维度。
+
+**卡点**：卷级三表内容（章节功能分工表/视角信息分配表/未来回环分布表）是作者
+设定权，需作者裁定，代码层只做读表注入+门校验。
+
+**关联**：BFX-078（context 注入正文原文，本根因的表层补丁，正解=方案4撤正文
+context）；memory `ink-contract-layer-rewire-root-cause`、
+`ink-context-injection-raw-text-backfires`；评审报告
+`D:\_Progs\.BetterCiv\09_工程脚本\ai_workbench\runs\AWT-20260715-171440-5aaf49\amy-review-synthesis.md`。

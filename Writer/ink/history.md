@@ -1678,3 +1678,67 @@ amy-review-synthesis.md`）。
    评审验证"成篇连贯性"，不能只验单章人设命中。
 3. 大纲卡片的`章末钩子`字段本就是结构化前情摘要的现成来源——context 注入
    应优先用它，而非去取正文原文重新抽取。
+
+## 2026-07-15：契约层未接线生产链路——架构根因定位（BFX-079）
+
+**触发**：用户追问"为什么开发文档有的东西，代码实现跳过了，根因在哪儿"。
+对五专家评审三个 P0 做第三轮深挖，从"机制层"挖到"架构层"。
+
+**直接证据（代码自白）**：
+- `_ensure_scene_and_contract` docstring："Dead-line policy skips the dual-blind
+  self_check / independent review; the human actor activation is the seal."
+  建的契约是空壳：contract_hash=sha256(brief)、source_bundle_hash 同一 hash，
+  design 3.1 四层 clause 一个没落。
+- `brief_builder.py:8`："死线收口用：不落 chapter contract payload / scene
+  contract 四层 clause"。
+- `record_contract_review` 零生产调用方（死代码）。契约层工具（confirm_and_apply/
+  DecisionSession/record_contract_review/stale 传播）只挂在需人工手动触发的
+  CLI 命令上，produce-chapter 生产链路完全不调。
+- git 考古：契约层工具早期提交（1b93f3c5/259145e2）建好即搁置；brief_builder
+  今天（03bea0fe）新建直接裸拼大纲，未接任何契约层。两层不同时间、不同目的建，
+  中间无接线。
+
+**层级落地现状**：design §2 五级契约 vs 实现——
+- Book：仅 book_quality_floor 数值 75，无内容，不注入 brief，不调生产
+- Volume：volume_id 全 NULL，stale 退化"全部章节"，不注入不调
+- Part：part_id 全 NULL，同上
+- Chapter：表存在但空壳占位，四层 clause 未落，不注入
+- Scene：同 Chapter
+
+**根因三层**：
+1. 表面 = 死线降级（7-30 投稿死线压着，为端到端跑通砍契约审查）。
+2. 机制 = 契约层（CLI 旁路工具）与生产层（produce-chapter）两套独立建的工具，
+   中间无接线。契约层建好即搁置成死工具，生产层裸奔。
+3. 真 = 无"契约贯穿生产"硬约束 + 降级不可逆。第一次降级（跳双盲审查）无追责
+   无回补，后续 brief 裸拼 / context 注入正文都在"契约已缺位"错误前提上继续
+   固化，错误前提被固化成架构。
+
+**P0-1/2/3 统一解释**：缺 Chapter 级"结构职责"契约→同构；缺 Chapter 级"知情
+边界"契约→全知；缺 Volume/Book 级"未来回环分布"契约→无科幻。一个根，三个
+表现。BFX-078（context 注入正文原文）是此根的表层补丁，正解 = 撤正文 context、
+把契约层接回生产。
+
+**解决方案（建硬约束，非补丁）** → `docs/contract-layer-rewire-design.md`：
+- A. produce-chapter 前置契约为硬 gate（无 confirmed Chapter 级契约→拒绝产稿）
+- B. 契约层下沉进生产子步骤：draft_contract→record_contract_review→confirm_and_apply
+- C. 加降��门+debt_marker，清"死线策略"docstring
+- D. 契约成唯一真相源：brief_builder 改读契约表，撤大纲裸拼+正文 context
+- E. 加成篇连贯门+jury 连贯维度
+
+**落地顺序** B→A→C→D→E。B/C/D/E 纯代码接线。
+
+**卡点**：卷级三表内容（章节功能分工表/视角信息分配表/未来回环分布表）是
+作者设定权，需作者裁定，代码层只做读表注入+门校验。
+
+**教训**：
+1. 设计文档与代码"两张皮"是系统性风险——设计写得再完整，没有"生产必须贯穿
+   契约"的硬约束，建生产层时一句 docstring 就能砍掉。
+2. 降级必须可追责、可恢复、有门拦截，否则临时降级会被后续代码固化成默认架构。
+3. 发现质量问题要挖根因不打补丁——之前每层补丁（单章质量门、context 注入）
+   都在错误前提上加固，根因不动，质量停在 7.1 上不去。
+4. 契约层工具建好后零生产调用方 = 死代码，是"建了工具没接流水线"的典型信号，
+   今后新工具必须同步接进生产入口才算交付。
+
+**登记**：BFX-079（架构根因）；tasks 插入 2.6 阻塞块，逐章滚动暂停待 BFX-079
+接线；BFX-078（context 注入补丁）降级并入方案 D。memory
+`ink-contract-layer-rewire-root-cause`（防再犯）。
