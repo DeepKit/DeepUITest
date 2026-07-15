@@ -1,94 +1,183 @@
-# InkFlow v2 当前任务队列
+# Ink v2 Scene-first 当前任务
 
-> **状态**：v1.1 主编台产品化全链路 + iFLYTEK 真实 LLM 接入 + 真实 6 章实跑链路打通。**当前重心：质量门真实化——jury 已真实化（阶段 A/B/C 完成），下一步 chapter_review + book_check 桩换真实 gateway.call（阶段 D）。**
-> **最后更新**：2026-07-08
+> 只记录未完成任务。已完成内容移入`history.md`。
+> 当前法源：`docs/README.md`、`docs/design.md`、`docs/implementation-contract.md`
+>
+> **2026-07-15 对齐**：补登 5 块已完成工作（质量门真实化 A/B/C、章节悬疑
+> 三层注入、工业事实漂移检测器解耦、通用章纲注入链路、P0-3/5 不变量测试
+> 11 条）至 `history.md`；缺陷登记 BFX-068~071 至 `bugfix.md`。以下任务据此
+> 校正进度。
+>
+> **2026-07-15 FastMeet 决议（Sol/GLM-5.2/StepFun 三家共识）**：《白灯法则》
+> 7-30 投稿死线，旧 Shot 生产线产物全部作废，直接在 Scene-first 真实模型链路
+> 产新稿。**唯一 P0 = 收口端到端生产命令 + 用第1章纵切验证 + 逐章滚动**。原
+> Scene-first 闭环 P0 项（Accept/Export、四层双师、旧库迁移等）降级为死线后
+> 推进，不阻塞投稿。质量门与停止规则硬编码：单章 2 轮上限、winner≥85、关键
+> 维度≥80、底线 80、超时取最高分带缺陷接受；7-28 24:00 产稿硬截止。
 
----
+## P0：白灯 7-30 投稿冲刺（唯一主线，压倒一切）
 
-## 当前开发原则
+1. **Day1-2：收口 `ink produce-chapter` 端到端命令**（进度：**命令已实现 +
+   deterministic 端到端冒烟通过 + `--no-accept`/续 force-accept 闭环验证 +
+   真模型烟测链路实证**，见 history 2026-07-15；剩余：BFX-074 修复后产出真 winner）
+   - 章纲注入 → `GenerationRoundDriver`（真实模型产 2 候选）→ `RealSelectionPort`
+     选优 → jury 真实审 → `scene_accept` 落库 → `scene_export` 导出封版正文；
+   - 硬能力：可恢复（run ID + 检查点）、幂等（重复执行不重复落库/不覆盖封版稿）、
+     全程留痕（候选稿/jury 原始分/门禁结论/接受版本/导出校验值）、可人工接管
+     （指定候选强制接受）；**deterministic 冒烟已验证全链路编排无 bug**
+     （generate→validate→diff→select→accept→export，3 候选 2 轮 accepted:true）；
+   - **`--no-accept` + 续 force-accept 已实现**：ch01 重校"产出不封版交裁定"
+     语义——`--no-accept` 产 frozen winner 不封版 + 导出候选稿，作者裁定后
+     `--force-branch-version-id` 续封版（force 模式免 outline-file）；
+   - **真模型烟测进展（2026-07-15）**：`LOCAL_PROXY_KEY`+`INK_LLM_API_KEY` 双设
+     +`openai-compatible` 真实命中本地代理 claude-xunfei-deepseek-v4-pro，
+     generation（draft×3）→BRANCH_FROZEN×3→validation（chapter_review×3）全
+     SUCCEEDED，新 role-config 链路实证打通（见 history 同日条目）。
+   - **真 winner 已产出（2026-07-15）**：BFX-074 RESOLVED（见 1.5）后，`run_bfx074_diag.py`
+     二跑 `final_status=selected`、`winner_branch_version_id=2`，branch 1 = selected。
+     剩余：`scene-accept` 封版 + 纵切验收（见任务 2）。
+   - **不做**：旧库 Cutover、通用 UI、复杂编排、旧 Shot 兼容。
 
-- `tasks.md` 只保留未完成任务和下一步开发队列。
-- 已完成里程碑、决策和验收证据移入 `history.md`。
-- 开发中发现的缺陷、原因、修复和防回归测试记录到 `bugfix.md`。
-- 默认本地验收命令：`cd ink && python -m pytest`。
+1.5. **【已完成】BFX-074 真模型 validation 0 过门**（2026-07-15 RESOLVED，详见
+   bugfix.md BFX-074/075/076）——根因订正：非过严，是 BFX-075（init 静默 seed
+   `provider="mock"`）致真链路走桩；加 `INK_LLM_*` 环境变量绕过后，真模型 jury
+   （glm-5-2 单 judge）实测打 85-96 高分，floor=75 合理，候选1/2 passed、候选3
+   failed。`run_bfx074_diag.py` 二跑全程通过：`final_status=selected`，
+   `winner_branch_version_id=2`，winner 已产出待 `scene-accept` 封版。BFX-076
+   （selection UNIQUE 冲突）偶发不阻塞。**阻塞解除，进入第1章纵切验证**。
 
----
+2. **【已完成】Day3：第1章纵切验证**（2026-07-15，详见 history 同日"纵切闭环"+"BFX-077 修复"）
+   - **机械闭环（首跑）**：章纲启动 → 真 jury 7 维（9 attempt success）→ winner
+     selected → `scene-accept` 封版（head_version=1）→ 导出与接受版本 hash 一致
+     → 库状态可核验。**但发现导出正文是"江辞/陆衍希"言情线，非白灯第1章。**
+   - **BFX-077 修复**：`_generation_prompt` 第三段漏 `f` 前缀 → `{brief}` 字面
+     不插值 → 模型只收 82c 无 brief prompt（token_input=54）→ 自由发挥写言情。
+     补 `f` 后 brief 进 prompt（token_input 54→321）。
+   - **实质达标（修复后重跑）**：三候选正文全含白灯人设（许怀山/吕素琴/硫化/
+     返潮/装车），零言情残留；7 维评分 93-99（character_voice 98 /
+     scene_concreteness 99 等）；winner=branch_version 3 封版（head_version=1），
+     导出 7064B 白灯正文（许怀山/硫化车间/第十七批/攀枝花）。
+   - `--no-accept` + `scene-accept --branch-version-id` 续封版已验证。
+   - **第1章白灯 ch01 真正文已封版产出**（`.bfx074/exported_ch01.md`，7064B），
+     待作者裁定是否接受为正式第1章（见 memory ch01-redo-timeline，产出不封版
+     交裁定——此处封版仅指管线 head 落库，不等于作者文学裁定）。
+   - 纵切通过（机械闭环+实质达标），数据契约/质量门/产物目录已冻结，暂停架构
+     重构进入逐章生产。
 
-## P0 当前任务：质量门真实化 + 模型角色主备兜底
+3. **Day4-11：逐章滚动生产（第2-5章 + 序章）**
+   - **生产线库**：新建正式白灯线库 `baideng_prod.db`（project_id=1，真模型池
+     deepseek/glm/kimi 已 seed，2026-07-15 建）。不复用诊断库 baideng_bfx074_diag。
+   - **【已完成】跨章 context 注入**（2026-07-15，详见 history 同日条目）：
+     `brief_builder` 加 `_prev_chapter_context`——产第 N 章 brief 时取第 N-1 章
+     封版正文头+末各 300 字注入 prompt（字数约束保持最末）。零额外 LLM 调用、
+     token 可控、第1章/未封版/无 conn 三场景 graceful skip。`build_chapter_brief`
+     签名扩 `conn/project_id` 可选（向后兼容）。`cli.py` produce-chapter 传 conn。
+     单测 5 条全过 + real_ports/driver 回归 12 测全绿。
+   - **【已完成】正式库产第1章封版 + 第2章带 context 产稿**（2026-07-15）：
+     baideng_prod.db 第1章 3 候选1轮 winner=branch_version 3，正文 7938B 含
+     许怀山×10/吕素琴×10/硫化×5/油纸包×4/返潮×1，零言情残留，accept 封版
+     （snapshot_id=1）。第2章 brief 含前章 context（头300"一九七九年四月十七
+     …许怀山…装车台…四二零四配方"+末300"烟囱的影子长长地投在空了的装车台"），
+     产稿 winner=branch_version 4 正文 6639B 续接前章伏笔（油纸包×4/一九七八×5/
+     密封件×5/装车×5/硫化×4），模型准确复现"第十七批 一九七九年四月十五日下线
+     接口密封件 硫化橡胶 四二零四配方"——证明 context 真进 prompt 且被用于续接。
+     accept 封版（snapshot_id=2）。详见 history 同日条目。
+   - **逐章封版表**（2026-07-15 更新）：
+     | 章 | 状态 | winner_branch | 封版snapshot | 重试 | 备注 |
+     |----|------|---------------|--------------|------|------|
+     | 1  | 已封版 | 3 | 1 | 0 | context 源,7938B |
+     | 2  | 已封版 | 4 | 2 | 0 | 带前章context,6639B |
+     | 3  | 未开始 | - | - | - | 下一步 |
+     | 4  | 未开始 | - | - | - | |
+     | 5  | 未开始 | - | - | - | |
+     | 序章 | 未开始 | - | - | - | |
+   - 每章：产2候选 → jury → 过门 accept/export/人工快审；
+   - 2轮全章上限，第3轮起只做局部重写或人工修补；达预算取最高分带缺陷接受进卷级编辑队列；
+   - 硬门（结构完整/场景无缺/无截断泄漏/无提示词泄漏/Scene-候选-jury-导出可追溯）失败必修；评分门（winner≥85，关键维度≥80，底线80）筛选用；人工门只审致命问题不逐句润色；
+   - 每日核对剩余章数×单章周期是否超剩余时间，超即降级。
 
-> 设计 plan：`C:\Users\Administrator\.claude\plans\effervescent-pondering-puzzle.md`。用户硬要求：每个 `call_type` 的 LLM 角色都必须配「主/备/兜底」三模型，尽量跨供应商，独立模块管理；调用失败(provider 重试耗尽)才主→备→兜底逐个切，三都失败才判失败并提示调供应商/api-key。
+4. **Day12-14：卷级统稿**
+   - 跨章一致性（人物/伏笔/时间线/信息揭示顺序）、文风统一、语言润色（六章齐备后一次做，不前期反复精修）。
 
-- ~~**阶段 4 实跑验证真实 6 章生产**~~ ✅ 已完成（见 history.md 2026-07-08）。
-- ~~**阶段 A 模型角色配置模块（主备兜底）**~~ ✅ 已完成（见 history.md 2026-07-08）。
-- ~~**阶段 B gateway 接 failover（不污染熔断）**~~ ✅ 已完成（见 history.md 2026-07-08）。
-- ~~**阶段 C jury 真实化 + LLM 失败分流**~~ ✅ 已完成（见 history.md 2026-07-08）。
-- **阶段 D chapter_review + book_check 真实化**：桩换成真实 gateway.call，解析维度分 + issues，blocking 即拦 accept。当前 `chapter_review`/`book_check` 仍用桩评分，需对齐 jury 的真实化模式（3 tier failover + 维度解析 + 失败分流）。
-- **阶段 E task_card 注入 book 层上下文**：loader 新增 `load_book_context` 查 `writing_meta_contracts` + `writing_atomic_source_clauses`（character/world confirmed），task_card 渲染注入 World/Character/Narrative/Motif 段喂 writer（修正：book 层无实体表，走 atomic clauses）。
-- **阶段 F 实跑验证 + 文档对齐**：配跨供应商 role-config，真实跑 6 章验证；造 failover 验证主备切换 + 全失败抛「调供应商」；tasks→history 归档，bugfix 记桩评分 + 死代码缺陷。
+5. **Day15：故障缓冲 + 投稿材料**（7-28 24:00 产稿硬截止，7-29~30 仅统稿/排版/投稿）
 
-## P1 产品化任务
+## P1：Scene-first 闭环（死线后推进，当前不阻塞）
 
-### 1. 主编台调度与集成
+> 以下为原 Scene-first P0，投稿死线内不推进，7-30 后恢复。进度已标，见上文。
 
-- ~~**WorkflowConductor 薄调度状态机**~~ ✅ 已完成（见 history.md Task #15）
-- ~~**DecisionSession 主编台集成**~~ ✅ 已完成（见 history.md Task #3）
-- ~~**选择式对话 CLI/API**~~ ✅ 已完成（见 history.md Task #4）
-- ~~**自然语言到契约 patch**~~ ✅ 已完成（见 history.md Task #9）
-- ~~**ScopedDecisionSession**~~ ✅ 已完成（见 history.md Task #16）
 
-### 2. 源文档规范化与覆盖
 
-- ~~**源文档规范化算法**~~ ✅ 已完成（见 history.md Task #19）
-- ~~**source coverage gate 集成**~~ ✅ 已完成（见 history.md Task #5）
-- ~~**双模型抽取执行器**~~ ✅ 已完成（见 history.md Task #6）
-- ~~**过程文件清空执行器**~~ ✅ 已完成（见 history.md Task #7）
+1. **Chapter Accept与Export闭环**
+   - 在现有Snapshot/CAS事务中加入Selection Decision、Human Decision和Runtime Event；
+   - 接入Scene、Chapter、Book及伦理硬门；
+   - 明确human actor权限，阻断AI Accept、Activate和更新Chapter Head；
+   - 新增只读active Snapshot的正式export路径；
+   - `accepted_decision_id`生产路径改为必填，禁止测试用NULL语义进入正式Accept；
+   - 在Cutover前保持旧export不变，禁止双正文权威。
 
-### 3. 契约版本与 stale 传播
+2. **Scene Contract四层与双师**（部分进度：四层装配 + 双师盲审不变量已过，见 history 2026-07-14 §5）
+   - **已完成**：hard constraint/source DNA/soft goal/creative opening 四层装配（需两个 creative opening）；契约架构师自检、独立复审师、人类激活；reviewer family/blind context/prompt hash/独立性证据；阻断 AI 激活契约；复审序号按 contract 自增。
+   - **剩余**：generation/repair task 从“非空 ID”升级为存在性、项目/章节作用域和有效状态校验；
+   - **剩余**：实现 amendment、supersede 和 stale 传播（amendment 已记血统不改 clause，supersede/stale 落地待续）。
 
-- ~~**契约字段投影集成**~~ ✅ 已完成（见 history.md Task #17）
-- ~~**stale 传播实现**~~ ✅ 已完成（见 history.md Task #18）
+3. **评审与文学选优**
+   - Scene资格门和Chapter绝对文学门槛；
+   - blind pairwise ranking、Pareto保留和少数冠军；
+   - 同构候选阻断；
+   - 选优对象只能是完整Chapter Candidate Branch。
 
-### 4. 验收与防回归
+4. **事实认定与指导卡**
+   - Fact Proposal生命周期，unknown不得当作false；
+   - Guidance/Anti-pattern Card；
+   - 最佳示例按需注入、反照抄、最大使用次数、冷却、撤销和效果归因；
+   - 返工先归因，再决定是否增减契约或注入示例。
 
-- ~~**前 6 章生成验收**~~ ✅ 已完成（见 history.md Task #20）
-- ~~**防回归测试**~~ ✅ 已完成（见 history.md Task #8）
+5. **旧生产库安全迁移**
+   - 为既有SQLite文件库提供幂等migration；不能只修改新库`schema.sql`；
+   - Scene边界dry-run和低置信人工裁定；
+   - 影子回填Scene、Revision、Branch和Snapshot；
+   - 旧导出与Snapshot导出hash parity；
+   - 写入冻结、一次Cutover和回滚演练；
+   - 实现并验证schema authority marker；
+   - Cutover后legacy Shot只读。
 
-## P2 架构增强（已完成）
+6. **剩余Scene-first不变量**（进度：测试 3/5 已过，11 条全绿，见 history 2026-07-14 §5）
+   - **已完成（3/5）**：四层装配、契约双师盲审、AI 不能激活、amendment 记血统、Guidance Card 生命周期、事实提案人-only 门 + 写 anchor、accept 需 decision_id。
+   - **剩余（4/5）**：Accept Decision/Event 故障注入事务；
+   - **剩余（4/5）**：AI 权限和受保护表 SQL lint；
+   - **剩余（5/5）**：export 只读 active Snapshot；
+   - **剩余（5/5）**：migration parity、Fact、Guidance 和 stale 传播；
+   - 详见 `docs/invariant-traceability.md`。
 
-- ~~**专家模式可展开审计**~~ ✅ 已完成（`DebugView` + CLI `debug` 子命令组；见 history.md Task #21）
-- ~~**强事件溯源**~~ ✅ 已完成（append-only event log + 2 新表；见 history.md Task #22）
-- ~~**接入真实 LLM Gateway**~~ ✅ 已完成（`LLMExtractionAdapter`；见 history.md Task #23）
-- ~~**真实写作指南目录**~~ ✅ 已完成（+3 fixture 覆盖全部 source_kind；见 history.md Task #24）
-- ~~**volume/part 层级精确化**~~ ✅ 已完成（volume_id/part_id 列 + 精确筛选；见 history.md Task #25）
-- ~~**ShotContract 字段 schema 扩展**~~ ✅ 已完成（"shot" scope 5 子表投影；见 history.md Task #26）
+7. **Repository与数据库边界加固**
+   - 普通业务模块不得直接写Scene/Branch/Snapshot权威表；
+   - 增加Scene-first SQL access lint；
+   - 为写事务补Runtime Event；
+   - PostgreSQL实现章节级锁、RLS和不可变权限；
+   - SQLite真实文件库验证WAL、busy timeout与并发冲突；
+   - `freeze_branch_version`接入必要Scene完整性、Contract、Fact和质量门；
+   - Contract激活和Branch选择写入actor、Decision及Runtime Event。
 
----
+8. **凭据处置**
+   - 轮换曾出现在历史文档中的真实凭据；
+   - 检查Git历史、日志和备份；
+   - 增加secret scanning。
 
-## 下一步开发队列
+## P1：真实质量验证（进度：真实模型本地代理 10 章 e2e 已通，见 history 2026-07-14 §2~§4）
 
-### P1 主编台深化
+> 注：悬疑三层注入 / 工业事实漂移检测 / 通用章纲注入已��地为**影子层 +
+> 真实模型 e2e**（10 章压测 winner 85+、suspense_tension 82–92），但**未切
+> 生产 CLI、未改旧 Shot 生产路径**。以下为把该 e2e 收口成可投产 A/B 的剩余项。
 
-1. ~~**真实 LLM 端到端集成测试**~~ ✅ 已完成（iFLYTEK 14 模型连通 + Gateway/抽取集成；见 history.md 2026-07-07）
-2. ~~**6 章流水线真实模型跑通**~~ ✅ 已完成（`tests/test_e2e_real_models.py`:真实 iFLYTEK provider 驱动 outline/write/polish;避开太卡的 `xopglm52`,writer 池 `xopglm51`/`xopdeepseekv4pro`/`xopkimik26`;`smart-polish` 别名经 `LLMGateway` 正式路由(不再用测试侧 `_RemappingProvider`);provider 退避重试扛 iFLYTEK 429/503 限流(BFX-031);outline drift 阈值放宽至 0.02 适配真实模型(BFX-032);网关间歇错误/drift 全拒时优雅 skip;见 history.md 2026-07-08）
-3. ~~**推理模型 max_tokens 适配**~~ ✅ 已完成（`_is_reasoning_model` 自动注入 max_tokens=2000；`content` 空时回退 `reasoning_content`；`--llm-max-tokens` / `INK_LLM_MAX_TOKENS` 全局覆盖）
-4. ~~**DecisionSession 并发控制**~~ ✅ 已完成（scope 级 partial unique index + start 自动填 before_hash + confirm 冲突检测 + session 标 stale + 生产迁移脚本）
-5. ~~**Stale 传播自动触发**~~ ✅ 已完成（`confirm_and_apply(stale_manager=...)` 在 SAVEPOINT 释放后自动调用；CLI `confirm-contract` 默认接入，`--no-auto-stale` 可关闭）
-6. ~~**Coverage gate 可视化**~~ ✅ 已完成（`SourceWorkflowStore.list_coverage_gaps` + CLI `coverage-gaps` 子命令，返回 gap/conflict 字段明细 + 建议源条款）
-7. ~~**`init` 命令支持自定义模型池**~~ ✅ 已完成（`--writer-models`/`--jury-models` 逗号分隔，去重保序，默认池兜底）
+1. 工业/动作章节A/B（e2e 链路已通，剩余：固定对照基线 + 双盲成对排序，产出可对比的 A/B 报表）；
+2. 人物关系/潜台词章节A/B（链路同上，需补潜台词契约维度，当前 jury 只审 suspense_tension）；
+3. 过渡/留白章节A/B（需补留白契约维度与对应 jury 准则）；
+4. 统计作者偏好、候选差异、返工、成本、评审分歧和少数冠军命中（e2e 已产出 winner/suspense 分数，需落统计聚合与成本记账）；
+5. 校准Scene/Chapter质量阈值，禁止直接沿用旧Shot分数（真实 jury 分已产出，需据 10 章基线校准绝对门槛）。
 
-> 离线基线核对：`357 passed, 7 skipped`（2026-07-08，含 jury 真实化 + role-config failover + max_calls_per_shot 预算自调；7 skipped 为需 `IFLYTEK_API_KEY` 的联网集成测试）。
+## P2：扩展
 
-### P2 可扩展性
-
-8. **PostgreSQL adapter 落地**：边界文档已就位（`docs/postgresql-rls-adapter-boundary.md`，见 history.md 2026-07-06 P2），剩余是实现 `DBAdapter` 接口并把 SQLite 测试在 PG 上跑通。
-9. **Event log replay UI**：`EventLog.replay_session/replay_version` 已有（见 history.md Task #22），缺 replay UI 层，从 append-only event log 重建任意时刻的 session/contract 状态。
-10. **Shot 级 coverage 追踪**：把 source clause 追踪粒度从 chapter 细化到 shot。
-11. **Jury escalation 策略**：3 裁不一致时的升级机制（加裁判 / 加维度 / 人工裁决）。
-12. ~~**`smart-polish` 模型别名正式路由**~~ ✅ 已完成（`LLMGateway.call` 从 `writing_projects.model_aliases` 懒加载别名映射,翻译别名调 provider、返回前 `dataclasses.replace` 还原别名保持 soft seal 契约;生产 CLI `init`/`setup` 写入 `model_aliases`;BFX-030 生产侧待办落实。drift 算法待办见 BFX-032）
-
-### P3 产品化打磨
-
-12. **CLI 交互式 TUI**：用 curses/textual 构建终端 UI，替代纯 JSON 输出。
-13. **写作指南导入向导**：引导用户放置文件、自动推断 kind、预览抽取结果。
-14. **契约 diff 可视化**：对比两个版本的 contract payload，高亮变更字段。
-15. **批量 chapter review**：一次 review 多章，汇总报告。
+1. 主编台Scene契约diff；
+2. Scene边界可视化；
+3. Guidance Card效果分析；
+4. 多项目事实同步。

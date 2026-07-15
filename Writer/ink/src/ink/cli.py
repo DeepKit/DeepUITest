@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 from ink.core.llm_gateway import LLMGateway, ModelResult, build_model_provider, load_llm_provider_config
+from ink.core.capacity_planning import recommended_llm_capacity
 from ink.jury.scores import SCORE_COLUMNS
 from ink.core.model_role_config import (
     TIER_ORDER,
@@ -23,7 +24,10 @@ from ink.database import connect
 from ink.decision_sessions import DecisionSessionStore
 from ink.errors import ConfigError, InkError
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
+from ink.pipeline.chesil_patch_orchestrator import ChesilPatchOrchestrator
 from ink.pipeline.export_orchestrator import ExportOrchestrator
+from ink.pipeline.scene_export_orchestrator import SceneExportOrchestrator
+from ink.pipeline.ethics_review_orchestrator import EthicsReviewOrchestrator
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
 from ink.pipeline.human_review_orchestrator import HumanReviewOrchestrator
 from ink.pipeline.import_orchestrator import ImportOrchestrator
@@ -32,7 +36,9 @@ from ink.pipeline.polish_orchestrator import PolishOrchestrator
 from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
 from ink.pipeline.resume_handlers import build_non_shot_resume_handlers, build_shot_resume_handlers
 from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
+from ink.pipeline.targeted_repair_orchestrator import TargetedRepairOrchestrator
 from ink.pipeline.write_orchestrator import WriteOrchestrator
+from ink.production_readiness import backup_sqlite_database, inspect_personal_production
 from ink.schema import initialize_schema
 from ink.source_workflow import SourceWorkflowStore
 from ink.stale_propagation import StalePropagationManager
@@ -89,6 +95,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
+    doctor_cmd = subcommands.add_parser("doctor", help="Check personal-production launch readiness")
+    doctor_cmd.add_argument("--project-id", type=int)
+    doctor_cmd.set_defaults(handler=_cmd_doctor)
+
+    backup_cmd = subcommands.add_parser("backup", help="Create and integrity-check a SQLite backup")
+    backup_cmd.add_argument("--output", required=True)
+    backup_cmd.set_defaults(handler=_cmd_backup)
+
+    chesil_patch_cmd = subcommands.add_parser(
+        "apply-chesil-patch",
+        help="Apply an author-approved Chesil package as new Ink revisions and rerun review",
+    )
+    chesil_patch_cmd.add_argument("--project-id", type=int)
+    chesil_patch_cmd.add_argument("--package", required=True)
+    _add_dry_run(chesil_patch_cmd)
+    chesil_patch_cmd.set_defaults(handler=_cmd_apply_chesil_patch)
+
     init_cmd = subcommands.add_parser("init")
     init_cmd.add_argument("--code", required=True)
     init_cmd.add_argument("--title", required=True)
@@ -129,6 +152,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         help="CJK bigram overlap rejection threshold (default 0.10; schema default 0.10). "
         "Real-model outlines easily fall below 0.20.",
+    )
+    init_cmd.add_argument(
+        "--shot-quality-floor",
+        type=int,
+        help="Winner 最低 final_score（schema 默认 75；DB 硬底线 75）。"
+        "真实模型 jury 常打 77-83，原默认 80 过严导致好稿被丢弃；75 让真实稿过门。",
+    )
+    init_cmd.add_argument(
+        "--dimension-floor",
+        type=int,
+        help="12 维任一核心维度最低分（schema 默认 60；DB 硬底线 60）。",
     )
     init_cmd.set_defaults(handler=_cmd_init)
 
@@ -197,6 +231,31 @@ def build_parser() -> argparse.ArgumentParser:
     cov_cmd.add_argument("--scope-id", help="Scope id to filter (e.g. chapter id)")
     cov_cmd.set_defaults(handler=_cmd_coverage_gaps)
 
+    shot_cov_cmd = subcommands.add_parser(
+        "shot-coverage",
+        help="Show source-clause coverage for every shot in a chapter",
+    )
+    shot_cov_cmd.add_argument("--project-id", type=int)
+    shot_cov_cmd.add_argument("--chapter", type=int, required=True)
+    shot_cov_cmd.set_defaults(handler=_cmd_shot_coverage)
+
+    shot_cov_set = subcommands.add_parser(
+        "shot-coverage-set",
+        help="Record auditable source-clause coverage evidence for one shot",
+    )
+    shot_cov_set.add_argument("--project-id", type=int)
+    shot_cov_set.add_argument("--shot-id", required=True)
+    shot_cov_set.add_argument("--atomic-clause-id", type=int, required=True)
+    shot_cov_set.add_argument(
+        "--status",
+        required=True,
+        choices=("covered", "gap", "conflict", "rejected", "deferred", "diagnostic"),
+    )
+    shot_cov_set.add_argument("--field-path", default="source_clauses")
+    shot_cov_set.add_argument("--evidence-json", default="{}")
+    _add_dry_run(shot_cov_set)
+    shot_cov_set.set_defaults(handler=_cmd_shot_coverage_set)
+
     write_cmd = subcommands.add_parser("write")
     _add_chapter_run_args(write_cmd)
     _add_dry_run(write_cmd)
@@ -206,6 +265,27 @@ def build_parser() -> argparse.ArgumentParser:
     _add_chapter_run_args(review_cmd)
     _add_dry_run(review_cmd)
     review_cmd.set_defaults(handler=_cmd_review)
+
+    review_batch_cmd = subcommands.add_parser(
+        "review-batch",
+        help="Review multiple chapters with one real-provider gateway session",
+    )
+    review_batch_cmd.add_argument("--project-id", type=int)
+    review_batch_cmd.add_argument("--run-id", type=int)
+    review_batch_cmd.add_argument(
+        "--chapters",
+        required=True,
+        help="Comma/range expression, for example 3-10 or 3,5,8",
+    )
+    review_batch_cmd.add_argument("--continue-on-error", action="store_true")
+    _add_dry_run(review_batch_cmd)
+    review_batch_cmd.set_defaults(handler=_cmd_review_batch)
+
+    ethics_cmd = subcommands.add_parser("ethics-review")
+    _add_chapter_run_args(ethics_cmd)
+    ethics_cmd.add_argument("--actor", required=True)
+    _add_dry_run(ethics_cmd)
+    ethics_cmd.set_defaults(handler=_cmd_ethics_review)
 
     accept_cmd = subcommands.add_parser("accept")
     _add_chapter_run_args(accept_cmd)
@@ -220,6 +300,14 @@ def build_parser() -> argparse.ArgumentParser:
     revise_cmd.add_argument("--reason", default="revise chapter")
     _add_dry_run(revise_cmd)
     revise_cmd.set_defaults(handler=_cmd_revise)
+
+    repair_cmd = subcommands.add_parser("repair")
+    repair_cmd.add_argument("--shot-id", required=True)
+    repair_cmd.add_argument("--run-id", type=int, required=True)
+    repair_cmd.add_argument("--issue", required=True)
+    repair_cmd.add_argument("--expected-pov")
+    _add_dry_run(repair_cmd)
+    repair_cmd.set_defaults(handler=_cmd_repair)
 
     reject_cmd = subcommands.add_parser("reject")
     _add_chapter_run_args(reject_cmd)
@@ -248,6 +336,63 @@ def build_parser() -> argparse.ArgumentParser:
     export_cmd.add_argument("--output")
     _add_dry_run(export_cmd)
     export_cmd.set_defaults(handler=_cmd_export)
+
+    scene_accept_cmd = subcommands.add_parser(
+        "scene-accept",
+        help="Scene-first: seal a selected frozen branch as the active Chapter Snapshot",
+    )
+    scene_accept_cmd.add_argument("--project-id", type=int)
+    scene_accept_cmd.add_argument("--chapter-id", type=int, required=True)
+    scene_accept_cmd.add_argument("--branch-version-id", type=int, required=True)
+    scene_accept_cmd.add_argument("--actor", required=True, help="human actor id (no ai:/model:/auto: prefix)")
+    scene_accept_cmd.add_argument("--reason", default="approved")
+    _add_dry_run(scene_accept_cmd)
+    scene_accept_cmd.set_defaults(handler=_cmd_scene_accept)
+
+    scene_export_cmd = subcommands.add_parser(
+        "scene-export",
+        help="Scene-first: export a project from its active sealed Chapter Snapshots",
+    )
+    scene_export_cmd.add_argument("--project-id", type=int)
+    scene_export_cmd.add_argument("--output")
+    _add_dry_run(scene_export_cmd)
+    scene_export_cmd.set_defaults(handler=_cmd_scene_export)
+
+    scene_export_parity_cmd = subcommands.add_parser(
+        "scene-export-parity",
+        help="Scene-first: read-only dual-authority parity check (pre-cutover safety)",
+    )
+    scene_export_parity_cmd.add_argument("--project-id", type=int)
+    _add_dry_run(scene_export_parity_cmd)
+    scene_export_parity_cmd.set_defaults(handler=_cmd_scene_export_parity)
+
+    produce_chapter_cmd = subcommands.add_parser(
+        "produce-chapter",
+        help="Scene-first end-to-end: outline -> real-model draft -> jury -> accept -> export",
+    )
+    produce_chapter_cmd.add_argument("--project-id", type=int)
+    produce_chapter_cmd.add_argument("--chapter-id", type=int, required=True, help="chapter number (1, 2, ...)")
+    produce_chapter_cmd.add_argument(
+        "--outline-file",
+        help="path to the chapter outline md (e.g. 24_分章大纲.md); required unless --force-branch-version-id",
+    )
+    produce_chapter_cmd.add_argument("--candidates", type=int, default=2, help="initial candidate count (default 2)")
+    produce_chapter_cmd.add_argument("--rounds", type=int, default=2, help="max round attempts before giving up (default 2)")
+    produce_chapter_cmd.add_argument("--actor", required=True, help="human actor id (no ai:/model:/auto: prefix)")
+    produce_chapter_cmd.add_argument("--reason", default="produced via produce-chapter")
+    produce_chapter_cmd.add_argument("--output", help="write exported chapter text to this path; omit to accept only")
+    produce_chapter_cmd.add_argument(
+        "--no-accept",
+        action="store_true",
+        help="produce candidates + jury winner but do NOT accept/seal; output (if given) writes the winner branch text, for author review (ch01 redo: produce without sealing)",
+    )
+    produce_chapter_cmd.add_argument(
+        "--force-branch-version-id",
+        type=int,
+        help="skip generation, force-accept this frozen branch version (human takeover)",
+    )
+    _add_dry_run(produce_chapter_cmd)
+    produce_chapter_cmd.set_defaults(handler=_cmd_produce_chapter)
 
     _add_decision_session_subcommands(subcommands)
     _add_debug_subcommands(subcommands)
@@ -285,6 +430,46 @@ def _add_role_config_subcommands(subcommands: argparse._SubParsersAction) -> Non
     val_cmd.add_argument("--project-id", type=int, required=True)
     val_cmd.add_argument("--call-type", required=True)
     val_cmd.set_defaults(handler=_cmd_role_config_validate)
+
+
+def _cmd_doctor(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    return inspect_personal_production(conn, _project_id(conn, args))
+
+
+def _cmd_backup(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    conn.commit()
+    return backup_sqlite_database(args.db, args.output)
+
+
+def _cmd_apply_chesil_patch(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    package = json.loads(Path(args.package).read_text(encoding="utf-8"))
+    patches = package.get("patches", [])
+    if args.dry_run:
+        return {
+            "project_id": project_id,
+            "package": str(Path(args.package).resolve()),
+            "patch_count": len(patches),
+            "targets": [
+                {"shot_id": item.get("ink_shot_id"), "run_id": item.get("ink_run_id")}
+                for item in patches
+            ],
+        }
+    if args.llm_provider != "openai-compatible":
+        raise ConfigError(
+            "apply-chesil-patch requires --llm-provider openai-compatible for real review"
+        )
+    result = ChesilPatchOrchestrator(conn, _gateway(conn, args)).apply(
+        args.package, project_id=project_id
+    )
+    return {
+        "project_id": project_id,
+        "applied_revision_ids": list(result.applied_revision_ids),
+        "reviewed_chapters": list(result.reviewed_chapters),
+        "review_ids": list(result.review_ids),
+        "ethics_review_required": True,
+        "author_acceptance_required": True,
+    }
 
 
 def _cmd_role_config_set(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -336,7 +521,7 @@ def _cmd_role_config_validate(conn: sqlite3.Connection, args: argparse.Namespace
 
 
 def _add_debug_subcommands(subcommands: argparse._SubParsersAction) -> None:
-    """专家模式可展开审计：debug audit / timeline / trace / stale。"""
+    """专家模式可展开审计与事件状态回放。"""
     from ink.debug_view import DebugView
 
     dbg_cmd = subcommands.add_parser("debug", help="专家模式审计视图")
@@ -359,6 +544,20 @@ def _add_debug_subcommands(subcommands: argparse._SubParsersAction) -> None:
     stale = dbg_sub.add_parser("stale", help="Stale 传播链")
     stale.add_argument("--project-id", type=int, required=True)
     stale.set_defaults(handler=_cmd_debug_stale)
+
+    replay_session = dbg_sub.add_parser("replay-session", help="从事件流重建 Session 状态")
+    replay_session.add_argument("--session-id", type=int, required=True)
+    replay_session.add_argument("--at-event-id", type=int)
+    replay_session.add_argument("--at-time")
+    replay_session.set_defaults(handler=_cmd_debug_replay_session)
+
+    replay_contract = dbg_sub.add_parser("replay-contract", help="从事件流重建契约状态")
+    replay_contract.add_argument("--project-id", type=int, required=True)
+    replay_contract.add_argument("--scope-type", required=True)
+    replay_contract.add_argument("--scope-id")
+    replay_contract.add_argument("--at-event-id", type=int)
+    replay_contract.add_argument("--at-time")
+    replay_contract.set_defaults(handler=_cmd_debug_replay_contract)
 
 
 def _add_decision_session_subcommands(subcommands: argparse._SubParsersAction) -> None:
@@ -563,6 +762,10 @@ def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, i
         updates["min_eligible_outlines"] = args.min_eligible_outlines
     if args.outline_drift_threshold is not None:
         updates["outline_drift_threshold"] = args.outline_drift_threshold
+    if args.shot_quality_floor is not None:
+        updates["shot_quality_floor"] = args.shot_quality_floor
+    if args.dimension_floor is not None:
+        updates["dimension_floor"] = args.dimension_floor
     if updates:
         assignments = ", ".join(f"{col} = ?" for col in updates)
         conn.execute(
@@ -570,16 +773,23 @@ def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, i
             (*updates.values(), project_id),
         )
 
-    # jury 真实化后单 shot jury 调用 = 3 裁判 × (draft_count 候选 + 1 polished 稿) × 两轮（首评 + polish 后重评）。
-    # 默认 draft_count=3 → 3×4×2=24，超 schema 默认 max_calls_per_shot=8。按此放宽 jury 单类型预算，
-    # +3 余量容 escalation 重评。max_total_llm_calls 默认 40 亦需同步上调覆盖 draft+polish+gate+两轮 jury。
-    draft_count = int(
-        conn.execute("SELECT draft_count FROM writing_projects WHERE project_id = ?", (project_id,)).fetchone()[0]
+    # 真实 jury 容量按候选、creative extra、retry wave 和 disagreement escalation 推导。
+    capacity_row = conn.execute(
+        """
+        SELECT draft_count, creative_shot_extra, redo_candidate_count, escalated_jury_count
+        FROM writing_projects WHERE project_id=?
+        """,
+        (project_id,),
+    ).fetchone()
+    capacity = recommended_llm_capacity(
+        draft_count=int(capacity_row[0]),
+        creative_shot_extra=int(capacity_row[1]),
+        redo_candidate_count=int(capacity_row[2]),
+        escalated_jury_count=int(capacity_row[3]),
     )
-    jury_budget = max(8, 6 * (draft_count + 1) + 3)
     conn.execute(
         "UPDATE writing_projects SET max_calls_per_shot = ?, max_total_llm_calls = ? WHERE project_id = ?",
-        (jury_budget, max(40, jury_budget * 2 + 12), project_id),
+        (capacity.jury_calls, capacity.total_calls, project_id),
     )
 
     # 模型角色主/备/兜底配置：--role-config JSON 显式配，或从旧 --writer-models/--jury-models
@@ -617,10 +827,14 @@ def _cmd_init(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, i
                         f"--role-config[{call_type}][{tier}] missing required key: {exc}"
                     ) from exc
     else:
-        # 向后兼容：无 role-config 时，用旧池首个模型生成 draft/jury primary 单档。
+        # 向后兼容：无 role-config 时，用旧池首个模型生成各 call_type 的 primary 单档。
         # 跨供应商 failover 需用户后续用 'ink role-config set' 补齐 secondary/tertiary。
         _seed_primary_from_pool(conn, project_id=project_id, call_type="draft", model_name=writer_pool[0])
         _seed_primary_from_pool(conn, project_id=project_id, call_type="jury", model_name=jury_pool[0])
+        # chapter_review/book_check 属评审类，复用 jury 池首模型；真实化后必须配 role_config，
+        # 否则 gateway 无 role_chain 会回退注入式 provider（真实部署报错）。
+        _seed_primary_from_pool(conn, project_id=project_id, call_type="chapter_review", model_name=jury_pool[0])
+        _seed_primary_from_pool(conn, project_id=project_id, call_type="book_check", model_name=jury_pool[0])
 
     session_cursor = conn.execute(
         "INSERT INTO writing_sessions (project_id, started_at) VALUES (?, ?)",
@@ -808,18 +1022,158 @@ def _cmd_coverage_gaps(conn: sqlite3.Connection, args: argparse.Namespace) -> di
     }
 
 
+def _cmd_shot_coverage(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    matrix = SourceWorkflowStore(conn).chapter_shot_coverage(
+        project_id=project_id,
+        chapter_id=args.chapter,
+    )
+    shots: list[dict[str, object]] = []
+    total = 0
+    blocking = 0
+    for shot_id, records in matrix.items():
+        gaps = [
+            record
+            for record in records
+            if record.coverage_status in {"gap", "conflict"}
+        ]
+        total += len(records)
+        blocking += len(gaps)
+        shots.append(
+            {
+                "shot_id": shot_id,
+                "applicable_clause_count": len(records),
+                "blocking_clause_count": len(gaps),
+                "clauses": [
+                    {
+                        "atomic_clause_id": record.atomic_clause_id,
+                        "clause_scope_type": record.clause_scope_type,
+                        "clause_scope_id": record.clause_scope_id,
+                        "clause_type": record.clause_type,
+                        "severity": record.severity,
+                        "clause_text": record.clause_text,
+                        "coverage_status": record.coverage_status,
+                        "evidence": record.evidence,
+                    }
+                    for record in records
+                ],
+            }
+        )
+    return {
+        "project_id": project_id,
+        "chapter_id": args.chapter,
+        "shot_count": len(shots),
+        "applicable_clause_count": total,
+        "blocking_clause_count": blocking,
+        "coverage_complete": blocking == 0,
+        "shots": shots,
+    }
+
+
+def _cmd_shot_coverage_set(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    try:
+        evidence = json.loads(args.evidence_json)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"--evidence-json must be valid JSON: {exc}") from exc
+    if not isinstance(evidence, dict):
+        raise SystemExit("--evidence-json must contain a JSON object")
+    if args.dry_run:
+        return {
+            "project_id": project_id,
+            "shot_id": args.shot_id,
+            "atomic_clause_id": args.atomic_clause_id,
+            "coverage_status": args.status,
+            "field_path": args.field_path,
+            "evidence": evidence,
+        }
+    coverage_id = SourceWorkflowStore(conn).record_shot_clause_coverage(
+        project_id=project_id,
+        shot_id=args.shot_id,
+        atomic_clause_id=args.atomic_clause_id,
+        coverage_status=args.status,
+        contract_field_path=args.field_path,
+        evidence=evidence,
+    )
+    conn.commit()
+    return {
+        "coverage_id": coverage_id,
+        "project_id": project_id,
+        "shot_id": args.shot_id,
+        "atomic_clause_id": args.atomic_clause_id,
+        "coverage_status": args.status,
+    }
+
+
 def _cmd_write(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
+    capacity = _project_capacity_plan(conn, project_id)
     gateway = _gateway(conn, args)
     shot_ids = _chapter_shots(conn, project_id, args.chapter, run_id)
     if args.dry_run:
-        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_shots": shot_ids}
+        return {
+            "project_id": project_id,
+            "chapter_id": args.chapter,
+            "run_id": run_id,
+            "planned_shots": shot_ids,
+            "recommended_jury_calls": capacity.jury_calls,
+            "recommended_total_calls": capacity.total_calls,
+        }
+    configured = conn.execute(
+        "SELECT max_calls_per_shot, max_total_llm_calls FROM writing_projects WHERE project_id=?",
+        (project_id,),
+    ).fetchone()
+    if int(configured[0]) < capacity.jury_calls or int(configured[1]) < capacity.total_calls:
+        raise ConfigError(
+            "LLM capacity preflight failed: "
+            f"configured per_type/total={configured[0]}/{configured[1]}, "
+            f"recommended>={capacity.jury_calls}/{capacity.total_calls}; "
+            "increase writing_projects budgets before starting real production"
+        )
     written: list[str] = []
+    skipped: list[str] = []
     for shot_id in shot_ids:
+        status = conn.execute(
+            "SELECT status FROM writing_shots WHERE shot_id = ? AND run_id = ?",
+            (shot_id, run_id),
+        ).fetchone()
+        # 幂等续跑：已 soft_sealed（终态）的 shot 直接跳过，否则 _run_shot_to_soft_sealed 首步
+        # run_until_prompt_compiled 会因 status 不在预期枚举而抛 DataIntegrityError。
+        if status is not None and status[0] == "soft_sealed":
+            skipped.append(shot_id)
+            continue
         _run_shot_to_soft_sealed(conn, shot_id, run_id, gateway)
+        # 逐 shot 提交：真模型单章全链路耗时数十分钟，整章单事务会令内存峰值随 shot 线性堆积
+        # 直至爆内存。每 shot soft_seal 成功即 commit，持久化进度并释放未提交缓冲，后续 shot 失败
+        # 也不丢已完成稿；进度可被 resume 幂等���跑。
+        conn.commit()
         written.append(shot_id)
-    return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "soft_sealed": written}
+    return {
+        "project_id": project_id,
+        "chapter_id": args.chapter,
+        "run_id": run_id,
+        "soft_sealed": written,
+        "skipped_already_soft_sealed": skipped,
+    }
+
+
+def _project_capacity_plan(conn: sqlite3.Connection, project_id: int):
+    row = conn.execute(
+        """
+        SELECT draft_count, creative_shot_extra, redo_candidate_count, escalated_jury_count
+        FROM writing_projects WHERE project_id=?
+        """,
+        (project_id,),
+    ).fetchone()
+    if row is None:
+        raise ConfigError(f"project not found: {project_id}")
+    return recommended_llm_capacity(
+        draft_count=int(row[0]),
+        creative_shot_extra=int(row[1]),
+        redo_candidate_count=int(row[2]),
+        escalated_jury_count=int(row[3]),
+    )
 
 
 def _cmd_review(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -828,8 +1182,101 @@ def _cmd_review(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
     shot_ids = _chapter_shots(conn, project_id, args.chapter, run_id)
     if args.dry_run:
         return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_review_shots": shot_ids}
-    review = ChapterReviewOrchestrator(conn).review_chapter(project_id, args.chapter, run_id)
+    review = ChapterReviewOrchestrator(conn, _gateway(conn, args)).review_chapter(project_id, args.chapter, run_id)
     return {"review_id": review.review_id, "quality_gate_passed": review.quality_gate_passed}
+
+
+def _cmd_review_batch(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    run_id = _run_id(conn, args, project_id)
+    chapters = _parse_int_ranges(args.chapters)
+    plans = [
+        {
+            "chapter_id": chapter_id,
+            "shot_ids": _chapter_shots(conn, project_id, chapter_id, run_id),
+        }
+        for chapter_id in chapters
+    ]
+    if args.dry_run:
+        return {
+            "project_id": project_id,
+            "run_id": run_id,
+            "chapter_count": len(plans),
+            "plans": plans,
+        }
+    gateway = _gateway(conn, args)
+    reviewer = ChapterReviewOrchestrator(conn, gateway)
+    results: list[dict[str, object]] = []
+    for plan in plans:
+        chapter_id = int(plan["chapter_id"])
+        try:
+            review = reviewer.review_chapter(project_id, chapter_id, run_id)
+        except Exception as exc:
+            results.append(
+                {
+                    "chapter_id": chapter_id,
+                    "status": "error",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
+            if not args.continue_on_error:
+                raise
+        else:
+            results.append(
+                {
+                    "chapter_id": chapter_id,
+                    "status": "completed",
+                    "review_id": review.review_id,
+                    "quality_gate_passed": review.quality_gate_passed,
+                }
+            )
+    passed = sum(
+        1 for item in results if item.get("quality_gate_passed") is True
+    )
+    return {
+        "project_id": project_id,
+        "run_id": run_id,
+        "chapter_count": len(chapters),
+        "completed_count": sum(1 for item in results if item["status"] == "completed"),
+        "passed_count": passed,
+        "failed_gate_count": sum(
+            1
+            for item in results
+            if item["status"] == "completed"
+            and item.get("quality_gate_passed") is False
+        ),
+        "error_count": sum(1 for item in results if item["status"] == "error"),
+        "results": results,
+    }
+
+
+def _cmd_ethics_review(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    run_id = _run_id(conn, args, project_id)
+    if args.dry_run:
+        return {
+            "project_id": project_id,
+            "chapter_id": args.chapter,
+            "run_id": run_id,
+            "reviewer_actor": args.actor,
+            "planned_action": "three_model_ethics_review",
+        }
+    result = EthicsReviewOrchestrator(conn, _gateway(conn, args)).review_chapter(
+        project_id,
+        args.chapter,
+        run_id,
+        reviewer_actor=args.actor,
+    )
+    return {
+        "ethics_review_id": result.ethics_review_id,
+        "project_id": project_id,
+        "chapter_id": args.chapter,
+        "run_id": run_id,
+        "risk_level": result.risk_level,
+        "recommendation": result.recommendation,
+        "reviewer_models": list(result.reviewer_models),
+    }
 
 
 def _cmd_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
@@ -860,6 +1307,43 @@ def _cmd_revise(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
         reason=args.reason,
     )
     return {"decision_id": result.decision_id, "run_id": result.run_id, "shot_ids": list(result.shot_ids)}
+
+
+def _cmd_repair(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    if args.dry_run:
+        return {
+            "shot_id": args.shot_id,
+            "run_id": args.run_id,
+            "planned_action": "targeted_repair_then_chapter_review",
+            "expected_pov": args.expected_pov,
+            "issue": args.issue,
+        }
+    gateway = _gateway(conn, args)
+    repaired = TargetedRepairOrchestrator(conn, gateway).repair(
+        args.shot_id,
+        args.run_id,
+        issue=args.issue,
+        expected_pov=args.expected_pov,
+    )
+    review = ChapterReviewOrchestrator(conn, gateway).review_chapter(
+        repaired.project_id,
+        repaired.chapter_id,
+        repaired.run_id,
+    )
+    return {
+        "project_id": repaired.project_id,
+        "chapter_id": repaired.chapter_id,
+        "shot_id": repaired.shot_id,
+        "run_id": repaired.run_id,
+        "source_revision_id": repaired.source_revision_id,
+        "revision_id": repaired.revision_id,
+        "model_name": repaired.model_name,
+        "length_before": repaired.length_before,
+        "length_after": repaired.length_after,
+        "review_id": review.review_id,
+        "quality_gate_passed": review.quality_gate_passed,
+        "blocking_issues": list(review.blocking_issues),
+    }
 
 
 def _cmd_reject(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
@@ -909,7 +1393,9 @@ def _cmd_resume(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
     session_actions = []
     if session_resume_point:
         payload = manager.parse_resume_point(str(session_resume_point))
-        result = None if dry_run else manager.execute_resume_point(payload, build_non_shot_resume_handlers(conn))
+        result = None if dry_run else manager.execute_resume_point(
+            payload, build_non_shot_resume_handlers(conn, _gateway(conn, args))
+        )
         if not dry_run:
             conn.execute(
                 "UPDATE writing_sessions SET crashed = 0, resume_point = NULL WHERE session_id = ?",
@@ -958,6 +1444,329 @@ def _cmd_export(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
         Path(args.output).write_text(artifact, encoding="utf-8")
         return {"project_id": project_id, "output": args.output, "bytes": len(artifact.encode("utf-8"))}
     return {"project_id": project_id, "artifact": artifact}
+
+
+def _cmd_scene_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
+
+    repo = ChapterSnapshotRepository(conn)
+    existing = repo.get_active_snapshot_id(project_id=project_id, chapter_id=args.chapter_id)
+    expected = 0 if existing is None else int(
+        conn.execute(
+            "SELECT version FROM writing_chapter_heads WHERE project_id = ? AND chapter_id = ?",
+            (project_id, args.chapter_id),
+        ).fetchone()[0]
+    )
+    if args.dry_run:
+        return {
+            "project_id": project_id,
+            "chapter_id": args.chapter_id,
+            "branch_version_id": args.branch_version_id,
+            "actor": args.actor,
+            "expected_head_version": expected,
+            "would": "seal snapshot + CAS head + emit CHAPTER_ACCEPTED",
+        }
+    decision_id = repo.record_human_decision(
+        project_id=project_id,
+        chapter_id=args.chapter_id,
+        decision_type="accept",
+        actor=args.actor,
+        reason=args.reason,
+        preconditions_json={"branch_version_id": args.branch_version_id},
+    )
+    head_row = repo.accept_chapter(
+        branch_version_id=args.branch_version_id,
+        expected_head_version=expected,
+        accepted_decision_id=decision_id,
+        actor=args.actor,
+    )
+    return {
+        "project_id": project_id,
+        "chapter_id": args.chapter_id,
+        "snapshot_id": head_row.active_snapshot_id,
+        "head_version": head_row.version,
+        "accepted_decision_id": decision_id,
+    }
+
+
+def _cmd_scene_export(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    if args.dry_run:
+        rows = conn.execute(
+            "SELECT count(DISTINCT chapter_id) FROM writing_chapter_heads WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        return {"project_id": project_id, "output": args.output, "accepted_chapters": int(rows[0])}
+    artifact = SceneExportOrchestrator(conn).export_project(project_id)
+    if args.output:
+        Path(args.output).write_text(artifact, encoding="utf-8")
+        return {"project_id": project_id, "output": args.output, "bytes": len(artifact.encode("utf-8"))}
+    return {"project_id": project_id, "artifact": artifact}
+
+
+def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    """End-to-end Scene-first production: outline -> real-model drafts -> jury
+    quality gate -> accept as active Chapter Snapshot -> (optional) export.
+
+    Idempotent + resumable: an existing active snapshot skips generation; a
+    non-terminal round is resumed; a terminal-but-unaccepted round rolls to
+    ``round_number + 1``. ``--force-branch-version-id`` takes over after a
+    failed round by force-accepting a frozen branch.
+    """
+    project_id = _project_id(conn, args)
+    chapter_id = args.chapter_id
+    from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
+    from ink.core.scene_repository import SceneRepository
+    from ink.pipeline.generation_round_driver import GenerationRoundDriver
+    from ink.pipeline.generation_round_real_ports import (
+        RealGenerationPort,
+        RealSelectionPort,
+        RealValidationPort,
+    )
+    from ink.source.brief_builder import build_chapter_brief
+
+    repo = ChapterSnapshotRepository(conn)
+    scene_repo = SceneRepository(conn)
+
+    # Human takeover: force-accept a previously-generated frozen branch without
+    # driving a new round.
+    if args.force_branch_version_id is not None:
+        return _force_accept_and_export(
+            conn, repo, project_id, chapter_id, args.force_branch_version_id,
+            args.actor, args.reason, args.output,
+        )
+
+    # Idempotent: already sealed chapter -> skip generation, just export.
+    existing_snapshot = repo.get_active_snapshot_id(project_id=project_id, chapter_id=chapter_id)
+    if existing_snapshot is not None:
+        exported = _maybe_export(conn, project_id, chapter_id, args.output)
+        return {
+            "project_id": project_id, "chapter_id": chapter_id,
+            "skipped": True, "snapshot_id": existing_snapshot, "exported": exported,
+        }
+
+    if not args.outline_file:
+        raise SystemExit("--outline-file is required when not using --force-branch-version-id")
+    brief = build_chapter_brief(
+        args.outline_file, chapter_id, conn=conn, project_id=project_id
+    )
+    if brief is None:
+        raise SystemExit(f"chapter {chapter_id} not found in outline: {args.outline_file}")
+
+    if args.dry_run:
+        return {
+            "project_id": project_id, "chapter_id": chapter_id,
+            "would": "ensure scene contract + generate candidates + jury + accept + export",
+            "chapter_brief": brief,
+            "candidates": args.candidates, "rounds": args.rounds,
+        }
+
+    contract_id = _ensure_scene_and_contract(scene_repo, repo, project_id, chapter_id, args.actor, brief)
+
+    gateway = _gateway(conn, args)
+    ports = {
+        "generation_port": RealGenerationPort(gateway, project_id=project_id, chapter_brief=brief),
+        "validation_port": RealValidationPort(gateway, project_id=project_id),
+        "selection_port": RealSelectionPort(gateway, project_id=project_id),
+    }
+
+    for attempt in range(1, args.rounds + 1):
+        round_id = _find_or_create_round(repo, project_id, chapter_id, attempt, args.candidates)
+        driver = GenerationRoundDriver(conn, repo, **ports)
+        outcome = driver.drive(round_id=round_id)
+        if outcome.final_status == "selected":
+            winner_bv_id = _winner_branch_version(conn, repo, round_id)
+            if args.no_accept:
+                # Produce-without-seal (ch01 redo semantics): winner candidate is
+                # frozen + selected but NOT accepted. Output (if given) writes the
+                # raw winner branch text for author review — NOT a sealed snapshot
+                # export, since no active snapshot exists yet.
+                exported = _maybe_export_branch_text(conn, winner_bv_id, args.output)
+                return {
+                    "project_id": project_id, "chapter_id": chapter_id,
+                    "accepted": False, "no_accept": True, "round_id": round_id,
+                    "attempt": attempt, "final_status": outcome.final_status,
+                    "eligible_count": outcome.eligible_count, "call_count": outcome.call_count,
+                    "winner_branch_version_id": winner_bv_id,
+                    "hint": "review the winner; seal via scene-accept or re-run without --no-accept",
+                    "exported": exported,
+                }
+            decision_id = repo.record_human_decision(
+                project_id=project_id, chapter_id=chapter_id,
+                decision_type="accept", actor=args.actor, reason=args.reason,
+                preconditions_json={"branch_version_id": winner_bv_id, "round_id": round_id},
+            )
+            expected = _expected_head_version(conn, project_id, chapter_id)
+            head_row = repo.accept_chapter(
+                branch_version_id=winner_bv_id, expected_head_version=expected,
+                accepted_decision_id=decision_id, actor=args.actor,
+            )
+            exported = _maybe_export(conn, project_id, chapter_id, args.output)
+            return {
+                "project_id": project_id, "chapter_id": chapter_id,
+                "accepted": True, "round_id": round_id, "attempt": attempt,
+                "final_status": outcome.final_status, "eligible_count": outcome.eligible_count,
+                "call_count": outcome.call_count, "snapshot_id": head_row.active_snapshot_id,
+                "branch_version_id": winner_bv_id, "exported": exported,
+            }
+    # No round produced a winner within the budget.
+    return {
+        "project_id": project_id, "chapter_id": chapter_id,
+        "accepted": False, "attempts": args.rounds,
+        "last_status": outcome.final_status, "failure_reason": outcome.failure_reason,
+        "hint": "use --force-branch-version-id to accept a specific frozen branch",
+    }
+
+
+def _ensure_scene_and_contract(
+    scene_repo, repo, project_id: int, chapter_id: int, actor: str, brief: str,
+) -> int:
+    """Ensure an approved+active Scene Contract exists for the chapter.
+
+    Idempotent: reuse an existing active contract; otherwise create a scene,
+    a contract (directly approved — chapter outline is author-finalized), and
+    activate it. Dead-line policy skips the dual-blind self_check / independent
+    review; the human actor activation is the seal.
+    """
+    from ink.errors import DataIntegrityError  # noqa: F401  (re-export parity with other handlers)
+    active = scene_repo.conn.execute(
+        """
+        SELECT c.scene_contract_id
+        FROM writing_scenes s
+        JOIN writing_scene_contracts c ON c.scene_id = s.scene_id
+        WHERE s.project_id = ? AND s.chapter_id = ? AND c.status = 'active'
+        ORDER BY s.scene_order, c.version DESC LIMIT 1
+        """,
+        (project_id, chapter_id),
+    ).fetchone()
+    if active is not None:
+        return int(active[0])
+    scene_id = scene_repo.create_scene(
+        project_id=project_id, chapter_id=chapter_id,
+        logical_scene_key=f"ch{chapter_id}", scene_order=chapter_id,
+    )
+    import hashlib
+    contract_hash = hashlib.sha256(brief.encode("utf-8")).hexdigest()
+    contract_id = scene_repo.create_contract(
+        scene_id=scene_id, version=1, contract_hash=contract_hash,
+        source_bundle_hash=contract_hash, created_by=actor, status="approved",
+    )
+    scene_repo.activate_contract(contract_id)
+    return contract_id
+
+
+def _find_or_create_round(repo, project_id: int, chapter_id: int, attempt: int, candidates: int) -> int:
+    """Reuse a non-terminal round for the chapter, else create a new one.
+
+    A round stuck in a non-terminal state (planned/generating/...) is resumed
+    by returning its id — ``drive`` re-reads state and continues. Only when no
+    resumable round exists does this create a fresh ``round_number`` round and
+    fix its candidate count (bypassing supplement drafts).
+    """
+    row = repo.conn.execute(
+        """
+        SELECT generation_round_id, status FROM writing_chapter_generation_rounds
+        WHERE project_id = ? AND chapter_id = ? AND status NOT IN
+            ('selected','candidate_shortage','diversity_shortage','failed')
+        ORDER BY round_number DESC LIMIT 1
+        """,
+        (project_id, chapter_id),
+    ).fetchone()
+    if row is not None:
+        return int(row[0])
+    round_id = repo.create_generation_round(
+        project_id=project_id, chapter_id=chapter_id, round_number=attempt,
+    )
+    repo.conn.execute(
+        """
+        UPDATE writing_chapter_generation_rounds
+        SET initial_target_count = ?, supplement_target_count = 0
+        WHERE generation_round_id = ?
+        """,
+        (candidates, round_id),
+    )
+    return round_id
+
+
+def _winner_branch_version(conn, repo, round_id: int) -> int:
+    """Branch version id of the round's selected branch (its frozen version)."""
+    row = conn.execute(
+        "SELECT branch_id FROM writing_chapter_candidate_branches "
+        "WHERE generation_round_id = ? AND status = 'selected'",
+        (round_id,),
+    ).fetchone()
+    if row is None:
+        raise SystemExit(f"round {round_id} has no selected branch")
+    return repo.frozen_branch_version_id(int(row[0]))
+
+
+def _expected_head_version(conn, project_id: int, chapter_id: int) -> int:
+    row = conn.execute(
+        "SELECT version FROM writing_chapter_heads WHERE project_id = ? AND chapter_id = ?",
+        (project_id, chapter_id),
+    ).fetchone()
+    return 0 if row is None else int(row[0])
+
+
+def _maybe_export(conn, project_id: int, chapter_id: int, output) -> str | None:
+    if not output:
+        return None
+    from ink.pipeline.scene_export_orchestrator import SceneExportOrchestrator
+    artifact = SceneExportOrchestrator(conn).export_chapter(project_id, chapter_id)
+    Path(output).write_text(artifact, encoding="utf-8")
+    return output
+
+
+def _maybe_export_branch_text(conn, branch_version_id: int, output) -> str | None:
+    """Write the raw frozen branch text — for --no-accept review, not a sealed export."""
+    if not output:
+        return None
+    from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
+
+    text = ChapterSnapshotRepository(conn).read_branch_version_text(branch_version_id)
+    Path(output).write_text(text, encoding="utf-8")
+    return output
+
+
+def _force_accept_and_export(
+    conn, repo, project_id, chapter_id, branch_version_id, actor, reason, output,
+) -> dict[str, object]:
+    """Force-accept a frozen branch version without driving a round."""
+    bv = conn.execute(
+        "SELECT branch_id, status FROM writing_chapter_candidate_branch_versions "
+        "WHERE branch_version_id = ?",
+        (branch_version_id,),
+    ).fetchone()
+    if bv is None:
+        raise SystemExit(f"branch version {branch_version_id} not found")
+    if bv[1] != "frozen":
+        raise SystemExit(f"branch version {branch_version_id} status={bv[1]} is not frozen")
+    branch_id = int(bv[0])
+    # accept_chapter requires the branch be marked 'selected' first.
+    repo.select_branch(branch_id)
+    decision_id = repo.record_human_decision(
+        project_id=project_id, chapter_id=chapter_id,
+        decision_type="accept", actor=actor, reason=reason,
+        preconditions_json={"branch_version_id": branch_version_id, "forced": True},
+    )
+    expected = _expected_head_version(conn, project_id, chapter_id)
+    head_row = repo.accept_chapter(
+        branch_version_id=branch_version_id, expected_head_version=expected,
+        accepted_decision_id=decision_id, actor=actor,
+    )
+    exported = _maybe_export(conn, project_id, chapter_id, output)
+    return {
+        "project_id": project_id, "chapter_id": chapter_id,
+        "accepted": True, "forced": True, "snapshot_id": head_row.active_snapshot_id,
+        "branch_version_id": branch_version_id, "exported": exported,
+    }
+
+
+def _cmd_scene_export_parity(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    project_id = _project_id(conn, args)
+    result = SceneExportOrchestrator(conn).check_export_parity(project_id)
+    return {"project_id": project_id, **result}
 
 
 def _cmd_ds_start(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -1229,6 +2038,41 @@ class _CliDeterministicProvider:
             # polished（soft seal 契约 winner.writer_model == "smart-polish"），未 polish 给 84。
             score = 90 if "polished text" in prompt_text else 84
             text = json.dumps({col: score for col in SCORE_COLUMNS}, ensure_ascii=False)
+        elif idempotency_key.startswith("chapter_review:"):
+            # chapter_review 真实化后解析 7 维 JSON + review_notes。确定性默认全过（92 高于任何
+            # 合理 floor 并满足绝对底线 75）；测 blocking 时用专门注入式 provider 返回低分。
+            from ink.pipeline.chapter_review_orchestrator import CHAPTER_REVIEW_DIMENSIONS
+
+            text = json.dumps(
+                {col: 92 for col in CHAPTER_REVIEW_DIMENSIONS} | {"review_notes": "deterministic pass"},
+                ensure_ascii=False,
+            )
+        elif idempotency_key.startswith("book_check:"):
+            # book_check 真实化后解析 6 维 JSON + issues。确定性默认全过 + 空 issues。
+            from ink.pipeline.book_rolling_check_orchestrator import BOOK_CHECK_DIMENSIONS
+
+            text = json.dumps(
+                {col: 92 for col in BOOK_CHECK_DIMENSIONS} | {"issues": []}, ensure_ascii=False
+            )
+        elif "-generate-" in idempotency_key:
+            # Scene-first Generation Round：候选正文。从 prompt 的"纲要：\n"后取 brief 衍生一段，
+            # 保证可被 validation/selection 评分（非空中文段落）。嵌入 branch_id 使多候选正文
+            # 互异（writing_scene_revisions 有 (scene_id, text_hash) UNIQUE）。
+            brief = prompt_text.split("纲要：\n", 1)[1] if "纲要：\n" in prompt_text else prompt_text
+            bid = idempotency_key.rsplit("-", 1)[-1]
+            text = f"（确定性候选{bid}）{brief[:120]}……雨势渐紧，符文在腕间隐约发烫，候选{bid}的笔触略有不同。"
+        elif "-validate-" in idempotency_key or "-select-" in idempotency_key:
+            # Scene-first validation / selection：7 维评分 JSON。92 高于 floor(85) 与
+            # dimension_floor(60)，确定性全过门，winner 取最低 candidate_index。
+            from ink.pipeline.generation_round_real_ports import RealValidationPort
+
+            text = json.dumps(
+                {col: 92 for col in RealValidationPort.DIMENSIONS}, ensure_ascii=False
+            )
+        elif "-diff-" in idempotency_key:
+            # Scene-first 实质差异判定：true（确定性候选已带 branch_id 区分）→ 有差异，
+            # 不触发补稿，2 候选直接进 selection 选优。false 会导致全废 → candidate_shortage。
+            text = json.dumps({"has_substantive_difference": True}, ensure_ascii=False)
         else:
             text = f"scene text {model_name} {idempotency_key}"
         return ModelResult(text=text, model_name=model_name, token_input=len(prompt_text.split()), token_output=1)
@@ -1459,6 +2303,34 @@ def _csv_strings(raw: str | None) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+def _parse_int_ranges(raw: str) -> list[int]:
+    values: set[int] = set()
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if "-" not in token:
+            try:
+                value = int(token)
+            except ValueError as exc:
+                raise SystemExit(f"invalid integer/range: {token}") from exc
+            if value < 1:
+                raise SystemExit("chapter numbers must be positive")
+            values.add(value)
+            continue
+        bounds = token.split("-", 1)
+        try:
+            start, end = int(bounds[0]), int(bounds[1])
+        except ValueError as exc:
+            raise SystemExit(f"invalid integer/range: {token}") from exc
+        if start < 1 or end < start:
+            raise SystemExit(f"invalid chapter range: {token}")
+        values.update(range(start, end + 1))
+    if not values:
+        raise SystemExit("--chapters must contain at least one chapter")
+    return sorted(values)
+
+
 def _json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
@@ -1533,6 +2405,28 @@ def _cmd_debug_stale(conn: sqlite3.Connection, args: argparse.Namespace) -> dict
         "stale_reviews": chain.stale_reviews,
         "stale_checks": chain.stale_checks,
     }
+
+
+def _cmd_debug_replay_session(conn: sqlite3.Connection, args: argparse.Namespace) -> dict:
+    from ink.event_replay import EventReplay
+
+    return EventReplay(conn).session(
+        args.session_id,
+        at_event_id=args.at_event_id,
+        at_time=args.at_time,
+    ).as_dict()
+
+
+def _cmd_debug_replay_contract(conn: sqlite3.Connection, args: argparse.Namespace) -> dict:
+    from ink.event_replay import EventReplay
+
+    return EventReplay(conn).contract(
+        args.project_id,
+        args.scope_type,
+        args.scope_id,
+        at_event_id=args.at_event_id,
+        at_time=args.at_time,
+    ).as_dict()
 
 
 if __name__ == "__main__":
