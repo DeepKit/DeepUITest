@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import count
 from typing import Iterator
 
+from ink.core.actor_guard import assert_can_accept
 from ink.errors import (
     ConcurrentModificationError,
     DataIntegrityError,
@@ -25,6 +27,8 @@ class ChapterHead:
     chapter_id: int
     active_snapshot_id: int
     version: int
+    accepted_decision_id: int | None = None
+    selection_decision_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -179,6 +183,7 @@ class ChapterSnapshotRepository:
         bindings = self._branch_bindings(branch_version_id)
         if not bindings:
             raise DataIntegrityError("cannot freeze a branch version without Scenes")
+        self._assert_branch_fresh(branch_version_id)
         content_hash = _bindings_hash(bindings)
         updated = self.conn.execute(
             """
@@ -190,6 +195,11 @@ class ChapterSnapshotRepository:
         )
         if updated.rowcount != 1:
             raise ConcurrentModificationError("branch version changed while freezing")
+        self._emit_branch_event(
+            branch_version_id=branch_version_id,
+            event_type="BRANCH_FROZEN",
+            payload={"branch_version_id": branch_version_id, "content_hash": content_hash},
+        )
         return content_hash
 
     def select_branch(self, branch_id: int) -> None:
@@ -212,6 +222,8 @@ class ChapterSnapshotRepository:
             raise DataIntegrityError("only an eligible or reviewed branch may be selected")
         if int(row[2]) != 1:
             raise DataIntegrityError("selected branch must have a frozen version")
+        frozen_version_id = self._latest_frozen_branch_version_id(branch_id)
+        self._assert_branch_fresh(frozen_version_id)
         selected = self.conn.execute(
             """
             SELECT branch_id
@@ -236,6 +248,51 @@ class ChapterSnapshotRepository:
                 "UPDATE writing_chapter_candidate_branches SET status = 'selected' WHERE branch_id = ?",
                 (branch_id,),
             )
+            self._emit_branch_event(
+                branch_id=branch_id,
+                event_type="BRANCH_SELECTED",
+                payload={"branch_id": branch_id, "generation_round_id": int(row[0])},
+            )
+
+    def _emit_branch_event(
+        self,
+        *,
+        branch_id: int | None = None,
+        branch_version_id: int | None = None,
+        event_type: str,
+        payload: dict,
+    ) -> None:
+        """Resolve project_id from a branch/branch_version and emit an event."""
+        if branch_id is not None:
+            row = self.conn.execute(
+                """
+                SELECT gr.project_id
+                FROM writing_chapter_candidate_branches b
+                JOIN writing_chapter_generation_rounds gr
+                  ON gr.generation_round_id = b.generation_round_id
+                WHERE b.branch_id = ?
+                """,
+                (branch_id,),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """
+                SELECT gr.project_id
+                FROM writing_chapter_candidate_branch_versions bv
+                JOIN writing_chapter_candidate_branches b ON b.branch_id = bv.branch_id
+                JOIN writing_chapter_generation_rounds gr
+                  ON gr.generation_round_id = b.generation_round_id
+                WHERE bv.branch_version_id = ?
+                """,
+                (branch_version_id,),
+            ).fetchone()
+        if row is None:
+            return  # orphaned; nothing to attach the event to
+        self.emit_runtime_event(
+            project_id=int(row[0]),
+            event_type=event_type,
+            event_payload=payload,
+        )
 
     # ── Generation Round bounded state machine (implementation-contract.md §3.1) ──
 
@@ -268,6 +325,21 @@ class ChapterSnapshotRepository:
             raise ConcurrentModificationError(
                 f"generation round {round_id} changed while transitioning "
                 f"{expected_status} -> {to}"
+            )
+        round_row = self.conn.execute(
+            "SELECT project_id FROM writing_chapter_generation_rounds WHERE generation_round_id = ?",
+            (round_id,),
+        ).fetchone()
+        if round_row is not None:
+            self.emit_runtime_event(
+                project_id=int(round_row[0]),
+                event_type="ROUND_TRANSITION",
+                event_payload={
+                    "generation_round_id": round_id,
+                    "from": expected_status,
+                    "to": to,
+                    "failure_reason": failure_reason,
+                },
             )
         return to
 
@@ -531,21 +603,22 @@ class ChapterSnapshotRepository:
         *,
         branch_version_id: int,
         expected_head_version: int,
-        accepted_decision_id: int | None,
-        require_decision_id: bool = True,
+        actor: str,
+        reason: str,
+        preconditions_json: dict,
+        selection_decision_type: str,
+        selection_evidence_json: dict,
     ) -> ChapterHead:
-        """Atomically snapshot a selected frozen branch and CAS the chapter head.
+        """Atomically decide, snapshot, and advance the active Chapter Head."""
 
-        When ``require_decision_id`` is True (default), a non-null
-        ``accepted_decision_id`` is mandatory — the Scene-first Accept path
-        always links the sealed Snapshot to the human decision that authorised it
-        (INV-ACCEPT-004). Test-only callers that exercise legacy NULL semantics
-        pass ``require_decision_id=False``.
-        """
-
-        if require_decision_id and accepted_decision_id is None:
+        assert_can_accept(actor)
+        if not reason.strip():
+            raise DataIntegrityError("scene-first accept requires a non-empty reason")
+        if selection_decision_type not in {
+            "auto_selected", "human_override", "minority_champion"
+        }:
             raise DataIntegrityError(
-                "scene-first accept requires a non-null accepted_decision_id"
+                f"invalid selection decision type: {selection_decision_type}"
             )
 
         with _atomic(self.conn):
@@ -553,7 +626,7 @@ class ChapterSnapshotRepository:
                 """
                 SELECT bv.status, bv.content_hash, bv.chapter_contract_version_id,
                        bv.world_snapshot_id, bv.fact_snapshot_id, b.status,
-                       r.project_id, r.chapter_id
+                       r.project_id, r.chapter_id, b.branch_id, r.generation_round_id
                 FROM writing_chapter_candidate_branch_versions bv
                 JOIN writing_chapter_candidate_branches b ON b.branch_id = bv.branch_id
                 JOIN writing_chapter_generation_rounds r
@@ -571,6 +644,8 @@ class ChapterSnapshotRepository:
 
             project_id = int(row[6])
             chapter_id = int(row[7])
+            branch_id = int(row[8])
+            generation_round_id = int(row[9])
             current = self.conn.execute(
                 """
                 SELECT active_snapshot_id, version
@@ -587,9 +662,28 @@ class ChapterSnapshotRepository:
                 )
 
             bindings = self._branch_bindings(branch_version_id)
+            self._assert_branch_fresh(branch_version_id)
             snapshot_hash = _bindings_hash(bindings)
             if snapshot_hash != str(row[1]):
                 raise DataIntegrityError("frozen branch content hash no longer matches its bindings")
+
+            selection_decision_id = self.record_selection_decision(
+                project_id=project_id,
+                chapter_id=chapter_id,
+                generation_round_id=generation_round_id,
+                selected_branch_id=branch_id,
+                decision_type=selection_decision_type,
+                evidence_json=selection_evidence_json,
+                actor=actor,
+            )
+            accepted_decision_id = self.record_human_decision(
+                project_id=project_id,
+                chapter_id=chapter_id,
+                decision_type="accept",
+                actor=actor,
+                reason=reason,
+                preconditions_json=preconditions_json,
+            )
 
             now = now_utc_iso()
             cursor = self.conn.execute(
@@ -601,15 +695,8 @@ class ChapterSnapshotRepository:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    project_id,
-                    chapter_id,
-                    branch_version_id,
-                    row[2],
-                    row[3],
-                    row[4],
-                    snapshot_hash,
-                    accepted_decision_id,
-                    now,
+                    project_id, chapter_id, branch_version_id, row[2], row[3], row[4],
+                    snapshot_hash, accepted_decision_id, now,
                 ),
             )
             snapshot_id = int(cursor.lastrowid)
@@ -652,19 +739,44 @@ class ChapterSnapshotRepository:
                     WHERE project_id = ? AND chapter_id = ? AND version = ?
                     """,
                     (
-                        snapshot_id,
-                        next_version,
-                        now,
-                        project_id,
-                        chapter_id,
+                        snapshot_id, next_version, now, project_id, chapter_id,
                         expected_head_version,
                     ),
                 )
                 if updated.rowcount != 1:
                     raise ConcurrentModificationError("chapter head changed during accept")
-            return ChapterHead(project_id, chapter_id, snapshot_id, next_version)
+            self.emit_runtime_event(
+                project_id=project_id,
+                event_type="CHAPTER_ACCEPTED",
+                event_payload={
+                    "snapshot_id": snapshot_id,
+                    "branch_version_id": branch_version_id,
+                    "accepted_decision_id": accepted_decision_id,
+                    "selection_decision_id": selection_decision_id,
+                    "actor": actor,
+                    "version": next_version,
+                },
+            )
+            return ChapterHead(
+                project_id, chapter_id, snapshot_id, next_version,
+                accepted_decision_id, selection_decision_id,
+            )
 
     def read_active_chapter_text(self, *, project_id: int, chapter_id: int) -> str:
+        stale = self.conn.execute(
+            """
+            SELECT sm.stale_reason
+            FROM writing_chapter_heads h
+            JOIN writing_chapter_snapshot_stale_marks sm
+              ON sm.snapshot_id = h.active_snapshot_id
+            WHERE h.project_id = ? AND h.chapter_id = ?
+            """,
+            (project_id, chapter_id),
+        ).fetchone()
+        if stale is not None:
+            raise DataIntegrityError(
+                f"active chapter snapshot contains stale Scene lineage: {stale[0]}"
+            )
         rows = self.conn.execute(
             """
             SELECT sr.text
@@ -682,6 +794,138 @@ class ChapterSnapshotRepository:
             raise DataIntegrityError(f"no active Chapter Snapshot for {project_id}/{chapter_id}")
         return "\n\n".join(str(row[0]) for row in rows)
 
+    def emit_runtime_event(
+        self,
+        *,
+        project_id: int,
+        event_type: str,
+        event_payload: dict,
+        session_id: int | None = None,
+        run_id: int | None = None,
+        shot_id: str | None = None,
+    ) -> int:
+        """Append an entry to the runtime event timeline.
+
+        The single chokepoint used by all Scene-first protected transitions
+        (accept / freeze / select / round transition) so each authority mutation
+        leaves a durable audit trail (INV-AUTH timeline).
+        """
+        cursor = self.conn.execute(
+            """
+            INSERT INTO writing_runtime_events
+                (project_id, session_id, run_id, shot_id, event_type, event_payload, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                session_id,
+                run_id,
+                shot_id,
+                event_type,
+                json.dumps(event_payload, sort_keys=True),
+                now_utc_iso(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def record_human_decision(
+        self,
+        *,
+        project_id: int,
+        decision_type: str,
+        actor: str,
+        reason: str,
+        preconditions_json: dict,
+        quality_report_json: dict | None = None,
+        chapter_id: int | None = None,
+        session_id: int | None = None,
+        run_id: int | None = None,
+        shot_id: str | None = None,
+    ) -> int:
+        """Insert a human-decision audit row and return its ``decision_id``.
+
+        The decision row is the authoritative link an Accept seals itself to
+        (``accepted_decision_id`` FK on ``writing_chapter_snapshots``).
+        ``hard_quality_override`` is always 0 — a failed hard quality gate may
+        not be overridden by a human (schema CHECK constraint).
+        """
+        cursor = self.conn.execute(
+            """
+            INSERT INTO writing_human_decisions
+                (project_id, session_id, run_id, shot_id, chapter_id,
+                 decision_type, actor, reason, preconditions_json,
+                 quality_report_json, hard_quality_override, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+            """,
+            (
+                project_id,
+                session_id,
+                run_id,
+                shot_id,
+                chapter_id,
+                decision_type,
+                actor,
+                reason,
+                json.dumps(preconditions_json, sort_keys=True),
+                json.dumps(quality_report_json or {}, sort_keys=True),
+                now_utc_iso(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def record_selection_decision(
+        self,
+        *,
+        project_id: int,
+        chapter_id: int,
+        generation_round_id: int,
+        selected_branch_id: int,
+        decision_type: str,
+        evidence_json: dict,
+        actor: str,
+    ) -> int:
+        """Record which candidate branch was selected for a generation round."""
+        cursor = self.conn.execute(
+            """
+            INSERT INTO writing_selection_decisions
+                (project_id, chapter_id, generation_round_id, selected_branch_id,
+                 decision_type, evidence_json, actor, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                chapter_id,
+                generation_round_id,
+                selected_branch_id,
+                decision_type,
+                json.dumps(evidence_json, sort_keys=True),
+                actor,
+                now_utc_iso(),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def get_active_snapshot_id(self, *, project_id: int, chapter_id: int) -> int | None:
+        """Return the active sealed snapshot id for a chapter, or ``None``."""
+        row = self.conn.execute(
+            """
+            SELECT h.active_snapshot_id, sm.stale_reason
+            FROM writing_chapter_heads h
+            JOIN writing_chapter_snapshots s ON s.snapshot_id = h.active_snapshot_id
+            LEFT JOIN writing_chapter_snapshot_stale_marks sm
+              ON sm.snapshot_id = h.active_snapshot_id
+            WHERE h.project_id = ? AND h.chapter_id = ? AND s.sealed_at IS NOT NULL
+            """,
+            (project_id, chapter_id),
+        ).fetchone()
+        if row is None:
+            return None
+        if row[1] is not None:
+            raise DataIntegrityError(
+                f"active chapter snapshot contains stale Scene lineage: {row[1]}"
+            )
+        return int(row[0])
+
     def read_branch_version_text(self, branch_version_id: int) -> str:
         """Assemble a candidate branch's full chapter text by joining
         ``writing_branch_scenes`` → ``writing_scene_revisions`` in scene order.
@@ -690,6 +934,7 @@ class ChapterSnapshotRepository:
         text to the jury LLM. The branch_version must be frozen (its scene
         bindings are immutable post-freeze — see ``freeze_branch_version``).
         """
+        self._assert_branch_fresh(branch_version_id)
         rows = self.conn.execute(
             """
             SELECT sr.text
@@ -708,6 +953,9 @@ class ChapterSnapshotRepository:
 
     def frozen_branch_version_id(self, branch_id: int) -> int:
         """Latest ``status='frozen'`` branch_version for a branch."""
+        return self._latest_frozen_branch_version_id(branch_id)
+
+    def _latest_frozen_branch_version_id(self, branch_id: int) -> int:
         row = self.conn.execute(
             """
             SELECT branch_version_id
@@ -721,6 +969,34 @@ class ChapterSnapshotRepository:
         if row is None:
             raise DataIntegrityError(f"no frozen branch_version for branch {branch_id}")
         return int(row[0])
+
+    def _assert_branch_fresh(self, branch_version_id: int) -> None:
+        marked = self.conn.execute(
+            "SELECT stale_reason FROM writing_branch_version_stale_marks "
+            "WHERE branch_version_id = ?",
+            (branch_version_id,),
+        ).fetchone()
+        stale_revision = self.conn.execute(
+            """
+            SELECT bs.scene_id, bs.scene_revision_id
+            FROM writing_branch_scenes bs
+            JOIN writing_scene_revision_stale_marks sm
+              ON sm.scene_revision_id = bs.scene_revision_id
+            WHERE bs.branch_version_id = ?
+            ORDER BY bs.scene_order
+            LIMIT 1
+            """,
+            (branch_version_id,),
+        ).fetchone()
+        if marked is not None or stale_revision is not None:
+            evidence = (
+                str(marked[0])
+                if marked is not None
+                else f"scene {int(stale_revision[0])} revision {int(stale_revision[1])}"
+            )
+            raise DataIntegrityError(
+                f"branch version {branch_version_id} contains stale Scene lineage: {evidence}"
+            )
 
     def _branch_bindings(
         self, branch_version_id: int

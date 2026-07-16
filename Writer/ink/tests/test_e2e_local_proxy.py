@@ -328,3 +328,7 @@ class TestLocalProxyTenChapters:
             "SELECT count(*) FROM writing_chapter_reviews WHERE status = 'accepted'"
         ).fetchone()[0]
         assert accepted >= 8, f"expected >= 8 accepted chapter reviews, got {accepted}"
+pytestmark = pytest.mark.skipif(
+    os.environ.get("INK_RUN_REAL_LLM_TESTS") != "1",
+    reason="real local-proxy acceptance is opt-in; set INK_RUN_REAL_LLM_TESTS=1",
+)

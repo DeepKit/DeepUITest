@@ -65,7 +65,9 @@ ROLE_CHAINS: dict[str, list[tuple[str, str]]] = {
     "chapter_review": [("primary", DEEPSEEK_V4PRO), ("secondary", QWEN_35397B), ("tertiary", GLM51)],
     "book_check":     [("primary", DEEPSEEK_V4PRO), ("secondary", QWEN_35397B), ("tertiary", GLM51)],
 }
-CALL_TYPES = list(ROLE_CHAINS.keys())
+# Preserve caller-selected writer/outline/polish models; use role chains only
+# for jury/review/check where tier diversity and failover are intentional.
+CALL_TYPES = ["jury", "chapter_review", "book_check"]
 
 WRITER_POOL = [GLM51, DEEPSEEK_V4PRO, KIMI_K26]
 JURY_POOL = [DEEPSEEK_V4PRO, QWEN_35397B, GLM51, KIMI_K26]
@@ -155,6 +157,7 @@ def build_file_db() -> sqlite3.Connection:
         )
         log(f"第 {chapter_id} 章 contract 已从大纲解析落库 (shot_contract_id={scid})")
 
+    conn.commit()
     return conn
 
 
@@ -204,10 +207,10 @@ def run_shot(conn, shot_id, run_id, gateway):
     PreDraftingOrchestrator(conn, gateway).run_until_prompt_compiled(shot_id, run_id)
     WriteOrchestrator(conn, gateway).produce_drafts(shot_id, run_id)
     HardGateOrchestrator(conn).run_both_gates(shot_id, run_id)
-    JuryOrchestrator(conn).score_and_select_winner(shot_id, run_id)
+    JuryOrchestrator(conn, gateway).score_and_select_winner(shot_id, run_id)
     PolishOrchestrator(conn, gateway).polish_winner(shot_id, run_id)
     HardGateOrchestrator(conn).run_both_gates(shot_id, run_id)
-    JuryOrchestrator(conn).score_and_select_winner(shot_id, run_id)
+    JuryOrchestrator(conn, gateway).score_and_select_winner(shot_id, run_id)
     SoftSealOrchestrator(conn).soft_seal_if_polished(shot_id, run_id)
 
 
@@ -293,8 +296,10 @@ def main():
         log(f"--- 第 {chapter_id} 章 start: shot_id={shot_id} ---")
         try:
             run_shot(conn, shot_id, run_id, gateway)
+            conn.commit()
             log(f"第 {chapter_id} 章全链路完成")
         except Exception as exc:
+            conn.rollback()
             log(f"第 {chapter_id} 章链路中止: {type(exc).__name__}: {str(exc)[:200]}")
             traceback.print_exc()
 
@@ -303,8 +308,10 @@ def main():
         # chapter_review + accept（可选，失败不阻断，继续下一章）
         try:
             ChapterReviewOrchestrator(conn, gateway).review_chapter(PROJECT_ID, chapter_id, RUN_ID)
+            conn.commit()
             log(f"第 {chapter_id} 章 chapter_review 完成")
         except Exception as exc:
+            conn.rollback()
             log(f"第 {chapter_id} 章 chapter_review 失败: {str(exc)[:120]}")
 
     conn.close()

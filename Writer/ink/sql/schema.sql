@@ -52,7 +52,7 @@ CREATE TABLE writing_projects (
     -- ── 质量阈值参数（原 quality_bar JSON，拆为独立字段以支持 DB 层约束） ──
     shot_quality_floor INTEGER NOT NULL DEFAULT 75,           -- winner 最低 final_score，DB 绝对底线 75（真实模型 jury 稳定 77-83，80 过严）
     dimension_floor INTEGER NOT NULL DEFAULT 60,              -- 12 维任一核心维度最低分，DB 绝对底线 60
-    chapter_quality_floor INTEGER NOT NULL DEFAULT 75,        -- 章级 7 维最低分，DB 绝对底线 75
+    chapter_quality_floor INTEGER NOT NULL DEFAULT 75,        -- 章级 8 维最低分，DB 绝对底线 75
     book_quality_floor INTEGER NOT NULL DEFAULT 75,           -- 篇级 6 维最低分，DB 绝对底线 75
     judge_disagreement_max INTEGER NOT NULL DEFAULT 25,       -- 同维 3 裁判最高-最低最大分差，DB 绝对底线 25
     reader_pull_floor INTEGER NOT NULL DEFAULT 75,            -- would_continue_reading 最低分
@@ -60,6 +60,8 @@ CREATE TABLE writing_projects (
 
     -- ── 篇级检测参数 ──
     chapter_rolling_check_interval INTEGER NOT NULL DEFAULT 5,
+    suspense_decay_floor INTEGER NOT NULL DEFAULT 82 CHECK (suspense_decay_floor >= 82),
+    require_ethics_review INTEGER NOT NULL DEFAULT 0 CHECK (require_ethics_review IN (0,1)),
 
     created_at TEXT NOT NULL,
 
@@ -497,8 +499,8 @@ CREATE TABLE writing_jury_aggregates (
 );
 CREATE UNIQUE INDEX idx_jury_aggregate_winner ON writing_jury_aggregates(shot_id) WHERE is_winner = 1;
 
--- 22. writing_chapter_reviews（章级 7 维硬质量门禁）
--- 质量硬门禁修订：7 维全部是 accepted 前硬门禁；问题可注入后文，但不能替代本章达标。
+-- 22. writing_chapter_reviews（章级 8 维硬质量门禁）
+-- 质量硬门禁修订：8 维全部是 accepted 前硬门禁；问题可注入后文，但不能替代本章达标。
 CREATE TABLE writing_chapter_reviews (
     review_id INTEGER PRIMARY KEY,
     project_id INTEGER NOT NULL,
@@ -506,7 +508,7 @@ CREATE TABLE writing_chapter_reviews (
     run_id INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending','accepted','rejected','revised')),
     is_stale INTEGER NOT NULL DEFAULT 0,             -- stale 传播标记
-    -- 章级 7 维（accepted 前全部必须达标），0-100
+    -- 章级 8 维（accepted 前全部必须达标），0-100
     chapter_continuity_hard INTEGER CHECK (chapter_continuity_hard IS NULL OR chapter_continuity_hard BETWEEN 0 AND 100),
     pov_consistency INTEGER CHECK (pov_consistency IS NULL OR pov_consistency BETWEEN 0 AND 100),
     character_consistency INTEGER CHECK (character_consistency IS NULL OR character_consistency BETWEEN 0 AND 100),
@@ -514,17 +516,20 @@ CREATE TABLE writing_chapter_reviews (
     rhythm_curve INTEGER CHECK (rhythm_curve IS NULL OR rhythm_curve BETWEEN 0 AND 100),
     motif_density INTEGER CHECK (motif_density IS NULL OR motif_density BETWEEN 0 AND 100),
     info_gap_lifecycle INTEGER CHECK (info_gap_lifecycle IS NULL OR info_gap_lifecycle BETWEEN 0 AND 100),
+    chapter_coherence INTEGER CHECK (chapter_coherence IS NULL OR chapter_coherence BETWEEN 0 AND 100),
     quality_gate_passed INTEGER NOT NULL DEFAULT 0 CHECK (quality_gate_passed IN (0,1)),
     blocking_issues TEXT NOT NULL DEFAULT '[]',      -- JSON：任一硬质量失败项
     review_notes TEXT,
     reviewed_at TEXT NOT NULL,
-    -- accepted 要求 7 维非 NULL、全部 >= 绝对底线 75（运营阈值见 writing_projects.chapter_quality_floor）、质量门禁通过。
+    -- accepted 要求 8 维非 NULL、全部 >= 绝对底线 75（运营阈值见 writing_projects.chapter_quality_floor）、质量门禁通过。
     CHECK (status != 'accepted' OR (
         quality_gate_passed = 1 AND
         chapter_continuity_hard IS NOT NULL AND pov_consistency IS NOT NULL AND character_consistency IS NOT NULL AND
-        chapter_hook_soft IS NOT NULL AND rhythm_curve IS NOT NULL AND motif_density IS NOT NULL AND info_gap_lifecycle IS NOT NULL AND
+        chapter_hook_soft IS NOT NULL AND rhythm_curve IS NOT NULL AND motif_density IS NOT NULL AND
+        info_gap_lifecycle IS NOT NULL AND chapter_coherence IS NOT NULL AND
         chapter_continuity_hard >= 75 AND pov_consistency >= 75 AND character_consistency >= 75 AND
-        chapter_hook_soft >= 75 AND rhythm_curve >= 75 AND motif_density >= 75 AND info_gap_lifecycle >= 75
+        chapter_hook_soft >= 75 AND rhythm_curve >= 75 AND motif_density >= 75 AND
+        info_gap_lifecycle >= 75 AND chapter_coherence >= 75
     )),  -- 绝对底线 75，运营阈值见 writing_projects.chapter_quality_floor
     UNIQUE (project_id, chapter_id, run_id),   -- accepted canonical 唯一索引
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
@@ -1114,3 +1119,595 @@ CREATE TABLE writing_model_role_configs (
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_role_configs_project_call ON writing_model_role_configs(project_id, call_type, tier);
+
+
+
+-- 53. Chapter ethics review (global acceptance gate).
+CREATE TABLE writing_chapter_ethics_reviews (
+    ethics_review_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    run_id INTEGER NOT NULL,
+    reviewer_actor TEXT NOT NULL,
+    reviewer_models_json TEXT NOT NULL CHECK (
+        json_valid(reviewer_models_json) AND json_type(reviewer_models_json)='array'
+    ),
+    responsibility_question TEXT NOT NULL,
+    affected_parties_json TEXT NOT NULL CHECK (
+        json_valid(affected_parties_json) AND json_type(affected_parties_json)='array'
+    ),
+    irreversible_harm TEXT NOT NULL,
+    agency_obscured INTEGER NOT NULL CHECK (agency_obscured IN (0,1)),
+    evidence_sentences_json TEXT NOT NULL CHECK (
+        json_valid(evidence_sentences_json) AND json_type(evidence_sentences_json)='array'
+    ),
+    risk_level TEXT NOT NULL CHECK (risk_level IN ('low','medium','high','blocking')),
+    recommendation TEXT NOT NULL CHECK (recommendation IN ('approve','revise')),
+    review_notes TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    UNIQUE (project_id, chapter_id, run_id),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (run_id) REFERENCES writing_runs(run_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ethics_reviews_project_chapter
+ON writing_chapter_ethics_reviews(project_id, chapter_id, run_id);
+
+-- ============================================================================
+-- Scene-first shadow schema (v2)
+-- ============================================================================
+
+-- 53. Stable Scene identity. Canonical text is never stored on this row.
+CREATE TABLE writing_scenes (
+    scene_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    logical_scene_key TEXT NOT NULL,
+    scene_order INTEGER NOT NULL CHECK (scene_order >= 0),
+    created_at TEXT NOT NULL,
+    UNIQUE (project_id, chapter_id, logical_scene_key),
+    UNIQUE (project_id, chapter_id, scene_order),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_scenes_chapter ON writing_scenes(project_id, chapter_id, scene_order);
+
+-- 54. Versioned four-layer Scene Contract.
+CREATE TABLE writing_scene_contracts (
+    scene_contract_id INTEGER PRIMARY KEY,
+    scene_id INTEGER NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    status TEXT NOT NULL CHECK (status IN (
+        'draft', 'self_checked', 'under_review', 'revision_required',
+        'human_resolution_required', 'approved', 'active', 'superseded'
+    )),
+    contract_hash TEXT NOT NULL,
+    parent_contract_id INTEGER,
+    source_bundle_hash TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    activated_at TEXT,
+    superseded_at TEXT,
+    UNIQUE (scene_id, version),
+    FOREIGN KEY (scene_id) REFERENCES writing_scenes(scene_id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_contract_id) REFERENCES writing_scene_contracts(scene_contract_id)
+);
+CREATE UNIQUE INDEX idx_scene_contract_one_active
+ON writing_scene_contracts(scene_id) WHERE status = 'active';
+
+-- 55. Atomic Scene Contract clauses.
+CREATE TABLE writing_scene_contract_clauses (
+    clause_id INTEGER PRIMARY KEY,
+    scene_contract_id INTEGER NOT NULL,
+    layer TEXT NOT NULL CHECK (layer IN (
+        'hard_constraint', 'source_dna', 'soft_goal', 'creative_opening'
+    )),
+    clause_key TEXT NOT NULL,
+    clause_text TEXT NOT NULL,
+    severity TEXT NOT NULL CHECK (severity IN ('hard', 'soft', 'diagnostic')),
+    source_asset_id INTEGER,
+    source_anchor TEXT,
+    authority_rank INTEGER NOT NULL DEFAULT 0,
+    confidence REAL NOT NULL DEFAULT 1.0 CHECK (confidence >= 0 AND confidence <= 1),
+    risk_if_removed TEXT,
+    supersedes_clause_id INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE (scene_contract_id, layer, clause_key),
+    FOREIGN KEY (scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id) ON DELETE CASCADE,
+    FOREIGN KEY (supersedes_clause_id) REFERENCES writing_scene_contract_clauses(clause_id)
+);
+
+-- H2: the database is the final activation guard. Application checks are not sufficient.
+CREATE TRIGGER trg_scene_contract_active_requires_four_layers_insert
+BEFORE INSERT ON writing_scene_contracts
+WHEN NEW.status = 'active'
+BEGIN
+    SELECT RAISE(ABORT, 'active contract must be approved before activation');
+END;
+CREATE TRIGGER trg_scene_contract_active_requires_four_layers_update
+BEFORE UPDATE OF status ON writing_scene_contracts
+WHEN NEW.status = 'active' AND OLD.status <> 'active' AND (
+    OLD.status <> 'approved'
+    OR (SELECT COUNT(*) FROM writing_scene_contract_clauses
+        WHERE scene_contract_id = NEW.scene_contract_id AND layer = 'hard_constraint') < 1
+    OR (SELECT COUNT(*) FROM writing_scene_contract_clauses
+        WHERE scene_contract_id = NEW.scene_contract_id AND layer = 'source_dna') < 1
+    OR (SELECT COUNT(*) FROM writing_scene_contract_clauses
+        WHERE scene_contract_id = NEW.scene_contract_id AND layer = 'soft_goal') < 1
+    OR (SELECT COUNT(*) FROM writing_scene_contract_clauses
+        WHERE scene_contract_id = NEW.scene_contract_id AND layer = 'creative_opening') < 2
+)
+BEGIN
+    SELECT RAISE(ABORT, 'active contract requires approved status and complete four-layer clauses');
+END;
+CREATE TRIGGER trg_active_scene_contract_clauses_no_insert
+BEFORE INSERT ON writing_scene_contract_clauses
+WHEN (SELECT status FROM writing_scene_contracts
+      WHERE scene_contract_id = NEW.scene_contract_id) IN ('active', 'superseded')
+BEGIN SELECT RAISE(ABORT, 'active or superseded contract clauses are immutable'); END;
+CREATE TRIGGER trg_active_scene_contract_clauses_no_update
+BEFORE UPDATE ON writing_scene_contract_clauses
+WHEN (SELECT status FROM writing_scene_contracts
+      WHERE scene_contract_id = OLD.scene_contract_id) IN ('active', 'superseded')
+BEGIN SELECT RAISE(ABORT, 'active or superseded contract clauses are immutable'); END;
+CREATE TRIGGER trg_active_scene_contract_clauses_no_delete
+BEFORE DELETE ON writing_scene_contract_clauses
+WHEN (SELECT status FROM writing_scene_contracts
+      WHERE scene_contract_id = OLD.scene_contract_id) IN ('active', 'superseded')
+BEGIN SELECT RAISE(ABORT, 'active or superseded contract clauses are immutable'); END;
+
+-- 56. Auditable repair tasks for AI-authored Scene revisions.
+CREATE TABLE writing_scene_repair_tasks (
+    repair_task_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    scene_id INTEGER NOT NULL,
+    branch_version_id INTEGER NOT NULL,
+    source_revision_id INTEGER,
+    scene_contract_id INTEGER NOT NULL,
+    issue TEXT NOT NULL CHECK (length(trim(issue)) > 0),
+    status TEXT NOT NULL CHECK (status IN (
+        'planned', 'running', 'completed', 'failed', 'cancelled'
+    )),
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (scene_id) REFERENCES writing_scenes(scene_id) ON DELETE CASCADE,
+    FOREIGN KEY (branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id),
+    FOREIGN KEY (source_revision_id) REFERENCES writing_scene_revisions(scene_revision_id),
+    FOREIGN KEY (scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id)
+);
+CREATE INDEX idx_scene_repair_tasks_scope
+ON writing_scene_repair_tasks(project_id, chapter_id, scene_id, status);
+
+-- Scene-first stale annotations preserve immutable prose/branch/snapshot rows.
+CREATE TABLE writing_scene_revision_stale_marks (
+    scene_revision_id INTEGER PRIMARY KEY,
+    source_scene_contract_id INTEGER NOT NULL,
+    replacement_scene_contract_id INTEGER NOT NULL,
+    stale_reason TEXT NOT NULL CHECK (length(trim(stale_reason)) > 0),
+    marked_at TEXT NOT NULL,
+    FOREIGN KEY (scene_revision_id) REFERENCES writing_scene_revisions(scene_revision_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id),
+    FOREIGN KEY (replacement_scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id)
+);
+CREATE INDEX idx_scene_revision_stale_source
+ON writing_scene_revision_stale_marks(source_scene_contract_id);
+
+CREATE TABLE writing_branch_version_stale_marks (
+    branch_version_id INTEGER PRIMARY KEY,
+    source_scene_contract_id INTEGER NOT NULL,
+    replacement_scene_contract_id INTEGER NOT NULL,
+    stale_reason TEXT NOT NULL CHECK (length(trim(stale_reason)) > 0),
+    marked_at TEXT NOT NULL,
+    FOREIGN KEY (branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id),
+    FOREIGN KEY (replacement_scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id)
+);
+CREATE INDEX idx_branch_version_stale_source
+ON writing_branch_version_stale_marks(source_scene_contract_id);
+
+CREATE TABLE writing_chapter_snapshot_stale_marks (
+    snapshot_id INTEGER PRIMARY KEY,
+    source_scene_contract_id INTEGER NOT NULL,
+    replacement_scene_contract_id INTEGER NOT NULL,
+    stale_reason TEXT NOT NULL CHECK (length(trim(stale_reason)) > 0),
+    marked_at TEXT NOT NULL,
+    FOREIGN KEY (snapshot_id) REFERENCES writing_chapter_snapshots(snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id),
+    FOREIGN KEY (replacement_scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id)
+);
+CREATE INDEX idx_chapter_snapshot_stale_source
+ON writing_chapter_snapshot_stale_marks(source_scene_contract_id);
+
+-- 57. Immutable Scene prose revisions; deliberately no is_current flag.
+CREATE TABLE writing_scene_revisions (
+    scene_revision_id INTEGER PRIMARY KEY,
+    scene_id INTEGER NOT NULL,
+    parent_revision_id INTEGER,
+    scene_contract_id INTEGER NOT NULL,
+    generation_task_id INTEGER,
+    repair_task_id INTEGER,
+    context_snapshot_id INTEGER,
+    text TEXT NOT NULL CHECK (length(text) > 0),
+    text_hash TEXT NOT NULL,
+    actor_type TEXT NOT NULL CHECK (actor_type IN ('ai', 'human', 'migration', 'system')),
+    actor_id TEXT NOT NULL,
+    change_reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (scene_id, text_hash),
+    FOREIGN KEY (scene_id) REFERENCES writing_scenes(scene_id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_revision_id) REFERENCES writing_scene_revisions(scene_revision_id),
+    FOREIGN KEY (scene_contract_id) REFERENCES writing_scene_contracts(scene_contract_id)
+);
+CREATE INDEX idx_scene_revisions_scene ON writing_scene_revisions(scene_id, created_at);
+CREATE TRIGGER trg_scene_revision_no_update
+BEFORE UPDATE ON writing_scene_revisions
+BEGIN SELECT RAISE(ABORT, 'scene revisions are immutable'); END;
+CREATE TRIGGER trg_scene_revision_referenced_no_delete
+BEFORE DELETE ON writing_scene_revisions
+WHEN EXISTS (SELECT 1 FROM writing_branch_scenes WHERE scene_revision_id = OLD.scene_revision_id)
+  OR EXISTS (SELECT 1 FROM writing_chapter_snapshot_scenes WHERE scene_revision_id = OLD.scene_revision_id)
+BEGIN SELECT RAISE(ABORT, 'referenced scene revisions cannot be deleted'); END;
+
+-- 57. Optional non-authoritative work slices inside one Scene Revision.
+CREATE TABLE writing_scene_internal_shots (
+    internal_shot_id INTEGER PRIMARY KEY,
+    scene_revision_id INTEGER NOT NULL,
+    shot_order INTEGER NOT NULL CHECK (shot_order >= 0),
+    purpose TEXT NOT NULL,
+    text_start INTEGER NOT NULL CHECK (text_start >= 0),
+    text_end INTEGER NOT NULL CHECK (text_end >= text_start),
+    created_at TEXT NOT NULL,
+    UNIQUE (scene_revision_id, shot_order),
+    FOREIGN KEY (scene_revision_id) REFERENCES writing_scene_revisions(scene_revision_id) ON DELETE CASCADE
+);
+
+-- 58. Bounded chapter candidate generation round.
+CREATE TABLE writing_chapter_generation_rounds (
+    generation_round_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    outline_version_id INTEGER,
+    chapter_contract_version_id INTEGER,
+    round_number INTEGER NOT NULL CHECK (round_number >= 1),
+    status TEXT NOT NULL CHECK (status IN (
+        'planned', 'generating_initial', 'validating_initial', 'supplementing',
+        'validating_supplement', 'ready_for_selection', 'selecting', 'selected',
+        'initial_zero_pass', 'candidate_shortage', 'diversity_shortage', 'failed', 'superseded'
+    )),
+    initial_target_count INTEGER NOT NULL DEFAULT 2 CHECK (initial_target_count >= 1),
+    supplement_target_count INTEGER NOT NULL DEFAULT 3 CHECK (supplement_target_count >= 0),
+    eligible_count INTEGER NOT NULL DEFAULT 0 CHECK (eligible_count >= 0),
+    call_count INTEGER NOT NULL DEFAULT 0 CHECK (call_count >= 0),
+    failure_reason TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (project_id, chapter_id, round_number),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
+);
+
+-- 59. A literary candidate is a complete chapter branch.
+CREATE TABLE writing_chapter_candidate_branches (
+    branch_id INTEGER PRIMARY KEY,
+    generation_round_id INTEGER NOT NULL,
+    candidate_index INTEGER NOT NULL CHECK (candidate_index >= 1),
+    writer_model TEXT NOT NULL,
+    generation_strategy TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN (
+        'generating', 'validating', 'eligible', 'literary_review', 'selected', 'rejected'
+    )),
+    created_at TEXT NOT NULL,
+    UNIQUE (generation_round_id, candidate_index),
+    FOREIGN KEY (generation_round_id) REFERENCES writing_chapter_generation_rounds(generation_round_id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_generation_round_selected_branch
+ON writing_chapter_candidate_branches(generation_round_id) WHERE status = 'selected';
+
+-- 60. Immutable-on-freeze candidate Branch Versions.
+CREATE TABLE writing_chapter_candidate_branch_versions (
+    branch_version_id INTEGER PRIMARY KEY,
+    branch_id INTEGER NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    parent_branch_version_id INTEGER,
+    outline_version_id INTEGER,
+    chapter_contract_version_id INTEGER,
+    world_snapshot_id INTEGER,
+    fact_snapshot_id INTEGER,
+    content_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'building' CHECK (status IN ('building', 'frozen')),
+    created_at TEXT NOT NULL,
+    frozen_at TEXT,
+    UNIQUE (branch_id, version),
+    FOREIGN KEY (branch_id) REFERENCES writing_chapter_candidate_branches(branch_id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id)
+);
+CREATE TRIGGER trg_frozen_branch_version_no_update
+BEFORE UPDATE ON writing_chapter_candidate_branch_versions WHEN OLD.status = 'frozen'
+BEGIN SELECT RAISE(ABORT, 'frozen branch versions are immutable'); END;
+CREATE TRIGGER trg_frozen_branch_version_no_delete
+BEFORE DELETE ON writing_chapter_candidate_branch_versions WHEN OLD.status = 'frozen'
+BEGIN SELECT RAISE(ABORT, 'frozen branch versions cannot be deleted'); END;
+
+-- 61. Branch-local Scene heads.
+CREATE TABLE writing_branch_scenes (
+    branch_version_id INTEGER NOT NULL,
+    scene_order INTEGER NOT NULL CHECK (scene_order >= 0),
+    scene_id INTEGER NOT NULL,
+    scene_revision_id INTEGER NOT NULL,
+    PRIMARY KEY (branch_version_id, scene_order),
+    UNIQUE (branch_version_id, scene_id),
+    FOREIGN KEY (branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id) ON DELETE CASCADE,
+    FOREIGN KEY (scene_id) REFERENCES writing_scenes(scene_id),
+    FOREIGN KEY (scene_revision_id) REFERENCES writing_scene_revisions(scene_revision_id)
+);
+CREATE TRIGGER trg_branch_scene_revision_matches_scene_insert
+BEFORE INSERT ON writing_branch_scenes
+WHEN NOT EXISTS (SELECT 1 FROM writing_scene_revisions
+                 WHERE scene_revision_id = NEW.scene_revision_id AND scene_id = NEW.scene_id)
+BEGIN SELECT RAISE(ABORT, 'branch binding revision must belong to its Scene'); END;
+CREATE TRIGGER trg_branch_scene_revision_matches_scene_update
+BEFORE UPDATE OF scene_id, scene_revision_id ON writing_branch_scenes
+WHEN NOT EXISTS (SELECT 1 FROM writing_scene_revisions
+                 WHERE scene_revision_id = NEW.scene_revision_id AND scene_id = NEW.scene_id)
+BEGIN SELECT RAISE(ABORT, 'branch binding revision must belong to its Scene'); END;
+CREATE TRIGGER trg_frozen_branch_scene_no_insert
+BEFORE INSERT ON writing_branch_scenes
+WHEN (SELECT status FROM writing_chapter_candidate_branch_versions
+      WHERE branch_version_id = NEW.branch_version_id) = 'frozen'
+BEGIN SELECT RAISE(ABORT, 'frozen branch scene bindings are immutable'); END;
+CREATE TRIGGER trg_frozen_branch_scene_no_update
+BEFORE UPDATE ON writing_branch_scenes
+WHEN (SELECT status FROM writing_chapter_candidate_branch_versions
+      WHERE branch_version_id = OLD.branch_version_id) = 'frozen'
+BEGIN SELECT RAISE(ABORT, 'frozen branch scene bindings are immutable'); END;
+CREATE TRIGGER trg_frozen_branch_scene_no_delete
+BEFORE DELETE ON writing_branch_scenes
+WHEN (SELECT status FROM writing_chapter_candidate_branch_versions
+      WHERE branch_version_id = OLD.branch_version_id) = 'frozen'
+BEGIN SELECT RAISE(ABORT, 'frozen branch scene bindings are immutable'); END;
+
+-- 62. Accepted Chapter Snapshot.
+CREATE TABLE writing_chapter_snapshots (
+    snapshot_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    source_branch_version_id INTEGER NOT NULL,
+    chapter_contract_version_id INTEGER,
+    world_snapshot_id INTEGER,
+    fact_snapshot_id INTEGER,
+    snapshot_hash TEXT NOT NULL,
+    accepted_decision_id INTEGER,
+    created_at TEXT NOT NULL,
+    sealed_at TEXT,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id),
+    FOREIGN KEY (accepted_decision_id) REFERENCES writing_human_decisions(decision_id)
+);
+CREATE TRIGGER trg_snapshot_seal_only_update
+BEFORE UPDATE ON writing_chapter_snapshots
+WHEN NOT (
+    OLD.sealed_at IS NULL AND NEW.sealed_at IS NOT NULL
+    AND OLD.snapshot_id = NEW.snapshot_id AND OLD.project_id = NEW.project_id
+    AND OLD.chapter_id = NEW.chapter_id
+    AND OLD.source_branch_version_id = NEW.source_branch_version_id
+    AND OLD.chapter_contract_version_id IS NEW.chapter_contract_version_id
+    AND OLD.world_snapshot_id IS NEW.world_snapshot_id
+    AND OLD.fact_snapshot_id IS NEW.fact_snapshot_id
+    AND OLD.snapshot_hash = NEW.snapshot_hash
+    AND OLD.accepted_decision_id IS NEW.accepted_decision_id
+    AND OLD.created_at = NEW.created_at
+)
+BEGIN SELECT RAISE(ABORT, 'chapter snapshots are immutable'); END;
+CREATE TRIGGER trg_snapshot_no_delete
+BEFORE DELETE ON writing_chapter_snapshots
+BEGIN SELECT RAISE(ABORT, 'chapter snapshots cannot be deleted'); END;
+
+-- 63. Immutable ordered copy of accepted Branch Scene bindings.
+CREATE TABLE writing_chapter_snapshot_scenes (
+    snapshot_id INTEGER NOT NULL,
+    scene_order INTEGER NOT NULL CHECK (scene_order >= 0),
+    scene_id INTEGER NOT NULL,
+    scene_revision_id INTEGER NOT NULL,
+    PRIMARY KEY (snapshot_id, scene_order),
+    UNIQUE (snapshot_id, scene_id),
+    FOREIGN KEY (snapshot_id) REFERENCES writing_chapter_snapshots(snapshot_id),
+    FOREIGN KEY (scene_id) REFERENCES writing_scenes(scene_id),
+    FOREIGN KEY (scene_revision_id) REFERENCES writing_scene_revisions(scene_revision_id)
+);
+CREATE TRIGGER trg_snapshot_scene_revision_matches_scene
+BEFORE INSERT ON writing_chapter_snapshot_scenes
+WHEN NOT EXISTS (SELECT 1 FROM writing_scene_revisions
+                 WHERE scene_revision_id = NEW.scene_revision_id AND scene_id = NEW.scene_id)
+BEGIN SELECT RAISE(ABORT, 'snapshot binding revision must belong to its Scene'); END;
+CREATE TRIGGER trg_sealed_snapshot_scene_no_insert
+BEFORE INSERT ON writing_chapter_snapshot_scenes
+WHEN (SELECT sealed_at FROM writing_chapter_snapshots WHERE snapshot_id = NEW.snapshot_id) IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'sealed snapshot scene bindings are immutable'); END;
+CREATE TRIGGER trg_snapshot_scene_no_update
+BEFORE UPDATE ON writing_chapter_snapshot_scenes
+BEGIN SELECT RAISE(ABORT, 'snapshot scene bindings are immutable'); END;
+CREATE TRIGGER trg_snapshot_scene_no_delete
+BEFORE DELETE ON writing_chapter_snapshot_scenes
+BEGIN SELECT RAISE(ABORT, 'snapshot scene bindings are immutable'); END;
+
+-- 64. One optimistic-lock Head per chapter.
+CREATE TABLE writing_chapter_heads (
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    active_snapshot_id INTEGER NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, chapter_id),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (active_snapshot_id) REFERENCES writing_chapter_snapshots(snapshot_id)
+);
+CREATE TRIGGER trg_chapter_head_requires_matching_sealed_snapshot_insert
+BEFORE INSERT ON writing_chapter_heads
+WHEN NOT EXISTS (SELECT 1 FROM writing_chapter_snapshots
+                 WHERE snapshot_id = NEW.active_snapshot_id
+                   AND project_id = NEW.project_id AND chapter_id = NEW.chapter_id
+                   AND sealed_at IS NOT NULL)
+BEGIN SELECT RAISE(ABORT, 'chapter head requires a matching sealed snapshot'); END;
+CREATE TRIGGER trg_chapter_head_requires_matching_sealed_snapshot_update
+BEFORE UPDATE OF project_id, chapter_id, active_snapshot_id ON writing_chapter_heads
+WHEN NOT EXISTS (SELECT 1 FROM writing_chapter_snapshots
+                 WHERE snapshot_id = NEW.active_snapshot_id
+                   AND project_id = NEW.project_id AND chapter_id = NEW.chapter_id
+                   AND sealed_at IS NOT NULL)
+BEGIN SELECT RAISE(ABORT, 'chapter head requires a matching sealed snapshot'); END;
+
+-- P0-3: Scene Contract dual-master review + amendment.
+-- Idempotent. Stores reviewer independence evidence for blind audit.
+
+CREATE TABLE IF NOT EXISTS writing_scene_contract_reviews (
+    contract_review_id INTEGER PRIMARY KEY,
+    scene_contract_id INTEGER NOT NULL,
+    reviewer_model TEXT NOT NULL,
+    reviewer_family TEXT NOT NULL,
+    prompt_hash TEXT NOT NULL,
+    blind_context_hash TEXT NOT NULL,
+    visible_prior_reviews INTEGER NOT NULL DEFAULT 0 CHECK (visible_prior_reviews IN (0,1)),
+    review_order INTEGER NOT NULL,
+    verdict TEXT NOT NULL CHECK (verdict IN ('approve','revise','reject')),
+    evidence_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (scene_contract_id)
+        REFERENCES writing_scene_contracts(scene_contract_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_scene_contract_reviews_contract
+    ON writing_scene_contract_reviews(scene_contract_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scene_contract_review_unique_order
+    ON writing_scene_contract_reviews(scene_contract_id, review_order);
+
+-- H2: approved status alone is not review evidence. Activation requires three
+-- blind approve rows from distinct model families (implementation-contract §4).
+CREATE TRIGGER trg_scene_contract_active_requires_reviews
+BEFORE UPDATE OF status ON writing_scene_contracts
+WHEN NEW.status = 'active' AND OLD.status <> 'active' AND (
+    (SELECT count(*) FROM writing_scene_contract_reviews
+     WHERE scene_contract_id = NEW.scene_contract_id
+       AND review_order IN (1, 2, 3) AND verdict = 'approve'
+       AND visible_prior_reviews = 0) <> 3
+    OR (SELECT count(DISTINCT reviewer_family) FROM writing_scene_contract_reviews
+        WHERE scene_contract_id = NEW.scene_contract_id
+          AND review_order IN (1, 2, 3) AND verdict = 'approve'
+          AND visible_prior_reviews = 0) <> 3
+)
+BEGIN SELECT RAISE(ABORT, 'active contract requires three blind approve reviews from distinct families'); END;
+
+CREATE TABLE IF NOT EXISTS writing_scene_contract_amendments (
+    amendment_id INTEGER PRIMARY KEY,
+    scene_contract_id INTEGER NOT NULL,
+    amending_actor TEXT NOT NULL,
+    amendment_reason TEXT NOT NULL,
+    clause_changes_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (scene_contract_id)
+        REFERENCES writing_scene_contracts(scene_contract_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_scene_contract_amendments
+    ON writing_scene_contract_amendments(scene_contract_id, created_at);
+
+-- P0-5: Guidance cards + Fact proposals (real iFLYTEK, one-step).
+-- Idempotent.
+
+CREATE TABLE IF NOT EXISTS writing_guidance_cards (
+    guidance_card_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    scene_id INTEGER,
+    card_type TEXT NOT NULL CHECK (card_type IN (
+        'continuity_warning','character_pressure','foreshadow_reminder',
+        'pacing_adjustment','fact_contradiction'
+    )),
+    trigger_context TEXT NOT NULL,
+    guidance_text TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    prompt_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active','dismissed','applied','stale')),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_guidance_cards_chapter
+    ON writing_guidance_cards(project_id, chapter_id, status);
+
+CREATE TABLE IF NOT EXISTS writing_fact_proposals (
+    fact_proposal_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    scene_id INTEGER,
+    proposed_fact TEXT NOT NULL,
+    fact_type TEXT NOT NULL CHECK (fact_type IN (
+        'character_state','world_rule','event','causality','timeline'
+    )),
+    source_text TEXT NOT NULL,
+    source_revision_id INTEGER,
+    confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    status TEXT NOT NULL DEFAULT 'proposed'
+        CHECK (status IN ('proposed','confirmed','rejected','superseded','stale')),
+    model_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_revision_id)
+        REFERENCES writing_scene_revisions(scene_revision_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fact_proposals_status
+    ON writing_fact_proposals(project_id, status);
+
+-- P0-4: Pareto frontier + minority champion for literary selection.
+-- Idempotent.
+
+CREATE TABLE IF NOT EXISTS writing_pareto_frontier (
+    pareto_entry_id INTEGER PRIMARY KEY,
+    generation_round_id INTEGER NOT NULL,
+    branch_id INTEGER NOT NULL,
+    dimension_scores_json TEXT NOT NULL,
+    is_dominated INTEGER NOT NULL DEFAULT 0 CHECK (is_dominated IN (0,1)),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (generation_round_id)
+        REFERENCES writing_chapter_generation_rounds(generation_round_id) ON DELETE CASCADE,
+    FOREIGN KEY (branch_id)
+        REFERENCES writing_chapter_candidate_branches(branch_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pareto_frontier_round
+    ON writing_pareto_frontier(generation_round_id, is_dominated);
+
+CREATE TABLE IF NOT EXISTS writing_minority_champions (
+    champion_id INTEGER PRIMARY KEY,
+    generation_round_id INTEGER NOT NULL,
+    branch_id INTEGER NOT NULL,
+    champion_model TEXT NOT NULL,
+    champion_dimension TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (generation_round_id)
+        REFERENCES writing_chapter_generation_rounds(generation_round_id) ON DELETE CASCADE,
+    FOREIGN KEY (branch_id)
+        REFERENCES writing_chapter_candidate_branches(branch_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_minority_champions_round
+    ON writing_minority_champions(generation_round_id);
+
+-- P0-2: Selection decisions + Accept guard.
+-- Idempotent (IF NOT EXISTS). Mirrors the append in schema.sql.
+
+CREATE TABLE IF NOT EXISTS writing_selection_decisions (
+    selection_decision_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    generation_round_id INTEGER NOT NULL,
+    selected_branch_id INTEGER NOT NULL,
+    decision_type TEXT NOT NULL CHECK (decision_type IN (
+        'auto_selected','human_override','minority_champion'
+    )),
+    evidence_json TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (generation_round_id)
+        REFERENCES writing_chapter_generation_rounds(generation_round_id) ON DELETE CASCADE,
+    FOREIGN KEY (selected_branch_id)
+        REFERENCES writing_chapter_candidate_branches(branch_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_selection_decisions_round
+    ON writing_selection_decisions(generation_round_id);

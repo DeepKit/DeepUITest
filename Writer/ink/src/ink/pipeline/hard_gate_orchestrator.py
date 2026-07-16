@@ -4,6 +4,7 @@ import sqlite3
 
 from ink.contract.generated.dtos import DraftSpecDTO
 from ink.contract.loader import load_shot_contract
+from ink.core.prose_integrity import find_generation_artifact
 from ink.core.state_machine import load_status, transition
 from ink.errors import DataIntegrityError
 from ink.time import now_utc_iso
@@ -78,7 +79,7 @@ def _gate1(draft: DraftSpecDTO, forbidden_words: list[str]) -> tuple[int, int, i
     contract_compliance = int(not draft.degraded)
     forbidden_check = int(not any(word and word in draft.text for word in forbidden_words))
     capacity = int(draft.byte_count > 0)
-    readability = int(bool(draft.text.strip()))
+    readability = int(bool(draft.text.strip()) and find_generation_artifact(draft.text) is None)
     return contract_compliance, forbidden_check, capacity, readability
 
 

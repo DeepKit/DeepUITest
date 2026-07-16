@@ -17,7 +17,7 @@ from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
 from test_m4_review_pipeline import PolishProvider, _jury_gateway, make_winner_selected_shot
 
 
-# chapter_review 真实化后的评分 mock provider：按章文本里的桩标记返回 7 维 JSON，
+# chapter_review 真实化后的评分 mock provider：按章文本里的���标记返回章级维度 JSON，
 # 复现原桩语义（[chapter-fail]→rhythm_curve 低，[blind-fail]→chapter_continuity_hard 低，
 # [reader-pull-fail]→chapter_hook_soft 低；无标记→全过）。
 _CHAPTER_FAIL_DIM = {
@@ -28,7 +28,7 @@ _CHAPTER_FAIL_DIM = {
 
 
 class ChapterReviewProvider:
-    """注入式 chapter_review 评分 provider（测试用）。按章文本标记返回 7 维 JSON。
+    """注入式 chapter_review 评分 provider（测试用）。按章文本标记返回章级维度 JSON。
 
     标记映射见 ``_CHAPTER_FAIL_DIM``：命中标记的维度给 70（< 默认 floor 75 → blocking），
     其余给 92（过 floor）。无标记全 92。
@@ -62,6 +62,10 @@ def test_chapter_quality_gate_blocks_accept() -> None:
         "SELECT quality_gate_passed, status, blocking_issues FROM writing_chapter_reviews"
     ).fetchone() == (0, "pending", '["rhythm_curve"]')
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "soft_sealed"
+    assert conn.execute(
+        "SELECT count(*) FROM writing_ai_call_attempts WHERE idempotency_key LIKE ?",
+        (f"chapter_review:1:1:{ids['run_id']}:%",),
+    ).fetchone()[0] == 3
 
 
 def test_human_accept_cannot_override_quality_failure() -> None:

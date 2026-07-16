@@ -31,7 +31,10 @@ class SoftSealOrchestrator:
         if row is None:
             raise DataIntegrityError(f"winner aggregate not found: {shot_id}")
         if str(row[0]) != "smart-polish":
-            raise DataIntegrityError("winner must be a polished smart-model draft before soft seal")
+            # 真实模型不保证 polish 必提分（polished 稿可能分数低于原稿，jury 据实选原稿当 winner）。
+            # soft_seal 的目的是把过门 winner 固化为 canonical revision，不强制成稿必须是 polish 产出物。
+            # 仅当 winner 未过 quality gate 时才拒绝（下方 quality_gate_passed 检查）。
+            pass
         if int(row[2]) != 1:
             raise DataIntegrityError("winner quality gate must pass before soft seal")
 

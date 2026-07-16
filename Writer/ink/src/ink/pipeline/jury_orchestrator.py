@@ -15,6 +15,14 @@ from ink.writers.draft_repository import list_drafts, load_draft
 
 _DEFAULT_ORCHESTRATOR: "JuryOrchestrator | None" = None
 
+# DB 绝对底线 —— 对应 sql/schema.sql 的 writing_jury_aggregates CHECK 约束。
+# 设计意图（见 schema.sql 注释）：DB 只兜绝对底线，应用层取 max(项目运营阈值, 绝对底线) 执行。
+# 项目阈值（writing_projects.shot_quality_floor 等）不得低于此，由 _load_jury_context 取兜底后使用。
+# 若改这些值，必须同步改 sql/schema.sql 的对应 CHECK，否则 passed=True 的稿写库会撞 CHECK 抛 IntegrityError。
+ABSOLUTE_SHOT_QUALITY_FLOOR = 80      # final_score >= 80
+ABSOLUTE_DIMENSION_FLOOR = 65        # 每维度 median >= 65
+ABSOLUTE_JUDGE_DISAGREEMENT_MAX = 25  # judge_disagreement_max <= 25
+
 
 class JuryLLMFailure(Exception):
     """单 draft 的 3 裁判 LLM 调用全部失败（failover 三 tier 都挂）。
@@ -98,15 +106,24 @@ class JuryOrchestrator:
         context = _load_jury_context(self.conn, shot_id, run_id)
         candidates = _eligible_candidates(self.conn, shot_id)
         if len(candidates) < context.min_eligible_candidates:
-            raise DataIntegrityError(
-                f"eligible jury candidates below threshold: {len(candidates)} < {context.min_eligible_candidates}"
-            )
+            candidates = self._supplement_candidate_shortage(context, shot_id, run_id)
+            if len(candidates) < context.min_eligible_candidates:
+                raise DataIntegrityError(
+                    f"eligible jury candidates below threshold after supplement: "
+                    f"{len(candidates)} < {context.min_eligible_candidates}"
+                )
 
         aggregates: list[tuple[int, float]] = []
         llm_failed_count = 0
         for draft in candidates:
             try:
-                result = self._score_draft(context, draft)
+                # Unchanged drafts keep their audited aggregate.  This matters most
+                # after polish: only the new polished draft needs judging; rescoring
+                # every original candidate doubled/tripled real-model calls and could
+                # exhaust the per-type budget without adding information.
+                result = _load_reusable_score_result(self.conn, context, draft)
+                if result is None:
+                    result = self._score_draft(context, draft)
             except JuryLLMFailure:
                 # 该 draft 3 裁判全 LLM 失败——供应商故障，跳过不进 aggregates，不触发重写。
                 llm_failed_count += 1
@@ -132,6 +149,28 @@ class JuryOrchestrator:
         )
         transition(self.conn, shot_id, run_id, "jury_scoring", "winner_selected")
         return load_draft(self.conn, winner_draft_id)
+
+    def _supplement_candidate_shortage(
+        self,
+        context: "_JuryContext",
+        shot_id: str,
+        run_id: int,
+    ) -> list[DraftSpecDTO]:
+        """Generate and gate a supplemental wave before giving up on candidate count."""
+        if not context.auto_retry_on_hard_failure:
+            return _eligible_candidates(self.conn, shot_id)
+        from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
+        from ink.pipeline.write_orchestrator import WriteOrchestrator
+
+        try:
+            WriteOrchestrator(self.conn, self.gateway).produce_quality_retry_candidates(
+                shot_id,
+                run_id,
+            )
+            HardGateOrchestrator(self.conn).run_both_gates(shot_id, run_id)
+        except DataIntegrityError:
+            return _eligible_candidates(self.conn, shot_id)
+        return _eligible_candidates(self.conn, shot_id)
 
     def _handle_quality_retry_or_fail(self, context: "_JuryContext", shot_id: str, run_id: int) -> DraftSpecDTO:
         if not context.auto_retry_on_hard_failure:
@@ -564,9 +603,9 @@ def _load_jury_context(conn: sqlite3.Connection, shot_id: str, run_id: int) -> _
         redo_candidate_count=int(row[3]),
         auto_retry_on_hard_failure=bool(row[4]),
         max_retries_per_gate=int(row[5]),
-        shot_quality_floor=int(row[6]),
-        dimension_floor=int(row[7]),
-        judge_disagreement_max=int(row[8]),
+        shot_quality_floor=max(int(row[6]), ABSOLUTE_SHOT_QUALITY_FLOOR),
+        dimension_floor=max(int(row[7]), ABSOLUTE_DIMENSION_FLOOR),
+        judge_disagreement_max=min(int(row[8]), ABSOLUTE_JUDGE_DISAGREEMENT_MAX),
         escalated_jury_count=int(row[9]),
         deviant_reference_draft_id=_load_deviant_reference(conn, shot_id) if int(row[11]) == 1 else None,
         intensity=json.loads(row[10]),
@@ -660,6 +699,55 @@ class _ScoreResult:
     judge_disagreement_max: float
     passed: bool
     reasons: list[str]
+
+
+def _load_reusable_score_result(
+    conn: sqlite3.Connection,
+    context: "_JuryContext",
+    draft: DraftSpecDTO,
+) -> _ScoreResult | None:
+    """Reuse scores for unchanged text, recomputing only the current gate decision."""
+    row = conn.execute(
+        """
+        SELECT a.final_score,
+               a.scene_visual_median, a.rhythm_pacing_median, a.dialogue_subtext_median,
+               a.suspense_tension_median, a.language_texture_median,
+               a.emotional_progression_median, a.character_believability_median,
+               a.structure_landing_median, a.reading_fluency_median,
+               a.motif_theme_fit_median, a.chapter_continuity_median,
+               a.creative_boundary_median,
+               a.judge_disagreement_max,
+               d.is_stale
+        FROM writing_jury_aggregates a
+        JOIN writing_drafts d ON d.draft_id=a.draft_id
+        WHERE a.draft_id=? AND a.shot_contract_id=?
+        """,
+        (draft.draft_id, context.shot_contract_id),
+    ).fetchone()
+    if row is None or int(row[14]) == 1:
+        return None
+    final_score = float(row[0])
+    medians = [float(value) for value in row[1:13]]
+    disagreement = float(row[13])
+    passed = _quality_gate_passes(context, final_score, medians, disagreement)
+    reasons = _quality_gate_reasons(context, final_score, medians, disagreement)
+    # Keep the stored gate result aligned if project thresholds changed since the
+    # original scoring.  No LLM call is needed because all raw medians are present.
+    conn.execute(
+        """
+        UPDATE writing_jury_aggregates
+        SET quality_gate_passed=?, quality_gate_reasons=?
+        WHERE draft_id=?
+        """,
+        (int(passed), json.dumps(reasons, sort_keys=True), draft.draft_id),
+    )
+    return _ScoreResult(
+        final_score=final_score,
+        medians=medians,
+        judge_disagreement_max=disagreement,
+        passed=passed,
+        reasons=reasons,
+    )
 
 
 # 12 维评审维度定义：role → 该角色重点审视的维度（对齐 design-v2 §3.5）。
@@ -780,6 +868,12 @@ def _jury_prompt(draft: DraftSpecDTO, contract_summary: str, role: str, context:
         "沉默点是否真正对读者隐藏而非直说、物理因果锚点是否让读者可复盘后果链、"
         "章末钩子是否制造翻页欲。约束缺失或落实不到位时 suspense_tension 应明显扣分（<65）；"
         "无章节悬疑约束（纯铺垫章）则按中性偏高给分。\n\n"
+        "5. **末段 POV 与连续性硬审计**：单独检查草案最后 25%（至少最后两个自然段）。"
+        "若末段进入 POV only 之外角色的感知、记忆、判断或内心，且此前没有章节标题、空行分隔、"
+        "明确时间地点变化等可见转场锚点，pov/人物相关的 character_believability 与 "
+        "chapter_continuity 必须至少一项低于 60；仅仅提到、看见或对话中出现其他角色不算切 POV。"
+        "若【连续性硬约束】给出上一状态，而开头没有承接人物位置、时间、未完成动作/悬念，"
+        "chapter_continuity 必须低于 60。不得因语言漂亮而豁免。\n\n"
         "## 输出要求\n"
         "严格输出一个 JSON 对象，**仅**含上述 12 个维度键，值为 0-100 整数，不要任何额外文本、"
         "不要 markdown 代码围栏、不要 evidence 字段。示例：\n"

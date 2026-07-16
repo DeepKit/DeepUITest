@@ -7,7 +7,7 @@ import pytest
 from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
 from ink.core.scene_repository import SceneRepository
 from ink.errors import ConcurrentModificationError, DataIntegrityError
-from factories import NOW, make_schema_db
+from factories import NOW, insert_contract_approve_reviews, make_schema_db
 
 
 def _project(conn: sqlite3.Connection) -> None:
@@ -44,6 +44,17 @@ def _active_scene_contract(
         created_by="architect-a",
         status="approved",
     )
+    scene_repo.assemble_four_layer_contract(
+        scene_contract_id=contract_id,
+        hard_constraints=[{"clause_key": "hard-1", "clause_text": "hard"}],
+        source_dna=[{"clause_key": "source-1", "clause_text": "source"}],
+        soft_goals=[{"clause_key": "soft-1", "clause_text": "soft"}],
+        creative_openings=[
+            {"clause_key": "opening-1", "clause_text": "opening one"},
+            {"clause_key": "opening-2", "clause_text": "opening two"},
+        ],
+    )
+    insert_contract_approve_reviews(conn, contract_id)
     scene_repo.activate_contract(contract_id)
     return scene_repo, snapshot_repo, scene_id, contract_id
 
@@ -62,6 +73,37 @@ def _branch(
     )
     version_id = snapshot_repo.create_branch_version(branch_id=branch_id, version=1)
     return branch_id, version_id
+
+
+def test_activate_contract_rejects_approved_status_without_review_evidence() -> None:
+    conn = make_schema_db()
+    _project(conn)
+    repo = SceneRepository(conn)
+    scene_id = repo.create_scene(
+        project_id=1, chapter_id=1, logical_scene_key="unreviewed", scene_order=1
+    )
+    contract_id = repo.create_contract(
+        scene_id=scene_id, version=1, contract_hash="contract",
+        source_bundle_hash="source", created_by="architect", status="approved",
+    )
+    repo.assemble_four_layer_contract(
+        scene_contract_id=contract_id,
+        hard_constraints=[{"clause_key": "hard-1", "clause_text": "hard"}],
+        source_dna=[{"clause_key": "source-1", "clause_text": "source"}],
+        soft_goals=[{"clause_key": "soft-1", "clause_text": "soft"}],
+        creative_openings=[
+            {"clause_key": "opening-1", "clause_text": "opening one"},
+            {"clause_key": "opening-2", "clause_text": "opening two"},
+        ],
+    )
+
+    with pytest.raises(DataIntegrityError, match="three blind approve reviews"):
+        repo.activate_contract(contract_id)
+    with pytest.raises(sqlite3.IntegrityError, match="three blind approve reviews"):
+        conn.execute(
+            "UPDATE writing_scene_contracts SET status='active' WHERE scene_contract_id=?",
+            (contract_id,),
+        )
 
 
 def test_two_branches_can_fork_from_same_branch_local_parent() -> None:
@@ -247,6 +289,110 @@ def test_ai_revision_requires_auditable_generation_or_repair_task() -> None:
         )
 
 
+def test_ai_repair_revision_requires_real_in_scope_eligible_task() -> None:
+    conn = make_schema_db()
+    scene_repo, snapshot_repo, scene_id, contract_id = _active_scene_contract(conn)
+    round_id = snapshot_repo.create_generation_round(
+        project_id=1, chapter_id=1, round_number=1
+    )
+    branch_id, branch_version_id = _branch(
+        snapshot_repo, generation_round_id=round_id, candidate_index=1
+    )
+    source = scene_repo.create_revision(
+        scene_id=scene_id,
+        branch_version_id=branch_version_id,
+        scene_order=1,
+        expected_parent_revision_id=None,
+        scene_contract_id=contract_id,
+        text="待局部修复的正文。",
+        actor_type="ai",
+        actor_id="writer-a",
+        change_reason="candidate",
+        generation_task_id=branch_id,
+    )
+
+    with pytest.raises(DataIntegrityError, match="real repair task"):
+        scene_repo.create_revision(
+            scene_id=scene_id,
+            branch_version_id=branch_version_id,
+            scene_order=1,
+            expected_parent_revision_id=source.scene_revision_id,
+            scene_contract_id=contract_id,
+            text="伪任务修复正文。",
+            actor_type="ai",
+            actor_id="repairer-a",
+            change_reason="repair",
+            repair_task_id=999,
+        )
+
+    repair_task_id = scene_repo.create_repair_task(
+        project_id=1,
+        chapter_id=1,
+        scene_id=scene_id,
+        branch_version_id=branch_version_id,
+        source_revision_id=source.scene_revision_id,
+        scene_contract_id=contract_id,
+        issue="修正动作连续性",
+        created_by="reviewer-a",
+    )
+    repaired = scene_repo.create_revision(
+        scene_id=scene_id,
+        branch_version_id=branch_version_id,
+        scene_order=1,
+        expected_parent_revision_id=source.scene_revision_id,
+        scene_contract_id=contract_id,
+        text="完成局部修复后的正文。",
+        actor_type="ai",
+        actor_id="repairer-a",
+        change_reason="repair",
+        repair_task_id=repair_task_id,
+    )
+    assert repaired.parent_revision_id == source.scene_revision_id
+
+    conn.execute(
+        "UPDATE writing_scene_repair_tasks SET status = 'completed' WHERE repair_task_id = ?",
+        (repair_task_id,),
+    )
+    with pytest.raises(DataIntegrityError, match="not eligible"):
+        scene_repo.create_revision(
+            scene_id=scene_id,
+            branch_version_id=branch_version_id,
+            scene_order=1,
+            expected_parent_revision_id=repaired.scene_revision_id,
+            scene_contract_id=contract_id,
+            text="重复消费已完成任务。",
+            actor_type="ai",
+            actor_id="repairer-a",
+            change_reason="repair",
+            repair_task_id=repair_task_id,
+        )
+
+
+def test_ai_revision_rejects_both_generation_and_repair_tasks() -> None:
+    conn = make_schema_db()
+    scene_repo, snapshot_repo, scene_id, contract_id = _active_scene_contract(conn)
+    round_id = snapshot_repo.create_generation_round(
+        project_id=1, chapter_id=1, round_number=1
+    )
+    branch_id, branch_version_id = _branch(
+        snapshot_repo, generation_round_id=round_id, candidate_index=1
+    )
+    with pytest.raises(DataIntegrityError, match="exactly one"):
+        scene_repo.create_revision(
+            scene_id=scene_id,
+            branch_version_id=branch_version_id,
+            scene_order=1,
+            expected_parent_revision_id=None,
+            scene_contract_id=contract_id,
+            text="双任务来源不明确。",
+            actor_type="ai",
+            actor_id="writer-a",
+            change_reason="candidate",
+            generation_task_id=branch_id,
+            repair_task_id=1,
+        )
+
+
 def test_branch_binding_rejects_revision_from_another_scene() -> None:
     conn = make_schema_db()
     scene_repo, snapshot_repo, scene_id, contract_id = _active_scene_contract(conn)
@@ -264,6 +410,17 @@ def test_branch_binding_rejects_revision_from_another_scene() -> None:
         created_by="architect-b",
         status="approved",
     )
+    scene_repo.assemble_four_layer_contract(
+        scene_contract_id=other_contract_id,
+        hard_constraints=[{"clause_key": "hard-1", "clause_text": "hard"}],
+        source_dna=[{"clause_key": "source-1", "clause_text": "source"}],
+        soft_goals=[{"clause_key": "soft-1", "clause_text": "soft"}],
+        creative_openings=[
+            {"clause_key": "opening-1", "clause_text": "opening one"},
+            {"clause_key": "opening-2", "clause_text": "opening two"},
+        ],
+    )
+    insert_contract_approve_reviews(conn, other_contract_id)
     scene_repo.activate_contract(other_contract_id)
     round_id = snapshot_repo.create_generation_round(
         project_id=1, chapter_id=1, round_number=1

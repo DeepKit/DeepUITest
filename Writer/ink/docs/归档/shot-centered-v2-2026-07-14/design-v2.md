@@ -1,13 +1,24 @@
-# 墨韵 InkFlow v2 — 完全重构技术设计
+# 墨韵 Ink v2 — 完全重构技术设计（Shot 中心历史基线）
 
-> **状态**：设计稿 v2（2026-07-04，质量硬门禁修订）
+> **状态**：设计稿 v2；2026-07-14 Scene-first 修正案已生效
 > **定位**：**从 0 构建完整生产版**，不基于旧 `inkflow/` 改造。旧系统的 56 表/26 轮迁移/23679 行代码/557 测试**不是要保留或迁移的对象**，而是"可借鉴的领域知识库"——取其踩坑结晶与领域设计，弃其架构病土壤。
 > **起因**：旧系统修了 94 个 bug 仍不能稳定生产。根因不是代码质量，是**传递链缺少结构化保证**——契约字段从 DB 到正文经多次隐式 dict 传递，任何一层漏字段都不报错（`forbidden_facts` 就这么丢的）。每加一个字段就多一个可能丢失的接缝，这是架构病，不是实现病。
 > **本文件**：是 ink/ 新系统的权威设计。旧 `inkflow/docs/design.md` 仅作领域知识参考，不作继承来源。
+>
+> **强制修正**：以 [scene-first-authority-amendment.md](scene-first-authority-amendment.md) 为最高优先级。本文尚存的 shot 中心表名、状态机和流程用于描述 2026-07-14 前的当前实现或迁移来源；目标架构中 Scene 是最小正式生成、修改、评审、版本、回滚和封版单位，Shot 仅为 Scene 内部非权威工作切片。
 
 ---
 
 ## 0. 重构目标与边界
+
+### 0.0 2026-07-14 Scene-first 权威修正
+
+- 当前工程目录是 `ink/`，不是旧 `inkflow/`。
+- 数据库保存正式稿；文件和导出物不得反向覆盖数据库。
+- Scene 是正文最小权威原子；Chapter Candidate Branch 是文学选优单位；Chapter Snapshot 是封版与导出权威。
+- 现有 `writing_shot_*` schema 不得被解释为目标架构已经完成；它是待迁移的当前实现。
+- 新增或修改设计时不得继续扩大 shot 级正式封版、shot 级文学选优或逐 shot 拼优。
+- 详细契约、候选、返工、样本和数据模型见 Scene-first 修正案。
 
 ### 0.1 目标
 让"架构师契约分析正确 → 正文质量硬门禁达标 → 强制精修 → 人类审稿确认 → 正式导出/重构落库"成为**可由类型系统 + 代码生成 + DB 约束 + 审计链保证**的完整生产闭环，而非靠人记字段。
@@ -349,7 +360,9 @@ PromptSpec（完整 prompt 文本，每 persona 独立，superseded_at）
 DraftSpec（产出稿，含 degraded/model/persona/retry_count）
 ```
 
-### 3.2 shot 的 5 维强度配比
+### 3.2 旧实现：shot 的 5 维强度配比
+
+> **迁移说明**：本节保留用于解释当前代码和历史评分数据。目标架构的强度、契约、候选和正式评审均提升到 Scene；内部 shot 的强度只能作为 Scene 生成器的局部提示，不能独立决定 winner 或正式封版。
 
 契约里每个 shot 规定 5 维强度目标（画面/节奏/对话/结构/悬疑），用 0-10 整数表达：
 
@@ -368,8 +381,8 @@ DraftSpec（产出稿，含 degraded/model/persona/retry_count）
 draft（草稿）→ confirmed（确认）→ locked（锁定）
 ```
 - `draft`：契约生成后，可修改
-- `confirmed`：shot 开始执行后，契约冻结不可改
-- `locked`：shot 硬封版后，契约随正文一起锁定
+- `confirmed`：Scene 开始正式执行后，契约冻结不可原地改
+- `locked`：Scene 封版后，契约随 Scene Revision 一起锁定
 
 ### 3.3a 契约作用域与局部修订
 
@@ -380,7 +393,7 @@ BookContract
   → VolumeContract
     → PartContract
       → ChapterContract
-        → ShotContract
+        → SceneContract
           → PromptSnapshot
           → Draft
           → AcceptedCanonical
@@ -388,7 +401,7 @@ BookContract
 
 规则：
 
-- 全书红线、POV、类型定位、硬质量标准不能被章级或 shot 级讨论覆盖。
+- 全书红线、POV、类型定位、硬质量标准不能被章级或 Scene 级讨论覆盖。
 - 局部修订必须带 `scope_type`、`scope_id`、`base_contract_version`、`change_type` 和 affected scopes。
 - 局部修改必须做影响分析；例如第 25 章证据回收调整必须标记第 24/26 章和证据链 stale 风险。
 - 已生成 prompt / draft / review 若依赖旧契约，必须标记 stale 并重编译或重跑。
@@ -400,11 +413,13 @@ BookContract
 - `VolumeContract` 封卷功能、主冲突、进入/退出状态、证据推进、人物弧线增量、母题推进和节奏目标。
 - `PartContract` 封局部目标、过渡功能、必需揭示、情绪曲线和依赖范围。
 - `ChapterContract` 封章节功能、开场钩子、机构动作、角色代价、must_land、证据种植/回收、章末裂口、对白/感官锚点和反写清单。
-- `ShotContract` 继续使用 must_land、anti_write、scene_contract、persona_assignment、soft_constraints 五组结构化字段，并补连续性引用和 source_refs。
+- `SceneContract` 使用 hard_constraints、source_dna、soft_goals、creative_openings、entry/exit state；旧 shot 五表只作为迁移来源，内部 shot 卡由 SceneContract 编译。
 
 stale 传播由程序执行：上层 contract 变化必须标记下游契约、prompt、draft、review、book check stale；已 accepted 正文只能通过 revise run 更新。
 
-### 3.4 shot 状态机（14 态合法转移，评审 P0-2 + 质量硬门禁）
+### 3.4 旧实现：shot 状态机（迁移保护）
+
+> 该状态机在 Scene-first 迁移期间继续保护旧数据和旧运行；目标状态机应建立在 Scene 上，内部 shot 不再拥有独立 accepted 或正式封版终态。
 
 `writing_shots.status` 14 态：`pending → outline_draft → outline_confirmed → task_card_compiled → prompt_compiled → drafting → hard_gate1 → hard_gate2 → jury_scoring → winner_selected → polish_revision → soft_sealed → hard_sealed`，外加终态 `failed`（任一非终态遇硬故障汇聚而来）。
 
@@ -428,7 +443,9 @@ stale 传播由程序执行：上层 contract 变化必须标记下游契约、p
 
 ## 4. 生产流水线
 
-### 4.1 完整生产线
+### 4.1 旧实现生产线与 Scene-first 替代关系
+
+> 下列逐 shot 流程用于说明当前实现，不再定义目标生产线。目标第9—14步以完整 Chapter Candidate Branch 为“稿件”，Scene 为最小正式权威；不得逐 shot 拼优。规范流程见 `scene-first-authority-amendment.md` 第8节。
 
 ```
 1. 读契约（MetaContract）
@@ -460,7 +477,9 @@ stale 传播由程序执行：上层 contract 变化必须标记下游契约、p
   （走第一道硬门槛，不走第二道+3 裁判；不进 winner 候选池；通过第一道门槛的 deviant 稿经 JuryInput.deviant_reference 注入 literary_jury 作创意边界参考）
 ```
 
-### 4.2 产稿机制：同 persona + 同 prompt + 换模型
+### 4.2 产稿机制：同目的约束下的模型差异
+
+> Scene-first 目标中，多样性比较发生在完整 Scene 和完整 Chapter Candidate Branch；内部 shot 可使用相同 persona/prompt 的模型赛马，但局部 winner 不能绕过 Scene 重组与复审进入正式稿。
 
 **核心**：一个 shot 的 X 篇候选，persona 一样、强度配比一样、prompt 一样，多样性来自**换不同的写手模型**。
 
@@ -658,7 +677,9 @@ final_score = Σ(dimension_score[d] × weight[d])   # weight 已归一化，和�
 - **契约核心字段结构化**（铁律 2）：must_land/anti_write/scene_contract/persona_assignment/soft_constraints 拆为 5 张独立表，非 JSON blob
 - **jury 评分拆 raw + aggregate**（方案 B）：raw_scores 存 3 裁判原始分，aggregates 存 trimmed mean + 加权结果，去冗余
 
-### 7.1 表清单
+### 7.1 旧实现表清单与迁移边界
+
+> 本节列出的 `writing_shot_*` 是当前已实现 schema，不是 Scene-first 目标表。目标权威实体和迁移规则见 `scene-first-authority-amendment.md` 第11节；迁移后 shot 表只能作为内部切片或历史来源，不能与 Scene Revision、Chapter Snapshot 并列为正文真相源。
 
 **第 1 层：项目元数据（3 张）**
 1. `writing_projects` — 项目元信息（含 X 全局参数、persona 池配置、写手模型池、裁判模型池、N 篇级检测间隔；model_pool 加 CHECK 约束 `json_array_length(pool) >= draft_count`）

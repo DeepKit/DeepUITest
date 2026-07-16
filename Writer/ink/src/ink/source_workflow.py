@@ -32,6 +32,20 @@ class CoverageGap:
     evidence: dict[str, object]
 
 
+@dataclass(frozen=True)
+class ShotClauseCoverage:
+    shot_id: str
+    chapter_id: int
+    atomic_clause_id: int
+    clause_scope_type: str
+    clause_scope_id: str | None
+    clause_type: str
+    severity: str
+    clause_text: str
+    coverage_status: str
+    evidence: dict[str, object]
+
+
 class SourceWorkflowStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -198,6 +212,128 @@ class SourceWorkflowStore:
                 coverage_id,
             ),
         )
+
+    def record_shot_clause_coverage(
+        self,
+        *,
+        project_id: int,
+        shot_id: str,
+        atomic_clause_id: int,
+        coverage_status: str,
+        contract_field_path: str = "source_clauses",
+        decision_session_id: int | None = None,
+        evidence: dict[str, object] | None = None,
+    ) -> int:
+        shot = self.conn.execute(
+            "SELECT chapter_id FROM writing_shots WHERE project_id = ? AND shot_id = ?",
+            (project_id, shot_id),
+        ).fetchone()
+        if shot is None:
+            raise ValueError(f"unknown shot for project {project_id}: {shot_id}")
+        clause = self.conn.execute(
+            "SELECT project_id FROM writing_atomic_source_clauses WHERE atomic_clause_id = ?",
+            (atomic_clause_id,),
+        ).fetchone()
+        if clause is None or int(clause[0]) != project_id:
+            raise ValueError(
+                f"atomic clause {atomic_clause_id} does not belong to project {project_id}"
+            )
+        return self.record_coverage(
+            project_id=project_id,
+            contract_scope_type="shot",
+            contract_scope_id=shot_id,
+            contract_field_path=contract_field_path,
+            coverage_status=coverage_status,
+            atomic_clause_id=atomic_clause_id,
+            decision_session_id=decision_session_id,
+            evidence=evidence or {"source": "shot_clause_coverage"},
+        )
+
+    def list_shot_clause_coverage(
+        self,
+        *,
+        project_id: int,
+        shot_id: str,
+    ) -> list[ShotClauseCoverage]:
+        shot = self.conn.execute(
+            "SELECT chapter_id FROM writing_shots WHERE project_id = ? AND shot_id = ?",
+            (project_id, shot_id),
+        ).fetchone()
+        if shot is None:
+            raise ValueError(f"unknown shot for project {project_id}: {shot_id}")
+        chapter_id = int(shot[0])
+        rows = self.conn.execute(
+            """
+            SELECT c.atomic_clause_id, c.scope_type, c.scope_id, c.clause_type,
+                   c.severity, c.clause_text,
+                   COALESCE((
+                       SELECT m.coverage_status
+                       FROM writing_source_coverage_matrix m
+                       WHERE m.project_id = c.project_id
+                         AND m.atomic_clause_id = c.atomic_clause_id
+                         AND m.contract_scope_type = 'shot'
+                         AND m.contract_scope_id = ?
+                       ORDER BY m.coverage_id DESC LIMIT 1
+                   ), 'gap') AS coverage_status,
+                   COALESCE((
+                       SELECT m.evidence_json
+                       FROM writing_source_coverage_matrix m
+                       WHERE m.project_id = c.project_id
+                         AND m.atomic_clause_id = c.atomic_clause_id
+                         AND m.contract_scope_type = 'shot'
+                         AND m.contract_scope_id = ?
+                       ORDER BY m.coverage_id DESC LIMIT 1
+                   ), '{}') AS evidence_json
+            FROM writing_atomic_source_clauses c
+            WHERE c.project_id = ?
+              AND c.status IN ('proposed','confirmed','applied')
+              AND (
+                    c.scope_type = 'book'
+                 OR (c.scope_type = 'chapter' AND c.scope_id = ?)
+                 OR (c.scope_type = 'shot' AND c.scope_id = ?)
+              )
+            ORDER BY
+                CASE c.severity WHEN 'hard' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
+                c.atomic_clause_id
+            """,
+            (shot_id, shot_id, project_id, str(chapter_id), shot_id),
+        ).fetchall()
+        return [
+            ShotClauseCoverage(
+                shot_id=shot_id,
+                chapter_id=chapter_id,
+                atomic_clause_id=int(row[0]),
+                clause_scope_type=str(row[1]),
+                clause_scope_id=None if row[2] is None else str(row[2]),
+                clause_type=str(row[3]),
+                severity=str(row[4]),
+                clause_text=str(row[5]),
+                coverage_status=str(row[6]),
+                evidence=json.loads(str(row[7])) if row[7] else {},
+            )
+            for row in rows
+        ]
+
+    def chapter_shot_coverage(
+        self,
+        *,
+        project_id: int,
+        chapter_id: int,
+    ) -> dict[str, list[ShotClauseCoverage]]:
+        rows = self.conn.execute(
+            """
+            SELECT shot_id FROM writing_shots
+            WHERE project_id = ? AND chapter_id = ?
+            ORDER BY logical_shot_id, shot_id
+            """,
+            (project_id, chapter_id),
+        ).fetchall()
+        return {
+            str(row[0]): self.list_shot_clause_coverage(
+                project_id=project_id, shot_id=str(row[0])
+            )
+            for row in rows
+        }
 
     def has_blocking_coverage_gaps(
         self,

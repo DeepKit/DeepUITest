@@ -23,6 +23,7 @@ import time
 import pytest
 
 from ink.core.llm_gateway import LLMGateway, OpenAICompatibleProvider
+from ink.core.model_role_config import upsert_role_config
 from ink.errors import DataIntegrityError, LLMProviderError
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
 from ink.pipeline.export_orchestrator import ExportOrchestrator
@@ -108,6 +109,28 @@ def gateway_conn():
             NOW,
         ),
     )
+    # jury 真实化后单 shot jury 调用 = 3 裁判 × (draft_count 候选 + 1 polished 稿) × 两轮（首评 +
+    # polish 后重评），+3 余量容 escalation 重评。与 cli.py setup 同公式（见 BFX-036），否则 schema
+    # 默认 max_calls_per_shot=8 在真实 jury 调用时触发 per_type_exceeded budget blocked。
+    conn.execute(
+        "UPDATE writing_projects SET max_calls_per_shot = 27, max_total_llm_calls = 66 WHERE project_id = ?",
+        (PROJECT_ID,),
+    )
+    # chapter_review 真实化调 gateway.call(call_type="chapter_review", model_name=None, tier_hint="primary")
+    # —— 无 role_config 时回退注入式 provider，但 model_name=None 会落到 provider_name("iflytek")
+    # 非真实模型名 → 全 tier 失败抛 ChapterReviewLLMFailure。配 chapter_review 三 tier role-config
+    # 让 gateway 走 role_chain 路径（与生�� CLI 一致），api_key 从 IFLYTEK_API_KEY 环境变量读。
+    for tier, model_name in zip(("primary", "secondary", "tertiary"), JURY_POOL[:3]):
+        upsert_role_config(
+            conn,
+            project_id=PROJECT_ID,
+            call_type="chapter_review",
+            tier=tier,
+            model_name=model_name,
+            provider="openai-compatible",
+            api_key_env="IFLYTEK_API_KEY",
+            base_url=IFLYTEK_BASE_URL,
+        )
     conn.execute(
         "INSERT INTO writing_sessions (session_id, project_id, started_at) VALUES (?, ?, ?)",
         (SESSION_ID, PROJECT_ID, NOW),
@@ -250,7 +273,7 @@ class TestRealModelsSixChapters:
             shot_id, run_id = _chapter_shot(conn, chapter_id, INITIAL_RUN_ID)
             _run_shot_to_soft_sealed(conn, shot_id, run_id, gateway)
 
-            ChapterReviewOrchestrator(conn).review_chapter(PROJECT_ID, chapter_id, run_id)
+            ChapterReviewOrchestrator(conn, gateway).review_chapter(PROJECT_ID, chapter_id, run_id)
             HumanReviewOrchestrator(conn).accept_chapter(
                 PROJECT_ID,
                 chapter_id,
@@ -337,3 +360,64 @@ class TestRealModelsSixChapters:
             (shot_id,),
         ).fetchone()[0]
         assert winner_count == 1, f"expected 1 winner outline, got {winner_count}"
+
+
+# ---------------------------------------------------------------------------
+# 工业事实漂移检测器真模型守卫（task#19 / C3）
+# ---------------------------------------------------------------------------
+
+
+def test_real_industrial_drift_llm_fallback_contract(
+    gateway_conn,
+    provider: OpenAICompatibleProvider,
+) -> None:
+    """真模型守卫：工业漂移检测器 LLM 兜底层走真实 iFLYTEK，JSON 契约不崩。
+
+    单测（test_m5_chapter_review.py::test_industrial_fact_drift_llm_fallback_blocks）
+    用 mock provider 证 drift=true 阻断路径；本测试补「真实模型能产出可解析 JSON」
+    这层契约——规则层无 marker、可疑段含「失效」触发 chapter_review call_type，
+    真模型经三 tier failover 返回 {drift,drift_type,evidence_sentence} 三字段齐全。
+
+    检测器是可降级补充校验（三 tier 全失败转 (None,None) 不阻断），故真模型断言
+    聚焦「不抛 + JSON 可解析」，drift 真值随模型理解力浮动不硬断。瞬时网关错误 skip。
+    """
+    from ink.pipeline.chapter_review_orchestrator import _parse_industrial_drift
+    from ink.source_workflow import SourceWorkflowStore
+    from test_m5_chapter_review import _seed_industrial_baseline
+
+    conn = gateway_conn
+    gateway = LLMGateway(conn, provider=provider, provider_name="iflytek")
+
+    # 灌工业基线（forbidden marker 词表 + process 报废制度锚点）。
+    _seed_industrial_baseline(conn)
+    conn.commit()
+
+    # 章文本含失效关键词、无 marker → 规则层放行，可疑段触发 LLM 兜底。
+    texts = [
+        "质检员老周盯着那批货，前线上报失效了三次。",
+        "他没翻签字表，只是叹了口气。",
+    ]
+    orchestrator = ChapterReviewOrchestrator(conn, gateway)
+    try:
+        drift_type, evidence = orchestrator._industrial_fact_drift_block(
+            project_id=PROJECT_ID,
+            chapter_id=1,
+            run_id=INITIAL_RUN_ID,
+            texts=texts,
+            contract_summary="chapter 1: 工厂质检线的失效追责",
+        )
+    except LLMProviderError as exc:
+        if _is_transient_gateway_error(exc):
+            pytest.skip(f"iFLYTEK transient error: {str(exc)[:120]}")
+        raise
+
+    # 契约：返回二元组，无异常。drift_type 非 None 时 evidence 必非空。
+    if drift_type is not None:
+        assert drift_type == "industrial_fact_drift"
+        assert evidence and len(evidence) > 0
+        # evidence 含 LLM 判定前缀（真模型产出的 drift_type 被拼进结果）。
+        assert "LLM 判定" in evidence
+pytestmark = pytest.mark.skipif(
+    os.environ.get("INK_RUN_REAL_LLM_TESTS") != "1",
+    reason="real provider acceptance is opt-in; set INK_RUN_REAL_LLM_TESTS=1",
+)

@@ -4,6 +4,7 @@ import sqlite3
 
 from ink.contract.generated.dtos import BookContextDTO, ChapterContractDTO, TaskCardDTO
 from ink.contract.loader import load_book_context, load_chapter_contract, load_shot_contract
+from ink.core.chapter_continuity import load_continuity_context, render_continuity_section
 from ink.errors import DataIntegrityError
 from ink.time import now_utc_iso
 
@@ -15,20 +16,23 @@ class TaskCardCompiler:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
 
-    def compile_for_shot(self, shot_id: str, run_id: int, outline_text: str) -> TaskCardDTO:
+    def compile_for_shot(self, shot_id: str, run_id: int) -> TaskCardDTO:
         contract = load_shot_contract(self.conn, shot_id, run_id)
         shot_contract_id, project_id = _lookup_shot_contract_id(self.conn, shot_id, run_id)
         book_context = load_book_context(self.conn, project_id)
         # chapter 层悬疑契约（scope_id 由 shot_id 前缀解析：ch-01-shot-001 → ch-1）
         chapter_scope_id = _derive_chapter_scope_id(shot_id)
         chapter_contract = load_chapter_contract(self.conn, project_id, chapter_scope_id)
+        continuity_section = render_continuity_section(
+            load_continuity_context(self.conn, shot_id, run_id)
+        )
         instructions = _render_task_card(
             contract.must_land,
             contract.anti_write,
             contract.persona_assignment,
-            outline_text,
             book_context,
             chapter_contract,
+            continuity_section,
         )
         task_card_id = self.write_task_card(shot_contract_id, instructions)
         return load_latest_task_card(self.conn, shot_contract_id, task_card_id=task_card_id)
@@ -113,9 +117,9 @@ def _render_task_card(
     must_land: dict[str, object],
     anti_write: dict[str, object],
     persona_assignment: dict[str, object],
-    outline_text: str,
     book_context: BookContextDTO | None = None,
     chapter_suspense: ChapterContractDTO | None = None,
+    continuity_section: str = "",
 ) -> str:
     events = _join_items(must_land.get("events"))
     beats = _join_items(must_land.get("beats"))
@@ -130,13 +134,13 @@ def _render_task_card(
     return (
         f"Persona: {persona}\n"
         f"Intensity: {intensity}\n"
-        f"Outline: {outline_text}\n"
         f"Must land events: {events}\n"
         f"Beats: {beats}\n"
         f"Information releases: {releases}\n"
         f"Forbidden facts: {forbidden_facts}\n"
         f"Forbidden words: {forbidden_words}\n"
         f"POV only: {pov_only}\n"
+        f"{continuity_section}"
         f"{book_section}"
         f"{suspense_section}"
         "请按以上约束完成本 shot。"

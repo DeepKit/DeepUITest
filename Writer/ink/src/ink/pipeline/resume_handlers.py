@@ -38,9 +38,12 @@ def build_shot_resume_handlers(
     return handlers
 
 
-def build_non_shot_resume_handlers(conn: sqlite3.Connection) -> dict[str, NonShotResumeHandler]:
-    chapter_review = ChapterReviewOrchestrator(conn)
-    book_check = BookRollingCheckOrchestrator(conn)
+def build_non_shot_resume_handlers(
+    conn: sqlite3.Connection,
+    gateway: LLMGateway | None = None,
+) -> dict[str, NonShotResumeHandler]:
+    chapter_review = ChapterReviewOrchestrator(conn, gateway)
+    book_check = BookRollingCheckOrchestrator(conn, gateway)
     import_orchestrator = ImportOrchestrator(conn)
     return {
         "chapter_review": lambda payload: chapter_review.review_chapter(

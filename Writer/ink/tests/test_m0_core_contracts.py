@@ -143,7 +143,7 @@ def test_llm_gateway_records_attempt_and_runtime_event() -> None:
         idempotency_key="draft-1",
     )
 
-    assert result.text.startswith("[mock:mock-model:draft-1]")
+    assert result.text == "scene text mock-model draft-1"
     attempt = conn.execute("SELECT success, response_hash FROM writing_ai_call_attempts").fetchone()
     assert attempt[0] == 1
     assert attempt[1]

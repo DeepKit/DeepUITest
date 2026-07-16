@@ -1,103 +1,98 @@
-# iFLYTEK Coding Plan 模型配置（讯飞编程套餐）
+# iFLYTEK / WiseGateway 模型配置
 
-> **状态**：连通性已验证（14/14 模型可达），InkFlow 集成测试通过（`tests/test_iflytek_integration.py`）。
-> **更新**：2026-07-07
+> 状态：Scene-first 当前配置说明
+> 安全规则：本文不得保存真实 API Key、App ID、Bearer Token 或组合凭据
 
-## 1. 套餐与凭据
+## 1. 接入
 
-- 订单：讯飞 Coding Plan（MaaS Coding API）
-- 端点：`https://maas-coding-api.cn-huabei-1.xf-yun.com/v2/chat/completions`
-- 鉴权：HTTP 头 `Authorization: Bearer <appId:apiKey>` —— **整串**作为 Bearer token，不是只用冒号后半段
-- 协议：OpenAI 兼容 `/chat/completions`，可直接用 InkFlow 的 `OpenAICompatibleProvider`
+推荐通过本机 WiseGateway 统一接入，避免在 Ink 项目中保存供应商凭据。
 
-配置模板见 `.env.iflytek.example`。
-
-## 2. 16 个模型分类
-
-| 模型 ID | 家族 | 类型 | 备注 |
-|---|---|---|---|
-| `xopglm52` | 智谱 GLM-5.2 | 标准 | 卡，不推荐写作用 |
-| `xopglm51` | 智谱 GLM-5.1 | 标准 | **写作主模型** |
-| `xopglm5` | 智谱 GLM-5 | 标准 | 默认选中 |
-| `xopglmv47flash` | 智谱 GLM-4.7-Flash | 标准 | |
-| `xopkimik26` | 月之暗面 Kimi-K2.6 | 标准 | 长上下文强 |
-| `xopkimik25` | 月之暗面 Kimi-K2.5 | 标准 | |
-| `xopdeepseekv4pro` | DeepSeek-V4-Pro | 标准 | **裁判/审阅**，推理强 |
-| `xopdeepseekv4flash` | DeepSeek-V4-Flash | 标准 | 快 |
-| `xopdeepseekv32` | DeepSeek-V3.2 | 标准 | |
-| `xopqwen36v35b` | 阿里 Qwen-3.6-35B-A3B | 标准 | 最快（~0.5s） |
-| `xopqwen35v35b` | 阿里 Qwen-3.5-35B-A3B | 标准 | |
-| `xopqwen35397b` | 阿里 Qwen-3.5-397B-A17B | 标准 | **大模型，审阅用** |
-| `xop3qwencodernext` | 阿里 Qwen3-Coder-Next | 标准 | 代码模型，写作弱 |
-| `xminimaxm25` | MiniMax-M2.5 | **推理** | 消耗 reasoning_content |
-| `xsparkx2` | 讯飞 Spark-X2 | **推理** | 慢（~6-14s） |
-| `xsparkx2flash` | 讯飞 Spark-X2-Flash | **推理** | 慢，token 消耗大 |
-
-> 套餐**没有 MiniMax-M3、没有 Qwen3.7**——最新是 MiniMax-M2.5、Qwen-3.6-35B。
-
-**推理模型已适配**：`OpenAICompatibleProvider` 通过 `_is_reasoning_model()` 识别推理模型（sparkx2/minimaxm 子串匹配），自动注入 `max_tokens=2000`；若 `content` 为空则回退读 `reasoning_content`，避免丢失思维链输出。可用 `--llm-max-tokens` 或 `INK_LLM_MAX_TOKENS` 全局覆盖。小说写作仍**优先用标准模型**（更快、更便宜）。
-
-## 3. 推荐的模型池配置
-
-写入 `writing_projects.writer_model_pool` / `jury_model_pool`（JSON 数组）：
-
-### 写作模型池（writer_model_pool）—— 草稿生成
-
-```json
-["xopglm51", "xopdeepseekv4pro", "xopkimik26"]
+```text
+Base URL: http://127.0.0.1:8000
+API Key: 仅从环境变量读取
 ```
 
-- **3 个不同家族**（智谱 GLM-5.1 / DeepSeek-V4-Pro / Kimi-K2.6），保证多样性
-- 都是标准模型，content 直接产出，GLM-5.1 比 5.2 快不卡
-- DB CHECK 要求 `json_array_length >= draft_count`（默认 3）
-
-### 裁判模型池（jury_model_pool）—— 章节审阅
-
-```json
-["xopglm51", "xopdeepseekv4pro", "xopqwen36v35b", "xopkimik26", "xopqwen35397b"]
-```
-
-- **5 个家族**，DB CHECK 要求 `>= jury_model_pool_min`（默认 3）
-- `xopqwen35397b`（397B 大模型）做深度审阅，质量高
-- 可用 `xopqwen36v35b` 做快速初筛（最便宜最快）
-- 不含推理模型（MiniMax-M2.5 等），避免 `max_tokens` 适配问题（见 tasks.md 第 3 项）
-
-### 配置方式
-
-`ink init` 支持 `--writer-models` / `--jury-models`（逗号分隔，自动去重保序）：
-
-```bash
-ink --db ink.sqlite init \
-    --code my-novel --title "My Novel" \
-    --writer-models xopglm51,xopdeepseekv4pro,xopkimik26 \
-    --jury-models xopglm51,xopdeepseekv4pro,xopqwen36v35b,xopkimik26,xopqwen35397b
-```
-
-不传时回落到默认池 `["writer-a","writer-b","writer-c"]` / `["judge-a",...]`。
-
-> **DB CHECK 约束**：`writer_model_pool` 数量须 ≥ `draft_count`（默认 3），`jury_model_pool` 数量须 ≥ `jury_model_pool_min`（默认 3）。自定义池不满足时 INSERT 会抛 CHECK 失败。
-
-## 4. 运行时调用
-
-环境变量：
+供应商直连仅用于故障诊断，凭据格式使用占位符：
 
 ```bash
 export INK_LLM_PROVIDER=openai-compatible
 export INK_LLM_BASE_URL=https://maas-coding-api.cn-huabei-1.xf-yun.com/v2
-export INK_LLM_API_KEY=83e14cca3d4042e045c62358f11ffdfa:ZmFkMzNhMWVkOTY0NzYyYmZjZWFmYjFl
+export INK_LLM_API_KEY="<appId:apiKey>"
 ```
 
-或 CLI 参数：
+真实凭据必须存储在环境变量或受控密钥管理器中，不进入：
 
-```bash
-ink --llm-provider openai-compatible \
-    --llm-base-url https://maas-coding-api.cn-huabei-1.xf-yun.com/v2 \
-    --llm-api-key-env INK_LLM_API_KEY \
-    <command> ...
+- Markdown；
+- `.env` 提交；
+- 测试fixture；
+- 日志；
+- Prompt快照；
+- 评审报告。
+
+## 2. 模型家族
+
+可用模型以 WiseGateway 当前模型路由表为准。文学生产要求一家族一票，不把同一家族变体当作独立多样性。
+
+推荐家族：
+
+- GPT-5.6；
+- GLM-5.2；
+- DeepSeek V4 Pro；
+- Kimi K2.6；
+- Qwen3.5；
+- MiniMax；
+- StepFun。
+
+## 3. 写作模型池
+
+写作候选需要不同模型家族。模型池只决定模型来源，不替代：
+
+- Scene Contract；
+- Candidate Branch；
+- 多样性门；
+- 文学绝对门槛。
+
+禁止同一模型评审自己生成的候选。
+
+## 4. 契约与文学评审模型池
+
+同一门的专家目的相近，但模型家族不同。评审必须记录：
+
+```text
+model_alias
+model_family
+resolved_provider
+prompt_hash
+blind_context_hash
+visible_prior_reviews
 ```
 
-## 5. 已知限制
+StepFun Router使用工具调用触发内部路由时，还应记录：
 
-1. **API 限流**：连续高频调用返回 `503 code:10310 "The system is busy"`。批量测试需间隔 ≥ 2-3 秒。集成测试已内置 3 次重试 + skip。
-2. **推理模型**：已自动注入 `max_tokens=2000` 并支持 `reasoning_content` 回退（见第 2 节）。如需更大上下文用 `--llm-max-tokens` 覆盖。
-3. **Idempotency-Key**：重试时必须用新 key，否则 DB UNIQUE 约束冲突。
+- Router别名；
+- 工具调用是否发生；
+- 预期resolved model；
+- 响应是否返回可验证的resolved model；
+- 是否发生降级。
+
+## 5. 调用预算
+
+预算从项目数据库读取，至少分为：
+
+- Scene生成预算；
+- Chapter Generation Round预算；
+- 契约复审预算；
+- 文学选优预算；
+- 失败重试预算。
+
+旧的per-Shot预算只能用于Internal Shot局部生成，不能作为完整章节候选预算。
+
+## 6. 安全处置
+
+若历史文档或Git历史中出现真实凭据：
+
+1. 立即轮换；
+2. 清理当前文档；
+3. 检查Git历史、日志和备份；
+4. 启用secret scanning；
+5. 不在修复记录中复述原值。

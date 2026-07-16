@@ -69,6 +69,44 @@ def test_jury_scores_three_models_all_dimensions_and_selects_winner() -> None:
     ).fetchone()[0] == 0
 
 
+def test_jury_candidate_shortage_generates_supplemental_wave() -> None:
+    conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
+    ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET draft_count=2, min_eligible_candidates=3 WHERE project_id=1")
+    WriteOrchestrator(conn, LLMGateway(conn, provider=FailFirstDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+    assert len(
+        conn.execute(
+            """
+            SELECT d.draft_id
+            FROM writing_drafts d
+            JOIN writing_draft_eligibility e ON e.draft_id=d.draft_id
+            WHERE d.shot_id=? AND e.gate1_eligible=1 AND e.gate2_eligible=1
+            """,
+            (ids["shot_id"],),
+        ).fetchall()
+    ) == 2
+
+    winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+
+    assert winner.degraded is False
+    assert conn.execute(
+        "SELECT count(*) FROM writing_drafts WHERE shot_id=? AND retry_count>0",
+        (ids["shot_id"],),
+    ).fetchone()[0] == 3
+    assert conn.execute(
+        "SELECT status FROM writing_shots WHERE shot_id=?",
+        (ids["shot_id"],),
+    ).fetchone()[0] == "winner_selected"
+
+
 def test_redo_candidates_merge_with_existing_pool_and_can_flip_winner() -> None:
     conn = make_winner_selected_shot()
     ids = _ids(conn)
@@ -227,14 +265,27 @@ def test_polish_winner_writes_revision_and_returns_to_hard_gate() -> None:
         (revision_id,),
     ).fetchone()
     assert revision == ("polished text", 0, None)
+    # polish 模型按 shot_id 从 writer_model_pool 轮替并避开 winner_model（破 smart-polish 集中化），
+    # 故不再固定 'smart-polish'：验证 polished draft 存在、retry_count=1、text 正确、且 ≠ winner.writer_model。
+    winner_model = conn.execute(
+        """
+        SELECT d.writer_model
+        FROM writing_jury_aggregates a JOIN writing_drafts d ON d.draft_id = a.draft_id
+        WHERE a.is_winner = 1
+        """
+    ).fetchone()[0]
     polished_draft = conn.execute(
         """
         SELECT writer_model, retry_count, text
         FROM writing_drafts
-        WHERE writer_model = 'smart-polish'
+        WHERE retry_count = 1 AND text = 'polished text'
+        ORDER BY draft_id DESC
         """
     ).fetchone()
-    assert polished_draft == ("smart-polish", 1, "polished text")
+    assert polished_draft is not None
+    assert polished_draft[1] == 1
+    assert polished_draft[2] == "polished text"
+    assert polished_draft[0] != winner_model  # polish 不自我打磨
     assert conn.execute("SELECT count(*) FROM writing_ai_call_attempts WHERE call_type = 'polish'").fetchone()[0] == 1
 
 
@@ -309,15 +360,17 @@ def test_fact_anchor_gate_and_failure_attribution_clause_link() -> None:
     assert rows == [(clause_id, "fact_anchor", "hard_gate2")]
 
 
-def test_unpolished_winner_cannot_soft_seal() -> None:
+def test_unpolished_winner_can_soft_seal_when_gate_passed() -> None:
+    # 真实模型不保证 polish 必提分（polished 稿可能分数低于原稿，jury 据实选原稿当 winner）。
+    # soft_seal 契约放宽为：只要 winner 过 quality gate 即可 seal，不强制 winner.writer_model == "smart-polish"。
     conn = make_winner_selected_shot()
     ids = _ids(conn)
 
-    with pytest.raises(DataIntegrityError):
-        SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
+    revision_id = SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
 
-    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "winner_selected"
-    assert conn.execute("SELECT count(*) FROM writing_shot_revisions WHERE sealed_by = 'shot_soft'").fetchone()[0] == 0
+    assert revision_id is not None
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "soft_sealed"
+    assert conn.execute("SELECT count(*) FROM writing_shot_revisions WHERE sealed_by = 'shot_soft'").fetchone()[0] == 1
 
 
 def test_polished_winner_repasses_quality_before_soft_seal() -> None:
@@ -332,7 +385,10 @@ def test_polished_winner_repasses_quality_before_soft_seal() -> None:
     winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
     revision_id = SoftSealOrchestrator(conn).soft_seal_if_polished(str(ids["shot_id"]), int(ids["run_id"]))
 
-    assert winner.writer_model == "smart-polish"
+    # polish 模型已去集中化（按 shot 轮替、避开 winner），不再固定 'smart-polish'。
+    # 验证 winner 是 polished draft（retry_count=1，文本为 polish provider 输出）而非锁死模型名。
+    assert winner.text == "polished text"
+    assert winner.retry_count == 1
     assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "soft_sealed"
     revision = conn.execute(
         """
@@ -348,6 +404,39 @@ def test_polished_winner_repasses_quality_before_soft_seal() -> None:
         "SELECT quality_gate_passed FROM writing_jury_aggregates WHERE is_winner = 1"
     ).fetchone()[0] == 1
     assert conn.execute("SELECT text FROM v_current_text WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "polished text"
+
+
+def test_post_polish_jury_reuses_unchanged_draft_scores() -> None:
+    """Second jury wave scores only the new polished draft."""
+    conn = make_winner_selected_shot()
+    _relax_llm_budget(conn)
+    ids = _ids(conn)
+    before = json.loads(
+        conn.execute(
+            "SELECT llm_call_breakdown FROM writing_shots WHERE shot_id=?",
+            (ids["shot_id"],),
+        ).fetchone()[0]
+    )
+    assert before["jury"] == 9
+
+    PolishOrchestrator(conn, LLMGateway(conn, provider=PolishProvider())).polish_winner(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+    JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+
+    after = json.loads(
+        conn.execute(
+            "SELECT llm_call_breakdown FROM writing_shots WHERE shot_id=?",
+            (ids["shot_id"],),
+        ).fetchone()[0]
+    )
+    assert after["jury"] == 12
+    assert conn.execute("SELECT count(*) FROM writing_jury_aggregates").fetchone()[0] == 4
 
 
 def test_jury_quality_floor_failure_cannot_select_winner() -> None:
@@ -371,6 +460,39 @@ def test_jury_quality_floor_failure_cannot_select_winner() -> None:
     assert rows
     assert all(row[0] == 0 and row[2] == 0 for row in rows)
     assert all("final_score_below_shot_quality_floor" in row[1] for row in rows)
+
+
+def test_jury_score_in_project_floor_but_below_db_absolute_floor_cannot_pass() -> None:
+    # 回归 jury 阈值 vs DB 绝对底线分歧 bug：
+    # 项目 shot_quality_floor=75，jury 评 final=78（落在 75..80 区间）。
+    # 修复前 _quality_gate_passes 仅用项目阈值 → passed=True → 写库撞
+    #   CHECK(quality_gate_passed=0 OR final_score>=80) 抛 IntegrityError；
+    # 修复后取 max(75, ABSOLUTE_SHOT_QUALITY_FLOOR=80)=80 → 78<80 判 not-passed，
+    #   平滑走 _handle_quality_retry_or_fail，不撞 DB CHECK。
+    conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
+    ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
+    # draft 文本带 [below-absolute-floor] 标记，使 jury 评 78 分（落 75..80 区间）。
+    WriteOrchestrator(conn, LLMGateway(conn, provider=DisagreementDraftProvider(marker="below-absolute-floor"))).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    with pytest.raises(DataIntegrityError):
+        JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(
+            str(ids["shot_id"]), int(ids["run_id"])
+        )
+
+    assert conn.execute("SELECT status FROM writing_shots WHERE shot_id = ?", (ids["shot_id"],)).fetchone()[0] == "failed"
+    rows = conn.execute(
+        "SELECT quality_gate_passed, quality_gate_reasons, is_winner, final_score FROM writing_jury_aggregates"
+    ).fetchall()
+    assert rows  # 修复前此处为空（事务回滚），修复后 aggregate 行已写入且 quality_gate_passed=0
+    assert all(row[0] == 0 and row[2] == 0 for row in rows)
+    assert all("final_score_below_shot_quality_floor" in row[1] for row in rows)
+    assert all(row[3] == 78 for row in rows)  # 78 分稿被正确记为不过门，而非撞 CHECK 丢失
 
 
 def test_jury_quality_failure_auto_retries_and_selects_retry_winner() -> None:
@@ -410,11 +532,17 @@ def test_jury_dimension_floor_failure_cannot_select_winner() -> None:
 
     rows = conn.execute("SELECT scene_visual_median, quality_gate_reasons, is_winner FROM writing_jury_aggregates").fetchall()
     assert rows
-    assert all(row[0] == 60 and row[2] == 0 for row in rows)
+    assert all(row[0] == 55 and row[2] == 0 for row in rows)
     assert all("dimension_below_floor" in row[1] for row in rows)
 
 
-def test_jury_disagreement_failure_cannot_select_winner() -> None:
+def test_jury_disagreement_triggers_escalation_round_and_passes() -> None:
+    """基础轮 3 裁判分歧 30 > 阈值 25 → 触发升级轮 5 裁判重评 → r2 收敛分 disagreement 10 ≤ 25 过 gate。
+
+    改造自原 test_jury_disagreement_failure_cannot_select_winner：分歧不再直接判失败，
+    而是走升级轮稀释极端分后重判 gate。断言升级轮 raw_scores（jury_round=2）落库、
+    aggregate jury_round_used=2、升级后 disagreement 降下来、过 gate 可选 winner。
+    """
     conn = make_prompt_compiled_shot()
     _relax_llm_budget(conn)
     ids = _ids(conn)
@@ -425,13 +553,94 @@ def test_jury_disagreement_failure_cannot_select_winner() -> None:
     )
     HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
 
-    with pytest.raises(DataIntegrityError):
-        JuryOrchestrator(conn, _jury_gateway(conn, draft_marker="disagreement")).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+    winner = JuryOrchestrator(conn, _jury_gateway(conn, draft_marker="disagreement")).score_and_select_winner(
+        str(ids["shot_id"]), int(ids["run_id"])
+    )
 
-    rows = conn.execute("SELECT judge_disagreement_max, quality_gate_reasons, is_winner FROM writing_jury_aggregates").fetchall()
-    assert rows
-    assert all(row[0] == 30 and row[2] == 0 for row in rows)
-    assert all("judge_disagreement_exceeded" in row[1] for row in rows)
+    # 升级轮 raw_scores 落库：每个 draft 有 jury_round=2 的 5 行（slot1..5，5 个不同模型）。
+    r2_rows = conn.execute(
+        "SELECT jury_round, count(*), count(DISTINCT judge_model), max(judge_slot) "
+        "FROM writing_jury_raw_scores WHERE jury_round = 2 GROUP BY jury_round"
+    ).fetchall()
+    # 3 draft × 5 judge = 15 行，5 个不同模型，max_slot=5
+    assert r2_rows == [(2, 15, 5, 5)]
+
+    # aggregate 走升级轮：jury_round_used=2、judge_count=5、升级后 disagreement 降下来过 gate。
+    agg_rows = conn.execute(
+        "SELECT jury_round_used, judge_count, judge_disagreement_max, quality_gate_passed, is_winner "
+        "FROM writing_jury_aggregates"
+    ).fetchall()
+    assert agg_rows
+    assert all(row[0] == 2 and row[1] == 5 for row in agg_rows)
+    assert all(row[2] <= 25 for row in agg_rows)  # 升级后分歧降下来
+    # 至少有一个 draft 过 gate 并被选 winner
+    assert any(row[3] == 1 and row[4] == 1 for row in agg_rows)
+    assert winner is not None
+
+
+def test_jury_escalation_exhausted_when_still_disagreement() -> None:
+    """升级轮仍分歧（[disagreement-persistent] r2 disagreement=30）→ escalation_exhausted，
+    quality_gate_passed=0，走重写/fail（不选 winner 时抛 DataIntegrityError）。
+    """
+    conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
+    ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
+    WriteOrchestrator(
+        conn, LLMGateway(conn, provider=DisagreementDraftProvider(marker="disagreement-persistent"))
+    ).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    with pytest.raises(DataIntegrityError):
+        JuryOrchestrator(
+            conn, _jury_gateway(conn, draft_marker="disagreement-persistent")
+        ).score_and_select_winner(str(ids["shot_id"]), int(ids["run_id"]))
+
+    agg_rows = conn.execute(
+        "SELECT jury_round_used, judge_disagreement_max, quality_gate_passed, quality_gate_reasons "
+        "FROM writing_jury_aggregates"
+    ).fetchall()
+    assert agg_rows
+    assert all(row[0] == 2 and row[1] > 25 and row[2] == 0 for row in agg_rows)
+    assert all("escalation_exhausted" in row[3] and "judge_disagreement_exceeded" in row[3] for row in agg_rows)
+
+
+def test_jury_no_escalation_when_disagreement_within_threshold() -> None:
+    """分歧 ≤ 阈值 25 → 不触发升级轮、aggregate jury_round_used=1/judge_count=3（回归保护）。
+
+    用默认过 gate 的 draft（无 [disagreement] 标记），3 裁判同分 84，disagreement=0 ≤ 25，
+    不进升级轮。
+    """
+    conn = make_prompt_compiled_shot()
+    _relax_llm_budget(conn)
+    ids = _ids(conn)
+    conn.execute("UPDATE writing_projects SET auto_retry_on_hard_failure = 0 WHERE project_id = 1")
+    WriteOrchestrator(conn, LLMGateway(conn, provider=RecordingDraftProvider())).produce_drafts(
+        str(ids["shot_id"]),
+        int(ids["run_id"]),
+    )
+    HardGateOrchestrator(conn).run_both_gates(str(ids["shot_id"]), int(ids["run_id"]))
+
+    winner = JuryOrchestrator(conn, _jury_gateway(conn)).score_and_select_winner(
+        str(ids["shot_id"]), int(ids["run_id"])
+    )
+
+    # 无升级轮 raw_score
+    r2_count = conn.execute(
+        "SELECT count(*) FROM writing_jury_raw_scores WHERE jury_round = 2"
+    ).fetchone()[0]
+    assert r2_count == 0
+    agg_rows = conn.execute(
+        "SELECT jury_round_used, judge_count, judge_disagreement_max, quality_gate_passed "
+        "FROM writing_jury_aggregates"
+    ).fetchall()
+    assert agg_rows
+    assert all(row[0] == 1 and row[1] == 3 for row in agg_rows)
+    assert winner is not None
+
 
 
 def test_m4_orchestrator_entrypoint_signatures_lint_clean() -> None:
@@ -511,9 +720,14 @@ class DimensionFailDraftProvider:
 
 
 class DisagreementDraftProvider:
+    def __init__(self, *, marker: str = "disagreement") -> None:
+        # marker 控制 draft 文本标记：默认 disagreement（基础轮分歧，升级轮收敛过 gate）；
+        # disagreement-persistent（升级轮仍分歧 → escalation_exhausted）。
+        self.marker = marker
+
     def complete(self, prompt_text: str, model_name: str, idempotency_key: str) -> ModelResult:
         return ModelResult(
-            text=f"[disagreement] {model_name}:{idempotency_key}",
+            text=f"[{self.marker}] {model_name}:{idempotency_key}",
             model_name=model_name,
             token_input=1,
             token_output=1,
@@ -590,26 +804,47 @@ class JuryScoreProvider:
                 text = f"scene text {model_name} {idempotency_key}"
             return ModelResult(text=text, model_name=model_name, token_input=1, token_output=1)
 
+        # 轮次 + slot：基础轮 :r1:<slot>，升级轮 :r2:<slot>。
+        is_round2 = ":r2:" in idempotency_key
         slot = 2  # 默认中位 slot
         if ":r1:" in idempotency_key:
             slot = int(idempotency_key.rsplit(":r1:", 1)[1])
+        elif ":r2:" in idempotency_key:
+            slot = int(idempotency_key.rsplit(":r2:", 1)[1])
         if "[low-quality]" in prompt_text:
-            # 原桩：final=70，全维 median=70 → 70<80 不过 shot_quality_floor（不触发 dimension）
+            # final=70，全维 median=70 → 70<75 不过 shot_quality_floor（不触发 dimension）
             scores = {dim: 70 for dim in _JURY_DIMS}
         elif "[dimension-fail]" in prompt_text:
-            # 原桩：final=84，全维 median=84，scene_visual=60<65 → dimension_below_floor
+            # final=84 过 shot_quality_floor(75)，scene_visual=55<60 → dimension_below_floor
             scores = {dim: 84 for dim in _JURY_DIMS}
-            scores["scene_visual"] = 60
+            scores["scene_visual"] = 55
+        elif "[disagreement-persistent]" in prompt_text:
+            # 基础轮分歧 30 触发升级轮，升级轮仍分歧（slot1..5 → 70/84/100/84/70，
+            # disagreement=100-70=30>25）→ escalation_exhausted，quality_gate_passed=0。
+            base = {1: 70, 2: 84, 3: 100, 4: 84, 5: 70}[slot]
+            scores = {dim: base for dim in _JURY_DIMS}
         elif "[disagreement]" in prompt_text:
-            # 原桩 offsets=(-14,0,16) on median 84 → slot1=70 / slot2=84 / slot3=100
-            # median=84≥80 过 shot_quality_floor，但 disagreement=100-70=30>25 → fail
-            base = {1: 70, 2: 84, 3: 100}[slot]
+            # 基础轮：offsets=(-14,0,16) on median 84 → slot1=70 / slot2=84 / slot3=100
+            # median=84≥75 过 shot_quality_floor，但 disagreement=100-70=30>25 → 触发升级轮。
+            # 升级轮：更多裁判稀释极端分，按 slot 返回收敛分
+            # slot1..5 → 75/85/80/85/75，disagreement=85-75=10≤25 过 gate（验证升级后分歧降下来）。
+            if is_round2:
+                base = {1: 75, 2: 85, 3: 80, 4: 85, 5: 75}[slot]
+            else:
+                base = {1: 70, 2: 84, 3: 100}[slot]
             scores = {dim: base for dim in _JURY_DIMS}
         elif "[redo-better]" in prompt_text:
             scores = {dim: 92 for dim in _JURY_DIMS}
         elif "[fact-violation]" in prompt_text:
             # fact-violation 不影响 jury 评分（gate 另判），给默认过 gate 分
             scores = {dim: 84 for dim in _JURY_DIMS}
+        elif "[below-absolute-floor]" in prompt_text:
+            # 回归 jury 阈值 vs DB 绝对底线分歧 bug：
+            # final=78 落在项目 shot_quality_floor(75)..DB 绝对底线(80) 区间——
+            # 全维 78>=65 过维度底线，但 final 78<max(75,80)=80 不过绝对底线。
+            # 修复前 passed=True 写库撞 CHECK(final_score>=80) 抛 IntegrityError；
+            # 修复后 _quality_gate_passes 取 max 兜底，判 final_score_below_shot_quality_floor。
+            scores = {dim: 78 for dim in _JURY_DIMS}
         else:
             scores = {dim: 84 for dim in _JURY_DIMS}
         return ModelResult(
@@ -618,6 +853,7 @@ class JuryScoreProvider:
             token_input=1,
             token_output=1,
         )
+
 
 
 def _jury_gateway(conn, *, draft_marker: str = "") -> LLMGateway:
@@ -637,4 +873,3 @@ def _relax_llm_budget(conn) -> None:
         "UPDATE writing_projects SET max_calls_per_shot = 50, max_total_llm_calls = 200, "
         "consecutive_failure_circuit_break = 100 WHERE project_id = 1"
     )
-

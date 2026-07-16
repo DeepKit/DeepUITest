@@ -46,6 +46,31 @@ SCHEMAS: tuple[DataclassSpec, ...] = (
         ),
     ),
     DataclassSpec(
+        "BookContextDTO",
+        (
+            FieldSpec("world", "tuple[str, ...]"),
+            FieldSpec("character", "tuple[str, ...]"),
+            FieldSpec("narrative", "tuple[str, ...]"),
+            FieldSpec("motif", "tuple[str, ...]"),
+        ),
+    ),
+    DataclassSpec(
+        "ChapterContractDTO",
+        # 悬疑工程学章节契约 8 字段（loader._CHAPTER_SUSPENSE_FIELDS + outline_to_contract 对齐）+ scope 定位。
+        (
+            FieldSpec("chapter_id", "int"),
+            FieldSpec("scope_id", "str"),
+            FieldSpec("pursuit_type", "str"),
+            FieldSpec("main_engine", "str"),
+            FieldSpec("emotion_target", "str"),
+            FieldSpec("silence_point", "str"),
+            FieldSpec("causal_anchor", "str"),
+            FieldSpec("hook_type", "str"),
+            FieldSpec("light_state", "str"),
+            FieldSpec("chapter_end_hook", "str"),
+        ),
+    ),
+    DataclassSpec(
         "OutlineSpecDTO",
         (
             FieldSpec("outline_id", "int"),

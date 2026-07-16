@@ -1,9 +1,25 @@
 # InkFlow v2 Bugfix 记录
 
 > **用途**：记录开发中发现的缺陷、根因、修复和防回归测试。
-> **最后更新**：2026-07-15
+> **最后更新**：2026-07-16
 
 ---
+
+## 2026-07-16 BFX-086 Scene-first Accept 决定记录位于权威事务外
+
+- **现象**：`scene-accept`、`produce-chapter` 正常接受和 force-accept 都先调用
+  `record_human_decision`，再调用 `accept_chapter`；若后者因 Head CAS、stale lineage、
+  Snapshot 或 Event 写入失败，Human Decision 已留库却没有对应接受结果。同时
+  `writing_selection_decisions`/`record_selection_decision` 已存在但生产路径无调用。
+- **根因**：Accept Repository 只把 Snapshot、Head 和 Runtime Event 纳入 `_atomic`，
+  把 Selection/Human Decision 错误地当成调用方前置准备，而不是最终接受权威的一部分。
+- **修复**：`accept_chapter` 改为接收决定原始证据，在同一事务内创建 Selection Decision、
+  Human Decision、sealed Snapshot/Scene bindings、CAS Chapter Head 和
+  `CHAPTER_ACCEPTED` Event；三个 CLI 入口均改为单次 Accept 调用，Event 同时记录两个
+  Decision ID。
+- **防回归**：新增成功证据一致性断言，以及对 Selection、Human、Snapshot、Head、Event
+  五个写入阶段的 SQLite trigger 故障注入；任一步失败均不遗留 Decision、Snapshot、
+  binding、Head 变化或 Accept Event。聚焦测试 34 passed；全量结果见 `history.md`。
 
 ## 2026-07-08（质量门真实化阶段 — 缺陷登记，修复随阶段 A-F 推进）
 
@@ -903,3 +919,153 @@ Chapter/Scene + 四层 clause + 架构师起草/复审师审查/返工闭环）�
 context）；memory `ink-contract-layer-rewire-root-cause`、
 `ink-context-injection-raw-text-backfires`；评审报告
 `D:\_Progs\.BetterCiv\09_工程脚本\ai_workbench\runs\AWT-20260715-171440-5aaf49\amy-review-synthesis.md`。
+
+### H1-H4 防绕过验收补充（2026-07-15）
+- **状态**：RESOLVED。
+- **H1/H2**：brief 唯一来源锁定为四层 clause；DB 与 Repository 双层阻止残缺契约
+  激活，激活后 clause/provenance hash 不可变。
+- **H3/H4**：9 条反事实测试 + 两类全源码静态扫描；恢复 Scene-first schema 尾部
+  覆盖造成的 6 表缺失，并补回 schema.sql 遗漏的两个项目迁移列。
+- **验证**：全量 `python -m pytest -q` 通过。
+
+## BFX-080 BFX-079 接线实施中的具体缺陷（P0，2026-07-15）
+
+BFX-079 架构根因修复（方案 B/C/D）落地时连带暴露的代码缺陷，逐条登记：
+
+### BFX-080-1 `brief_compiler.compile_brief` 误删字数约束行
+- **状态**：RESOLVED（2026-07-15）
+- **现象**：迁移跨章 context 注入到 `compile_brief` 时，误删 `parts.append("1200-1800 字。")`，
+  导致编译出的 brief 不含字数约束，`RealGenerationPort._generation_prompt` 失去
+  字数指引。
+- **根因**：手工重构时把字数约束行合并进 context 注入分支，原行被替换掉。
+- **修复**：恢复 `parts.append("1200-1800 字。")` 在 context 注入前；context 插到
+  字数约束前面（约束保持最末）。`tests/test_brief_compiler_context.py` 加
+  `test_*_endswith` 不变量守卫。
+
+### BFX-080-2 `compile_brief` 缺跨章 context 能力（BFX-079 方案 D 迁移漏）
+- **状态**：RESOLVED（2026-07-15）
+- **现象**：删 `brief_builder.py` 后，跨章 context 注入能力（task#7）会随文件
+  丢失。`compile_brief` 原只从四层 clause 编译，无前章正文续接。
+- **根因**：brief_builder 两个能力混在一起——`build_brief_from_outline`（V1 死
+  代码）与 `_prev_chapter_context`（真能力），删文件会一起丢。
+- **修复**：把 `_prev_chapter_context` 迁进 `brief_compiler`，`compile_brief` 加
+  `inject_prev_context=True` 参数，从契约→scene→chapter_id 自动解析章号取前章
+  封版正文头尾各 300 字。第 1 章/前章未封版 graceful skip。7 条单元测试覆盖
+  （`test_brief_compiler_context.py`）。
+
+### BFX-080-3 `_ensure_scene_contract_clauses` 异族解析依赖 local import
+- **状态**：RESOLVED（2026-07-15）
+- **现象**：新 `_ensure_scene_contract_clauses`/`_architect_model`/`_reviewer_model`
+  三个 helper 用 `family_from_model_name`，但该符号只在 `produce-chapter` 的
+  local import 里——模块级函数调用时 NameError（import 时因未执行分支没暴露）。
+- **根因**：helper 是模块级函数，引用的符号必须在模块级可见。
+- **修复**：`from ink.pipeline.contract_review_orchestrator import family_from_model_name`
+  提到 cli 模块级 import；produce-chapter local import 去掉重复的
+  `family_from_model_name`。
+
+### BFX-080-4 双盲审查员取数无 contract_review role 兜底
+- **状态**：RESOLVED（2026-07-15）
+- **现象**：`_reviewer_model` 若无 `call_type='contract_review'` 配置会直接取不到
+  审查员模型，双盲 independent_review 无法发起。
+- **根因**：seed 库未为 contract_review role 建配置（新接线 role）。
+- **修复**：`_reviewer_model` 三级兜底——优先 contract_review role_config；
+  无则从 jury 池取异族；最后固定异族对（architect=glm→deepseek，反之 glm）。
+  保证审查员必与架构师异族（INV-CONTRACT-003）。
+
+## BFX-081 E-2 连贯维度接线后的防绕过缺口（P0，2026-07-15）
+
+- **状态**：RESOLVED（2026-07-15）。
+- **现象**：chapter review 已新增 `chapter_coherence`，但若只验证正常 8 维返回，仍有
+  三类未被证明关闭的旁路：旧 7 维 provider 是否会被默认补分；文学 reviewer 高分
+  是否能覆盖确定性同构阻断；E-1 是否可能误读旧 sealed 但非 active 的 Snapshot。
+- **根因**：功能测试只证明“新路径能走”，没有用反事实输入证明旧返回、评分覆盖和
+  Snapshot 版本漂移都必然 fail closed。
+- **修复**：
+  1. 增旧 7 维缺 `chapter_coherence` 测试，三 reviewer 都缺维时抛
+     `ChapterReviewLLMFailure`，且 `writing_chapter_reviews` 零落库；
+  2. 增 coherence=74 独立阻断测试，确认 `blocking_issues` 精确包含该维；
+  3. 增 reviewer 8 维全 99 分 + 人工注入 E-1 overlap 命中测试，确认
+     `chapter_scene_overlap` 仍阻断且保留证据；
+  4. 增 active sealed 来源测试和旧 sealed/non-active 反事实测试，锁定版本读取边界；
+  5. 修复 `test_m6_book_export` 夹具继续写 7 维 accepted 假数据的问题，显式写第 8 维。
+- **防回归**：`tests/test_chapter_review_real.py`、`tests/test_chapter_coherence.py`、
+  `tests/test_m6_book_export.py`；定向 13 条通过，全量 `python -m pytest -q` 通过。
+
+## BFX-082 契约激活门少于规范要求的三家族盲审（P0，2026-07-15）
+
+- **状态**：RESOLVED（2026-07-15）。
+- **现象**：`implementation-contract.md` §4 要求同一门至少三个不同模型家族、一家族
+  一票；实现却只要求 self-check + 一次 independent review 两条 approve。调用
+  `SceneRepository.activate_contract` 或直接更新数据库时，双家族证据即可激活。
+- **根因**：早期“dual-master”不变量遗留，Repository、SQLite trigger、审查编排器和
+  测试工厂共同固化了两票口径，未随 SPW 三家族门同步升级。
+- **修复**：
+  1. Repository 与 SQLite trigger 均要求 review_order 1/2/3 三条盲审记录全部
+     `approve`、`visible_prior_reviews=0`，且 `reviewer_family` 三者互异；
+  2. `independent_review_contract` 支持 `under_review` 态追加第二个独立审查，并拒绝
+     已用家族；
+  3. `ContractReviewOrchestrator` 改为架构师自检 + 两个异族独立审查，三票全通过才
+     `approved=True`；
+  4. CLI 模型选择从 contract_review/jury 配置和固定兜底池中选出两个互异异族，
+     不足三家族时 fail closed；
+  5. 更新测试工厂及激活反事实测试，防止两票激活回归。
+- **防回归**：契约激活定向测试 35 条通过；全量 `python -m pytest -q` 通过。
+
+## BFX-083 Shot TaskCard 编译前读取裸 outline（P0，2026-07-15）
+
+- **状态**：RESOLVED（2026-07-15）。
+- **现象**：`PreDraftingOrchestrator.compile_task_card` 在调用 `TaskCardCompiler` 前仍通过
+  `OutlineRepository.load_winner` 读取 winner outline；读取结果虽未进入当前渲染，却保留了
+  Shot 生产链重新把裸 outline 注入 TaskCard 的旁路入口。
+- **根因**：旧 Shot 流程遗留的无用取数未随契约唯一真相源改造删除，且 H4 只扫描
+  brief 裸拼，未覆盖 TaskCard 编译边界。
+- **修复**：
+  1. 删除 `compile_task_card` 对 `OutlineRepository` 和 winner outline 的读取；
+  2. TaskCard 保持仅由已落库 shot/chapter/book contract 与 continuity context 编译；
+  3. 新增 `TASK_CARD_OUTLINE_INJECTION` AST 扫描，若 `compile_for_shot` 出现 outline
+     参数或局部 outline 读取则 CI 失败；
+  4. 增参数注入、局部读取两个反事实测试和全源码扫描。
+- **防回归**：TaskCard/H4 聚焦测试全通过；全量 `python -m pytest -q` 通过。
+
+## BFX-084 AI Scene Repair Task 仅校验非空 ID（P0，2026-07-16）
+
+- **状态**：RESOLVED（2026-07-16）。
+- **现象**：`SceneRepository.create_revision` 已对 `generation_task_id` 做候选 Branch
+  存在性和章节作用域校验，但 `repair_task_id` 没有权威表，任意非空整数都能让 AI
+  Revision 通过审计门；实现契约仍明确写着“存在性、作用域和状态校验尚待接入”。
+- **根因**：早期不变量只防“AI 无任务裸写正文”，后续只把 generation task 映射到
+  `writing_chapter_candidate_branches`，没有为 repair 建立等价的持久化真相源��导致同一
+  不变量两条分支强度不一致。
+- **修复**：
+  1. 新增 `writing_scene_repair_tasks`，持久化 project/chapter/scene/branch/source revision/
+     active contract/issue/status/creator；
+  2. 新增 `SceneRepository.create_repair_task`，创建时验证 Branch-local Scene head 和
+     active Contract；
+  3. AI Revision 强制 generation/repair task 恰好一个；generation task 必须对应目标
+     Branch 且未 rejected；repair task 必须真实存在、作用域和 lineage 一致、状态为
+     planned/running；
+  4. 新增幂等旧库迁移 `tools/migrate_scene_repair_tasks.py`，不伪造历史 repair task；
+  5. 更新 `implementation-contract.md`，删除“尚待接入”的陈旧声明。
+- **防回归**：`tests/test_scene_repository.py` 覆盖伪 ID、已完成任务复用和双 task 同传；
+  `tests/test_migrate_scene_repair_tasks.py` 覆盖建表、dry-run 与幂等；全量 pytest 通过。
+
+## BFX-085 后继 Contract 激活后旧正文仍可作为当前权威读取（P0，2026-07-16）
+
+- **状态**：RESOLVED（2026-07-16）。
+- **现象**：Scene Contract amendment 能记录 parent/actor/reason，但激活后继 Contract 时，
+  旧 active Contract、基于旧 Contract 的 Scene Revision、候选 Branch 和已接受 Chapter
+  Snapshot 都没有失效传播；旧正文仍能 freeze/select/accept/export，形成双真相源。
+- **根因**：已有设计只保证 Contract clause 和 Revision 内容不可变，没有建立“契约权威
+  变化 → 派生资产失效”的持久化状态与读取门；repair task 也不会随旧 Contract 失效。
+- **修复**：
+  1. 新增 Revision、Branch Version、Chapter Snapshot 三层 stale mark 表和 Contract
+     replacement 字段；所有失效信息追加记录，不原地修改不可变正文；
+  2. 激活同 Scene 后继 Contract 时，在同一事务内 supersede 原 active Contract、传播
+     stale、取消旧 Contract 的 planned/running repair task，并记录 runtime event；
+  3. generation task 禁止扩展 stale 父 Revision；repair task 允许在 building Branch 上
+     使用新 active Contract 修复，绑定后按 Branch 当前 Scene 集合重算 stale；
+  4. freeze/select/accept、Branch 正文读取、active Snapshot 正文和 ID 读取统一 fail-closed；
+  5. 新增幂等迁移 `tools/migrate_scene_contract_supersede_stale.py`，不伪造历史替代关系。
+- **防回归**：`tests/test_scene_stale_propagation.py` 覆盖自动 supersede、三层传播、旧
+  generation 拒绝、新 Contract repair 解封、open repair task 取消、active Snapshot 读取
+  拒绝和幂等；聚焦测试通过；全量 `pytest` 为 820 passed、10 skipped。

@@ -1,0 +1,3 @@
+-- Applied by tools/migrate_scene_contract_supersede_stale.py.
+-- Adds Scene-first stale annotation truth sources without rewriting immutable
+-- revisions, frozen branch versions, sealed snapshots, or historical supersedes.

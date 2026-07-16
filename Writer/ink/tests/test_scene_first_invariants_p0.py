@@ -21,7 +21,7 @@ import pytest
 from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
 from ink.core.scene_repository import SceneRepository
 from ink.errors import DataIntegrityError
-from factories import NOW, make_schema_db
+from factories import NOW, insert_contract_approve_reviews, make_schema_db
 
 
 def _project(conn: sqlite3.Connection) -> None:
@@ -142,7 +142,7 @@ def test_independent_review_requires_self_checked_and_different_family() -> None
         blind_context_hash="b1", verdict="approve", evidence_json="{}",
     )
     # same family as architect (glm) → reject
-    with pytest.raises(DataIntegrityError, match="family must differ"):
+    with pytest.raises(DataIntegrityError, match="family must be unused and differ"):
         scene_repo.independent_review_contract(
             scene_contract_id=contract_id, reviewer_model="model:glm2",
             reviewer_family="glm", prompt_hash="p2",
@@ -199,6 +199,21 @@ def test_ai_actor_cannot_activate_contract() -> None:
         reviewer_family="qwen", prompt_hash="p2",
         blind_context_hash="b2", verdict="approve", evidence_json="{}",
     )
+    scene_repo.independent_review_contract(
+        scene_contract_id=contract_id, reviewer_model="model:deepseek",
+        reviewer_family="deepseek", prompt_hash="p3",
+        blind_context_hash="b3", verdict="approve", evidence_json="{}",
+    )
+    scene_repo.assemble_four_layer_contract(
+        scene_contract_id=contract_id,
+        hard_constraints=[{"clause_key": "hard-1", "clause_text": "hard"}],
+        source_dna=[{"clause_key": "source-1", "clause_text": "source"}],
+        soft_goals=[{"clause_key": "soft-1", "clause_text": "soft"}],
+        creative_openings=[
+            {"clause_key": "opening-1", "clause_text": "opening one"},
+            {"clause_key": "opening-2", "clause_text": "opening two"},
+        ],
+    )
     from ink.core.actor_guard import ActorPermissionError
     with pytest.raises(ActorPermissionError):
         scene_repo.human_activate_contract(scene_contract_id=contract_id, actor="ai:auto")
@@ -221,22 +236,71 @@ def test_ai_actor_cannot_activate_contract() -> None:
 def test_submit_amendment_records_history_without_mutating_clauses() -> None:
     conn = make_schema_db()
     scene_repo, _, _, contract_id = _draft_contract_fixture(conn)
-    scene_repo.add_contract_clause(
-        scene_contract_id=contract_id, layer="hard_constraint",
-        clause_key="h1", clause_text="original", severity="hard",
+    scene_repo.assemble_four_layer_contract(
+        scene_contract_id=contract_id,
+        hard_constraints=[{"clause_key": "h1", "clause_text": "original"}],
+        source_dna=[{"clause_key": "d1", "clause_text": "dna"}],
+        soft_goals=[{"clause_key": "g1", "clause_text": "goal"}],
+        creative_openings=[
+            {"clause_key": "o1", "clause_text": "open A"},
+            {"clause_key": "o2", "clause_text": "open B"},
+        ],
     )
+    insert_contract_approve_reviews(conn, contract_id)
+    conn.execute(
+        "UPDATE writing_scene_contracts SET status = 'under_review' "
+        "WHERE scene_contract_id = ?",
+        (contract_id,),
+    )
+    scene_repo.human_activate_contract(scene_contract_id=contract_id, actor="author")
     amid = scene_repo.submit_amendment(
         scene_contract_id=contract_id, amending_actor="author",
         amendment_reason="tighten continuity", clause_changes_json='{"h1":"updated"}',
     )
     assert amid is not None
-    # original clause text untouched (append-only lineage)
     txt = conn.execute(
         "SELECT clause_text FROM writing_scene_contract_clauses "
         "WHERE scene_contract_id = ? AND clause_key = 'h1'",
         (contract_id,),
     ).fetchone()[0]
     assert txt == "original"
+    assert conn.execute(
+        "SELECT status FROM writing_scene_contracts WHERE scene_contract_id = ?",
+        (contract_id,),
+    ).fetchone()[0] == "active"
+    assert conn.execute(
+        "SELECT count(*) FROM writing_runtime_events "
+        "WHERE event_type = 'scene_contract_amendment_submitted'"
+    ).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    ("actor", "reason", "changes", "message"),
+    [
+        ("model:glm", "change", '{}', "human actor"),
+        ("author", "", '{}', "reason"),
+        ("author", "change", '{bad', "valid JSON"),
+    ],
+)
+def test_submit_amendment_rejects_bypass_inputs(
+    actor: str, reason: str, changes: str, message: str
+) -> None:
+    conn = make_schema_db()
+    scene_repo, _, _, contract_id = _draft_contract_fixture(conn)
+    with pytest.raises((PermissionError, DataIntegrityError), match=message):
+        scene_repo.submit_amendment(
+            scene_contract_id=contract_id,
+            amending_actor=actor,
+            amendment_reason=reason,
+            clause_changes_json=changes,
+        )
+    assert conn.execute(
+        "SELECT count(*) FROM writing_scene_contract_amendments"
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT count(*) FROM writing_runtime_events "
+        "WHERE event_type = 'scene_contract_amendment_submitted'"
+    ).fetchone()[0] == 0
 
 
 # ── P0-5: guidance cards + fact proposals ───────────────────────────────
@@ -347,6 +411,17 @@ def test_accept_chapter_requires_decision_id_by_default() -> None:
         scene_id=scene_id, version=1, contract_hash="c",
         source_bundle_hash="s", created_by="arch", status="approved",
     )
+    scene_repo.assemble_four_layer_contract(
+        scene_contract_id=contract_id,
+        hard_constraints=[{"clause_key": "hard-1", "clause_text": "hard"}],
+        source_dna=[{"clause_key": "source-1", "clause_text": "source"}],
+        soft_goals=[{"clause_key": "soft-1", "clause_text": "soft"}],
+        creative_openings=[
+            {"clause_key": "opening-1", "clause_text": "opening one"},
+            {"clause_key": "opening-2", "clause_text": "opening two"},
+        ],
+    )
+    insert_contract_approve_reviews(conn, contract_id)
     scene_repo.activate_contract(contract_id)
     branch_id, bv_id = _branch(snapshots)
     scene_repo.create_revision(
@@ -361,8 +436,13 @@ def test_accept_chapter_requires_decision_id_by_default() -> None:
         (branch_id,),
     )
     snapshots.select_branch(branch_id)
-    with pytest.raises(DataIntegrityError, match="decision_id"):
+    with pytest.raises(DataIntegrityError, match="non-empty reason"):
         snapshots.accept_chapter(
-            branch_version_id=bv_id, expected_head_version=0,
-            accepted_decision_id=None,
+            branch_version_id=bv_id,
+            expected_head_version=0,
+            actor="editor:zhang",
+            reason="",
+            preconditions_json={},
+            selection_decision_type="auto_selected",
+            selection_evidence_json={},
         )

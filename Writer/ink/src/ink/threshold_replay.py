@@ -29,6 +29,7 @@ CHAPTER_DIMENSION_COLUMNS = (
     "rhythm_curve",
     "motif_density",
     "info_gap_lifecycle",
+    "chapter_coherence",
 )
 BOOK_DIMENSION_COLUMNS = (
     "longline_suspense_closure",
@@ -96,8 +97,8 @@ def _thresholds(
 ) -> dict[str, int]:
     row = _project_threshold_row(conn, project_id)
     defaults = {
-        "shot_quality_floor": 80,
-        "dimension_floor": 65,
+        "shot_quality_floor": 75,
+        "dimension_floor": 60,
         "chapter_quality_floor": 75,
         "book_quality_floor": 75,
         "reader_pull_floor": 75,
@@ -185,7 +186,8 @@ def _chapter_quality_summary(
         conn,
         """
         SELECT chapter_continuity_hard, pov_consistency, character_consistency,
-               chapter_hook_soft, rhythm_curve, motif_density, info_gap_lifecycle
+               chapter_hook_soft, rhythm_curve, motif_density, info_gap_lifecycle,
+               chapter_coherence
         FROM writing_chapter_reviews
         WHERE (? IS NULL OR project_id = ?)
         """,

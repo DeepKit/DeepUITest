@@ -3,10 +3,12 @@ from __future__ import annotations
 import sqlite3
 
 from ink.core.llm_gateway import LLMGateway
+from ink.core.prose_integrity import extract_polished_prose
 from ink.core.state_machine import load_status, transition
 from ink.core.text_repository import TextRepository
-from ink.errors import DataIntegrityError
+from ink.errors import ConfigError, DataIntegrityError
 from ink.writers.draft_repository import insert_draft, load_draft
+from ink.writers.model_pool import load_writer_model_pool, select_polish_model
 
 
 def polish_winner(shot_id: str, run_id: int) -> int:
@@ -28,6 +30,13 @@ class PolishOrchestrator:
         winner = _load_winner_draft(self.conn, shot_id)
         project_id = _lookup_project_id(self.conn, shot_id, run_id)
         prompt_text = _polish_prompt(winner.text)
+        # 模型去集中化：按 shot_id 从 writer_model_pool 轮替选 polish 模型，
+        # 避开 winner_model（不自我打磨），破 smart-polish 固定一刀切导致的风格趋同。
+        try:
+            pool = load_writer_model_pool(self.conn, project_id)
+        except ConfigError:
+            pool = ()
+        polish_model = select_polish_model(pool, shot_id, winner_model=winner.writer_model)
         result = self.gateway.call(
             project_id=project_id,
             shot_id=shot_id,
@@ -35,14 +44,18 @@ class PolishOrchestrator:
             call_type="polish",
             prompt_id=winner.prompt_id,
             prompt_text=prompt_text,
-            model_name="smart-polish",
+            model_name=polish_model,
             idempotency_key=f"polish:{shot_id}:{run_id}:{winner.draft_id}",
         )
-        _ensure_productive_markers_preserved(winner.text, result.text)
+        try:
+            polished_text = extract_polished_prose(result.text)
+        except ValueError as exc:
+            raise DataIntegrityError(str(exc)) from exc
+        _ensure_productive_markers_preserved(winner.text, polished_text)
         revision_id = TextRepository(self.conn).write_revision(
             shot_id,
             run_id,
-            result.text,
+            polished_text,
             seal="none",
         )
         insert_draft(
@@ -51,7 +64,7 @@ class PolishOrchestrator:
             prompt_id=winner.prompt_id,
             persona=winner.persona,
             writer_model=result.model_name,
-            text=result.text,
+            text=polished_text,
             retry_count=winner.retry_count + 1,
         )
         if load_status(self.conn, shot_id, run_id) == "polish_revision":
@@ -88,7 +101,11 @@ def _lookup_project_id(conn: sqlite3.Connection, shot_id: str, run_id: int) -> i
 
 def _polish_prompt(winner_text: str) -> str:
     return (
-        "Polish this winning draft without adding facts, changing POV, or flattening productive roughness.\n"
+        "你是出版级小说文字编辑。只润色下方获胜草案，不得增加事实、改变 POV、改变事件顺序，"
+        "不得磨平有效留白、人物声线或 productive roughness。\n"
+        "只输出可直接出版的小说正文：从正文第一个字符开始，到正文最后一个标点结束。"
+        "禁止问候、确认语、标题、前言、后记、修改说明、调整清单、点评、markdown 围栏或"
+        "“以下是润色版本”等元话语。\n"
         "productive_deviations=[]\n"
         "neutral_issues=[]\n\n"
         f"{winner_text}"

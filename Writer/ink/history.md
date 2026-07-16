@@ -1,7 +1,168 @@
 # InkFlow v2 历史任务归档
 
 > **用途**：记录已经完成并验证的任务，保持 `tasks.md` 只呈现当前待办。
-> **最后更新**：2026-07-15
+> **最后更新**：2026-07-16
+
+---
+
+## 2026-07-16 任务账本与 Scene-first 完成状态对齐
+
+- `tasks.md` 重写为只保留真实未完成工作，清除旧投稿冲刺、已完成 Generation Round、
+  Repair lineage、Contract stale 与 Accept 事务等过期待办；
+- 明确下一唯一工程 Action 为 AI 权限与受保护权威表 SQL 静态门，后续依次为 Accept
+  完整硬门、正式 Snapshot export、旧库 Cutover、真实双章纵切与连续多章稳定性验证；
+- 修正 `bugfix.md` 最后更新日期，并清理不变量矩阵仍将 Accept 事务和 Generation Round
+  列为未完成的矛盾；
+- BFX-084~086 聚焦回归通过；全量 `pytest --disable-warnings -ra`：826 passed，
+  10 skipped。skipped 均为未启用的真实模型/IFLYTEK opt-in 集成测试。
+
+## 2026-07-16 BFX-086 Scene-first Accept 权威事务闭环
+
+- `accept_chapter` 不再消费事务外预建 Human Decision，改为一次调用在同一
+  `_atomic` 事务中创建 Selection Decision、Human Decision、sealed Snapshot/Scene
+  bindings、CAS Chapter Head 和 `CHAPTER_ACCEPTED` Runtime Event；
+- `scene-accept`、`produce-chapter` 自动 winner 与 force-accept 三条 CLI 路径均移除
+  `record_human_decision` 两步旁路，Event/CLI 可审计两个 Decision ID；
+- 新增 Selection、Human、Snapshot、Head、Event 五阶段 SQLite trigger 故障注入，
+  证明任一步失败均不遗留孤儿 Decision、半成品 Snapshot/binding、Head 变化或 Event；
+- 更新实现契约、不变量矩阵、任务和缺陷账本；
+- 聚焦测试 34 passed；全量 `pytest --disable-warnings -ra`：826 passed，10 skipped。
+  skipped 均为未启用的真实模型/IFLYTEK opt-in 集成测试。
+
+## 2026-07-16 BFX-085 Scene Contract supersede 与 stale 传播闭环
+
+- 激活同一 Scene 的后继 Contract 时，原 active Contract 在同一事务内转为
+  `superseded`，并记录后继 Contract ID；跨 Scene 替换被拒绝；
+- 新增 Revision、Branch Version、Chapter Snapshot 三层 stale mark 权威表，保持正文、
+  Branch 和 Snapshot 不可变，仅追加失效派生状态；
+- 后继 Contract 激活后自动标记所有旧 Contract Revision 及其派生 Branch/Snapshot，
+  同时取消旧 Contract 下仍 open 的 repair task，并写 runtime event；
+- generation task 禁止延伸 stale 父 Revision；repair task 可在 building Branch 上以新
+  active Contract 修复 stale 父 Revision，修复完成后重算并清除该 Branch 的 stale mark；
+- freeze、select、accept、Branch 正文读取以及 active Snapshot 正文/ID 读取均 fail-closed，
+  拒绝 stale lineage；
+- 增加幂等旧库迁移 `tools/migrate_scene_contract_supersede_stale.py` 与反事实测试；
+- 聚焦测试通过；全量 `pytest`：820 passed，10 skipped。详见 `bugfix.md` BFX-085。
+
+## 2026-07-16 BFX-084 AI Scene Repair Task 血统门补齐
+
+- 新增 `writing_scene_repair_tasks` 权威表与幂等旧库迁移工具，记录项目、章节、Scene、
+  Branch Version、父 Revision、active Contract、问题、状态和创建者；
+- `SceneRepository.create_revision` 对 AI Revision 强制 generation/repair 二选一：
+  generation task 必须对应目标候选 Branch 且未 rejected；repair task 必须真实存在、
+  作用域/父 Revision/Contract 一致且状态为 planned/running；
+- 新增 `create_repair_task`，创建时即验证 Branch-local Scene head 和 active Contract；
+- 增加伪 repair ID、已完成任务复用、双 task 同传、迁移幂等反事实测试；
+- 聚焦测试与全量 pytest 均通过。详见 `bugfix.md` BFX-084。
+
+## 2026-07-15 BFX-083 Shot TaskCard 裸 outline 旁路移除
+
+- 删除旧 Shot 预产稿链在 TaskCard 编译前对 winner outline 的无用读取；
+- TaskCard 明确只从已落库 shot/chapter/book contract 与 continuity context 编译；
+- 新增 AST 反事实与全源扫描，禁止 `compile_for_shot` 接收或读取裸 outline；
+- 聚焦测试及全量 pytest 均通过；详见 `bugfix.md` BFX-083。
+
+## 2026-07-15 BFX-082 契约激活三家族门收紧
+
+- 将 Scene Contract 激活证据从旧双家族口径升级为规范要求的三个不同模型家族；
+- Repository 与 SQLite trigger 双层 fail-closed，三条盲审均须 approve、不可看到前序
+  结论，且一家族一票；
+- 审查编排器执行架构师自检 + 两次异族独立审查，CLI 保证选出两个互异异族；
+- 更新测试工厂与反事实测试；契约定向 35 条及全量 pytest 均通过；
+- 详见 `bugfix.md` BFX-082。
+
+## 2026-07-15 BFX-079 契约层接线重做（方案 B/C/D 落地）
+
+> 架构根因修复（详见 `docs/contract-layer-rewire-design.md` 与 `bugfix.md`
+> BFX-079）。本轮把"契约层工具建好零生产调用方"的死代码接回 produce-chapter
+> 生产链路，撤除死线降级遗留的三层绕过（brief 裸拼 / 伪契约直接 approved /
+> record_contract_review 死代码）。连带缺陷登记 BFX-080-1~4。
+
+### B. produce-chapter 前置契约硬 gate + 契约下沉生产子步骤
+
+- 删 `_ensure_scene_and_contract`（V3 伪契约：contract_hash=sha256(brief) 冒充、
+  直接 `status="approved"` 跳双盲审查、activate 当 seal）。
+- 新 `_ensure_scene_contract_clauses`：幂等落四层真 clause 契约（draft 态，
+  交 ContractReviewOrchestrator 审查 + activate）。contract_hash 从四层 clause
+  内容派生（非 brief），created_by 携 architect family 后缀供异族校验。
+- 新 `_architect_model`/`_reviewer_model` helper：架构师主模型取数 + 异族审查员
+  三级兜底（contract_review role → jury 池异族 → 固定异族对），保证审查员必
+  与架构师异族（INV-CONTRACT-003）。
+- produce-chapter 接 ContractReviewOrchestrator：draft→self_check→
+  independent_review→approve→activate→compile_brief→产稿，无 confirmed 契约
+  拒绝产稿不降级。
+
+### C. 降级门 + 清死线策略 docstring
+
+- 撤 `brief_builder.py` docstring "死线收口用：不落四层 clause" 错误前提（文件
+  整体删除，见 D）。
+- 撤 `_ensure_scene_and_contract` "Dead-line policy skips the dual-blind
+  self_check / independent review; the human actor activation is the seal"
+  死线策略 docstring（函数删除）。
+
+### D. 契约成唯一真相源：brief 从四层 clause 编译，撤大纲裸拼 + 正文 context
+
+- 删 `brief_builder.py`（V1 死代码 `build_brief_from_outline` 从大纲裸拼 brief）。
+- `compile_brief`（`brief_compiler.py`）成唯一 brief 来源：从 active/approved
+  契约的四层 clause 编译，非生效契约必崩（防绕过 H1），四层不全必崩（H3）。
+- 跨章 context 注入（task#7 真能力）从 brief_builder 迁进 compile_brief：
+  `inject_prev_context=True`，从契约→scene→chapter_id 自动取前章封版正文头尾
+  各 300 字。第 1 章/前章未封版 graceful skip。
+- 删 `record_contract_review` 死代码（零生产调用方）。
+
+### 测试
+
+- 新 `tests/test_brief_compiler_context.py` 7 条：第1章不注入、长前章头尾300、
+  短前章整段、未封版 skip、inject_prev_context=False 强制不注入、draft 契约
+  拒编译、四层残缺必崩。全过。
+- compile_brief 端到端冒烟：落四层 clause→activate→编译出四层 brief + 字数约束
+  在末尾，通过。
+
+### H1/H2/H3/H4 防绕过收口与 Scene-first schema 恢复
+
+- H1：`compile_brief` 只从 active/approved Scene Contract 四层 clause 编译；非生效、
+  四层残缺、creative_opening 少于 2 条均拒绝。
+- H2：`writing_scene_contracts` 增 DB 激活守卫：active 合同必须四层齐全且
+  creative_opening >= 2；激活后禁止改删 clause、禁止改 contract_hash 与
+  source_bundle_hash；`SceneRepository.activate_contract` 同步做应用层前置校验。
+- 恢复 Scene-first schema 中 6 张被尾部追加误覆盖的核心表，并恢复新建库遗漏的
+  `suspense_decay_floor` / `require_ethics_review` 项目列；schema contract 更新为
+  72 tables / 93 indexes / 24 triggers / 1 view。
+- H3：反事实/不变量覆盖补齐至 9 条（含 clause 文本 mutation 必改变 brief、仅改
+  authority_rank 元数据不得改变 brief）。
+- H4：新增 `ink.linting.contract_rewire`，全源码静态扫描禁止 deadline-policy 绕过
+  文案与 outline→brief 旁路。
+- 全量 `python -m pytest -q` 通过（真实模型测试按既有条件 skip）。
+
+### E-1 同构检测基础门（不依赖卷级三表）
+
+- 新增 `ink.core.chapter_coherence`：候选章对全部前序 active sealed chapter 做 token
+  containment 比较，按 `shared / min(candidate, previous)` 计分，默认阈值 0.55。
+- 接入 `ChapterReviewOrchestrator`：命中时以 `chapter_scene_overlap` 阻断，并记录
+  前章号、重叠分数和共享 token 证据。
+- 加固读取边界：只接受 `writing_chapter_heads.active_snapshot_id` 指向且已 sealed 的
+  Snapshot；旧 sealed 但非 active 的版本、active 但未 sealed 的版本均不能成为比较源。
+
+### E-2 章级连贯维度 + 防绕过收口
+
+- `writing_chapter_reviews` 从 7 个评分维度扩为 8 个，新增 `chapter_coherence`；
+  `accepted` 数据库 CHECK 同步强制该维非空且 >=75，旧 7 维结果不能继续 accepted。
+- chapter review prompt 增「章间连贯与推进」准则：审前章状态自然承接、场景/动作/
+  冲突/钩子是否形成新变化，禁止照抄上一章、重复同一结构和用前情复述冒充推进。
+- 解析器对缺失 `chapter_coherence` fail closed：三 reviewer 均不完整时抛
+  `ChapterReviewLLMFailure`，不写 review 行、不填默认假分。
+- 新增反事实测试：coherence 低分独立阻断；文学 reviewer 全 99 分不能推翻 E-1
+  确定性同构门；只读 active sealed snapshot；忽略非 active 旧 sealed snapshot。
+- 修正 `test_m6_book_export._insert_review` 测试夹具，显式写入第 8 维，避免测试继续
+  构造已被 schema 禁止的 7 维 accepted 假数据。
+- 定向 13 条 coherence/chapter-review 测试通过；全量 `python -m pytest -q` 通过
+  （真实模型测试按既有条件 skip）。
+
+### 卡点（未解，转 tasks）
+
+- 卷级三表（章节功能分工表/视角信息分配表/未来回环分布表）是作者设定权，需
+  作者裁定，代码层只做读表注入 + 门校验。E-1 基础同构门与 E-2 连贯评分已完成；
+  剩余视角信息越界和未来回环分布检测待三表入库后接线。
 
 ---
 

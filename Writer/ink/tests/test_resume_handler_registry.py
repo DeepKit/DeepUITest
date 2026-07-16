@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ink.cli import main
-from ink.core.llm_gateway import LLMGateway
+from ink.core.llm_gateway import LLMGateway, MockProvider
 from ink.core.resume import ResumeManager
 from ink.errors import DataIntegrityError
 from ink.pipeline.import_orchestrator import ImportOrchestrator
@@ -17,6 +17,11 @@ from test_m6_book_export import make_accepted_chapter
 from test_m6_import import make_import_project
 from test_m3_writer_pipeline import RecordingDraftProvider, make_prompt_compiled_shot
 from factories import make_schema_db
+
+
+def _review_gateway(conn) -> LLMGateway:
+    """MockProvider 默认对 chapter_review:/book_check: 前缀返回全过 JSON。"""
+    return LLMGateway(conn, provider=MockProvider())
 
 
 def test_shot_resume_handler_registry_covers_current_m2_to_m4_actions() -> None:
@@ -73,7 +78,7 @@ def test_non_shot_resume_executes_chapter_review() -> None:
 
     result = ResumeManager(conn).execute_resume_point(
         {"phase": "chapter_review", "project_id": 1, "chapter_id": 1, "run_id": ids["run_id"]},
-        build_non_shot_resume_handlers(conn),
+        build_non_shot_resume_handlers(conn, _review_gateway(conn)),
     )
 
     assert result.quality_gate_passed is True
@@ -86,7 +91,7 @@ def test_non_shot_resume_executes_book_check() -> None:
 
     result = ResumeManager(conn).execute_resume_point(
         {"phase": "book_check", "project_id": 1, "up_to_chapter": 1},
-        build_non_shot_resume_handlers(conn),
+        build_non_shot_resume_handlers(conn, _review_gateway(conn)),
     )
 
     assert result is not None

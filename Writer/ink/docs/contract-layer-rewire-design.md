@@ -1,129 +1,98 @@
-# 契约层接线重做设计（根因修复，非补丁）
+# ink 契约层重写 · 防绕过执行方案（SPW 基线落地）
 
-> 日期：2026-07-15
-> 触发：五专家连续评审（AWT-20260715-171440）暴露 P0-1/2/3，深挖到架构根因
-> 性质：架构级修复，非局部 bug 补丁。配套 BFX-079（见 bugfix.md）
+> **纲领依据**：`A0031-SPW工程执行纪律与防绕过机制.md`（BetterCiv 工程开发线共同
+> 约束）。本文件是 ink 线在该基线上的专属执行细节。
+> **立项**：2026-07-15，作者裁定"契约唯一真相源；删污染数据；删违反代码重写不打
+> 补丁"。
+> **根因**：契约=数据表字段约束（`writing_*_contracts` 表 + DB CHECK），schema 忠实
+> 建了，但 produce-chapter 完全不读契约表，改从大纲裸拼 brief 产稿，只在契约表插
+> 空壳行满足 DB 约束。DB 约束管不到"整表被绕过"。
 
-## 1. 根因（实证，代码自白）
+---
 
-### 1.1 直接证据
+## 一、违反"契约唯一真相源"的代码（实证 6 处，待删）
 
-**证据 A — `_ensure_scene_and_contract` docstring（cli.py:~1530）**：
-> "Dead-line policy skips the dual-blind self_check / independent review;
->  the human actor activation is the seal."
+| # | 文件:行 | 违反 | 处置 |
+|---|---|---|---|
+| V1 | `src/ink/source/brief_builder.py` 全文 | 影子真相源：大纲裸拼 brief，"brief即契约" | **整文件删** |
+| V2 | `src/ink/cli.py:1551` 调 `build_chapter_brief` | produce-chapter 用影子 brief 产稿 | 删调用，改调契约层 |
+| V3 | `src/ink/cli.py:1628-1653` `_ensure_scene_and_contract` | 建伪契约：跳审查+四层空+`hash=sha256(brief)` | **整函数删重写** |
+| V4 | `brief_builder.py:24-95` 跨章 context 注入 | 正文当真相源（同构根） | 随 V1 删 |
+| V5 | `src/ink/source/outline_to_contract.py` 零生产调用 | 契约转换器成死代码 | **保留**，重写后被调用 |
+| V6 | `src/ink/jury/scores.py:14` `chapter_continuity` | 评正文连续感代偿契约约束 | 语义重写为契约合规 |
 
-它建的"契约"是空壳：`contract_hash = sha256(brief)`、`source_bundle_hash` 同一
-hash，design 3.1 四层 clause（hard_constraints/source_dna/soft_goals/
-creative_openings）一个没落，只建一行占位记录让外键跑通。
+---
 
-**证据 B — `brief_builder.py:8`**：
-> "死线收口用：不落 chapter contract payload / scene contract 四层 clause"
+## 二、污染数据（待删）
 
-**证据 C — 契约层工具零生产调用**：
-`confirm_and_apply` / `record_contract_review` / `draft_contract` 只挂在
-`confirm-contract` / `decision-session` 等 CLI 命令上（需人工手动跑），
-produce-chapter 生产链路完全不调。`record_contract_review` 零生产调用方
-（死代码）。
+| 库 | 表 | 行数 | 处置 |
+|---|---|---|---|
+| `baideng_prod.db` | writing_scene_contracts / scene_contract_clauses / scene_revisions / chapter_generation_rounds / chapter_candidate_branches / candidate_branch_versions / human_decisions | 3/0/9/3/9/9/2 | 清空（保留表结构） |
+| `baideng_bfx074_diag.db` | 同上一组 | 1/0/3/1/3/3/1 | 清空 |
+| `baideng.db` | 0 表空壳 | — | 删文件或重建 |
+| — | writing_meta_contracts（0 行）+ schema | — | **保留**，表结构正确 |
 
-**证据 D — git 考古**：
-契约层工具（DecisionSession/confirm_and_apply/stale 传播）是早期提交
-（1b93f3c5、259145e2）建好；brief_builder 是今天（03bea0fe）新建，直接
-裸拼大纲，未接任何契约层。两层不同时间、不同目的建，中间无接线。
+---
 
-### 1.2 根因三层
+## 三、重写方案 · SPW 五条硬约束落地到 ink
 
-1. **表面**：7-30 死线压着，为端到端跑通砍契约审查闭环，用人工激活当封条。
-2. **机制**：契约层（CLI 旁路工具）与生产层（produce-chapter）是两套独立
-   建的工具，从未接线。契约层建好即搁置成死工具，生产层裸奔。
-3. **真根因**：没有"契约必须贯穿生产"的硬约束，降级不可逆。第一次降级
-   （跳双盲审查）无追责无回补，后续每层（brief 裸拼、context 注入正文）
-   在"契约已缺位"错误前提上继续固化。错误前提被固化成架构。
+### H1 唯一受控入口（物理断路）
+- 新建 `src/ink/contract/brief_compiler.py`：`compile_brief(scene_contract_id) -> str`
+  从 `writing_scene_contract_clauses` 四层 clause 编译出 brief。**brief 是契约的产
+  物，不是大纲的产物**。
+- 产稿函数签名改为 `generate_scene(scene_contract_id: int)`，内部调
+  `compile_brief`。**不接受裸 brief 文本入参**——裸 str 入参在签名层就排除。
+- 删 `build_chapter_brief` / `build_brief_from_outline`（V1）。
 
-### 1.3 一句话根因
+### H2 DB 层约束焊死
+- `writing_scene_contracts` 加触发器：status 置 `active` 时，必须存在 ≥4 层且每层
+  ≥1 条 `writing_scene_contract_clauses` 记录，否则 DB 拒绝激活。
+- `writing_scene_contracts.source_bundle_hash` 改由 confirm 服务在置 active 时生
+  成，禁止代码自行 `sha256(brief)` 赋值（删 V3）。
+- `writing_scene_contracts.contract_hash` 同理，confirm 时由 DB 侧生成。
 
-> 设计定义了契约层（五级 Book/Volume/Part/Chapter/Scene + 四层 clause +
-> 架构师起草/复审师审查/返工闭环），早期也建了工具，但契约层只挂在需
-> 人工手动触发的 CLI 上，从未接线进自动生产链路；为赶死线建生产层时
-> 用 docstring 一句"死线策略"把契约审查砍成空壳占位，降级无恢复点、
-> 无门拦截、无追责，契约层沦为死工具、生产层裸奔，每层新代码都在
-> "契约已缺位"的错误前提上继续固化。根因 = "契约贯穿生产"无硬约束 +
-> 降级不可逆。
+### H3 反事实测试集（8 条，进 CI 必需门）
+1. 删契约 clause → `compile_brief` 必抛异常，不得降级。
+2. 插空壳契约（clause 全空）→ 置 active 必被触发器拒绝。
+3. 裸 str 入参调 `generate_scene` → 类型非法报错。
+4. 改一条 clause → 编译出的 brief 必随之变化。
+5. 绕过 `compile_brief` 直接读大纲拼 brief → 无该函数可调（V1 已删），测试确认无
+   旁路 import。
+6. 删任一门禁（触发器/读取门）→ mutation test 报警。
+7. 出现"直接拼数据不读契约表"代码模式 → 静态扫描命中。
+8. 出现"死线收口/临时跳过/简化实现"注释 → 静态扫描高风险标记。
 
-## 2. 层级落地现状（design §2 五级契约 vs 实现）
+### H4 Pre-commit 静态扫描
+- AST 扫"读大纲 markdown → 拼产稿输入"模式（即 brief_builder 类旁路）。
+- 正则扫高风险注释：`死线收口|临时跳过|简化实现|skips? (the )?review|deadline`。
+- 命中 → 高风险标记，需人工仲裁。
 
-| 契约级 | design 定义 | schema 表/列 | 实际有内容 | 注入 brief | 生产调用 |
-|---|---|---|---|---|---|
-| Book | 有 | book_quality_floor | 仅数值 75 | ❌ | ❌ |
-| Volume | 有 | volume_id | **NULL 空** | ❌ | ❌ |
-| Part | 有 | part_id | **NULL 空** | ❌ | ❌ |
-| Chapter | 3.1 四层 | writing_scene_contracts | **空壳** | ❌ | ❌ |
-| Scene | 3.1 四层 | writing_scene_contracts | 空壳占位 | ❌ | ❌ |
+### H5 异构双塔对账
+- 塔 A：主编码 agent（本会话 / 编码 subagent）。
+- 塔 B：异构模型（Sol 或 Kimi，与 A 不同家族），adversarial prompt"仅找代码如何违
+  背 design.md + 本文件；找不到=失职；只出 PASS/FAIL+证据，不生成不改不提建议"。
+- 塔 B 发现的违规 → 落成 H2/H3/H4 资产 → CI 硬门裁决。
+- ink 产稿封版前必过塔 B + H1-H4，**两者皆过才封版**。
 
-stale_propagation.py:19/75/76 自承"无 volume_id/part_id 列，退化为全部章节"。
+---
 
-## 3. P0-1/2/3 在此根下的统一解释
+## 四、执行顺序
 
-- **P0-1 同构** ← 缺 Chapter 级"结构职责"契约（本章开篇/承接/转折/收束）
-- **P0-2 全知** ← 缺 Chapter 级"知情边界"契约（3.1 hard_constraints 本有此字段，未注入）
-- **P0-3 无科幻** ← 缺 Volume/Book 级"未来回环分布"契约（哪章嵌哪个锚点）
+1. **删污染数据**（第二节）——止血。
+2. **删违反代码**（V1/V2/V3/V4）——拆影子架构。
+3. **建 H1**（brief_compiler + 改签名）+ **H2**（DB 触发器）——契约层接线+焊死。
+4. **建 H3+H4**（反事实测试 + 静态扫描）——CI 门。
+5. **纵向验证 1 章**——全链路跑通，确认契约约束生效、同构消除。
+6. **建 H5**（异构双塔流水线）——补盲区。
+7. **清 memory**——标 `brief即契约/context注入正文` 等旧记忆为 superseded。
 
-一个根，三个表现。
+---
 
-## 4. 解决方案（不打补丁，建硬约束）
+## 五、待作者裁定
 
-核心：把"契约贯穿生产"从设计意图变成代码硬约束——生产层不接契约就跑不起来。
+1. 第 1/2 章已封版正文（伪链路产物）——删除还是保留参考？
+2. 卷级三表内容（章节功能分工/视角信息分配/未来回环分布）——设定权，代码只读表注入。
 
-### 4.1 接线：produce-chapter 前置契约为硬 gate
-- produce-chapter 开头校验：本章是否存在 `confirmed` 状态的 Chapter 级契约
-  （含四层 clause payload）。无 → **拒绝产稿，报"请先 confirm 契约"**，不降级。
-- 删 `_ensure_scene_and_contract` 的"死线策略跳过双盲审查"降级路径，恢复
-  架构师起草→复审师独立审查→过度约束返工闭环为产稿必经步骤。
+---
 
-### 4.2 契约层下沉进生产链路（CLI 旁路 → 流水线环节）
-把三步做成 produce-chapter 内部自动子步骤，不再依赖人工手动跑 CLI：
-1. `draft_contract`（架构师起草）：小模型从大纲 + 卷级三表生成章级四层 clause
-2. `record_contract_review`（复审师独立核源）：查过度约束/可执行性，过度约束→返工
-3. `confirm_and_apply`（落契约版本 + stale 传播）
-
-### 4.3 加降级恢复点 + 降级门
-- 任何"跳过某契约步骤"的降级，代码里留 `debt_marker`（跳了什么、何时恢复）。
-- produce-chapter 入口校验"存在 debt_marker → 警告/拒绝"。
-- 降级必须可追责、可恢复，不可默默固化。先清那句"死线策略跳过"docstring。
-
-### 4.4 契约成为唯一真相源
-- brief_builder 改读契约表（卷级三表 + 章级四层）拼 brief。
-- 撤掉大纲 markdown 裸拼 + 前章正文 context 注入（BFX-078 的正解）。
-- 大纲降为"契约架构师起草的输入"，非产稿直接真相源。
-
-### 4.5 加成篇连贯门 + jury 连贯维度
-- coherence_gate：查同构（本章动作∩前章动作超阈值→失败）/视角越界（角色
-  知情 ⊄ 契约分配→失败）/未来回环分布（本章是否落卷级分布表某锚点→缺则标记）
-- jury scores 加"与前章连贯性"维度。
-- 让"契约层接没接"在质量门上可观测：契约没接，连贯分必低，门会拦。
-
-## 5. 落地顺序
-
-1. 4.2 契约层下沉为生产子步骤
-2. 4.1 produce-chapter 硬前置契约 gate
-3. 4.3 降级门 + 清 debt_marker
-4. 4.4 brief 改读契约表（撤正文 context）
-5. 4.5 连贯门 + jury 连贯维度
-
-## 6. 卡点（需作者裁定）
-
-卷级三表内容（设定层，非代码层）：
-- **章节功能分工表**：第N章 = 开篇/承接/转折/收束？（修 P0-1）
-- **视角信息分配表**：谁在第N章知道什么？（修 P0-2）
-- **未来回环分布表**：2063档案/许望舒/衡光锚点落哪章？（修 P0-3）
-
-这三张表是作者设定权，代码层只做"读表注入 brief + 门校验"，不替作者写内容。
-作者定完三表，4.2~4.5 代码接线即可开工。
-
-## 7. 关联
-
-- BFX-079（本根因登记，见 bugfix.md）
-- BFX-078（context 注入正文原文，本根因的表层补丁，修复正解 = 4.4 撤正文 context）
-- memory: ink-context-injection-raw-text-backfires（表层反例）
-- memory: ink-contract-layer-rewire-root-cause（本根因，防再犯）
-- 评审报告: D:\_Progs\.BetterCiv\09_工程脚本\ai_workbench\runs\
-  AWT-20260715-171440-5aaf49\amy-review-synthesis.md
+**版本**：v1.0 · **纲领**：A0031 · **批准**：作者裁定 2026-07-15。

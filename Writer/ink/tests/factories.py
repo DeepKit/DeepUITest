@@ -26,6 +26,30 @@ def make_schema_db() -> sqlite3.Connection:
     return initialize_schema(connect_memory())
 
 
+def insert_contract_approve_reviews(
+    conn: sqlite3.Connection, scene_contract_id: int
+) -> None:
+    """Insert the three-family blind approvals required before activation."""
+    for order, (model, family) in enumerate(
+        (
+            ("architect-model", "architect-family"),
+            ("reviewer-model-a", "reviewer-family-a"),
+            ("reviewer-model-b", "reviewer-family-b"),
+        ),
+        start=1,
+    ):
+        conn.execute(
+            """
+            INSERT INTO writing_scene_contract_reviews
+                (scene_contract_id, reviewer_model, reviewer_family, prompt_hash,
+                 blind_context_hash, visible_prior_reviews, review_order, verdict,
+                 evidence_json, created_at)
+            VALUES (?, ?, ?, ?, ?, 0, ?, 'approve', '{}', ?)
+            """,
+            (scene_contract_id, model, family, f"prompt-{order}", f"blind-{order}", order, NOW),
+        )
+
+
 def insert_minimal_draft(conn: sqlite3.Connection, writer_model: str = "writer-a") -> dict[str, int | str]:
     conn.execute(
         """

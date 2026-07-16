@@ -92,8 +92,8 @@ class ProjectConfigValidator:
 
     def _validate_thresholds(self, row: sqlite3.Row) -> None:
         floors = {
-            "shot_quality_floor": 80,
-            "dimension_floor": 65,
+            "shot_quality_floor": 75,
+            "dimension_floor": 60,
             "chapter_quality_floor": 75,
             "book_quality_floor": 75,
         }

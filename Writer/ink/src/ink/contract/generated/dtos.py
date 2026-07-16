@@ -32,6 +32,26 @@ class ShotContractDTO(GeneratedContractDTO):
     soft_constraints: dict[str, object]
 
 @dataclass(frozen=True)
+class BookContextDTO(GeneratedContractDTO):
+    world: tuple[str, ...]
+    character: tuple[str, ...]
+    narrative: tuple[str, ...]
+    motif: tuple[str, ...]
+
+@dataclass(frozen=True)
+class ChapterContractDTO(GeneratedContractDTO):
+    chapter_id: int
+    scope_id: str
+    pursuit_type: str
+    main_engine: str
+    emotion_target: str
+    silence_point: str
+    causal_anchor: str
+    hook_type: str
+    light_state: str
+    chapter_end_hook: str
+
+@dataclass(frozen=True)
 class OutlineSpecDTO(GeneratedContractDTO):
     outline_id: int
     shot_contract_id: int

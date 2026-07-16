@@ -13,6 +13,8 @@ from ink.outline.drift import cjk_bigram_overlap, is_drift_rejected
 from ink.outline.repository import OutlineRepository
 from ink.pipeline.outline_orchestrator import OutlineOrchestrator
 from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
+from ink.source.outline_parser import parse_outline
+from ink.source.outline_to_contract import to_chapter_contract_payload, to_shot_contract_dict
 from ink.linting.orchestrator_signature import lint_shot_orchestrator_source
 from factories import NOW, insert_minimal_draft, make_schema_db
 
@@ -56,18 +58,18 @@ def test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards() -
     assert rows[-1] == (new_id, None)
 
 
-def test_task_card_compiler_compiles_from_db_contract_and_outline() -> None:
+def test_task_card_compiler_compiles_only_from_db_contract() -> None:
     conn = make_schema_db()
     ids = insert_minimal_draft(conn)
     insert_contract_children(conn, int(ids["shot_contract_id"]))
     conn.commit()
     compiler = TaskCardCompiler(conn)
 
-    card = compiler.compile_for_shot(str(ids["shot_id"]), int(ids["run_id"]), "她走进档案室发现钥匙。")
+    card = compiler.compile_for_shot(str(ids["shot_id"]), int(ids["run_id"]))
 
     assert card.shot_contract_id == ids["shot_contract_id"]
     assert "enter room" in card.compiled_instructions
-    assert "她走进档案室发现钥匙" in card.compiled_instructions
+    assert "Outline:" not in card.compiled_instructions
 
 
 def test_prompt_snapshot_compiler_supersedes_by_task_card_persona() -> None:
@@ -118,6 +120,57 @@ def test_outline_drift_threshold_and_winner_uniqueness() -> None:
         (ids["shot_contract_id"],),
     ).fetchall()
     assert rows == [(outline_b,)]
+
+
+def test_outline_drift_score_is_source_coverage_not_length_penalized_jaccard() -> None:
+    source = "许怀山检查第十七批密封件微裂纹"
+    detailed = (
+        "承接上一章门外脚步停住的悬念。许怀山检查第十七批密封件微裂纹，"
+        "先核对湿热记录，再把裂纹位置、批号和温度逐项写入工艺卡。"
+        "最后让门外来人停在白灯照不到的位置。"
+    )
+
+    score = cjk_bigram_overlap(source, detailed)
+
+    assert score == 1.0
+
+
+def test_enhanced_chapter_contract_preserves_pressure_deadline_and_parallel_actions() -> None:
+    chapter = parse_outline(
+        """### 第1章：第十七批
+> **追读类型**：追查型 | **主引擎**：预埋种植
+- **产出物**：第十七批
+- **场景**：1979年4月，军工配套厂。许怀山在车间抽检
+- **压力来源**：前线补给催产
+- **明确期限**：下午三点前发车
+- **并行动作**：硫化、抽检、钉箱和湿热追踪同时进行
+- **冲突**：试验未完但流程允许放行
+- **不可逆选择**：签字后卡车立即离厂
+- **责任轨迹**：工艺卡到封条再到司机接货
+- **工业因果桥**：老师傅向新工人说明密封失效如何影响弹药
+- **信息延迟**：正式哑弹反馈尚未到厂
+- **目标感受**：快生产、慢追责
+- **叙事速度**：快
+- **未来义务**：不得提前调查事故
+- **去重硬门**：只签字一次
+- **章末钩子**：货已走，试验仍在跑
+"""
+    )[0]
+
+    shot = to_shot_contract_dict(chapter)
+    joined_beats = "\n".join(shot["must_land"]["beats"])
+    assert "前线补给催产" in joined_beats
+    assert "下午三点前发车" in joined_beats
+    assert "同时进行" in joined_beats
+    assert "老师傅" in joined_beats
+    assert "签字后卡车立即离厂" in shot["must_land"]["events"]
+    assert "正式哑弹反馈尚未到厂" in shot["must_land"]["information_releases"]
+    assert any("不得提前调查事故" in item for item in shot["anti_write"]["forbidden_facts"])
+
+    chapter_payload = to_chapter_contract_payload(chapter)
+    assert chapter_payload["pressure_source"] == "前线补给催产"
+    assert chapter_payload["deadline"] == "下午三点前发车"
+    assert chapter_payload["narrative_speed"] == "快"
 
 
 def test_outline_orchestrator_generates_minimum_eligible_outlines_and_selects_winner() -> None:

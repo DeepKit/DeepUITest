@@ -30,6 +30,7 @@ class HumanReviewOrchestrator:
             raise DataIntegrityError("human accept cannot override chapter quality failure")
         if has_blocking_issues(self.conn, project_id):
             raise DataIntegrityError("unresolved book blocking issue prevents chapter accept")
+        _require_ethics_approval(self.conn, project_id, chapter_id, run_id)
 
         shots = _load_accept_ready_shots(self.conn, project_id, chapter_id, run_id)
         if not shots:
@@ -161,6 +162,34 @@ class HumanReviewOrchestrator:
         else:
             self.conn.execute("RELEASE human_revise_chapter")
             return ChapterRevisionResult(decision_id=decision_id, run_id=new_run_id, shot_ids=new_shot_ids)
+
+
+def _require_ethics_approval(
+    conn: sqlite3.Connection,
+    project_id: int,
+    chapter_id: int,
+    run_id: int,
+) -> None:
+    row = conn.execute(
+        "SELECT require_ethics_review FROM writing_projects WHERE project_id=?",
+        (project_id,),
+    ).fetchone()
+    if row is None or int(row[0]) == 0:
+        return
+    ethics = conn.execute(
+        """
+        SELECT risk_level, recommendation
+        FROM writing_chapter_ethics_reviews
+        WHERE project_id=? AND chapter_id=? AND run_id=?
+        """,
+        (project_id, chapter_id, run_id),
+    ).fetchone()
+    if ethics is None:
+        raise DataIntegrityError("required chapter ethics review is missing")
+    if str(ethics[1]) != "approve" or str(ethics[0]) == "blocking":
+        raise DataIntegrityError(
+            f"chapter ethics review prevents accept: risk={ethics[0]} recommendation={ethics[1]}"
+        )
 
 
 def _load_pending_review(conn: sqlite3.Connection, project_id: int, chapter_id: int, run_id: int) -> dict[str, object]:

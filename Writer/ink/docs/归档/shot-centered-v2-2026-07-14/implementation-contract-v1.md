@@ -1,12 +1,16 @@
-# 实现契约 v1 — dataclass / DB / 模块接口
+# 实现契约 v1 — dataclass / DB / 模块接口（Shot 中心历史基线）
 
-> **状态**：v1（2026-07-03，评审修订），对应 `design-v2.md`
+> **状态**：v1 旧实现基线；2026-07-14 Scene-first 迁移待实施
 > **定位**：从 0 构建的完整生产技术契约。不沿用旧系统 schema，重新设计 49 张生产表（40 张生产内核表 + 9 张 v1.1 主编台/源文档产品化表）。
 > **评审修订**：jury 方案 B（3 裁判全评 12 维）、契约核心字段拆 5 张结构化表、resume 语义补齐、字段消费 lint 改访问器 API + AST、物理隔离加 DB VIEW + sqlparse、AI 调用审计、人类决策、导入账本、checkpoint 与契约条款审计。
+>
+> **优先级声明**：本文件中的 shot 中心 DDL、接口和状态机是当前实现基线，不再是目标架构。目标实现必须遵守 [scene-first-authority-amendment.md](scene-first-authority-amendment.md)：Scene Revision 为正文原子，Chapter Candidate Branch 为选优单位，Chapter Snapshot 为正式稿权威。Scene 迁移完成前不得把本文件标记为新流程已落实。
 
 ---
 
 ## 1. 代码生成的 dataclass 链
+
+> **Scene-first 迁移解释**：本章中的 `ShotContract`、`shot_id` 和 `writing_shot_*` 接口是当前代码基线。目标代码生成链应以 `SceneContract` 为正式契约，以 Scene Revision 为正文原子；内部 Shot DTO 只允许存在于 Scene 生成器内部，不得穿透到 accepted canonical、正式导出或章节选优接口。
 
 ### 1.1 生成方式
 
@@ -170,7 +174,9 @@ class ProjectConfig:
 - `draft_count <= len(writer_model_pool)`；`jury_model_pool_min >= 3`。
 - `StyleQualityProfile` 必须含 `target_readers`、`reader_pull_target`、`blind_review_policy`、`protected_roughness`、`voice_anti_samples`。
 
-#### ShotContract（shot 契约，核心字段对应 5 张结构化表）
+#### 旧实现 ShotContract（迁移来源）
+
+> 目标替代物为 `SceneContract(hard_constraints, source_dna, soft_goals, creative_openings, entry_state, exit_state, source_refs)`。以下模型保留用于读取旧数据库、迁移和回归，不得继续扩展为新的正式契约权威。
 
 ```python
 class MustLand(BaseModel):

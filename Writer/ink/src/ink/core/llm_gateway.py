@@ -77,8 +77,31 @@ class MockProvider:
 
             score = 90 if "polished text" in prompt_text else 84
             text = json.dumps({col: score for col in SCORE_COLUMNS}, ensure_ascii=False)
+        elif idempotency_key.startswith("chapter_review:"):
+            # chapter_review 真实化后解析 7 维 JSON + review_notes。默认全过（92）。
+            from ink.pipeline.chapter_review_orchestrator import CHAPTER_REVIEW_DIMENSIONS
+
+            text = json.dumps(
+                {col: 92 for col in CHAPTER_REVIEW_DIMENSIONS} | {"review_notes": "mock pass"},
+                ensure_ascii=False,
+            )
+        elif idempotency_key.startswith("book_check:"):
+            # book_check 真实化后解析 6 维 JSON + issues。默认全过 + 空 issues。
+            from ink.pipeline.book_rolling_check_orchestrator import BOOK_CHECK_DIMENSIONS
+
+            text = json.dumps(
+                {col: 92 for col in BOOK_CHECK_DIMENSIONS} | {"issues": []}, ensure_ascii=False
+            )
+        elif idempotency_key.startswith("outline:") and "Contract source: " in prompt_text:
+            source = prompt_text.split("Contract source: ", 1)[1].splitlines()[0]
+            text = f"{source} outline"
+        elif idempotency_key.startswith("polish:"):
+            text = "polished text"
         else:
-            text = f"[mock:{model_name}:{idempotency_key}] generated draft"
+            # Keep offline orchestration tests readable.  Mock provenance remains
+            # explicit in writing_ai_call_attempts.model_provider and must never be
+            # accepted as real-model quality evidence.
+            text = f"scene text {model_name} {idempotency_key}"
         return ModelResult(
             text=text,
             model_name=model_name,
@@ -156,6 +179,9 @@ class OpenAICompatibleProvider:
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
                     "Idempotency-Key": idempotency_key,
+                    # urllib 默认 UA 是 "Python-urllib/x.x"，被 Cloudflare 当机器人拦(403 code 1010)。
+                    # 给一个普通浏览器/SDK UA 绕过 WAF 机器人规则。
+                    "User-Agent": "ink-writer/1.1 (OpenAI-compatible client)",
                 },
                 method="POST",
             )
@@ -291,6 +317,9 @@ class LLMGateway:
         """单 provider 老逻辑：无 role_config 时回退。落一次 attempt + 一次 record_call。"""
         now = now_utc_iso()
         prompt_hash = _sha256(prompt_text)
+        # call_type 未配 role_config（测试注入式 provider / chapter_review·book_check 无 role chain）
+        # 时 model_name 可能为 None；DB model_name NOT NULL，回退 provider_name 保证审计可写。
+        effective_model_name = model_name or self.provider_name
         cursor = self.conn.execute(
             """
             INSERT INTO writing_ai_call_attempts
@@ -304,7 +333,7 @@ class LLMGateway:
                 run_id,
                 call_type,
                 model_provider or self.provider_name,
-                model_name,
+                effective_model_name,
                 idempotency_key,
                 prompt_id,
                 prompt_hash,
@@ -317,7 +346,7 @@ class LLMGateway:
         # 别名路由：把 model_name（可能是生产别名如 "smart-polish"）翻译成真实模型名调 provider。
         # DB 记录的 model_name（上方 INSERT）保持原别名，便于审计追踪；返回的 ModelResult 也还原成别名，
         # 以满足 SoftSealOrchestrator 校验 winner.writer_model == "smart-polish" 的生产契约。
-        real_name = self._resolve_model_alias(project_id, model_name)
+        real_name = self._resolve_model_alias(project_id, effective_model_name)
         try:
             result = self.provider.complete(prompt_text, real_name, idempotency_key)
         except Exception as exc:

@@ -5,6 +5,7 @@ import json
 import pytest
 
 from ink.errors import DataIntegrityError
+from ink.core.llm_gateway import LLMGateway, MockProvider
 from ink.core.text_repository import TextRepository
 from ink.pipeline.book_rolling_check_orchestrator import BookRollingCheckOrchestrator
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
@@ -15,9 +16,14 @@ from factories import NOW, make_schema_db
 from test_m5_chapter_review import make_soft_sealed_chapter
 
 
+def _review_gateway(conn) -> LLMGateway:
+    """MockProvider 默认对 chapter_review:/book_check: 前缀返回全过 JSON（92 + 空 issues）。"""
+    return LLMGateway(conn, provider=MockProvider())
+
+
 def test_book_rolling_check_interval() -> None:
     conn = make_accepted_chapter()
-    orchestrator = BookRollingCheckOrchestrator(conn)
+    orchestrator = BookRollingCheckOrchestrator(conn, _review_gateway(conn))
 
     assert orchestrator.run_if_due(1, 1) is None
     conn.execute("UPDATE writing_projects SET chapter_rolling_check_interval = 1 WHERE project_id = 1")
@@ -36,7 +42,7 @@ def test_book_blocking_issue_blocks_accept_export() -> None:
     conn = make_soft_sealed_chapter()
     ids = _ids(conn)
     _insert_book_blocking_result(conn)
-    ChapterReviewOrchestrator(conn).review_chapter(1, 1, int(ids["run_id"]))
+    ChapterReviewOrchestrator(conn, _review_gateway(conn)).review_chapter(1, 1, int(ids["run_id"]))
 
     with pytest.raises(DataIntegrityError):
         HumanReviewOrchestrator(conn).accept_chapter(
@@ -123,7 +129,7 @@ def test_four_axis_isolation() -> None:
 def make_accepted_chapter():
     conn = make_soft_sealed_chapter()
     ids = _ids(conn)
-    ChapterReviewOrchestrator(conn).review_chapter(1, 1, int(ids["run_id"]))
+    ChapterReviewOrchestrator(conn, _review_gateway(conn)).review_chapter(1, 1, int(ids["run_id"]))
     HumanReviewOrchestrator(conn).accept_chapter(
         1,
         1,
@@ -158,8 +164,8 @@ def _insert_review(conn, *, run_id: int, status: str, quality_gate_passed: int) 
             (project_id, chapter_id, run_id, status,
              chapter_continuity_hard, pov_consistency, character_consistency,
              chapter_hook_soft, rhythm_curve, motif_density, info_gap_lifecycle,
-             quality_gate_passed, blocking_issues, reviewed_at)
-        VALUES (1, 1, ?, ?, 82, 82, 82, 82, 82, 82, 82, ?, '[]', ?)
+             chapter_coherence, quality_gate_passed, blocking_issues, reviewed_at)
+        VALUES (1, 1, ?, ?, 82, 82, 82, 82, 82, 82, 82, 82, ?, '[]', ?)
         """,
         (run_id, status, quality_gate_passed, NOW),
     )

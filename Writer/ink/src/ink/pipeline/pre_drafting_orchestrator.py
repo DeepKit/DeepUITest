@@ -11,7 +11,6 @@ from ink.core.context_snapshot import prompt_context_payload, save_context_snaps
 from ink.core.llm_gateway import LLMGateway
 from ink.core.state_machine import load_status, transition
 from ink.errors import DataIntegrityError
-from ink.outline.repository import OutlineRepository
 from ink.pipeline.outline_orchestrator import OutlineOrchestrator
 
 
@@ -44,9 +43,7 @@ class PreDraftingOrchestrator:
         if status not in {"outline_confirmed", "task_card_compiled"}:
             raise DataIntegrityError(f"task card cannot compile from status: {status}")
 
-        shot_contract_id = _lookup_shot_contract_id(self.conn, shot_id, run_id)
-        outline = OutlineRepository(self.conn).load_winner(shot_contract_id)
-        card = TaskCardCompiler(self.conn).compile_for_shot(shot_id, run_id, outline.evaluated_outline_text)
+        card = TaskCardCompiler(self.conn).compile_for_shot(shot_id, run_id)
         if status == "outline_confirmed":
             transition(self.conn, shot_id, run_id, "outline_confirmed", "task_card_compiled")
         return card

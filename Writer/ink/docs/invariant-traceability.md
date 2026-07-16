@@ -1,94 +1,118 @@
-# 测试与审计追踪矩阵
+# Ink v2 Scene-first 不变量与测试追踪
 
-> **状态**：v1（2026-07-04，质量硬门禁修订）
-> **定位**：把旧 bugfix、架构决策和新生产能力映射到新系统的不变量、测试与阻断里程碑。没有映射的能力不得视为完成。
+> 只把已有自动化证据的规则登记为正式 `INV-*`。尚未实现的门禁列在末节，
+> 不能用“计划中的测试”冒充已落实不变量。旧 Shot 基线在 Cutover 前继续回归，
+> 但不得扩展为新的正文权威。
 
-## 1. 使用规则
+## Scene-first 已执行不变量
 
-- 每个 invariant 必须有稳定 ID。
-- 每个 invariant 必须对应至少一个新测试或 lint。
-- 旧测试可以不机械迁移，但旧测试覆盖的领域不变量不能丢。
-- A/C 桶迁移按“不变量数”验收，不按用例数验收。
-- M0-M6 任一里程碑若缺本表标记为 blocking 的 invariant，对应里程碑不得完成。
+| ID | 不变量 | 自动化证据 |
+|---|---|---|
+| INV-SCENE-001 | Scene Revision创建后不可UPDATE | `test_scene_revision_update_is_blocked_by_database_trigger` |
+| INV-SCENE-002 | 被Branch/Snapshot引用的Revision不可DELETE | `test_referenced_scene_revision_cannot_be_deleted` |
+| INV-INTERNAL-SHOT-001 | Internal Shot无accepted/canonical/seal字段 | `test_internal_shot_has_no_canonical_or_acceptance_columns` |
+| INV-BRANCH-001 | Frozen Branch Version及绑定不可修改 | `test_frozen_branch_blocks_revision_and_binding_mutation` |
+| INV-BRANCH-002 | expected parent按Branch-local Scene head校验，可合法并行分叉 | `test_two_branches_can_fork_from_same_branch_local_parent` |
+| INV-SCENE-CAS-001 | 过期Branch-local parent写入失败 | `test_stale_branch_local_parent_is_rejected` |
+| INV-SNAPSHOT-001 | Snapshot及其Scene绑定不可修改 | `test_snapshot_and_snapshot_bindings_are_immutable` |
+| INV-SNAPSHOT-002 | 同一project/chapter只有一个Chapter Head | `test_chapter_head_is_unique_per_project_chapter` |
+| INV-SNAPSHOT-003 | 后续Scene Revision不改变旧Snapshot读取 | `test_snapshot_text_does_not_follow_later_scene_revision` |
+| INV-CHAPTER-CAS-001 | 过期Head version不能Accept且事务不遗留Snapshot或Decision | `test_stale_expected_head_version_rolls_back_without_new_snapshot` |
+| INV-ACCEPT-001 | Accept同事务创建Selection Decision、Human Decision、sealed Snapshot、Head CAS与Runtime Event | `test_accept_creates_sealed_snapshot_and_active_head` |
+| INV-ACCEPT-002 | Accept任一权威写入阶段失败时全部回滚，不留孤儿Decision或半成品Snapshot/Head/Event | `test_accept_fault_rolls_back_all_authority_rows` |
+| INV-SCENE-CONTRACT-001 | 同一Scene最多一个active Contract | `test_same_scene_allows_only_one_active_contract` |
+| INV-SCENE-AI-001 | AI Revision必须绑定generation或repair task | `test_ai_revision_requires_auditable_generation_or_repair_task` |
+| INV-ROUND-001 | 合法跳转限于跳转表所列条目；表外非法 | `test_round_legal_transitions_advance`, `test_round_transition_not_in_table_is_illegal` |
+| INV-ROUND-002 | 非法跳转抛`IllegalTransitionError` | `test_round_illegal_transition_raises_illegal_transition_error` |
+| INV-ROUND-003 | 状态迁移CAS，过期写入抛`ConcurrentModificationError` | `test_round_cas_rejects_stale_expected_status` |
+| INV-ROUND-004 | 首批0过线→终态`initial_zero_pass` | `test_round_initial_zero_pass_terminates_round` |
+| INV-ROUND-005 | 补稿仅一次，`supplementing`唯一前置`validating_initial`且不可回流 | `test_round_supplement_only_once_from_validating_initial` |
+| INV-ROUND-006 | `ready_for_selection`后`begin_selection`硬守eligible_count≥3 | `test_round_ready_for_selection_requires_three_eligible` |
+| INV-ROUND-007 | 终态不可继续迁移（抛`TerminalStateError`）；`superseded`只能从非终态进入 | `test_round_terminal_state_rejects_further_transition`, `test_round_superseded_only_from_non_terminal` |
+| INV-ROUND-008 | `record_eligible_branch`同事务branch CAS+round.eligible_count CAS（原子） | `test_record_eligible_branch_increments_count_atomically` |
+| INV-ROUND-009 | `call_count`单调非减记账（本轮不熔断，熔断留P0） | `test_increment_call_count_is_monotonic` |
+| INV-ROUND-010 | 恢复点`RoundState`含status/eligible/call/failure_reason/target counts | `test_get_round_state_returns_full_recovery_point` |
+| INV-ROUND-011 | 驱动器：planned→全路径→selected | `test_driver_advances_planned_to_selected` |
+| INV-ROUND-012 | 驱动器：首批0过线→initial_zero_pass | `test_driver_initial_zero_pass_on_zero_eligible` |
+| INV-ROUND-013 | 驱动器：1-2过线→补3篇 | `test_driver_supplements_when_partial_initial_pass` |
+| INV-ROUND-014 | 驱动器：补稿后<3→candidate_shortage | `test_driver_candidate_shortage_after_supplement` |
+| INV-ROUND-015 | 驱动器：>=3但无实质差异→diversity_shortage | `test_driver_diversity_shortage_when_no_substantive_difference` |
+| INV-ROUND-016 | 驱动器：call_count熔断→failed | `test_driver_call_count_circuit_breaker` |
+| INV-ROUND-017 | 驱动器幂等恢复（从中间态续跑不重做） | `test_driver_resumes_from_intermediate_state` |
+| INV-ROUND-018 | `start_validating_branch` CAS拒非generating | `test_start_validating_branch_cas_rejects_non_generating` |
+| INV-ROUND-019 | `advance_to_literary_review` CAS拒非eligible | `test_advance_to_literary_review_cas_rejects_non_eligible` |
 
-## 2. P0 阻断不变量
+## Cutover前必须保持的旧基线不变量
 
-| ID | 来源 | 不变量 | 新测试 / 门禁 | 里程碑 |
-|----|------|--------|---------------|--------|
-| INV-CONTRACT-001 | B28/B48/B67/B87/B92 | dataclass 上游字段必须被消费，不得动态访问 | `test_field_usage_lint_*` + `field_usage_lint` | M0 |
-| INV-SQL-001 | B19 | 非 `core/text_repository.py` 不得直接访问 `writing_shot_revisions` | `test_sql_access_lint_*` | M0 |
-| INV-DDL-001 | 评审 P0 + v1.1 产品化 | 49 张生产表 DDL 必须在内存 SQLite 执行成功 | `test_schema_executes_all_ddl` | M0/P1 |
-| INV-CONFIG-001 | D1/P0-4 | 模型池必须是非空唯一字符串数组；默认写手池与裁判池无交集，重叠时排除 writer 后仍有 3 个 jury model | `test_project_config_validator_model_pools` | M0 |
-| INV-TIME-001 | D5 | 所有业务时间字段统一 UTC ISO 8601 `YYYY-MM-DDTHH:MM:SS.sssZ` | `test_now_utc_iso_format` | M0 |
-| INV-STATE-001 | P0-2 | 14 态状态机只允许矩阵内转移，winner 必须经 polish_revision，终态无出边 | `test_state_machine_matrix` | M1 |
-| INV-STATE-002 | P0-2 | 禁止除 `core/state_machine.py` 外直接 `UPDATE writing_shots SET status` | `state_update_lint` | M0 |
-| INV-REVISION-001 | B19 | `v_current_text` 每 shot 恰一行，封版行优先 | `test_v_current_text_single_row` | M0 |
-| INV-REVISION-002 | B92 | stale revision 不 skip，下游必须重跑 | `test_resume_detects_stale_upstream_revision` | M1 |
-| INV-RUN-001 | B62/B61 | logical_shot_id、run_id、accepted、is_current 四维正交 | `test_four_axis_isolation` | M1 |
-| INV-SOFT-001 | N2 | soft gate N 计数唯一权威源是 `writing_soft_gate_counters` | `test_soft_gate_counter_db_authority` + `test_soft_gate_orchestrator_records_n1_counter_without_redo` | M1 |
-| INV-SOFT-002 | N2 | N=2 翻盘只允许在 `winner_selected`；进入 `polish_revision`/`soft_sealed` 后新建 run | `test_resume_manager_handles_redo_in_progress_branches` + `test_soft_gate_orchestrator_sets_redo_in_progress_on_n2_idempotently` + `test_redo_candidates_merge_with_existing_pool_and_can_flip_winner` | M1/M4 |
-| INV-LLM-001 | B59 | 同类失败连续 `consecutive_failure_circuit_break`（默认 3）次熔断，失败类型切换归零 | `test_llm_failure_streaks` | M1 |
-| INV-LLM-002 | P0-5 | shot 总 AI 调用达到 `max_total_llm_calls`（默认 40）上限转 `failed` | `test_total_llm_budget_transitions_failed` | M1 |
-| INV-LLM-003 | 运行时评审 | 所有 AI 调用必须经 `LLMGateway` 并落 attempt | `llm_access_lint` + `test_ai_attempt_written` | M0/M1 |
-| INV-QUALITY-001 | 质量铁律 | `final_score < shot_quality_floor` 的 draft 不得 winner | `test_jury_quality_floor_failure_cannot_select_winner` | M4 |
-| INV-QUALITY-002 | 质量铁律 | 任一核心维度低于 `dimension_floor` 不得 `quality_gate_passed` / soft seal | `test_jury_dimension_floor_failure_cannot_select_winner` | M4 |
-| INV-QUALITY-003 | 质量铁律 | 裁判分歧超过阈值不得直接 winner，必须升级复核 | `test_jury_disagreement_failure_cannot_select_winner` | M4 |
-| INV-QUALITY-004 | 质量铁律 | winner 必须经过 `polish_revision` 并重新过 hard gates + quality floor 后才能 soft seal | `test_polish_winner_writes_revision_and_returns_to_hard_gate` + `test_unpolished_winner_cannot_soft_seal` + `test_polished_winner_repasses_quality_before_soft_seal` | M4 |
-| INV-QUALITY-005 | 质量铁律 | 章级 7 维任一低于阈值不得 accepted | `test_chapter_quality_gate_blocks_accept` | M5 |
-| INV-QUALITY-006 | 质量铁律 | 篇级 blocking issue 未解决不得继续 accept/export | `test_book_blocking_issue_blocks_accept_export` | M6 |
-| INV-QUALITY-007 | 质量铁律 | human accept 不得 override 硬质量失败 | `test_human_accept_cannot_override_quality_failure` | M5 |
-| INV-QUALITY-008 | 质量证明 | `quality_report_json` 必须标注 ES/SEMI_ES/NES 与 destructive/productive/neutral | `test_quality_report_schema_requires_evidence_and_defect_class` | M0/M5 |
-| INV-QUALITY-009 | 质量证明 | 盲评未通过或 `would_continue_reading_score` 低于阈值不得 `quality_gate_passed` / accepted | `test_blind_review_and_reader_pull_required` | M4/M5 |
-| INV-QUALITY-010 | 文学活力保护 | `productive_deviations` / `protected_roughness` 不得被 polish 自动删除或磨平 | `test_polish_preserves_productive_deviations` | M4/M5 |
-| INV-QUALITY-011 | 模型层级 | 文学体验评审、盲评排序、边界复核、返工指导、polish 不得降级到非 smart 模型 | `test_polish_blocks_when_smart_model_unavailable_without_downgrade` | M4 |
-| INV-JURY-SELF-001 | D3/P0-4 | DB trigger 阻断 `judge_model = writer_model` 的 raw score 写入，JOIN 审计为空 | `test_jury_raw_scores_no_self_judge_trigger` | M0/M4 |
-| INV-JURY-ROUND-001 | 专家审查 P0 | `writing_jury_raw_scores` 必须支持基础 3 裁判和分歧升级 `jury_round`；不得用 role 唯一约束限死 3 行 | `test_jury_raw_scores_supports_escalation_round` | Pre-M0/M0 |
-| INV-CHECKPOINT-001 | D2 | checkpoint `shot_id` 允许 NULL；非 NULL 时必须是 attempt shot id 并满足 FK | `test_checkpoint_shot_id_null_and_fk_semantics` | M0/M1 |
-| INV-HUMAN-001 | B44/B61 | setup/contract/review/import 人工动作必须写 human decision | `test_human_accept_writes_decision_and_hard_seals_chapter` | M5 |
-| INV-AUDIT-001 | D-23 | failure attribution 必须能关联 contract clause | `test_failure_attribution_clause_link` | M5 |
-| INV-RECOVERY-001 | D-14 | 每个稳定阶段写 checkpoint，崩溃恢复不覆盖已封板文本 | `test_resume_from_checkpoints` | M1 |
-| INV-IMPORT-001 | 产品工作流 | import dry-run 不写正式数据，finalize 必须有人类决策 | `test_import_dry_run_finalize` | M6 |
-| INV-EXPORT-001 | B61/B76 | export 只读 accepted canonical 且清理结构标签 | `test_export_accepted_only` | M6 |
+以下ID仍由现有测试保护，用于证明Scene-first影子层没有破坏当前生产系统。
+它们是迁移回归法源，不代表Shot仍是目标正文原子。
 
-## 3. 旧测试三桶判定
+| ID | 保留门禁 |
+|---|---|
+| INV-CONTRACT-001 | 契约字段消费lint |
+| INV-SQL-001 | 受保护表SQL访问lint |
+| INV-DDL-001 | 全量DDL可执行 |
+| INV-CONFIG-001 | 项目配置校验 |
+| INV-TIME-001 | UTC时间格式 |
+| INV-STATE-001 | 旧状态机合法转移 |
+| INV-STATE-002 | 状态更新lint |
+| INV-REVISION-001 | 旧`v_current_text`迁移基线单行读取 |
+| INV-REVISION-002 | 旧恢复映射 |
+| INV-RUN-001 | 四轴隔离 |
+| INV-SOFT-001 | soft gate计数权威 |
+| INV-SOFT-002 | redo幂等 |
+| INV-LLM-001 | LLM失败与预算熔断 |
+| INV-LLM-002 | 总调用预算 |
+| INV-LLM-003 | 调用审计与访问lint |
+| INV-QUALITY-001 | winner质量底线 |
+| INV-QUALITY-002 | 单维质量底线 |
+| INV-QUALITY-003 | 裁判分歧门 |
+| INV-QUALITY-004 | polish后重新过门 |
+| INV-QUALITY-005 | 章节质量阻断accept |
+| INV-QUALITY-006 | 篇级blocking阻断accept/export |
+| INV-QUALITY-007 | 人类不能越过质量硬门 |
+| INV-QUALITY-008 | 质量报告证据结构 |
+| INV-QUALITY-009 | blind review与reader pull |
+| INV-QUALITY-010 | 保留有效偏离 |
+| INV-QUALITY-011 | polish模型不可静默降级 |
+| INV-JURY-SELF-001 | 禁止自评 |
+| INV-JURY-ROUND-001 | 基础/升级裁判轮 |
+| INV-CHECKPOINT-001 | session checkpoint |
+| INV-RECOVERY-001 | checksum恢复 |
+| INV-PROMPT-001 | prompt supersede |
+| INV-OUTLINE-001 | outline drift与winner唯一 |
+| INV-OUTLINE-002 | task card完整性 |
+| INV-HUMAN-001 | 人类accept审计 |
+| INV-AUDIT-001 | 失败归因 |
+| INV-IMPORT-001 | 导入dry-run/finalize |
+| INV-EXPORT-001 | 旧accepted-only导出基线 |
+| INV-BOOK-001 | 篇级滚动检查 |
+| INV-WORKFLOW-001 | 六章旧流程回归 |
+| INV-GATE-001 | hard gate 1 |
+| INV-GATE-002 | hard gate 2 |
+| INV-FACT-001 | fact anchor门 |
+| INV-JURY-001 | 三模型全维评分 |
+| INV-JURY-002 | winner选择 |
 
-| 桶 | 判据 | 处理 |
-|----|------|------|
-| A | 阈值、状态转移、封版、幂等、唯一性等领域不变量 | 重写为新测试，断言不得弱化 |
-| B | 旧 schema、旧 CLI、旧 dict 传递链、旧双轨逻辑绑定 | 不迁移代码；领域知识若仍有效必须映射到 P0/P1 invariant |
-| C | 端到端行为规约，如写一章、审稿、导出、resume | 转写为 M6 集成测试 |
+## 尚未登记为已执行不变量的P0门禁
 
-## 4. 决策映射
+以下仍必须完成，状态以`../tasks.md`为准：
 
-| 决策 | 新落点 | 必测项 |
-|------|--------|--------|
-| D-02 L0 机械检查 | hard_gate1 的基础可读/容量/禁区；失败不进 jury | INV-GATE-001 |
-| D-14 crash recovery checkpoints | `writing_session_checkpoints` + `ResumeManager` | INV-RECOVERY-001 |
-| D-19 fact anchors | `writing_fact_anchors` + hard_gate2 fact anchor | INV-FACT-001 |
-| D-23 contract auditability | `writing_contract_clauses` / `writing_contract_changelog` / failure attribution | INV-AUDIT-001 |
-| Q-01 high quality hard gate | `writing_projects` 质量阈值字段（`shot_quality_floor` 等）/ `style_quality_profile` / `quality_gate_passed` / `quality_report_json` | INV-QUALITY-001..011 |
+1. AI不能Accept、Activate、Freeze或绕过Repository更新Chapter Head的权限反事实；
+2. Scene-first受保护权威表只能由指定Repository/schema/migration访问的SQL lint；
+3. Scene、Chapter、Book与伦理硬门进入Scene-first Accept权威事务；
+4. 候选差异绝对门槛与少数冠军的Scene-first全链生产证据；
+5. 契约架构师与最终批准者分离的actor权限证据；
+6. Cutover后export只读active、sealed、non-stale Snapshot的read-path lint；
+7. 旧导出与Snapshot导出的hash parity及Cutover/回滚演练；
+8. Guidance Card与Fact Proposal完整生命周期及全链审计。
 
-## 5. P1 不变量
+## 验收门
 
-| ID | 不变量 | 新测试 / 门禁 | 里程碑 |
-|----|--------|---------------|--------|
-| INV-GATE-001 | hard gate 必须先于文学 jury | `test_hard_gate_orchestrator_records_two_gate_eligibility_and_blocks_degraded` | M4 |
-| INV-GATE-002 | degraded draft 不进 jury | `test_hard_gate_orchestrator_records_two_gate_eligibility_and_blocks_degraded` | M3/M4 |
-| INV-JURY-001 | 3 裁判全评 12 维，raw 与 aggregate 分离 | `test_jury_scores_three_models_all_dimensions_and_selects_winner` | M4 |
-| INV-JURY-002 | 裁判模型不得等于该 draft 的 writer_model | `test_jury_scores_three_models_all_dimensions_and_selects_winner` | M4 |
-| INV-PROMPT-001 | task card / prompt 二次编译旧行打 superseded_at，新行保留 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards` + `test_prompt_snapshot_compiler_supersedes_by_task_card_persona` | M2 |
-| INV-OUTLINE-001 | drift_score < `outline_drift_threshold`（默认 0.20）拒绝 | `test_outline_drift_threshold_and_winner_uniqueness` | M2 |
-| INV-OUTLINE-002 | task card 半句拒绝 | `test_task_card_compiler_rejects_incomplete_tail_and_supersedes_old_cards` | M2 |
-| INV-FACT-001 | fact anchor 违约/幻觉阻断 hard gate2 | `test_fact_anchor_gate` | M4 |
-| INV-BOOK-001 | 第 N 章触发篇级滚动检测 | `test_book_rolling_check_interval` | M6 |
-| INV-WORKFLOW-001 | 6 章完整生产验收，包括 revise/reject/import/export/resume | `test_full_production_flow_six_chapters` | M6 |
+Scene-first不得标记投产，除非：
 
-## 6. 完成定义
-
-一个里程碑完成必须同时满足：
-
-1. 对应代码已实现。
-2. 对应 invariant 测试已存在并通过。
-3. 对应 lint / CI 门禁已接入。
-4. 文档中的表名、字段名、状态名与实现一致。
-5. 运行时审计能重放关键过程：AI 调用、状态转移、人工决策、正文读取、导出。
+1. 上述P0门禁全部转为有真实测试证据的`INV-*`；
+2. 旧基线测试继续通过；
+3. 三类真实章节完成A/B；
+4. Snapshot导出与旧导出完成一致性验证；
+5. 未发现双正文权威读取路径。

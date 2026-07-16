@@ -1,22 +1,24 @@
-# 优化设计评审结论
+# 优化设计评审结论（Shot 中心历史基线）
 
-> **状态**：v2（2026-07-04，Pre-M0 开工门禁修订）
-> **定位**：记录 5 个专家视角对 InkFlow v2 完整生产重构文档的评审结论。本文不是实施计划替代品；所有结论必须回落到 `design-v2.md`、`implementation-contract-v1.md`、`migration-plan.md`、`pitfall-checklist.md`、`author-workflow-contract.md` 与 `invariant-traceability.md`。
+> **状态**：v2 历史评审基线；2026-07-14 Scene-first 修正后不再代表目标最优结论
+> **定位**：记录 5 个专家视角对旧 shot 中心 Ink v2 设计的评审结论。本文不是当前最高权威；所有仍适用的工程不变量必须迁移到 `scene-first-authority-amendment.md`、`design-v2.md`、`implementation-contract-v1.md`、`migration-plan.md`、`author-workflow-contract.md` 与 `invariant-traceability.md`。
+>
+> **修正**：原“当前设计可作为完整生产版实现基线”的判断已被后续生产质量诊断和作者裁定取代。目标架构必须以 Scene 为正式原子、完整 Chapter Candidate 为文学选优单位、Chapter Snapshot 为正式稿权威；旧 shot 级结论只作迁移与回归参考。
 
 ---
 
 ## 1. 总结论
 
-当前设计可以作为 **完整生产版实现基线**。它不是 MVP，也不是旧系统的增量迁移；它的优化目标不是表数量最少或最快上线，而是：
+在 2026-07-04 的评审时点，旧 shot 中心设计曾被认为可以作为 **当时的完整生产版实现基线**。该判断现仅用于解释历史实现，不再代表 Scene-first 目标架构已经完成。其当时的优化目标是：
 
 1. 契约信号不能在 DB、编排、prompt、draft、jury、export 之间静默丢失。
 2. 正文真相源不能被普通业务 SQL 绕过。
-3. 写作质量不能只作为建议分；shot/chapter/book 任一层硬质量失败都不得 accepted/export。
+3. 写作质量不能只作为建议分；目标架构中 scene/chapter/book 任一层硬质量失败都不得 accepted/export。
 4. 高质量不能只靠总分证明；必须有盲评、继续阅读、ES/SEMI_ES/NES 证据分层、destructive/productive/neutral 缺陷分类和 productive_deviation 保护。
 5. AI 调用、失败、人工决策、崩溃恢复、导入与导出都可审计、可恢复、可测试。
 6. 旧系统反复复发的 bug 必须转成新系统的不变量和 CI 门禁。
 
-按这个目标，当前文档已经从“方向正确”收敛为“可作为生产实现基线”。但这不等于带条件进入业务开发；专家审查发现的 DDL、jury 升级轮、orchestrator 入口、resume SQL、字段消费 lint 边界等 P0 可执行性问题，必须先在 Pre-M0 开工门禁全部清掉，再进入 M0 正常开发。是否真正达到最优，取决于 M0-M6 实现后 invariant 测试是否全部通过；文档层面不再接受用 MVP、双轨、共享旧库或后续补齐来降低范围。
+按当时目标，旧文档曾从“方向正确”收敛为“可作为生产实现基线”。2026-07-14 后，该结论由 Scene-first 修正案取代：只有 Scene 权威链、章节候选分支、Chapter Snapshot、契约四层和新选优流程完成迁移并通过真实章节验证，才可重新评估是否投产或接近最优。
 
 ---
 
@@ -42,7 +44,7 @@
 - `soft_sealed` 不回退到 `winner_selected`；`soft_gate_redo_n`（默认 2）翻盘只允许在 `winner_selected` 进入 `polish_revision` 之前完成。
 - `v_current_text` 用 `ROW_NUMBER()` 保证每 shot 恰一行，并投影 `revision_id/source_revision_id` 支撑 stale 检测。
 - `writing_chapter_reviews` 的 accepted canonical 唯一索引保证正式导出只认已接受版本。
-- `writing_jury_aggregates`、`writing_chapter_reviews`、`writing_book_check_results`、`writing_human_decisions` 已具备 shot/chapter/book/human 四层硬质量阻断字段。
+- `writing_jury_aggregates`、`writing_chapter_reviews`、`writing_book_check_results`、`writing_human_decisions` 已具备旧 shot/chapter/book/human 四层阻断字段；Scene-first 迁移必须补 Scene 级权威门和 Chapter Snapshot 封版链。
 
 **仍需执行验证**：M0/M1 必须补 `PRAGMA foreign_key_check`、`v_current_text` 单行测试、状态转移矩阵测试、N=2 翻盘事务原子性测试。
 

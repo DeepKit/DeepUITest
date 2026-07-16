@@ -1,0 +1,6 @@
+[
+  {"scope_type":"book","scope_id":null,"clause_type":"style","severity":"soft","clause_text":"Use short sentences in action scenes."},
+  {"scope_type":"book","scope_id":null,"clause_type":"character","severity":"hard","clause_text":"Protagonist never lies under any circumstance."},
+  {"scope_type":"chapter","scope_id":"ch-1","clause_type":"plot","severity":"hard","clause_text":"The murder must be discovered before the midpoint."},
+  {"scope_type":"book","scope_id":null,"clause_type":"world","severity":"soft","clause_text":"Magic system follows three-law thermodynamics."}
+]

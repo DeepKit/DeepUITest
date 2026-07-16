@@ -22,7 +22,9 @@ def test_write_orchestrator_produces_same_persona_same_prompt_with_distinct_mode
 
     regular = [draft for draft in drafts if not draft.is_deviant]
     deviant = [draft for draft in drafts if draft.is_deviant]
-    assert [draft.writer_model for draft in regular] == ["writer-a", "writer-b", "writer-c"]
+    # shot_id 起点偏移后顺序不再固定，但 3 候选仍覆盖全部 3 个不同模型（去重无垄断）
+    assert {draft.writer_model for draft in regular} == {"writer-a", "writer-b", "writer-c"}
+    assert len(regular) == 3
     assert len({draft.prompt_id for draft in regular}) == 1
     assert {draft.persona for draft in regular} == {"悬疑官"}
     assert len(deviant) == 1
@@ -57,7 +59,12 @@ def test_write_orchestrator_adds_creative_extra_candidates() -> None:
 
     regular = [draft for draft in drafts if not draft.is_deviant]
     assert len(regular) == 4
-    assert [draft.writer_model for draft in regular] == ["writer-a", "writer-b", "writer-c", "writer-a"]
+    # shot_id 偏移后起点不固定，但 4 候选均来自 3 模型池且环绕（某模型恰好重复两次）
+    pool = {"writer-a", "writer-b", "writer-c"}
+    assert {draft.writer_model for draft in regular} == pool
+    # 4 候选来自 3 模型 → 恰有一个模型出现两次（环绕）
+    counts = [sum(1 for d in regular if d.writer_model == m) for m in pool]
+    assert sorted(counts) == [1, 1, 2]
 
 
 def test_write_orchestrator_degrades_provider_failure_to_local_fallback() -> None:
@@ -209,4 +216,39 @@ class FailFirstDraftProvider(RecordingDraftProvider):
             self.calls.append((model_name, idempotency_key))
             raise RuntimeError("provider down")
         return super().complete(prompt_text, model_name, idempotency_key)
+
+
+def test_select_writer_models_shot_id_offset_breaks_concentration() -> None:
+    """shot_id 起点偏移破候选集中化：不同 shot 候选起点不同，避免前段模型恒占位。
+
+    E11 诊断 writer 候选集中于 pool 前段。pool=4 模型、count=2 时：
+    - 无 shot_id（兼容）：恒为 (m0, m1)
+    - 不同 shot_id：起点偏移使候选子集不同，跨 4 shot 至少覆盖 3+ 不同模型
+    - 同 shot_id 幂等：两次调用结果一致
+    """
+    from ink.writers.model_pool import select_writer_models
+
+    pool = ("m0", "m1", "m2", "m3")
+
+    # 兼容：无 shot_id 回退固定起点
+    assert select_writer_models(pool, 2) == ("m0", "m1")
+
+    # 幂等：同一 shot_id 两次一致
+    assert select_writer_models(pool, 2, shot_id="shot-A") == select_writer_models(pool, 2, shot_id="shot-A")
+
+    # 跨 shot 覆盖均衡：4 个 shot 的候选集合并集覆盖全部 4 模型（破前段集中）
+    all_picked = set()
+    for sid in ("shot-A", "shot-B", "shot-C", "shot-D"):
+        all_picked.update(select_writer_models(pool, 2, shot_id=sid))
+    assert all_picked == set(pool)
+
+
+def test_select_writer_models_pool_smaller_than_count_wraps() -> None:
+    """pool 小于 count 时跨池环绕，偏移后仍覆盖全池（无遗漏）。"""
+    from ink.writers.model_pool import select_writer_models
+
+    pool = ("m0", "m1")
+    result = select_writer_models(pool, 3, shot_id="shot-X")
+    assert len(result) == 3
+    assert set(result) == set(pool)
 

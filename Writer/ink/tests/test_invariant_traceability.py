@@ -5,6 +5,51 @@ from pathlib import Path
 
 
 INVARIANT_EVIDENCE = {
+    "INV-SCENE-001": ["test_scene_revision_update_is_blocked_by_database_trigger"],
+    "INV-SCENE-002": ["test_referenced_scene_revision_cannot_be_deleted"],
+    "INV-INTERNAL-SHOT-001": ["test_internal_shot_has_no_canonical_or_acceptance_columns"],
+    "INV-BRANCH-001": ["test_frozen_branch_blocks_revision_and_binding_mutation"],
+    "INV-BRANCH-002": ["test_two_branches_can_fork_from_same_branch_local_parent"],
+    "INV-SNAPSHOT-001": ["test_snapshot_and_snapshot_bindings_are_immutable"],
+    "INV-SNAPSHOT-002": ["test_chapter_head_is_unique_per_project_chapter"],
+    "INV-SNAPSHOT-003": ["test_snapshot_text_does_not_follow_later_scene_revision"],
+    "INV-SCENE-CONTRACT-001": ["test_same_scene_allows_only_one_active_contract"],
+    "INV-SCENE-AI-001": ["test_ai_revision_requires_auditable_generation_or_repair_task"],
+    "INV-ROUND-001": [
+        "test_round_legal_transitions_advance",
+        "test_round_transition_not_in_table_is_illegal",
+    ],
+    "INV-ROUND-002": ["test_round_illegal_transition_raises_illegal_transition_error"],
+    "INV-ROUND-003": ["test_round_cas_rejects_stale_expected_status"],
+    "INV-ROUND-004": ["test_round_initial_zero_pass_terminates_round"],
+    "INV-ROUND-005": ["test_round_supplement_only_once_from_validating_initial"],
+    "INV-ROUND-006": ["test_round_ready_for_selection_requires_three_eligible"],
+    "INV-ROUND-007": [
+        "test_round_terminal_state_rejects_further_transition",
+        "test_round_superseded_only_from_non_terminal",
+    ],
+    "INV-ROUND-008": ["test_record_eligible_branch_increments_count_atomically"],
+    "INV-ROUND-009": ["test_increment_call_count_is_monotonic"],
+    "INV-ROUND-010": ["test_get_round_state_returns_full_recovery_point"],
+    "INV-ROUND-011": ["test_driver_advances_planned_to_selected"],
+    "INV-ROUND-012": ["test_driver_initial_zero_pass_on_zero_eligible"],
+    "INV-ROUND-013": ["test_driver_supplements_when_partial_initial_pass"],
+    "INV-ROUND-014": ["test_driver_candidate_shortage_after_supplement"],
+    "INV-ROUND-015": [
+        "test_driver_diversity_shortage_when_no_substantive_difference"
+    ],
+    "INV-ROUND-016": ["test_driver_call_count_circuit_breaker"],
+    "INV-ROUND-017": ["test_driver_resumes_from_intermediate_state"],
+    "INV-ROUND-018": [
+        "test_start_validating_branch_cas_rejects_non_generating"
+    ],
+    "INV-ROUND-019": [
+        "test_advance_to_literary_review_cas_rejects_non_eligible"
+    ],
+    "INV-SCENE-CAS-001": ["test_stale_branch_local_parent_is_rejected"],
+    "INV-CHAPTER-CAS-001": ["test_stale_expected_head_version_rolls_back_without_new_snapshot"],
+    "INV-ACCEPT-001": ["test_accept_creates_sealed_snapshot_and_active_head"],
+    "INV-ACCEPT-002": ["test_accept_fault_rolls_back_all_authority_rows"],
     "INV-CONTRACT-001": ["test_field_usage_lint", "lint_field_usage"],
     "INV-SQL-001": ["test_sql_access_lint", "lint_sql_access"],
     "INV-DDL-001": ["test_schema_executes_all_ddl"],

@@ -33,6 +33,9 @@ from ink.pipeline.human_review_orchestrator import HumanReviewOrchestrator
 from ink.pipeline.import_orchestrator import ImportOrchestrator
 from ink.pipeline.jury_orchestrator import JuryOrchestrator
 from ink.pipeline.polish_orchestrator import PolishOrchestrator
+from ink.pipeline.contract_review_orchestrator import (
+    family_from_model_name,  # SPW 防绕过 H1：契约双盲审查的异族解析（模块级供 helper 用）
+)
 from ink.pipeline.pre_drafting_orchestrator import PreDraftingOrchestrator
 from ink.pipeline.resume_handlers import build_non_shot_resume_handlers, build_shot_resume_handlers
 from ink.pipeline.soft_seal_orchestrator import SoftSealOrchestrator
@@ -1465,28 +1468,27 @@ def _cmd_scene_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dic
             "branch_version_id": args.branch_version_id,
             "actor": args.actor,
             "expected_head_version": expected,
-            "would": "seal snapshot + CAS head + emit CHAPTER_ACCEPTED",
+            "would": "record decisions + seal snapshot + CAS head + emit CHAPTER_ACCEPTED",
         }
-    decision_id = repo.record_human_decision(
-        project_id=project_id,
-        chapter_id=args.chapter_id,
-        decision_type="accept",
-        actor=args.actor,
-        reason=args.reason,
-        preconditions_json={"branch_version_id": args.branch_version_id},
-    )
     head_row = repo.accept_chapter(
         branch_version_id=args.branch_version_id,
         expected_head_version=expected,
-        accepted_decision_id=decision_id,
         actor=args.actor,
+        reason=args.reason,
+        preconditions_json={"branch_version_id": args.branch_version_id},
+        selection_decision_type="human_override",
+        selection_evidence_json={
+            "branch_version_id": args.branch_version_id,
+            "source": "scene-accept",
+        },
     )
     return {
         "project_id": project_id,
         "chapter_id": args.chapter_id,
         "snapshot_id": head_row.active_snapshot_id,
         "head_version": head_row.version,
-        "accepted_decision_id": decision_id,
+        "accepted_decision_id": head_row.accepted_decision_id,
+        "selection_decision_id": head_row.selection_decision_id,
     }
 
 
@@ -1524,7 +1526,12 @@ def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> 
         RealSelectionPort,
         RealValidationPort,
     )
-    from ink.source.brief_builder import build_chapter_brief
+    from ink.source.outline_parser import parse_outline
+    from ink.source.outline_to_contract import outline_to_four_layer_clauses
+    from ink.contract.brief_compiler import compile_brief
+    from ink.pipeline.contract_review_orchestrator import (
+        ContractReviewOrchestrator, ContractReviewLLMFailure,
+    )
 
     repo = ChapterSnapshotRepository(conn)
     scene_repo = SceneRepository(conn)
@@ -1548,23 +1555,48 @@ def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> 
 
     if not args.outline_file:
         raise SystemExit("--outline-file is required when not using --force-branch-version-id")
-    brief = build_chapter_brief(
-        args.outline_file, chapter_id, conn=conn, project_id=project_id
-    )
-    if brief is None:
+    outline = parse_outline(args.outline_file).get(chapter_id)
+    if outline is None:
         raise SystemExit(f"chapter {chapter_id} not found in outline: {args.outline_file}")
+
+    # 契约唯一真相源（H1）：章纲 → 四层 clause → 落库 draft 契约 → 双盲审查 →
+    # activate → 从 clause 编译 brief。brief 是契约产物，不再从大纲裸拼。
+    clauses = outline_to_four_layer_clauses(outline)
+    contract_id = _ensure_scene_contract_clauses(scene_repo, repo, project_id, chapter_id, args.actor, clauses)
 
     if args.dry_run:
         return {
             "project_id": project_id, "chapter_id": chapter_id,
-            "would": "ensure scene contract + generate candidates + jury + accept + export",
-            "chapter_brief": brief,
+            "would": "contract review + generate candidates + jury + accept + export",
+            "scene_contract_id": contract_id,
+            "clause_counts": {k: len(v) for k, v in clauses.items()},
             "candidates": args.candidates, "rounds": args.rounds,
         }
 
-    contract_id = _ensure_scene_and_contract(scene_repo, repo, project_id, chapter_id, args.actor, brief)
-
     gateway = _gateway(conn, args)
+
+    # 三家族盲审：全 approve 才 activate + 产稿。revise/reject/LLM 失败一律拒绝。
+    architect_family = family_from_model_name(_architect_model(conn, project_id))
+    reviewer_models = _reviewer_models(conn, project_id, architect_family)
+    reviewer_family = family_from_model_name(reviewer_models[0])
+    second_reviewer_family = family_from_model_name(reviewer_models[1])
+    try:
+        review = ContractReviewOrchestrator(conn, gateway).review_contract(
+            scene_contract_id=contract_id, project_id=project_id,
+            architect_family=architect_family, reviewer_family=reviewer_family,
+            second_reviewer_family=second_reviewer_family,
+        )
+    except ContractReviewLLMFailure as exc:
+        raise SystemExit(f"契约审查 LLM 失败，拒绝产稿: {exc}")
+    if not review.approved:
+        raise SystemExit(
+            f"契约审查未通过（self={review.self_check_verdict}, "
+            f"independent_1={review.independent_verdict}, "
+            f"independent_2={review.second_independent_verdict}），拒绝产稿。修订契约后重跑。"
+        )
+    scene_repo.activate_contract(contract_id)
+
+    brief = compile_brief(conn, contract_id)
     ports = {
         "generation_port": RealGenerationPort(gateway, project_id=project_id, chapter_brief=brief),
         "validation_port": RealValidationPort(gateway, project_id=project_id),
@@ -1592,15 +1624,22 @@ def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> 
                     "hint": "review the winner; seal via scene-accept or re-run without --no-accept",
                     "exported": exported,
                 }
-            decision_id = repo.record_human_decision(
-                project_id=project_id, chapter_id=chapter_id,
-                decision_type="accept", actor=args.actor, reason=args.reason,
-                preconditions_json={"branch_version_id": winner_bv_id, "round_id": round_id},
-            )
             expected = _expected_head_version(conn, project_id, chapter_id)
             head_row = repo.accept_chapter(
-                branch_version_id=winner_bv_id, expected_head_version=expected,
-                accepted_decision_id=decision_id, actor=args.actor,
+                branch_version_id=winner_bv_id,
+                expected_head_version=expected,
+                actor=args.actor,
+                reason=args.reason,
+                preconditions_json={
+                    "branch_version_id": winner_bv_id,
+                    "round_id": round_id,
+                },
+                selection_decision_type="auto_selected",
+                selection_evidence_json={
+                    "branch_version_id": winner_bv_id,
+                    "round_id": round_id,
+                    "source": "produce-chapter",
+                },
             )
             exported = _maybe_export(conn, project_id, chapter_id, args.output)
             return {
@@ -1619,17 +1658,17 @@ def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> 
     }
 
 
-def _ensure_scene_and_contract(
-    scene_repo, repo, project_id: int, chapter_id: int, actor: str, brief: str,
+def _ensure_scene_contract_clauses(
+    scene_repo, repo, project_id: int, chapter_id: int, actor: str, clauses: dict[str, list[dict]],
 ) -> int:
-    """Ensure an approved+active Scene Contract exists for the chapter.
+    """幂等落库四层 clause 契约（draft 态，待双盲审查 + activate）。
 
-    Idempotent: reuse an existing active contract; otherwise create a scene,
-    a contract (directly approved — chapter outline is author-finalized), and
-    activate it. Dead-line policy skips the dual-blind self_check / independent
-    review; the human actor activation is the seal.
+    取代旧 ``_ensure_scene_and_contract``：契约不再直接 approved 跳审查、不再用
+    brief sha256 冒充 contract_hash。落四层真 clause（hard/source/soft/opening），
+    状态留 draft 由调用方走 ContractReviewOrchestrator。
+
+    幂等：已有 active 契约复用；已有 draft 契约（本轮新建未过审）复用并补 clause。
     """
-    from ink.errors import DataIntegrityError  # noqa: F401  (re-export parity with other handlers)
     active = scene_repo.conn.execute(
         """
         SELECT c.scene_contract_id
@@ -1642,18 +1681,91 @@ def _ensure_scene_and_contract(
     ).fetchone()
     if active is not None:
         return int(active[0])
-    scene_id = scene_repo.create_scene(
-        project_id=project_id, chapter_id=chapter_id,
-        logical_scene_key=f"ch{chapter_id}", scene_order=chapter_id,
-    )
+
+    scene_id = scene_repo.conn.execute(
+        """SELECT scene_id FROM writing_scenes
+           WHERE project_id = ? AND chapter_id = ? AND logical_scene_key = ?""",
+        (project_id, chapter_id, f"ch{chapter_id}"),
+    ).fetchone()
+    if scene_id is None:
+        scene_id = scene_repo.create_scene(
+            project_id=project_id, chapter_id=chapter_id,
+            logical_scene_key=f"ch{chapter_id}", scene_order=chapter_id,
+        )
+    else:
+        scene_id = int(scene_id[0])
+
     import hashlib
-    contract_hash = hashlib.sha256(brief.encode("utf-8")).hexdigest()
+    # contract_hash 从四层 clause 内容派生，而非 brief——契约身份绑定四层内容。
+    clause_blob = "\n".join(
+        f"{c['clause_key']}:{c['clause_text']}"
+        for bucket in ("hard_constraints", "source_dna", "soft_goals", "creative_openings")
+        for c in clauses.get(bucket, [])
+    )
+    contract_hash = hashlib.sha256(clause_blob.encode("utf-8")).hexdigest()
+    # created_by 携带 architect family 后缀，供 INV-CONTRACT-003 异族校验读取。
+    architect_model = _architect_model(scene_repo.conn, project_id)
+    created_by = f"{actor}:{family_from_model_name(architect_model)}"
     contract_id = scene_repo.create_contract(
         scene_id=scene_id, version=1, contract_hash=contract_hash,
-        source_bundle_hash=contract_hash, created_by=actor, status="approved",
+        source_bundle_hash=contract_hash, created_by=created_by, status="draft",
     )
-    scene_repo.activate_contract(contract_id)
+    scene_repo.assemble_four_layer_contract(
+        scene_contract_id=contract_id,
+        hard_constraints=clauses["hard_constraints"],
+        source_dna=clauses["source_dna"],
+        soft_goals=clauses["soft_goals"],
+        creative_openings=clauses["creative_openings"],
+    )
     return contract_id
+
+
+def _architect_model(conn, project_id: int) -> str:
+    """取架构师（draft 产稿）主模型名，用于契约 created_by family 与双盲 self_check。"""
+    row = conn.execute(
+        """SELECT model_name FROM writing_model_role_configs
+           WHERE project_id = ? AND call_type = 'draft' AND tier = 'primary'""",
+        (project_id,),
+    ).fetchone()
+    if row is not None:
+        return str(row[0])
+    return "claude-xunfei-deepseek-v4-pro"  # 兜底：与 seed 一致
+
+
+def _reviewer_models(conn, project_id: int, architect_family: str) -> tuple[str, str]:
+    """取两个互异且均异于架构师的审查模型。"""
+    candidates = [
+        str(row[0])
+        for row in conn.execute(
+            """SELECT model_name FROM writing_model_role_configs
+               WHERE project_id = ? AND call_type IN ('contract_review', 'jury')
+               ORDER BY CASE call_type WHEN 'contract_review' THEN 0 ELSE 1 END,
+                        CASE tier WHEN 'secondary' THEN 0 WHEN 'fallback' THEN 1 ELSE 2 END""",
+            (project_id,),
+        ).fetchall()
+    ]
+    candidates.extend(
+        (
+            "claude-xunfei-glm-5-2",
+            "claude-xunfei-deepseek-v4-pro",
+            "claude-xunfei-qwen3-max",
+        )
+    )
+    selected: list[str] = []
+    used_families = {architect_family}
+    for model in candidates:
+        family = family_from_model_name(model)
+        if family not in used_families:
+            selected.append(model)
+            used_families.add(family)
+        if len(selected) == 2:
+            return selected[0], selected[1]
+    raise DataIntegrityError("contract review requires two model families distinct from architect")
+
+
+def _reviewer_model(conn, project_id: int, architect_family: str) -> str:
+    """Backward-compatible first reviewer accessor."""
+    return _reviewer_models(conn, project_id, architect_family)[0]
 
 
 def _find_or_create_round(repo, project_id: int, chapter_id: int, attempt: int, candidates: int) -> int:
@@ -1745,15 +1857,19 @@ def _force_accept_and_export(
     branch_id = int(bv[0])
     # accept_chapter requires the branch be marked 'selected' first.
     repo.select_branch(branch_id)
-    decision_id = repo.record_human_decision(
-        project_id=project_id, chapter_id=chapter_id,
-        decision_type="accept", actor=actor, reason=reason,
-        preconditions_json={"branch_version_id": branch_version_id, "forced": True},
-    )
     expected = _expected_head_version(conn, project_id, chapter_id)
     head_row = repo.accept_chapter(
-        branch_version_id=branch_version_id, expected_head_version=expected,
-        accepted_decision_id=decision_id, actor=actor,
+        branch_version_id=branch_version_id,
+        expected_head_version=expected,
+        actor=actor,
+        reason=reason,
+        preconditions_json={"branch_version_id": branch_version_id, "forced": True},
+        selection_decision_type="human_override",
+        selection_evidence_json={
+            "branch_version_id": branch_version_id,
+            "forced": True,
+            "source": "produce-chapter-force",
+        },
     )
     exported = _maybe_export(conn, project_id, chapter_id, output)
     return {

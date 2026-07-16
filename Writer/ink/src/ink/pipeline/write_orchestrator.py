@@ -38,7 +38,7 @@ class WriteOrchestrator:
 
         drafts = list(existing)
         regular_needed = max(0, context.candidate_count - len(regular_existing))
-        selected_models = select_writer_models(context.writer_models, context.candidate_count)
+        selected_models = select_writer_models(context.writer_models, context.candidate_count, shot_id)
         used_regular = len(regular_existing)
         for offset in range(regular_needed):
             model_name = selected_models[used_regular + offset]
@@ -83,7 +83,7 @@ class WriteOrchestrator:
         retry_count = max((draft.retry_count for draft in existing), default=1)
         current_wave = [draft for draft in existing if draft.retry_count == retry_count]
         needed = max(0, context.redo_candidate_count - len(current_wave))
-        selected_models = select_writer_models(context.writer_models, context.redo_candidate_count)
+        selected_models = select_writer_models(context.writer_models, context.redo_candidate_count, shot_id)
         for offset in range(needed):
             index = len(current_wave) + offset
             self._produce_one(
@@ -106,7 +106,7 @@ class WriteOrchestrator:
         if retry_count > context.max_retries_per_gate:
             raise DataIntegrityError("max_retries_per_gate exhausted")
 
-        selected_models = select_writer_models(context.writer_models, context.min_eligible_candidates)
+        selected_models = select_writer_models(context.writer_models, context.min_eligible_candidates, shot_id)
         for index, model_name in enumerate(selected_models, start=1):
             self._produce_one(
                 context=context,

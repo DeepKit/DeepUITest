@@ -38,7 +38,7 @@ def test_full_production_flow_six_chapters(tmp_path: Path) -> None:
     for chapter_id in range(1, 7):
         shot_id, run_id = _chapter_shot(conn, chapter_id, INITIAL_RUN_ID)
         _run_shot_to_soft_sealed(conn, shot_id, run_id, gateway, use_resume=chapter_id == 3)
-        ChapterReviewOrchestrator(conn).review_chapter(PROJECT_ID, chapter_id, run_id)
+        ChapterReviewOrchestrator(conn, gateway).review_chapter(PROJECT_ID, chapter_id, run_id)
 
         if chapter_id == 2:
             HumanReviewOrchestrator(conn).reject_chapter(
@@ -56,7 +56,7 @@ def test_full_production_flow_six_chapters(tmp_path: Path) -> None:
                 reason="start revised run after rejection",
             )
             _run_shot_to_soft_sealed(conn, revised.shot_ids[0], revised.run_id, gateway)
-            ChapterReviewOrchestrator(conn).review_chapter(PROJECT_ID, chapter_id, revised.run_id)
+            ChapterReviewOrchestrator(conn, gateway).review_chapter(PROJECT_ID, chapter_id, revised.run_id)
             HumanReviewOrchestrator(conn).accept_chapter(
                 PROJECT_ID,
                 chapter_id,
@@ -75,7 +75,7 @@ def test_full_production_flow_six_chapters(tmp_path: Path) -> None:
             )
             accepted_runs[chapter_id] = run_id
 
-        book_check = BookRollingCheckOrchestrator(conn).run_if_due(PROJECT_ID, chapter_id)
+        book_check = BookRollingCheckOrchestrator(conn, gateway).run_if_due(PROJECT_ID, chapter_id)
         if chapter_id == 5:
             assert book_check is not None
             assert book_check.chapter_range_start == 1
@@ -120,7 +120,7 @@ def test_rejected_chapter_cannot_be_accepted() -> None:
     gateway = LLMGateway(conn, provider=WorkflowProvider())
     shot_id, run_id = _chapter_shot(conn, 1, INITIAL_RUN_ID)
     _run_shot_to_soft_sealed(conn, shot_id, run_id, gateway)
-    ChapterReviewOrchestrator(conn).review_chapter(PROJECT_ID, 1, run_id)
+    ChapterReviewOrchestrator(conn, gateway).review_chapter(PROJECT_ID, 1, run_id)
     HumanReviewOrchestrator(conn).reject_chapter(
         PROJECT_ID,
         1,
@@ -240,10 +240,25 @@ class WorkflowProvider:
         elif idempotency_key.startswith("polish:"):
             text = f"polished text {idempotency_key}"
         elif idempotency_key.startswith("jury:"):
-            # jury 真实化后评分返回 12 维 JSON（全 84，过 quality_floor 80 + dimension_floor 65）
+            # jury 真实化后评分返回 12 维 JSON（全 84，过 quality_floor 75 + dimension_floor 60）
             from test_m4_review_pipeline import _JURY_DIMS
 
             text = json.dumps({dim: 84 for dim in _JURY_DIMS}, ensure_ascii=False)
+        elif idempotency_key.startswith("chapter_review:"):
+            # chapter_review 真实化后返回 7 维 JSON（全 92，过 floor）。
+            from ink.pipeline.chapter_review_orchestrator import CHAPTER_REVIEW_DIMENSIONS
+
+            text = json.dumps(
+                {col: 92 for col in CHAPTER_REVIEW_DIMENSIONS} | {"review_notes": "workflow pass"},
+                ensure_ascii=False,
+            )
+        elif idempotency_key.startswith("book_check:"):
+            # book_check 真实化后返回 6 维 JSON（全 92）+ 空 issues。
+            from ink.pipeline.book_rolling_check_orchestrator import BOOK_CHECK_DIMENSIONS
+
+            text = json.dumps(
+                {col: 92 for col in BOOK_CHECK_DIMENSIONS} | {"issues": []}, ensure_ascii=False
+            )
         else:
             text = f"scene text {model_name} {idempotency_key}"
         return ModelResult(

@@ -5,6 +5,7 @@ import sqlite3
 
 from ink.contract.generated.dtos import OutlineSpecDTO
 from ink.contract.loader import load_shot_contract
+from ink.core.chapter_continuity import load_continuity_context, render_continuity_section
 from ink.core.llm_gateway import LLMGateway
 from ink.core.state_machine import load_status, transition
 from ink.errors import DataIntegrityError
@@ -31,13 +32,21 @@ class OutlineOrchestrator:
         current_status = _enter_outline_state(self.conn, shot_id, run_id)
         contract = load_shot_contract(self.conn, shot_id, run_id)
         source_text = _contract_source_text(contract.must_land, contract.scene_contract)
+        continuity = load_continuity_context(self.conn, shot_id, run_id)
+        continuity_section = render_continuity_section(continuity)
+        pov_only = _flatten_text(contract.anti_write.get("pov_only"))
         repo = OutlineRepository(self.conn)
 
         eligible: list[tuple[int, str, float]] = []
         max_attempts = max(context.min_eligible_outlines * 3, len(context.writer_models), 1)
         for attempt in range(1, max_attempts + 1):
             model_name = context.writer_models[(attempt - 1) % len(context.writer_models)]
-            prompt_text = _outline_prompt(source_text, attempt)
+            prompt_text = _outline_prompt(
+                source_text,
+                attempt,
+                continuity_section=continuity_section,
+                pov_only=pov_only,
+            )
             result = self.gateway.call(
                 project_id=context.project_id,
                 shot_id=shot_id,
@@ -140,9 +149,22 @@ def _flatten_text(value: object) -> list[str]:
     return [str(value)]
 
 
-def _outline_prompt(source_text: str, attempt: int) -> str:
+def _outline_prompt(
+    source_text: str,
+    attempt: int,
+    *,
+    continuity_section: str = "",
+    pov_only: list[str] | None = None,
+) -> str:
+    pov_text = "、".join(pov_only or []) or "按契约既定 POV"
     return (
-        f"Generate outline candidate #{attempt} for this shot.\n"
+        f"为本 shot 生成第 {attempt} 个可直接交给小说写手的中文分镜大纲。\n"
+        # 保留稳定的机器可解析标签；现有 provider/验收工具用它提取契约源。
         f"Contract source: {source_text}\n"
-        "Return only the outline text."
+        f"契约素材: {source_text}\n"
+        f"POV 硬锁: {pov_text}\n"
+        f"{continuity_section}"
+        "大纲必须先写“如何承接上一状态”，再列本 shot 的动作推进、信息释放和结尾落点。"
+        "不得新增契约外 POV；如契约明确允许切换，必须写出可见的时间/地点/分隔符转场锚点。"
+        "只返回大纲正文，不要解释。"
     )
