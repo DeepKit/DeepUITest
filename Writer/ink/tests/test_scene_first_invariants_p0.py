@@ -186,6 +186,39 @@ def test_review_order_auto_increments_per_contract() -> None:
 
 # ── P0-3: human-only contract activation (INV-AUTH-002) ─────────────────
 
+def test_ai_actor_cannot_freeze_branch_version() -> None:
+    conn = make_schema_db()
+    _project(conn)
+    snapshots = ChapterSnapshotRepository(conn)
+    round_id = snapshots.create_generation_round(
+        project_id=1,
+        chapter_id=1,
+        round_number=1,
+        outline_version_id=None,
+        chapter_contract_version_id=None,
+    )
+    branch_id = snapshots.create_branch(
+        generation_round_id=round_id,
+        candidate_index=1,
+        writer_model="writer-a",
+        generation_strategy="baseline",
+    )
+    branch_version_id = snapshots.create_branch_version(
+        branch_id=branch_id,
+        version=1,
+    )
+
+    with pytest.raises(PermissionError, match="human actor"):
+        snapshots.freeze_branch_version(branch_version_id, actor="model:writer")
+
+    status = conn.execute(
+        "SELECT status FROM writing_chapter_candidate_branch_versions "
+        "WHERE branch_version_id = ?",
+        (branch_version_id,),
+    ).fetchone()[0]
+    assert status == "building"
+
+
 def test_ai_actor_cannot_activate_contract() -> None:
     conn = make_schema_db()
     scene_repo, _, _, contract_id = _draft_contract_fixture(conn)
@@ -430,7 +463,7 @@ def test_accept_chapter_requires_decision_id_by_default() -> None:
         text="t", actor_type="ai", actor_id="w",
         change_reason="c", generation_task_id=branch_id,
     )
-    snapshots.freeze_branch_version(bv_id)
+    snapshots.freeze_branch_version(bv_id, actor="author")
     conn.execute(
         "UPDATE writing_chapter_candidate_branches SET status='eligible' WHERE branch_id=?",
         (branch_id,),

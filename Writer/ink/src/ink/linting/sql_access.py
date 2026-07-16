@@ -6,11 +6,33 @@ from pathlib import Path
 
 
 TEXT_REVISIONS_TABLE = "writing_shot_revisions"
+SCENE_FIRST_TERMINAL_AUTHORITY_TABLES = frozenset(
+    {
+        "writing_scene_contracts",
+        "writing_chapter_candidate_branch_versions",
+        "writing_selection_decisions",
+        "writing_chapter_snapshots",
+        "writing_chapter_snapshot_scenes",
+        "writing_chapter_heads",
+    }
+)
 SQL_CALLS = {"execute", "executemany", "executescript"}
 SQL_WHITELIST_PARTS = {
     "core/text_repository.py",
     "schema.py",
 }
+SCENE_FIRST_TERMINAL_AUTHORITY_WHITELIST_PARTS = {
+    "core/chapter_snapshot_repository.py",
+    "core/scene_repository.py",
+    "core/scene_stale_propagation.py",
+    "schema.py",
+}
+SCENE_FIRST_TERMINAL_AUTHORITY_WRITE_KEYWORDS = (
+    "insert into",
+    "update",
+    "delete from",
+    "replace into",
+)
 
 
 @dataclass(frozen=True)
@@ -63,7 +85,7 @@ class _SqlAccessVisitor(ast.NodeVisitor):
             return
 
         sql = arg.value.lower()
-        if TEXT_REVISIONS_TABLE in sql and not self._is_whitelisted():
+        if TEXT_REVISIONS_TABLE in sql and not self._is_whitelisted(SQL_WHITELIST_PARTS):
             self.violations.append(
                 SqlAccessViolation(
                     "TEXT_REVISIONS_ACCESS",
@@ -72,10 +94,32 @@ class _SqlAccessVisitor(ast.NodeVisitor):
                 )
             )
 
-    def _is_whitelisted(self) -> bool:
+        if self._is_whitelisted(SCENE_FIRST_TERMINAL_AUTHORITY_WHITELIST_PARTS):
+            return
+
+        protected_tables = sorted(
+            table for table in SCENE_FIRST_TERMINAL_AUTHORITY_TABLES if table in sql
+        )
+        writes_authority = protected_tables and any(
+            keyword in sql for keyword in SCENE_FIRST_TERMINAL_AUTHORITY_WRITE_KEYWORDS
+        )
+        if writes_authority and not self._is_whitelisted(
+            SCENE_FIRST_TERMINAL_AUTHORITY_WHITELIST_PARTS
+        ):
+            tables = ", ".join(protected_tables)
+            self.violations.append(
+                SqlAccessViolation(
+                    "SCENE_FIRST_AUTHORITY_WRITE",
+                    f"Scene-first authority tables may only be written through "
+                    f"designated repositories/schema: {tables}",
+                    line,
+                )
+            )
+
+    def _is_whitelisted(self, whitelist_parts: set[str]) -> bool:
         if "/tests/" in f"/{self.filename}" or self.filename.startswith("tests/"):
             return True
-        return any(self.filename.endswith(part) for part in SQL_WHITELIST_PARTS)
+        return any(self.filename.endswith(part) for part in whitelist_parts)
 
 
 def _call_name(node: ast.AST) -> str:

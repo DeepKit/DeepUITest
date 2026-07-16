@@ -100,7 +100,7 @@ def test_successor_activation_marks_revision_and_branch_stale() -> None:
         "WHERE event_type = 'scene_contract_superseded'"
     ).fetchone()[0] == 1
     with pytest.raises(DataIntegrityError, match="stale Scene lineage"):
-        snapshots.freeze_branch_version(branch_version_id)
+        snapshots.freeze_branch_version(branch_version_id, actor="author")
 
 
 def test_building_branch_can_repair_stale_revision_under_successor_contract() -> None:
@@ -135,7 +135,7 @@ def test_building_branch_can_repair_stale_revision_under_successor_contract() ->
         "SELECT 1 FROM writing_branch_version_stale_marks WHERE branch_version_id = ?",
         (branch_version_id,),
     ).fetchone() is None
-    snapshots.freeze_branch_version(branch_version_id)
+    snapshots.freeze_branch_version(branch_version_id, actor="author")
 
 
 def test_generation_task_cannot_extend_stale_parent() -> None:
@@ -160,7 +160,7 @@ def test_generation_task_cannot_extend_stale_parent() -> None:
 
 def test_supersede_marks_active_snapshot_unreadable() -> None:
     conn, scenes, snapshots, scene_id, old_contract, branch_id, branch_version_id, revision_id = _fixture()
-    snapshots.freeze_branch_version(branch_version_id)
+    snapshots.freeze_branch_version(branch_version_id, actor="author")
     conn.execute(
         "UPDATE writing_chapter_candidate_branches SET status = 'eligible' WHERE branch_id = ?",
         (branch_id,),

@@ -92,7 +92,7 @@ def _seed_selected_frozen_branch(db_path: str) -> int:
             text="定稿正文。", actor_type="ai", actor_id="writer-a",
             change_reason="candidate", generation_task_id=branch_id,
         )
-        snapshots.freeze_branch_version(bv_id)
+        snapshots.freeze_branch_version(bv_id, actor="author")
         conn.execute(
             "UPDATE writing_chapter_candidate_branches SET status='eligible' WHERE branch_id=?",
             (branch_id,),

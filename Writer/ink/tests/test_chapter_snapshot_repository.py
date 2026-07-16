@@ -82,7 +82,7 @@ def _accepted_fixture() -> tuple[
         change_reason="candidate",
         generation_task_id=branch_id,
     )
-    snapshots.freeze_branch_version(branch_version_id)
+    snapshots.freeze_branch_version(branch_version_id, actor="author")
     conn.execute(
         "UPDATE writing_chapter_candidate_branches SET status = 'eligible' WHERE branch_id = ?",
         (branch_id,),
@@ -138,7 +138,7 @@ def _next_selected_candidate(
         change_reason="fault injection candidate",
         generation_task_id=branch_id,
     )
-    snapshots.freeze_branch_version(branch_version_id)
+    snapshots.freeze_branch_version(branch_version_id, actor="author")
     conn.execute(
         "UPDATE writing_chapter_candidate_branches SET status = 'eligible' WHERE branch_id = ?",
         (branch_id,),

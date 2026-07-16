@@ -340,7 +340,7 @@ def _write_branch_text(
         change_reason="candidate",
         generation_task_id=branch_id,
     )
-    repo.freeze_branch_version(branch_version_id)
+    repo.freeze_branch_version(branch_version_id, actor="human:generation-supervisor")
 
 
 def _round_owner(

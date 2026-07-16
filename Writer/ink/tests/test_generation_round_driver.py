@@ -204,7 +204,7 @@ def _seed_frozen_version(
         """,
         (bv_id,),
     )
-    repo.freeze_branch_version(bv_id)
+    repo.freeze_branch_version(bv_id, actor="author")
 
 
 def _drive(

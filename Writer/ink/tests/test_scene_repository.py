@@ -241,7 +241,7 @@ def test_frozen_branch_blocks_revision_and_binding_mutation() -> None:
         actor_id="author",
         change_reason="seed",
     )
-    snapshot_repo.freeze_branch_version(branch_version_id)
+    snapshot_repo.freeze_branch_version(branch_version_id, actor="author")
 
     with pytest.raises(DataIntegrityError, match="frozen"):
         scene_repo.create_revision(

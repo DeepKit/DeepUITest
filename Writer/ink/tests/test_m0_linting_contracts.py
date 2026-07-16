@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from ink.linting.llm_access import lint_llm_access
 from ink.linting.sql_access import lint_sql_access
 from ink.linting.state_update import lint_state_updates
@@ -24,6 +26,29 @@ def test_sql_access_lint_blocks_f_string_sql_dynamic_sql_and_orm_revision_query(
     assert codes(lint_sql_access(fstring_source, "src/ink/pipeline/writer.py")) == {"STRING_CONCATENATED_SQL"}
     assert codes(lint_sql_access(dynamic_source, "src/ink/pipeline/writer.py")) == {"DYNAMIC_TABLE_NAME"}
     assert codes(lint_sql_access(orm_source, "src/ink/pipeline/writer.py")) == {"ORM_ACCESS"}
+
+
+def test_sql_access_lint_blocks_scene_first_authority_access_outside_repositories() -> None:
+    source = "conn.execute('UPDATE writing_chapter_heads SET version = version + 1')"
+
+    assert codes(lint_sql_access(source, "src/ink/cli.py")) == {
+        "SCENE_FIRST_AUTHORITY_WRITE"
+    }
+    assert lint_sql_access(
+        source, "src/ink/core/chapter_snapshot_repository.py"
+    ) == []
+
+
+def test_production_source_has_no_scene_first_authority_sql_bypasses() -> None:
+    root = Path(__file__).resolve().parents[1]
+    violations = []
+    for path in (root / "src" / "ink").rglob("*.py"):
+        relative = path.relative_to(root).as_posix()
+        for violation in lint_sql_access(path.read_text(encoding="utf-8"), relative):
+            if violation.code == "SCENE_FIRST_AUTHORITY_WRITE":
+                violations.append(f"{relative}:{violation.line}: {violation.message}")
+
+    assert violations == []
 
 
 def test_state_update_lint_allows_state_machine_only() -> None:

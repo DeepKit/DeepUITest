@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from itertools import count
 from typing import Iterator
 
-from ink.core.actor_guard import assert_can_accept
+from ink.core.actor_guard import assert_can_accept, assert_can_freeze_branch
 from ink.errors import (
     ConcurrentModificationError,
     DataIntegrityError,
@@ -167,7 +167,8 @@ class ChapterSnapshotRepository:
         )
         return int(cursor.lastrowid)
 
-    def freeze_branch_version(self, branch_version_id: int) -> str:
+    def freeze_branch_version(self, branch_version_id: int, *, actor: str) -> str:
+        assert_can_freeze_branch(actor)
         row = self.conn.execute(
             """
             SELECT status
