@@ -1,0 +1,3 @@
+# 本地目录 junction:指向共享 skill 库 D:/_Progs/00Common/skills
+# 由 mklink /J 创建,仅本地工具发现用,不应提交。
+skills/
