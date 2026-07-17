@@ -89,9 +89,18 @@ legacy 项目配置 writer/jury 池相同 3 模型、jury<5，故 doctor 报 fai
 
 | 方案 | writer 池（主写） | jury 池（评审） | 说明 |
 |---|---|---|---|
-| pool-A（草案，待老板定） | deepseek-v4-pro、glm-5-2-1m、kimi-k2-6 | glm-5-1、qwen3-5-397b-a17b、minimax-m2-5、spark-x2、deepseek-v3-2 | writer 长程强（3 个= draft_count）；jury 5 个不同家族、与 writer 零重叠 |
+| pool-A（**已配+实测可用 2026-07-17**） | deepseek-v4-pro、glm-5-2-1m、kimi-k2-6 | glm-5-1、qwen3-5-397b-a17b、minimax-m2-5、spark-x2、deepseek-v3-2 | writer 长程强（3 个= draft_count）；jury 5 个不同家族、与 writer 零重叠。DB 迁移 `sql/migrations/2026-07-17_model_pool_a_config.sql`，doctor 全绿 ready=true。8 模型经网关逐个真实调用通过（minimax/spark 为推理模型，ink `_is_reasoning_model` 自动放大 token 预算） |
 | pool-B | _待定_ | _待定_ | 预留对比位 |
 | pool-C | _待定_ | _待定_ | 预留对比位 |
+
+> role_configs 实际调用模型对齐：draft→deepseek-v4-pro、jury→glm-5-1、
+> chapter_review→qwen3-5-397b-a17b、book_check→minimax-m2-5（spark-x2/deepseek-v3-2 留作 jury 轮换）。
+> ink→网关→模型端到端实测通（LLMGateway/OpenAICompatibleProvider）。
+
+> **网关 key 取用**：ink role_configs 用 `INK_LLM_API_KEY` 环境变量名。网关实际接受
+> 的 key 是当前会话环境的 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`/`KIRO_API_KEY`
+> 同一值（`fuy...558`）。**注意 `WiseGateway/.env` 的 `PROXY_API_KEY`(`fuy...58`) 是过期/错误值，网关 401**——
+> 跑 ink 前必须把 `INK_LLM_API_KEY` 设为会话环境里的正确 key，不能取 .env 那个。
 
 > 选池原则：writer 池取长程/文学能力强的，数量 = draft_count；jury 池取与 writer 零重叠
 > 的不同家族，数量 ≥ 5；同家族变体（如 glm-5-2 与 glm-5-1）不算独立多样性，跨池时需标注
