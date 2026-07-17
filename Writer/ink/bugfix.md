@@ -1,7 +1,7 @@
 # InkFlow v2 Bugfix 记录
 
 > **用途**：记录开发中发现的缺陷、根因、修复和防回归测试。
-> **最后更新**：2026-07-15
+> **最后更新**：2026-07-17
 
 ---
 
@@ -886,10 +886,10 @@
 ## BFX-078：跨章 context 注入正文原文制造章节同构重复（P0，2026-07-15）
 
 **症状**：第2章正文开头重演第1章的装车/签字/卡车驶离动作（封条×3、装车×5、
-卡车×2，开头400字整段重演装车签字），与第2章大纲要求的"裂纹样件+1978旧样件"
+卡车×2，开头1.1KB(约400字)整段重演装车签字），与第2章大纲要求的"裂纹样件+1978旧样件"
 新事件不符。五专家连续评审（AWT-20260715-171440-5aaf49）判定为 P0-1 章节同构。
 
-**根因**：`brief_builder._prev_chapter_context` 把前章封版正文**头+末各300字原文**
+**根因**：`brief_builder._prev_chapter_context` 把前章封版正文**头+末各0.8KB(约300字)原文**
 注入后章 brief。模型把前章场景细节当成"本章要复现的设定"复述，淹没章纲要求的
 新事件。验收时"模型复现第十七批四二零四配方"被误判为成功，实为重复病根
 （复述 ≠ 续接）。
@@ -1128,3 +1128,91 @@ BFX-079 架构根因修复（方案 B/C/D）落地时连带暴露的代码缺陷
   `tests/test_fact_consumer_gates.py` 覆盖 Branch accept 门与 sealed Snapshot 读取门；
   新增 INV-FACT-002~009、INV-GUIDANCE-001~007 登记。聚焦测试 22 passed；全量 `pytest` 为
   863 passed、10 skipped。
+
+## BFX-090 生产文件库未设 WAL/busy_timeout，并发读阻塞长生成轮（P1，2026-07-15）
+
+- **现象**：`SQLiteAdapter.connect` 仅设 `foreign_keys=ON`，未设 `journal_mode=WAL` 与
+  `busy_timeout`。长生成轮（多候选并发 jury）期间，其它读连接（doctor/export/巡检）拿不到
+  `BUSY`，默认 0 超时即抛 `database is locked`。
+- **根因**：契约 §6 要求生产文件库必须 WAL + busy_timeout，但连接工厂只落了外键门，
+  日志/超时门在实现时漏接。
+- **修复**：`database.SQLiteAdapter.connect` 对文件库设 `journal_mode=WAL` +
+  `synchronous=NORMAL` + `busy_timeout=5000`；`:memory:` 后端跳过 WAL（不适用）但仍设
+  busy_timeout 保持测试对等。`schema.connect_memory` 同步补 busy_timeout。
+- **防回归**：`tests/test_database_pragmas.py` 4 条覆盖文件库 WAL+busy_timeout+foreign_keys、
+  memory 库跳 WAL 保 busy_timeout、`connect()` 工厂对两种后端的传播。聚焦测试 4 passed；
+  相关 schema 回归 19 passed。
+
+## BFX-091 明文凭据入仓且散落 5 处（P0 安全，2026-07-15）
+
+- **现象**：本地代理 bearer key `fuyi-kiro-17781158558` 以明文常量出现在：
+  `tests/test_e2e_local_proxy.py:48`、`tools/run_baideng_local_proxy.py:83`(LEGACY fallback)、
+  `history.md:1649`、`.fastmeet/run_bfx074_diag.py`、`.fastmeet/run_fastmeet.py`。前 3 处已入
+  git 历史。
+- **根因**：开发期为图省事把个人代理 key 写死成常量与文档，未走环境变量；`.fastmeet/`
+  诊断脚本未被 gitignore 收口。
+- **修复**：
+  1. `test_e2e_local_proxy.py` 删常量 `LOCAL_PROXY_API_KEY`，provider fixture 改读
+     `LOCAL_PROXY_KEY` env；模块级 `pytestmark`（INK_RUN_REAL_LLM_TESTS 门控）保证未 opt-in
+     全 skip，无需硬 fallback。
+  2. `tools/run_baideng_local_proxy.py` 删 `LEGACY_LOCAL_PROXY_KEY`，`main()` 改 fail-fast：
+     env 缺失即 SystemExit 退出，不再静默兜底。
+  3. `history.md` key 脱敏为 `fuyi-kiro-****`。
+  4. 删 `.fastmeet/run_bfx074_diag.py`、`.fastmeet/run_fastmeet.py`、`.fastmeet/__pycache__`。
+  5. `.gitignore` 追加 `.fastmeet/`、`.bfx074/`。
+- **残留风险**：明文已进 git 历史，删工作树文件无法消除已暴露——**需作者轮换该代理
+  key**；如需彻底清史，用 `git filter-repo` 重写历史（破坏性，作者定）。本轮仅消除工作树与
+  未来入仓的明文。
+- **防回归**：明文扫描 `grep -rln fuyi-kiro-17781158558` 在 *.py/*.md/*.json/*.toml 下已 0 命中；
+  `test_e2e_local_proxy.py` 未 opt-in 正确 1 skipped；m1 回归 10 passed。
+- **决策偏离**：原 #52 计划含「删 checkpoint_manager 死代码」。审计后发现
+  `checkpoint_manager` 虽无 produce-chapter 导入，但它是与 `resume` 配套的 legacy session
+  工具，且 `test_m1` 两条（校验和恢复 + 损坏事件）是 SPW H3 反事实证据，删它收益低、回归
+  面实。故 **保留 checkpoint_manager**，#52 仅完成明文凭据部分。如需后续清理，应连同
+  `writing_session_checkpoints` 表与 session 外键链一并评估，单列任务。
+
+## BFX-092 无统一迁移跟踪机制，5 个 migrate_*.py 各自为政（P1 工程债，2026-07-17）
+
+- **现象**：黄金闭环第②步发现，ink 此前**没有统一迁移跟踪机制**——HEAD 版 `schema.py`
+  无任何 migrate 函数；`ink/tools/migrate_chapter_ethics_review.py`、`migrate_fact_lifecycle.py`、
+  `migrate_scene_accept_gate_evidence.py`、`migrate_scene_contract_supersede_stale.py`、
+  `migrate_scene_repair_tasks.py` 五个脚本各自独立 `CREATE TABLE IF NOT EXISTS`，靠人工
+  记住跑哪个、无版本跟踪表、无"已应用"记录。新装库时无法判断哪些迁移已跑、哪些漏跑；
+  全新库重建时无法一次性带齐全部表，只能逐个手工调脚本。
+- **根因**：迁移机制按"打补丁"方式逐个 Bug 修复式新增（BFX-084~086 期间），从未建立
+  统一注册表与执行入口；schema 初始化（`initialize_schema`）只跑 base schema.sql，
+  不覆盖后续迁移文件。
+- **修复**（黄金闭环②，2026-07-17）：
+  1. `ink/src/ink/schema.py` 新增 `migrate_db(conn)`（按文件名序读 `sql/migrations/` 幂等
+     应用，写 `schema_migrations` 表，带 checksum）、`mark_all_migrations_applied(conn)`
+     （全新库标记全部迁移已应用，不重复执行）、`list_migration_files()`、`applied_migrations(conn)`。
+  2. 新增 `ink/sql/migrations/2026-07-16_schema_migrations_registry.sql`（迁移版本跟踪表）。
+  3. 新��� `ink/sql/migrations/2026-07-16_stale_marks_tables.sql`（stale_marks 三表，从
+     原 `migrate_scene_contract_supersede_stale.py` 提取为正式迁移文件）。
+  4. `rebuild_prod_db.py` 全新库走 `initialize_schema` + `mark_all_migrations_applied`，
+     一次性带齐全部表（实测新库比 legacy 多 8 张表）。
+- **防回归**：`rebuild_prod_db.py` 验证 15 迁移全标记、stale_marks 三表存在、4 条
+  role_configs 回灌正确；全量 884 passed。
+- **残留风险**：现有 5 个 `migrate_*.py` 工具未删除（仍可用于在旧库补单表），但正式
+  迁移应走 `sql/migrations/` + `migrate_db`。后续 schema 变更须新建迁移文件并登记，
+  不再写独立 migrate 脚本。
+
+## BFX-093 writing_schema_authority 表游离于 schema.sql/迁移/源码（P2 工程债，2026-07-17）
+
+- **现象**：黄金闭环第②步发现 `writing_schema_authority` 表存在于 legacy 正式库
+  `baideng_prod.db` 及 `.trash_bfx079/` 的 `.bak`，但**不在 `schema.sql`、不在
+  `sql/migrations/`、不在 `src/ink/` 源码任何地方**（grep 全仓 0 次出现在 sql/ 和 src/）。
+  它是 BFX-079 期间 ad-hoc 手工建的 legacy 标记表，未纳入正式 schema 治理。
+- **根因**：BFX-079 "旧库不迁移"裁定时，手工在库上建了 authority 标记表做 legacy/active
+  区分，但未把 DDL 写进 schema.sql 或迁移文件，也未在源码中引用——典型的"游离表"模式
+  （运行态有、定义态无）。
+- **修复**：
+  1. `rebuild_prod_db.py` 全新库**不回灌**此表（schema.sql 不建它，新库自然没有）。
+  2. legacy 标记状态已由 `export_legacy_params.py` 导出存入 params JSON 的
+     `schema_authority` 段备查。
+  3. 第③步重产前若需 legacy 隔离机制，应正式工程化（DDL 入 schema.sql 或迁移文件 +
+     源码引用），不沿用无定义的临时表。
+- **防回归**：`rebuild_prod_db.py` 验证新库不含 `writing_schema_authority`（表差异比对
+  `only in OLD (dropped): ['writing_schema_authority']`）。
+- **残留风险**：legacy 库仍有此表，但库已降级只读归档不升级，不构成生产风险。`pitfall-checklist.md`
+  建议新增"游离表陷阱"条目防范复发。

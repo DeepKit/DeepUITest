@@ -1,7 +1,7 @@
 # Ink v2 Scene-first 实现契约
 
 > 状态：P0 实现法源
-> 日期：2026-07-14
+> 日期：2026-07-14（2026-07-17 同步统一迁移跟踪与 BFX-092/BFX-093）
 > 对应设计：`design.md`
 
 ## 0. 当前实现状态
@@ -17,7 +17,7 @@
 | Generation Round有界状态机 | 已完成：固定2+条件补3、0篇终止、≥3/实质差异/文学绝对门槛、预算熔断、CAS、恢复、全部终态及真实模型ports均已实现并测试（Scene-first影子层，未接CLI、未投产） |
 | 契约双师、盲审和actor权限 | 尚未实现 |
 | 正式CLI、accept、context、repair切换 | Scene-first生产路径已接线；正式export仍待单一权威收口 |
-| 既有生产库迁移脚本和回填 | 分项幂等迁移已提供；完整影子回填/Cutover仍待完成 |
+| 既有生产库迁移脚本和回填 | 统一迁移跟踪机制已落地：`migrate_db` 按文件名序幂等应用 `ink/sql/migrations/*.sql` 并写入 `schema_migrations` 注册表（BFX-092 已修，原 5 个独立 `migrate_*.py` 靠人工记忆已弃用）；全新库可经 `mark_all_migrations_applied` 一次性标记全部迁移已应用、不重复执行；完整影子回填/Cutover 仍待完成 |
 
 本文件后续章节同时包含“已实现底座”和“必须达到的最终契约”。不得仅凭DDL或
 Repository存在就宣称对应生产能力完成。
@@ -481,6 +481,18 @@ AI 不可以：
 - partial unique index 保证 active Contract；
 - 所有事务写 Runtime Event。
 
+### 6.1 统一迁移跟踪
+
+旧机制（BFX-092，已修）：5 个独立 `migrate_*.py` 各自 `CREATE TABLE`，靠人工记忆已跑哪些，无统一注册表，无法幂等判定。新机制以 `ink/src/ink/schema.py` 为唯一入口：
+
+- `migrate_db(conn)`：按文件名升序读 `ink/sql/migrations/*.sql`，与 `schema_migrations` 注册表比对，仅应用未记录迁移，应用成功后在同一事务写入注册表行，失败整体回滚。已应用迁移跳过、不重复执行。
+- `mark_all_migrations_applied(conn)`：面向全新空库，将当前目录下全部迁移文件一次性标记为已应用、不实际执行 SQL，用于从参数 JSON 重建干净生产库（见 §8.1）等场景。
+- `list_migration_files()` / `applied_migrations(conn)`：枚举磁盘迁移文件与已应用记录，供校验与诊断。
+
+迁移文件命名规范：`YYYY-MM-DD_<slug>.sql`，按文件名升序即应用顺序。新增迁移只追加文件、不修改既有文件。
+
+`schema_migrations` 注册表用途：记录已应用迁移文件名与应用时间，作为幂等判定的唯一真相源；禁止手工 DELETE 已应用行以跳过重跑。
+
 ## 7. PostgreSQL 实现要求
 
 - Scene/Branch 写入使用行锁或 advisory lock；
@@ -497,3 +509,12 @@ AI 不可以：
 - 旧表只读；
 - `shot_id` 映射为 `legacy_shot` 或 Scene Internal Shot；
 - 不物理删除历史审计数据。
+
+### 8.1 重建生产库工具
+
+- `ink/tools/export_legacy_params.py`：只读导出 legacy 参数三表，输出为 JSON；明文 `api_key` 不写入导出，仅保留脱敏占位。
+- `ink/tools/rebuild_prod_db.py`：从导出的 params JSON 重建干净生产库。默认 dry-run，仅打印计划；`--force` 覆盖前自动备份原库文件并删除原文件，随后调用 §6.1 的 `mark_all_migrations_applied` 标记全部迁移已应用，不再逐条重跑。
+
+### 8.2 BFX-093 游离表 `writing_schema_authority`
+
+`writing_schema_authority` 不在 `sql/schema.sql`、不在 `ink/sql/migrations/`、不在源码任何地方，只在 legacy 库里游荡，系 BFX-079 期间 ad-hoc 手工建的 legacy 标记表。新库不回灌此游离表，重建生产库（§8.1）不创建它。任何引用此表为正式权威表的描述均属过时，应改引 §6.1 的 `schema_migrations` 注册表。

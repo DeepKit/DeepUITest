@@ -1626,7 +1626,7 @@ cd ink && python -m pytest tests/ -o "addopts="
 - **新增 `ink/source/brief_builder.py`**：把 `outline_parser` 解析的
   `ChapterOutline`（白灯 `24_分章大纲.md`）拼成 `RealGenerationPort`
   产稿用的自然语言 brief（标题+场景+冲突+物理因果/沉默点/章末钩子/主引擎
-  +1200-1800字），格式对齐 `test_generation_round_real_models.py` 的
+  +3.3-5.1KB(约1200-1800字)），格式对齐 `test_generation_round_real_models.py` 的
   `CHAPTER_BRIEF`。白灯第1章 brief 389 字符验证通过。
 - **deterministic 端到端冒烟通过**（临时库，3 候选 2 轮）：generate→validate
   （7维过门）→diff（有实质差异）→select（选 winner）→accept（CAS head+
@@ -1646,7 +1646,7 @@ cd ink && python -m pytest tests/ -o "addopts="
 
 ### 2026-07-15 真模型烟测白灯第1章：generation+validation 链路实证，validation 0 过门（BFX-074）
 
-- **环境打通**：`LOCAL_PROXY_KEY=fuyi-kiro-17781158558`（bearer）+
+- **环境打通**：`LOCAL_PROXY_KEY=fuyi-kiro-****`（bearer，BFX-092 脱敏）+
   `INK_LLM_API_KEY` 双设 + `--llm-base-url http://127.0.0.1:8000/v1` +
   `--llm-provider openai-compatible`，gateway 真实命中本地代理
   `claude-xunfei-deepseek-v4-pro`（非 deterministic 旁路）。BFX-073 闭环。
@@ -1797,7 +1797,7 @@ cd ink && python -m pytest tests/ -o "addopts="
   3 候选1轮，winner=branch_version 3，selected。
 - 正文 7938B：许怀山×10、吕素琴×10、硫化×5、油纸包×4、返潮×1；
   **零言情残留**（江辞×0、陆衍×0，BFX-077 修复在正式库同样生效）。
-- 头200字：一九七九年四月十七，硫化二车间，许怀山，装车台，第十七批，
+- 头0.6KB(约200字)：一九七九年四月十七，硫化二车间，许怀山，装车台，第十七批，
   一九七九年四月十五日下线，接口密封件，硫化橡胶，四二零四配方，解放牌卡车
   ——时代细节扎实。
 - `scene-accept --branch-version-id 3` → snapshot_id=1, head_version=1，
@@ -1848,8 +1848,8 @@ amy-review-synthesis.md`）。
 
 **根因诊断（对照代码）**：
 - **P0-1 主因 = 我做的 context 注入工程**：`_prev_chapter_context` 把前章封版
-  正文头+末各300字原文注入后章 brief，模型把前章场景当"本章要复现的设定"
-  复述。第2章开头400字实证重演装车签字（封条×3/装车×5/卡车×2）。第2章大纲
+  正文头+末各0.8KB(约300字)原文注入后章 brief，模型把前章场景当"本章要复现的设定"
+  复述。第2章开头1.1KB(约400字)实证重演装车签字（封条×3/装车×5/卡车×2）。第2章大纲
   明明要求"裂纹样件+1978旧样件"新事件，却被前章 context 淹没。**当时验收
   "模型复现第十七批四二零四配方"被误判成功，实为重复病根**（复述≠续接）。
   → 登记为 BFX-078，memory `ink-context-injection-raw-text-backfires`。
@@ -1963,3 +1963,162 @@ amy-review-synthesis.md`）。
 （`docs/invariant-traceability.md`）；P0 清单第8条（Fact/Guidance 生命周期）与
 第6条（export read-path lint）转正移除，P0 清单收敛为 6 项。全量回归 863 passed、
 10 skipped。bugfix BFX-089。tasks 旧第1项移除。
+
+### 2026-07-15 生产运维闭环：WAL/凭据脱敏（BFX-090/091）
+
+- **WAL/busy_timeout 落地（BFX-090）**：`SQLiteAdapter.connect` 对文件库设
+  `journal_mode=WAL`+`synchronous=NORMAL`+`busy_timeout=5000`；`:memory:` 跳 WAL 保
+  busy_timeout；`schema.connect_memory` 同步补 busy_timeout。消除长生成轮期间并发读
+  `database is locked`。
+- **凭据脱敏（BFX-091）**：本地代理 bearer key 明文散落 5 处（3 处入仓）。
+  `test_e2e_local_proxy.py` provider fixture 改读 `LOCAL_PROXY_KEY` env（模块级
+  pytestmark 已 gate，未 opt-in 全 skip）；`tools/run_baideng_local_proxy.py` 删
+  LEGACY fallback、main fail-fast；`history.md` key 脱敏；删 `.fastmeet/*.py`；
+  `.gitignore` 收口 `.fastmeet/`、`.bfx074/`。明文扫描归零。
+- **残留风险**：key 已进 git 历史，工作树清理无法消除已暴露——**需作者轮换 key**
+  （可选 `git filter-repo` 清史，破坏性）。
+- **决策偏离**：原计划 #52 含删 checkpoint_manager 死代码。审计后保留——它是 legacy
+  session 工具且支撑 m1 H3 反事实证据，删它收益低回归实。#52 仅完成凭据部分。
+- **登记**：bugfix BFX-090/091；聚焦测试 4+10 passed、e2e 1 skipped、schema 回归
+  19 passed。
+
+### 2026-07-17 三线审计 + fastmeet 五模型反省：Ink 不能工程化生产，暂停零件开发
+
+**触发**：老板问「Ink 能工程化生产了吗？为什么不能？连章跑过吗？写得怎样？」
+开三线只读审计（工程链路 / 文学质量 / SPW 硬门）+ fastmeet 五异族模型独立反省。
+
+**审计结论（已交叉核实，写入记忆 ink-not-production-ready-2026-07-17）**：
+
+1. **工程链路 6 项全 P0 阻断**：
+   - 正式库 `baideng_prod.db` 是**空壳**——chapter_heads/snapshots 有 2 条 sealed
+     元数据，但 `scene_revisions`/`snapshot_scenes`/`branch_scenes`/
+     `generation_rounds`/契约层全部 0 行。runtime_events 留 56 条（27 LLM 成功/
+     9 冻结/3 选优/2 接受）证明跑过真模型，但正文数据在 BFX-079 契约层重做时
+     被判「不满足当前血统」被清。
+   - `ink doctor` FAIL（writer/jury 模型池完全重叠，3 个模型一模一样）。
+   - `ink export` 直接崩（缺 `writing_chapter_snapshot_stale_marks` 表）。
+   - 13 个迁移脚本**无版本跟踪表**。
+2. **文学质量**：真模型只产过 ch01/ch02（jury 7 维分 90+，单章可读，正文样本存
+   `.trash_bfx079/.bfx074/exported_ch01.md`）。五专家连评 **7.1/10** 列三 P0：
+   章节同构 / 完整因果链断裂 / 科幻锚点缺失。ch03 产稿未 accept，**逐章滚动已暂停**。
+   10 章「压测」实为 shot 级单场景段落（600-1300 字），非完整章节。
+3. **SPW 硬门**：H1-H4 真落地（863 测试、30 trigger、~50 反事实断言、5 阶段故障注入）。
+   **H5 异构双塔对账定义了但未实现**（≠ 三家族盲审）。
+
+**核心诊断**：不是单点 bug，是**架构重做与生产数据脱节**——防绕过架构建好了，
+但从未在新架构上完整产过一本可验证的书。863 测试证明不变量，不证明文学质量。
+真模型 e2e 默认 skip，「稳定产出」从未有连续多章真模型证据。
+
+**fastmeet 五模型反省（独立收敛，无诱导偏差，报告
+roundtable_20260717_121421_*.md；记忆 ink-dev-process-retrospective-2026-07-17）**：
+
+根因五点（共识）：① 目标漂移/Goodhart（测试通过替代产出正文）；
+② 防御性工程过度 vs 产出交付缺位（负向约束完备，正向交付义务未入硬门）；
+③ 架构重做无数据保全责任（BFX-079 清空旧正文无迁移/回滚方案）；
+④ 质量门「实验室有效 ≠ 战场有效」（同构门代码+测试过，但生产链路未实证启用，
+ch02 同构没被拦住）；⑤ 基础设施舒适区（连章未闭环时仍刷 WAL/脱敏/熔断等
+低风险零件，回避文学质量高不确定核心难题）。
+
+**「是否按契约认真」判定**：局部工程契约——认真；端到端交付契约——未完成；
+产品结果契约——失焦。**形式认真，实质偏移，非偷懒**。
+
+**⚠️ 单人系统特别说明（老板裁定重点）**：
+这是单人 + AI 协作开发，不是有 KPI 制度的工���团队。所谓「组织叙事失焦」「KPI
+偏好」不完全成立。真正根因是**单人面对不确定性时的本能回避 + AI 倾向选可验证
+任务**——工程零件给即时确定完成感（「修了 BFX-090」），文学质量验证周期长主观易
+被打���，潜意识回避后者。**所以纠正手段是流程纪律（DoD 四层、双轨仲裁、冻结令），
+不是追责。** 本反省是方法论纠正，不是要回头清算「谁做错了」。**不要再花时间追究
+BFX-079 清数据该不该、H5 为什么没做等历史责任——那些是无效的追责工作，不产出。**
+往前走：让 Ink 在正式库完整产出一对可验证的章，比清算 10 个历史决策有用。
+
+**可优化点（DoD 四层 + 正向义务，详情见记忆）**：
+- DoD 必须四层：实现层 → 测试层 → 集成层（接默认生产路径+验证不可配置绕过）→
+  **结果层（正式库产出可检查真实产物）**。缺第四层不算完成。
+- 契约补正向义务：正式库必保完整正文链；schema 变更附升级+回滚验证；release 前
+  doctor 必过；export 必能从正式库出成品；连章跑通≥3章；质量门默认生产配置有阻断。
+- 业务债 vs 工程债双轨仲裁：有未解业务 P0 时，工程零件立项须仲裁。
+- 禁止「清空重来」式架构重做，不兼容数据标 legacy_unverified 隔离只读。
+- 真模型 e2e 不能永远 skip，定期真跑连章。
+
+**决策**：
+- **冻结**：#50 round 熔断、#51 巡检 CLI、H5 双塔全部暂停，直到黄金生产闭环跑通。
+- **转黄金闭环**：① 修 doctor 模型池（writer/jury 不重叠，jury≥5）；
+  ② 补 stale_marks 表迁移 + 迁移版本跟踪表；③ 用四层契约对正式库重产 ch01/ch02，
+  让正文真正落进 scene_revisions/snapshot_scenes，accept→export 全链路有真实数据；
+  ④ 同构门接进 produce-chapter 默认生产链路并配阈值；⑤ 预声明文学阈值+独立人工 A/B
+  评审新 ch01/ch02，三 P0 不消除不滚动；⑥ 双章过确定性门+人工阈值后恢复 ch03+ 滚动。
+- 计划文件 `~/.claude/plans/floating-imagining-cloud.md` 末尾总账已更新 #50/#51 状态。
+
+**登记**：无代码改动、无 BFX 号。本条为反省/决策登记。tasks #48 仍 in_progress（运维
+闭环未完），#50 改回 pending（冻结，非 in_progress），#51 维持 pending。
+
+## 2026-07-17 黄金生产闭环 ① — 修 doctor 模型池分离检查
+
+**背景**：交接修正现场后推进黄金闭环第 1 步（history 末条「转黄金闭环 ①」）。原 doctor
+`inspect_personal_production` 调 `load_project_config(allow_model_overlap=True)` 显式关
+闭了 config 的 writer/jury 重叠校验，且 config 对完全同池会先抛「排除 writer 后 jury<
+min」短路，遮蔽掉更可读的「模型池分离」诊断——导致 history.md:1998 记的「doctor FAIL
+（3 个模型一模一样）」场景在结构化 checks 里无对应项。
+
+**改动**（production_readiness.py + test_production_readiness.py）：
+- 新增 `_check_model_pool_separation`，独立查 `writing_projects` 四列，校验三条生产硬约束：
+  ① writer/jury 池不能完全相同（防裁判全是参赛者自评）；② writer 池 ≥ draft_count；
+  ③ jury 池 ≥ max(jury_model_pool_min, 5)（生产底线 jury≥5，防 3 人小评审团）。
+- 插入两处：foreign_keys check 之后（正常路径）+ config except 分支（短路路径，config
+  抛错时仍继续结构化诊断，不被遮蔽）。
+- 测试 3 例：完全同池拦截 / jury<5 拦截 / 3+5 分离通过。回归 870 passed, 10 skipped。
+
+**DoD**：实现层 ✓ / 测试层 ✓（3 新用例 + 全量绿）/ 集成层 ✓（接 doctor 默认路径，
+不可配置绕过——check 直查 DB 不走 config）/ 结果层 待（④ 同构门接链路后真跑 produce-
+chapter 验证 doctor 报错文案出现在生产链路）。第 1 步落地，下一步 ② 补 stale_marks
+迁移。
+
+## 2026-07-17 黄金生产闭环 ② — 库重建机制 + stale_marks 迁移 + 迁移跟踪
+
+**背景**：第 ① 步 doctor 模型池分离落地后推进第 ② 步。老板裁定（tasks.md:14-18 2026-07-16
+裁定沿用）：旧库不迁移、降级只读归档，新生产走全新库。原计划"补 stale_marks 迁移"在
+实测中升级为"库重建机制 + stale_marks 迁移 + 统一迁移跟踪"——因发现 legacy 库 schema 缺口
+远大于 stale_marks 三表。
+
+**改动**（schema.py + 2 迁移文件 + 2 工具）：
+- `ink/src/ink/schema.py`：新增统一迁移跟踪机制 `migrate_db`（按文件名序读 sql/migrations/
+  幂等应用，写 schema_migrations 表）/ `mark_all_migrations_applied`（全新库标记全部迁移
+  已应用，不重复执行）/ `list_migration_files` / `applied_migrations`。修复此前无统一迁移
+  机制、5 个 migrate_*.py 各自 CREATE TABLE 靠人工记跑哪个的工程缺陷（BFX-092）。
+- `ink/sql/migrations/2026-07-16_stale_marks_tables.sql`：stale_marks 三表
+  （scene_revision / branch_version / chapter_snapshot），FK 已校正匹配 base schema。
+- `ink/sql/migrations/2026-07-16_schema_migrations_registry.sql`：迁移版本跟踪表。
+- `ink/tools/export_legacy_params.py`：只读导出 legacy 参数三表（projects /
+  model_role_configs / schema_authority）为 JSON，**无 api_key 明文**（只存 api_key_env 环境变量名）。
+- `ink/tools/rebuild_prod_db.py`：从参数 JSON 用最新 schema.sql 重建干净库，默认 dry-run，
+  --apply 才建，--force 才覆盖，绝不静默覆盖；回灌后 schema_authority 标 'current'。
+- 全量回归 884 passed（870→884，新增 stale_marks/gate 证据相关用例），11 skipped（需真实 API）。
+
+**实测发现（实证依据）**：用 rebuild 脚本建临时新库验证，新库比 legacy 正式库多 **8 张表**，
+不止 stale_marks 三表：另有 `writing_chapter_accept_gate_evidence` /
+`writing_chapter_snapshot_gate_evidence`（Accept 门证据）、`writing_contract_fact_bindings`
+（Fact 绑定）、`writing_scene_repair_tasks`（修复任务）、`schema_migrations`。说明 legacy 库
+schema 快照比"07-16 stale_marks 加入前"更老，在 gate 证据/fact 绑定等正式生产表加入前就建了。
+逐条迁移补会撞重复列（如 07-08 的 `ALTER ADD COLUMN model_aliases`，SQLite 不支持 IF NOT EXISTS
+ADD COLUMN），baseline 回填方案复杂且脆——**全新库重建一次性带齐**是老板选"不要老的"方向的
+实证依据。另发现 `writing_schema_authority` 表不在 schema.sql/迁移/源码任何地方，只在库里
+游荡，是 BFX-079 期间 ad-hoc 手工建的 legacy 标记表（BFX-093），新库不回灌。
+
+**DoD**：实现层 ✓ / 测试层 ✓（884 passed）/ 集成层 ✓（迁移机制接 schema 初始化默认路径，
+rebuild 默认 dry-run 不可误覆盖）/ 结果层 ✓（老板裁定"原地替换+自动备份"后已执行，见下）。
+
+**正式库替换执行（2026-07-17 15:31，老板裁定原地替换+自动备份）**：
+- rebuild 脚本增补 `--force` 覆盖前**自动备份+删除原文件**逻辑（备份名
+  `baideng_prod.db.bak.YYYYMMDD-HHMMSS`，时间戳防反复覆盖丢更早备份）。首次跑撞
+  `table writing_projects already exists`——根因 `--force` 备份后未删原文件，rebuild 在
+  已存在文件上 initialize_schema 撞表；补 `args.db.unlink()` 后重跑成功。**原库全程未损**
+  （失败发生在事务内 initialize_schema 第一句，已回滚；留两份备份 153047 + 153134）。
+- 新库 `baideng_prod.db`：80 表（legacy 73 + 7 张新表 - schema_authority 游离表不回灌 +1
+  schema_migrations），8 张关键新表全在，project_id=1（BL 白灯篇）回灌，4 条 role_configs
+  回灌（无 api_key 明文），15 迁移全标记，scenarios/branches/snapshots 空干净生产库。
+- **doctor 非绿但非回归**：报 `project_config` + `model_pool_separation` 两 blocking fail
+  ——对 legacy 备份库跑同样 doctor 报**完全相同**两失败，确认是 legacy 既有项目配置问题
+  （writer/jury 池完全相同 3 模型、jury<5 生产底线），**非重建引入**。第 ① 步落地的是
+  `_check_model_pool_separation` 检查逻辑（能准确诊断），项目配置满足分离门禁是独立待办
+  （tasks.md 第1条生产运维闭环范畴），不属 ② 库重建。第 ② 步库重建 DoD 达成，下一步 ③
+  前需先解决模型池配置让 doctor 全绿，再四层契约重产 ch01/02。

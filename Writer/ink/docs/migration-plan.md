@@ -9,7 +9,7 @@
 |---|---|---|
 | S0 规范冻结 | 进行中 | 当前法源已建立；剩余P0不变量未全部实现 |
 | S1 新表与Repository | 已完成影子底座 | 内存SQLite与旧全量回归通过；未迁移既有文件库 |
-| S2 旧数据回填 | 未开始 | 无正式migration/backfill工具 |
+| S2 旧数据回填 | 已落地 | 统一迁移跟踪已落地（BFX-092，2026-07-17）；详见下节 |
 | S3 影子验证 | 未开始 | 尚无旧/新导出hash parity |
 | S4 一次切换 | 未开始 | 禁止执行 |
 | S5 移除旧权威后门 | 未开始 | 旧CLI仍是唯一生产路径 |
@@ -39,6 +39,50 @@
 当前结果：退出条件已满足；但这只表示影子底座完成，不表示既有生产数据库已经拥有新表。
 
 ## S2：旧数据回填
+
+> 本节于黄金闭环②（2026-07-17）重写"无正式 migration/backfill 工具"的原描述:
+> 统一迁移跟踪机制已落地并完成正式库重建。原"无工具/无跟踪"前提不再成立,
+> 下文"已落地"段为实况,S2 的 schema 就绪条件已满足。
+> 但"对每个 accepted 章节实际回填出 Snapshot"的语义仍保留在后半段,
+> 属于第③步重产工作,本节只保证 schema 与迁移机制就绪。
+
+### 已落地（BFX-092，2026-07-17）
+
+- **统一迁移跟踪**：`ink/src/ink/schema.py` 新增四个函数——
+  `migrate_db(conn)`（按文件名序读 `ink/sql/migrations/*.sql` 幂等应用,每迁移独立
+  事务、写 `schema_migrations` 表、带 sha256 checksum 校验）、
+  `mark_all_migrations_applied(conn)`（全新库专用,base schema.sql 已含全部迁移对象,
+  只登记不重跑,避免重复 CREATE 已存在的表）、`list_migration_files()`、
+  `applied_migrations(conn)`。
+- **迁移文件已存在**：`ink/sql/migrations/` 现有 15 个迁移,其中 2 个是闭环②新增——
+  `2026-07-16_schema_migrations_registry.sql`（迁移注册表,自举创建）、
+  `2026-07-16_stale_marks_tables.sql`（stale_marks 三表,从原独立脚本提取为正式迁移）。
+- **新增工具**：
+  `ink/tools/export_legacy_params.py`（只读导参,导出 legacy 库 projects/role_configs/
+  schema_authority 等为 params JSON,不写库）、
+  `ink/tools/rebuild_prod_db.py`（重建干净库,默认 dry-run;`--apply` 真建库,
+  `--force` 覆盖已存在文件并自动备份为 `*.bak.YYYYMMDD-HHMMSS`。全新库走
+  `initialize_schema` + `mark_all_migrations_applied`,一次性带齐全部表）。
+- **正式库已原地替换**（2026-07-17）：`baideng_prod.db` 已重建为新库,实测 80 张表,
+  15 个迁移全部登记为已应用,legacy 参数已回灌；原库留存 2 份备份
+  （`baideng_prod.db.bak.20260717-153047`、`.153134`）。
+
+### legacy schema 缺口与游离表
+
+实测 legacy 库（备份）比新库缺 8 张表,不止 stale_marks 三表——另有：
+`writing_chapter_accept_gate_evidence`、`writing_chapter_snapshot_gate_evidence`、
+`writing_contract_fact_bindings`、`writing_scene_repair_tasks`、`schema_migrations`。
+说明 legacy schema 快照比"07-16 stale_marks 加入前"更老。这些缺口由新库
+`rebuild_prod_db.py` 一次性补齐,无需逐表手工迁移。
+
+游离表 `writing_schema_authority`（BFX-093,2026-07-17）：存在于 legacy 库但**不在
+`schema.sql`、不在 `sql/migrations/`、不在 `src/ink/` 源码任何地方**——是 BFX-079 期间
+ad-hoc 手工建的 legacy 标记表。新库不回灌此表（schema.sql 不建它则新库自然没有）；
+legacy 标记状态已由 `export_legacy_params.py` 导出存入 params JSON 的 `schema_authority`
+段备查。若后续仍需 legacy 隔离机制,应正式工程化（DDL 入 schema.sql 或迁移文件 + 源码
+引用）,不沿用无定义的临时表。
+
+### Snapshot 回填语义（保留，属第③步重产）
 
 对每个 accepted 章节：
 

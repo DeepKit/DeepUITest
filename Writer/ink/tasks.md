@@ -16,19 +16,31 @@
 > 缺真实证据的"假权威"数据，并长期保留双架构旁路面。旧库降级为只读归档，
 > 旧正文仅作文学参考材料，需复用时必须重新走 Contract→Generation→Review→Accept
 > 链路，不允许导入为权威正文。原"旧生产库迁移与 Cutover"整项待办移除。
+>
+> **2026-07-17 黄金闭环进展**：① doctor 模型池分离检查逻辑已完成（`_check_model_pool_separation`，
+> 能准确诊断 writer/jury 池重叠与 jury<5）；② 库重建机制 + stale_marks 迁移 + 统一迁移跟踪
+> （`migrate_db`/`schema_migrations`）+ export/rebuild 工具已完成，实测 legacy 库缺 8 张表
+> （不止 stale_marks 三表，还有 gate 证据/fact 绑定/repair/schema_migrations），发现并修复
+> BFX-092（无统一迁移机制）、BFX-093（schema_authority 游离表）。**正式库已原地替换**
+> （rebuild --apply --force 自动备份 legacy 为 .bak×2 后全新建，新库 80 表带齐、参数回灌、
+> 游离表清除；两份备份留存）。**doctor 仍非绿但非回归**：报 project_config + model_pool_separation
+> 两 fail，与 legacy 库一致，属项目级模型池配置（writer/jury 池相同 3 模型、jury<5），需
+> 先配置模型池让 doctor 全绿再进 ③。下一步 ③ 四层契约重产 ch01/02。
 
 ## 当前唯一工程 Action
 
 1. **生产运维闭环**
+   - ✅ 统一迁移跟踪机制（`migrate_db`/`schema_migrations`/迁移文件）—黄金闭环②完成（BFX-092 修复）；
    - 项目/章节/轮次预算、调用上限、provider failover 和错误分类；
    - 幂等重跑、checkpoint、断点恢复、并发隔离、orphan/stale 巡检；
-   - 正式库 WAL/busy timeout/备份恢复；
+   - 正式库 WAL/busy timeout/备份恢复（`rebuild_prod_db.py` 已带 `PRAGMA busy_timeout=5000`，但正式库 WAL/备份恢复策略待定）；
    - PostgreSQL 章节锁、RLS、不可变权限和受控 Head 更新函数；
-   - secret scanning，并轮换历史文档中暴露过的凭据。
+   - secret scanning，并轮换历史文档中暴露过的凭据（BFX-091 明文凭据部分已完成，历史 git 暴露需轮换）。
 
 ## 文学质量纵切验收
 
 2. **全新正式库初始化与重产第1、2章**
+   - ✅ 全新库初始化机制就位（`rebuild_prod_db.py` 默认 dry-run + `export_legacy_params.py` 只读导参）—黄金闭环②完成；正式库替换待定时机；
    - 全新空库初始化（不迁移旧库），运行 `doctor` 直至全绿；
    - 使用 active 四层 Scene Contract 重产第1、2章；
    - 持久化 Contract、三家族 activation reviews、Generation Round���完整候选 Branch、

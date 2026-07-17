@@ -45,7 +45,9 @@ from test_m2_contract_outline import insert_chinese_contract_children
 
 # 本地 WiseGateway 代理（不直连 iFLYTEK 官方端点）。
 LOCAL_PROXY_BASE_URL = "http://127.0.0.1:8000/v1"
-LOCAL_PROXY_API_KEY = "fuyi-kiro-17781158558"
+# BFX-092: no hardcoded credential. The proxy bearer key is read from the
+# LOCAL_PROXY_KEY environment variable; tests that need a live proxy are
+# gated behind INK_RUN_REAL_LLM_TESTS and skip when the env is absent.
 LOCAL_PROXY_KEY_ENV = "LOCAL_PROXY_KEY"
 
 PROJECT_ID = 1
@@ -80,14 +82,16 @@ MODEL_ALIAS_MAP = {"smart-polish": "claude-xunfei-glm-5-1"}
 
 @pytest.fixture()
 def provider() -> OpenAICompatibleProvider:
-    """本地代理 provider（裸 OpenAICompatibleProvider，key 自带不走环境变量）。
+    """本地代理 provider（key 走 LOCAL_PROXY_KEY 环境变量，BFX-092 不入仓）。
 
     开启退避重试（max_retries=4）：代理上游 iFLYTEK 网关常 429/503 限流，
-    与生产 CLI 实跑一致。
+    与生产 CLI 实跑一致。模块级 pytestmark 已在未开 INK_RUN_REAL_LLM_TESTS
+    时整体 skip，故此处不另做 env 缺失检查。
     """
+    api_key = os.environ.get(LOCAL_PROXY_KEY_ENV, "")
     return OpenAICompatibleProvider(
         base_url=LOCAL_PROXY_BASE_URL,
-        api_key=LOCAL_PROXY_API_KEY,
+        api_key=api_key,
         max_retries=4,
         retry_base_delay=1.0,
     )
@@ -101,11 +105,8 @@ def gateway_conn():
     - ``min_eligible_outlines=1``：只要 1 个合格 outline（默认 2 过严）；
     - ``outline_drift_threshold=0.02``：真实模型倾向用自己的话重写，CJK bigram 重叠趋 0。
     """
-    if LOCAL_PROXY_KEY_ENV not in os.environ:
-        # chapter_review 链需此环境变量（主测试 provider 自带 key 不需要），
-        # 预先提示而非跑到 chapter_review 才炸。
-        os.environ[LOCAL_PROXY_KEY_ENV] = LOCAL_PROXY_API_KEY
-
+    # chapter_review 链需 LOCAL_PROXY_KEY 环境变量；由运行者自行 export，
+    # 不再硬编码 fallback（BFX-092）。模块级 skip 保证未 opt-in 时不会跑到这里。
     conn = make_schema_db()
     conn.execute(
         """

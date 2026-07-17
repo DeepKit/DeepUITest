@@ -22,3 +22,5 @@
 20. 不在缺少新不变量测试时切换生产库。
 21. 不在文档、日志或测试中保存真实API密钥。
 22. 不用固定阈值代替真实章节校准。
+23. 不把库里游荡但 schema.sql/迁移/源码无定义的表当作正式权威表（BFX-093：`writing_schema_authority` 是 ad-hoc 手工建的游离表，新库不回灌，重建不创建，引用它当权威的描述已过时，改引 `schema_migrations`）。
+24. 不靠人工记忆"跑了哪个 migrate_*.py"——统一迁移跟踪 `migrate_db` 按 `sql/migrations/` 文件名序幂等应用并写 `schema_migrations` 注册表（BFX-092），新迁移文件只追加不修改、命名 `YYYY-MM-DD_<slug>.sql`。

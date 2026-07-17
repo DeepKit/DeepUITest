@@ -25,8 +25,8 @@
 
 | 主题 | 当前实现事实 | 目标设计 | 迁移法源 |
 |---|---|---|---|
-| 正文存储 | 旧Shot生产表仍active；Scene-first影子表和Repository已落地 | Scene Revision | `migration-plan.md` |
-| 正式章节 | 旧accepted run仍生产；影子Snapshot/Head已可测试 | Chapter Snapshot + Chapter Head | Snapshot backfill/cutover |
+| 正文存储 | Scene-first 正式库已重建（2026-07-17，见下注），legacy Shot 库已归档只读 | Scene Revision | `migration-plan.md` |
+| 正式章节 | Chapter Snapshot/Head 表已落地并接入；等待③重产填充首条数据 | Chapter Snapshot + Chapter Head | Snapshot backfill/cutover |
 | 契约 | 旧 Shot 五表 | Scene Contract 四层 | 条款映射表 |
 | 候选 | 逐 Shot 候选 | 完整 Chapter Candidate Branch | 影子生成与导出对比 |
 | 状态机 | 旧 Shot 状态机 | Scene/Generation Round/Snapshot 状态机 | 写入冻结与一次切换 |
@@ -55,3 +55,10 @@
 - 追溯旧决策。
 
 归档不得用于新增功能设计或作为 accepted/export 的目标规范。
+
+> **2026-07-17 库重建注记**：正式库 `baideng_prod.db` 已从 legacy 全新建库替换
+> （`rebuild_prod_db.py --apply --force`，自动备份 legacy 为 `.bak`）。新库带齐 8 张
+> 新表（stale_marks 三表 + gate 证据/fact 绑定/repair/schema_migrations），排除
+> BFX-093 游离表 `writing_schema_authority`。迁移机制为统一 `migrate_db` 按
+> `sql/migrations/` 文件名序幂等应用 + `schema_migrations` 注册表（BFX-092）。
+> 详见 `migration-plan.md` 与 `history.md` 黄金闭环②段。

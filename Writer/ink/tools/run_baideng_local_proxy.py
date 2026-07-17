@@ -80,8 +80,8 @@ MERGED_WINNERS_PATH = os.environ.get(
 
 # --- 本地 WiseGateway 代理配置（与 test_e2e_local_proxy.py 一致） ---------
 # 代理 key 非 appId:apiKey 格式，是单一 bearer token；base_url 走 /v1（OpenAI 兼容路径）
-LEGACY_LOCAL_PROXY_KEY = "fuyi-kiro-17781158558"
-LOCAL_PROXY_KEY = os.environ.get("LOCAL_PROXY_KEY", "").strip() or LEGACY_LOCAL_PROXY_KEY
+# BFX-092: 不再保留 legacy key 常量；key 必须由 LOCAL_PROXY_KEY 环境变量提供。
+LOCAL_PROXY_KEY = os.environ.get("LOCAL_PROXY_KEY", "").strip()
 LOCAL_PROXY_BASE = "http://127.0.0.1:8000/v1"
 # 模型名用代理暴露的 claude-xunfei-* 原生名（代理透传时 model 字段原样转讯飞）
 GLM51 = "claude-xunfei-glm-5-1"
@@ -318,6 +318,11 @@ def save_snapshot(conn, chapter_id):
 
 
 def main():
+    if not LOCAL_PROXY_KEY:
+        raise SystemExit(
+            "LOCAL_PROXY_KEY 环境变量未设置（BFX-092 已移除 legacy key fallback）。"
+            "请 export LOCAL_PROXY_KEY=<bearer> 后重试。"
+        )
     os.environ["LOCAL_PROXY_KEY"] = LOCAL_PROXY_KEY
     resume_existing = os.environ.get("INK_BENCHMARK_RESUME") == "1" and os.path.exists(DB_PATH)
     if resume_existing:

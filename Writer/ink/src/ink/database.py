@@ -59,6 +59,15 @@ class SQLiteAdapter:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
+        # Contract §6: production file databases must run with WAL +
+        # busy_timeout so concurrent reads never block during long
+        # generation rounds. WAL is meaningless (and rejected) on the
+        # in-memory backend, but busy_timeout still applies there.
+        is_memory = str(self.path) == ":memory:"
+        if not is_memory:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         if self.initialize:
             initialize_schema(conn)
         return conn

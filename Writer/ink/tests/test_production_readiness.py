@@ -62,3 +62,68 @@ def test_sqlite_backup_is_independent_and_integrity_checked(tmp_path) -> None:
     backup = sqlite3.connect(destination)
     assert backup.execute("SELECT value FROM sample").fetchone()[0] == "before"
     backup.close()
+
+
+def _seed_project_with_pool(
+    conn: sqlite3.Connection, *, writer_pool: str, jury_pool: str
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO writing_projects
+            (project_id, code, title, writer_model_pool, jury_model_pool,
+             max_calls_per_shot, max_total_llm_calls, require_ethics_review, created_at)
+        VALUES (1, 'prod', 'Production', ?, ?,
+                64, 96, 1, ?)
+        """,
+        (writer_pool, jury_pool, NOW),
+    )
+    conn.execute(
+        """
+        INSERT INTO writing_model_role_configs
+            (project_id, call_type, tier, model_name, provider, api_key_env,
+             created_at, updated_at)
+        VALUES (1, 'draft', 'primary', 'real-model', 'wise', 'LOCAL_PROXY_KEY',
+                ?, ?)
+        """,
+        (NOW, NOW),
+    )
+
+
+def test_doctor_blocks_identical_writer_jury_pools() -> None:
+    """writer/jury 完全同池(自评风险)必须被 doctor 拦截。
+
+    回归 history.md:1998 — 三个模型一模一样过不了 doctor,但旧 doctor 用
+    allow_model_overlap=True 关闭了 config 重叠校验,导致此场景漏检。
+    """
+    conn = make_schema_db()
+    _seed_project_with_pool(
+        conn, writer_pool='["m1","m2","m3"]', jury_pool='["m1","m2","m3"]'
+    )
+    report = inspect_personal_production(conn, 1)
+    assert report["ready_for_personal_production"] is False
+    assert "model_pool_separation" in report["blocking_failures"]
+
+
+def test_doctor_blocks_jury_pool_below_production_floor() -> None:
+    """jury 池 < 5(生产底线)必须拦截,即使满足 jury_model_pool_min=3。"""
+    conn = make_schema_db()
+    _seed_project_with_pool(
+        conn, writer_pool='["w1","w2","w3"]', jury_pool='["j1","j2","j3"]'
+    )
+    report = inspect_personal_production(conn, 1)
+    assert "model_pool_separation" in report["blocking_failures"]
+    check = next(c for c in report["checks"] if c["name"] == "model_pool_separation")
+    assert "production floor" in check["detail"]
+
+
+def test_doctor_passes_separated_pools_meeting_floor() -> None:
+    """writer 3 + jury 5 分离 = 生产就绪(model_pool_separation 通过)。"""
+    conn = make_schema_db()
+    _seed_project_with_pool(
+        conn, writer_pool='["w1","w2","w3"]', jury_pool='["j1","j2","j3","j4","j5"]'
+    )
+    report = inspect_personal_production(conn, 1)
+    check = next(c for c in report["checks"] if c["name"] == "model_pool_separation")
+    assert check["passed"] is True
+    assert "model_pool_separation" not in report["blocking_failures"]
+
