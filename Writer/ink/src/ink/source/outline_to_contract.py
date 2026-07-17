@@ -261,6 +261,24 @@ def outline_to_four_layer_clauses(co: ChapterOutline) -> dict[str, list[dict[str
     ]
     hard_constraints = [c for c in hard_constraints if c["clause_text"]]
 
+    # 兜底：章纲缺物理因果锚点/沉默点/未来义务/去重硬门时 hard 层会空，
+    # 真实模型契约审查一致判 revise（ch2/3/4 实测根因）。
+    # design.md §3.1 要求 hard 层非空——从冲突派生因果硬约束补位。
+    # 注意：不用章末钩子派生 hard（章末钩子属于 creative_opening 层留白，
+    # 同时进 hard 层会被审查判"锁死 creative_opening"，ch02 independent-2 实测）。
+    if not hard_constraints:
+        conflict = co.get("冲突")
+        if conflict:
+            hard_constraints.append(
+                {"clause_key": "causal_conflict_anchor",
+                 "clause_text": f"本章核心因果冲突须落地（兜底派生）：{conflict}",
+                 "severity": "hard", "authority_rank": 8})
+        if not hard_constraints and scene:
+            hard_constraints.append(
+                {"clause_key": "scene_binding",
+                 "clause_text": f"场景物理约束须落地（兜底派生）：{scene}",
+                 "severity": "hard", "authority_rank": 6})
+
     source_dna = [
         {"clause_key": "main_engine", "clause_text": co.get("主引擎"),
          "severity": "diagnostic", "authority_rank": 5},
@@ -291,6 +309,17 @@ def outline_to_four_layer_clauses(co: ChapterOutline) -> dict[str, list[dict[str
          "severity": "soft", "authority_rank": 1} if co.get("目标感受") else None,
     ]
     creative_openings = [c for c in creative_openings if c is not None]
+
+    # 兜底：审查口径要求 creative_opening 有 ≥2 条"可发挥留白"，且不得与 hard ���内容重复
+    # （qwen3 实测：chapter_end_hook 不算开场留白；conflict_opening 与 hard 派生冲突撞文本判锁死；
+    #  场景派生又会与 scene_opening 撞）。故 hard 兜底用「冲突」时，creative 兜底改用登场人物留白，
+    #  源文本彻底错开。chars 来自 _split_chars(scene)，与 hard 的「冲突」、scene_opening 的「场景」均不重。
+    non_hook_openings = [c for c in creative_openings if c["clause_key"] != "chapter_end_hook"]
+    if len(non_hook_openings) < 2 and chars:
+        creative_openings.append(
+            {"clause_key": "character_reaction_opening",
+             "clause_text": f"登场人物（{'、'.join(chars)}）的反应与心理动机可发挥，不锁死具体表现",
+             "severity": "soft", "authority_rank": 0})
 
     return {
         "hard_constraints": hard_constraints,
