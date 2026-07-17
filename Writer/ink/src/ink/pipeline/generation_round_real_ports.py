@@ -30,6 +30,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
+from ink.core.chapter_accept_gate_repository import ChapterAcceptGateRepository
 from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
 from ink.core.llm_gateway import LLMGateway, ModelResult
 from ink.core.scene_repository import SceneRepository
@@ -88,6 +89,20 @@ class RealValidationPort:
             with open(f".bfx074/text_r{round_id}_b{branch_id}.md", "w", encoding="utf-8") as _f:
                 _f.write(text)
         passed = all(score >= floor for score in scores.values())
+        ChapterAcceptGateRepository(conn).record_evidence(
+            branch_version_id=repo.frozen_branch_version_id(branch_id),
+            gate_type="chapter_quality",
+            passed=passed,
+            evidence={
+                "scores": scores,
+                "dimension_floor": floor,
+                "blocking_issues": [
+                    dimension for dimension, score in scores.items() if score < floor
+                ],
+            },
+            producer_actor="real-validation-port",
+            reviewer_models=("chapter-review-role-chain",),
+        )
         if passed:
             repo.record_eligible_branch(round_id=round_id, branch_id=branch_id)
             repo.advance_to_literary_review(branch_id=branch_id)

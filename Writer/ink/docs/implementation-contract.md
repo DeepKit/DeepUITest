@@ -8,16 +8,16 @@
 
 | 能力 | 当前真实状态 |
 |---|---|
-| 12张Scene-first表、FK、唯一索引和不可变trigger | 已在`sql/schema.sql`落地，仅作影子层 |
+| Scene-first权威表、FK、唯一索引和不可变trigger | 已在`sql/schema.sql`落地；仍待正式库Cutover |
 | Scene/Contract/Clause/Revision基础Repository | 已实现 |
 | Branch-local expected parent与合法分叉 | 已实现并测试 |
-| Branch Version基础冻结与content hash | 已实现；完整Scene集合、Fact和质量门尚未接入 |
+| Branch Version冻结与content hash | 已实现；必要Scene集合与Fact生命周期仍待补齐 |
 | Snapshot封口、固定Revision序列、Chapter Head CAS | 已实现并测试 |
-| Selection/Human Decision、Runtime Event、质量/伦理硬门 | 未接入Scene-first Accept |
+| Selection/Human Decision、Runtime Event、四类Accept硬门 | 已进入同一权威事务；正式评审策略仍需校准 |
 | Generation Round有界状态机 | 已完成：固定2+条件补3、0篇终止、≥3/实质差异/文学绝对门槛、预算熔断、CAS、恢复、全部终态及真实模型ports均已实现并测试（Scene-first影子层，未接CLI、未投产） |
 | 契约双师、盲审和actor权限 | 尚未实现 |
-| 正式CLI、accept、export、context、repair切换 | 尚未切换，旧Shot路径仍是唯一生产权威 |
-| 既有生产库迁移脚本和回填 | 尚未实现 |
+| 正式CLI、accept、context、repair切换 | Scene-first生产路径已接线；正式export仍待单一权威收口 |
+| 既有生产库迁移脚本和回填 | 分项幂等迁移已提供；完整影子回填/Cutover仍待完成 |
 
 本文件后续章节同时包含“已实现底座”和“必须达到的最终契约”。不得仅凭DDL或
 Repository存在就宣称对应生产能力完成。
@@ -309,9 +309,11 @@ reason
 
 ### 2.3 Accept Chapter
 
-以下是最终生产事务。当前 Scene-first Repository 已把 Selection Decision、
-Human Decision、Snapshot、Chapter Head CAS 与 Runtime Event 纳入同一事务，并由
-human actor 门保护；Scene/Chapter/Book 硬门仍未全部接入，因此不得据此宣称投产完成。
+以下事务已在 Scene-first Repository 落地：Selection Decision、Human Decision、
+四类 Accept Gate Evidence、Snapshot 及证据绑定、Chapter Head CAS 与 Runtime Event
+处于同一 `BEGIN IMMEDIATE` 事务，并由 human actor 门保护。缺证据、失败证据、Branch
+hash/policy 不匹配、陈旧 Book predecessor Heads 或 stale lineage 均 fail-closed；这仍不
+等于文学阈值已经过真实章节校准，也不等于正式库已完成 Cutover。
 
 使用 `BEGIN IMMEDIATE`（SQLite）或章节级事务锁（PostgreSQL）。
 
@@ -320,14 +322,15 @@ human actor 门保护；Scene/Chapter/Book 硬门仍未全部接入，因此不�
 1. 读取并锁定 Chapter Head；
 2. 校验 expected head version；
 3. 校验 Branch Version 冻结且被选中；
-4. 校验 Scene/Chapter/Book 硬门；
-5. 创建 Snapshot；
-6. 复制有序 Branch Scene 绑定到 Snapshot；
-7. 计算并校验 Snapshot hash；
-8. 写 Selection Decision 和 Human Decision；
-9. CAS 更新 Chapter Head；
-10. 写 Runtime Event；
-11. 提交。
+4. 校验 Scene 完整性、Chapter 文学质量、Book 连贯性与伦理四类最新证据；
+5. 校验 Branch content hash、policy version 与 predecessor Heads hash；
+6. 创建 Snapshot；
+7. 复制有序 Branch Scene 绑定及四类证据绑定到 Snapshot；
+8. 计算并校验 Snapshot hash；
+9. 写 Selection Decision 和 Human Decision；
+10. CAS 更新 Chapter Head；
+11. 写 Runtime Event；
+12. 提交。
 
 任一步失败全部回滚。
 

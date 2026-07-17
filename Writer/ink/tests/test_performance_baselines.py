@@ -36,21 +36,18 @@ def test_six_chapter_workflow_performance_baseline(tmp_path: Path) -> None:
     assert elapsed < SIX_CHAPTER_WORKFLOW_MAX_SECONDS
 
 
-def test_cli_one_chapter_performance_baseline(tmp_path: Path) -> None:
+def test_legacy_cli_one_chapter_pre_accept_performance_baseline(tmp_path: Path) -> None:
     db_path = tmp_path / "ink.sqlite"
-    output_path = tmp_path / "export.md"
 
     def run_flow() -> None:
         assert main(["--db", str(db_path), "init", "--code", "perf-demo", "--title", "Perf Demo"]) == 0
         assert main(["--db", str(db_path), "setup", "--chapters", "1"]) == 0
         assert main(["--db", str(db_path), "write", "--chapter", "1"]) == 0
         assert main(["--db", str(db_path), "review", "--chapter", "1"]) == 0
-        assert main(["--db", str(db_path), "accept", "--chapter", "1"]) == 0
-        assert main(["--db", str(db_path), "export", "--output", str(output_path)]) == 0
+        assert main(["--db", str(db_path), "accept", "--chapter", "1"]) == 1
 
     elapsed = _measure(run_flow)
 
-    assert output_path.exists()
     assert elapsed < CLI_ONE_CHAPTER_MAX_SECONDS
 
 

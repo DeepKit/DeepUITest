@@ -93,6 +93,21 @@
 | INV-FACT-001 | fact anchor门 |
 | INV-JURY-001 | 三模型全维评分 |
 | INV-JURY-002 | winner选择 |
+| INV-FACT-002 | Fact Proposal confirm写入version_hash与review证据 | `test_confirm_writes_anchor_with_version_hash_and_review_evidence` |
+| INV-FACT-003 | Fact Proposal reject持久化review证据 | `test_reject_persists_review_evidence` |
+| INV-FACT-004 | 绑定Fact要求active契约+confirmed anchor | `test_bind_contract_fact_requires_active_contract_and_confirmed_anchor` |
+| INV-FACT-005 | Fact supersede移动status并记replacement | `test_supersede_fact_anchor_moves_status_and_records_replacement` |
+| INV-FACT-006 | Fact supersede要求新旧均confirmed | `test_supersede_requires_confirmed_old_and_new` |
+| INV-FACT-007 | Fact deprecate置deprecated无replacement | `test_deprecate_fact_anchor_marks_deprecated_with_no_replacement` |
+| INV-FACT-008 | Fact supersede后受影响Branch消费门fail-closed | `test_accept_gate_refuses_branch_after_fact_supersede` |
+| INV-FACT-009 | sealed Snapshot读取遇stale Scene binding fail-closed | `test_active_snapshot_read_refuses_stale_after_fact_supersede` |
+| INV-GUIDANCE-001 | Guidance Card创建即active | `test_apply_flips_active_to_applied_and_bumps_use_count` |
+| INV-GUIDANCE-002 | apply翻转active→applied并+1 use_count | `test_apply_flips_active_to_applied_and_bumps_use_count` |
+| INV-GUIDANCE-003 | 非active(dismissed/stale/applied)卡禁止apply | `test_apply_refuses_non_active_card`/`test_apply_refuses_reapply_after_applied` |
+| INV-GUIDANCE-004 | apply执行max_uses上限 | `test_apply_enforces_max_uses_ceiling` |
+| INV-GUIDANCE-005 | Fact supersede联动scene active卡转stale | `test_fact_supersede_flips_scene_active_cards_stale` |
+| INV-GUIDANCE-006 | Contract supersede联动scene active卡转stale | `test_contract_supersede_flips_scene_active_cards_stale` |
+| INV-GUIDANCE-007 | stale卡禁止apply到fresh产出 | `test_fact_supersede_flips_scene_active_cards_stale` |
 
 ## 尚未登记为已执行不变量的P0门禁
 
@@ -103,9 +118,12 @@
 3. Scene、Chapter、Book与伦理硬门进入Scene-first Accept权威事务；
 4. 候选差异绝对门槛与少数冠军的Scene-first全链生产证据；
 5. 契约架构师与最终批准者分离的actor权限证据；
-6. Cutover后export只读active、sealed、non-stale Snapshot的read-path lint；
-7. 旧导出与Snapshot导出的hash parity及Cutover/回滚演练；
-8. Guidance Card与Fact Proposal完整生命周期及全链审计。
+6. 旧导出与Snapshot导出的hash parity及Cutover/回滚演练。
+
+> 已转正：Fact Proposal生命周期（INV-FACT-002~007）、Fact supersede消费门
+> （INV-FACT-008）、sealed Snapshot read-path stale门（INV-FACT-009）、
+> Guidance Card完整生命周期及Fact/Contract supersede联动stale
+> （INV-GUIDANCE-001~007）。
 
 ## 验收门
 

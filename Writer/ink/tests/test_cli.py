@@ -25,20 +25,15 @@ def test_cli_chapter_revise_export_import_flow(tmp_path: Path) -> None:
     assert revised_run_id != 1
     assert main(["--db", str(db_path), "write", "--chapter", "1", "--run-id", str(revised_run_id)]) == 0
     assert main(["--db", str(db_path), "review", "--chapter", "1", "--run-id", str(revised_run_id)]) == 0
-    assert main(["--db", str(db_path), "accept", "--chapter", "1", "--run-id", str(revised_run_id)]) == 0
-    assert main(["--db", str(db_path), "export", "--output", str(output_path)]) == 0
-
-    assert "polished text" in output_path.read_text(encoding="utf-8")
-    (import_root / "accepted.md").write_text(output_path.read_text(encoding="utf-8"), encoding="utf-8")
-    assert main(["--db", str(db_path), "import", "--dry-run", "--source", str(import_root)]) == 0
-    import_run_id = _scalar(db_path, "SELECT max(import_run_id) FROM writing_import_runs")
-    assert main(["--db", str(db_path), "import", "--finalize", str(import_run_id)]) == 0
+    assert main(["--db", str(db_path), "accept", "--chapter", "1", "--run-id", str(revised_run_id)]) == 1
+    assert main([
+        "--db", str(db_path), "accept", "--chapter", "1", "--run-id", str(revised_run_id), "--dry-run"
+    ]) == 0
 
     assert _scalar(db_path, "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'reject'") == 1
     assert _scalar(db_path, "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'revise'") == 1
-    assert _scalar(db_path, "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'accept'") == 1
-    assert _scalar(db_path, "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'import_finalize'") == 1
-    assert _scalar(db_path, "SELECT count(*) FROM writing_chapter_reviews WHERE status = 'accepted'") == 1
+    assert _scalar(db_path, "SELECT count(*) FROM writing_human_decisions WHERE decision_type = 'accept'") == 0
+    assert _scalar(db_path, "SELECT count(*) FROM writing_chapter_reviews WHERE status = 'accepted'") == 0
     assert _scalar(db_path, "SELECT count(*) FROM writing_chapter_reviews WHERE status = 'rejected'") == 1
 
 

@@ -29,7 +29,7 @@ from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
 from ink.core.scene_repository import SceneRepository
 from ink.schema import initialize_schema
 from ink.database import connect
-from factories import NOW, insert_contract_approve_reviews
+from factories import NOW, insert_contract_approve_reviews, insert_passing_accept_gates
 
 
 def _make_file_db() -> str:
@@ -98,6 +98,7 @@ def _seed_selected_frozen_branch(db_path: str) -> int:
             (branch_id,),
         )
         snapshots.select_branch(branch_id)
+        insert_passing_accept_gates(conn, bv_id)
         conn.commit()
         return bv_id
     finally:
@@ -131,7 +132,9 @@ def test_scene_accept_dry_run_returns_plan() -> None:
     ])
     assert rc == 0
     assert payload is not None
-    assert payload["data"]["would"] == "record decisions + seal snapshot + CAS head + emit CHAPTER_ACCEPTED"
+    assert payload["data"]["would"] == (
+        "run hard gates + record decisions + seal snapshot + CAS head + emit CHAPTER_ACCEPTED"
+    )
     assert payload["data"]["expected_head_version"] == 0
     Path(db_path).unlink(missing_ok=True)
 
@@ -151,6 +154,14 @@ def test_scene_accept_then_export_round_trip() -> None:
     rc, payload = _run(db_path, ["scene-export", "--project-id", "1"])
     assert rc == 0, payload
     assert payload["data"]["artifact"] == "定稿正文。"
+    assert payload["data"]["canonical_command"] == "export"
+    assert payload["data"]["snapshot_ids"] == [payload_accept_snapshot := payload["data"]["snapshot_ids"][0]]
+    assert payload_accept_snapshot > 0
+
+    rc, canonical = _run(db_path, ["export", "--project-id", "1"])
+    assert rc == 0, canonical
+    assert canonical["data"]["artifact"] == "定稿正文。"
+    assert canonical["data"]["snapshot_ids"] == [payload_accept_snapshot]
 
     # After Accept the head has advanced; a dry-run must now report the new
     # expected_head_version (1), proving the CLI observes the sealed head and
@@ -162,6 +173,36 @@ def test_scene_accept_then_export_round_trip() -> None:
     ])
     assert rc == 0, payload
     assert payload["data"]["expected_head_version"] == 1
+    Path(db_path).unlink(missing_ok=True)
+
+
+def test_canonical_export_writes_text_sidecar_and_trace_event() -> None:
+    db_path = _make_file_db()
+    bv_id = _seed_selected_frozen_branch(db_path)
+    rc, accepted = _run(db_path, [
+        "scene-accept", "--project-id", "1", "--chapter-id", "1",
+        "--branch-version-id", str(bv_id), "--actor", "editor:zhang",
+    ])
+    assert rc == 0, accepted
+    output = Path(db_path).with_suffix(".txt")
+    rc, payload = _run(db_path, [
+        "export", "--project-id", "1", "--output", str(output),
+    ])
+    assert rc == 0, payload
+    assert output.read_bytes().decode("utf-8") == "定稿正文。"
+    sidecar = Path(f"{output}.metadata.json")
+    metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert metadata["authority"] == "active_sealed_non_stale_chapter_snapshot"
+    assert metadata["artifact_sha256"] == payload["data"]["artifact_sha256"]
+    assert metadata["chapters"][0]["snapshot_id"] == accepted["data"]["snapshot_id"]
+    conn = sqlite3.connect(db_path)
+    event = conn.execute(
+        "SELECT event_payload FROM writing_runtime_events WHERE event_type = 'EXPORT_COMPLETED' ORDER BY event_id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    assert json.loads(event[0])["artifact_sha256"] == metadata["artifact_sha256"]
+    output.unlink(missing_ok=True)
+    sidecar.unlink(missing_ok=True)
     Path(db_path).unlink(missing_ok=True)
 
 
@@ -188,4 +229,80 @@ def test_scene_export_parity_is_read_only() -> None:
     data = payload["data"]
     assert "match" in data and "legacy_len" in data and "scene_len" in data
     assert data["scene_len"] > 0
+    assert data["legacy_status"] == "unavailable"
+    assert data["scene_status"] == "ok"
+    assert data["match"] is False
+    Path(db_path).unlink(missing_ok=True)
+
+
+def test_export_fails_closed_for_stale_active_snapshot() -> None:
+    db_path = _make_file_db()
+    bv_id = _seed_selected_frozen_branch(db_path)
+    rc, accepted = _run(db_path, [
+        "scene-accept", "--project-id", "1", "--chapter-id", "1",
+        "--branch-version-id", str(bv_id), "--actor", "editor:zhang",
+    ])
+    assert rc == 0, accepted
+    conn = sqlite3.connect(db_path)
+    source_contract = conn.execute(
+        "SELECT scene_contract_id FROM writing_scene_revisions LIMIT 1"
+    ).fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO writing_chapter_snapshot_stale_marks (
+            snapshot_id, source_scene_contract_id,
+            replacement_scene_contract_id, stale_reason, marked_at
+        ) VALUES (?, ?, ?, 'counterfactual stale', '2026-07-15T00:00:00Z')
+        """,
+        (accepted["data"]["snapshot_id"], source_contract, source_contract),
+    )
+    conn.commit()
+    conn.close()
+    rc, _ = _run(db_path, ["export", "--project-id", "1"])
+    assert rc != 0
+    Path(db_path).unlink(missing_ok=True)
+
+
+def test_export_ignores_legacy_accepted_shot_when_snapshot_exists() -> None:
+    db_path = _make_file_db()
+    bv_id = _seed_selected_frozen_branch(db_path)
+    rc, accepted = _run(db_path, [
+        "scene-accept", "--project-id", "1", "--chapter-id", "1",
+        "--branch-version-id", str(bv_id), "--actor", "editor:zhang",
+    ])
+    assert rc == 0, accepted
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO writing_sessions (session_id, project_id, started_at) VALUES (99, 1, '2026-07-15T00:00:00Z')"
+    )
+    conn.execute(
+        "INSERT INTO writing_runs (run_id, project_id, session_id, run_attempt, started_at, status) VALUES (99, 1, 99, 1, '2026-07-15T00:00:00Z', 'completed')"
+    )
+    conn.execute(
+        """
+        INSERT INTO writing_shots (
+            shot_id, project_id, chapter_id, run_id, logical_shot_id,
+            status, created_at, updated_at
+        ) VALUES ('legacy-x', 1, 1, 99, 'legacy-x', 'hard_sealed',
+                  '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO writing_chapter_reviews (
+            project_id, chapter_id, run_id, status,
+            chapter_continuity_hard, pov_consistency, character_consistency,
+            chapter_hook_soft, rhythm_curve, motif_density,
+            info_gap_lifecycle, chapter_coherence, quality_gate_passed,
+            reviewed_at
+        ) VALUES (1, 1, 99, 'accepted',
+                  90, 90, 90, 90, 90, 90, 90, 90, 1,
+                  '2026-07-15T00:00:00Z')
+        """
+    )
+    conn.commit()
+    conn.close()
+    rc, payload = _run(db_path, ["export", "--project-id", "1"])
+    assert rc == 0, payload
+    assert payload["data"]["artifact"] == "定稿正文。"
     Path(db_path).unlink(missing_ok=True)

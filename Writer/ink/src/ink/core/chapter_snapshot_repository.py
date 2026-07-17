@@ -9,6 +9,7 @@ from itertools import count
 from typing import Iterator
 
 from ink.core.actor_guard import assert_can_accept, assert_can_freeze_branch
+from ink.core.chapter_accept_gate_repository import ChapterAcceptGateRepository
 from ink.errors import (
     ConcurrentModificationError,
     DataIntegrityError,
@@ -29,6 +30,16 @@ class ChapterHead:
     version: int
     accepted_decision_id: int | None = None
     selection_decision_id: int | None = None
+
+
+@dataclass(frozen=True)
+class ActiveChapterSnapshot:
+    project_id: int
+    chapter_id: int
+    snapshot_id: int
+    snapshot_hash: str
+    sealed_at: str
+    text: str
 
 
 @dataclass(frozen=True)
@@ -667,6 +678,21 @@ class ChapterSnapshotRepository:
             snapshot_hash = _bindings_hash(bindings)
             if snapshot_hash != str(row[1]):
                 raise DataIntegrityError("frozen branch content hash no longer matches its bindings")
+            gate_evidence = ChapterAcceptGateRepository(self.conn).require_passing_bundle(
+                branch_version_id=branch_version_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                generation_round_id=generation_round_id,
+                content_hash=snapshot_hash,
+            )
+            gate_evidence_ids = {
+                gate_type: evidence.evidence_id
+                for gate_type, evidence in gate_evidence.items()
+            }
+            preconditions_json = {
+                **preconditions_json,
+                "accept_gate_evidence_ids": gate_evidence_ids,
+            }
 
             selection_decision_id = self.record_selection_decision(
                 project_id=project_id,
@@ -710,6 +736,17 @@ class ChapterSnapshotRepository:
                 [
                     (snapshot_id, scene_order, scene_id, revision_id)
                     for scene_order, scene_id, revision_id, _ in bindings
+                ],
+            )
+            self.conn.executemany(
+                """
+                INSERT INTO writing_chapter_snapshot_gate_evidence
+                    (snapshot_id, gate_type, evidence_id)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    (snapshot_id, gate_type, evidence_id)
+                    for gate_type, evidence_id in gate_evidence_ids.items()
                 ],
             )
             self.conn.execute(
@@ -756,6 +793,7 @@ class ChapterSnapshotRepository:
                     "selection_decision_id": selection_decision_id,
                     "actor": actor,
                     "version": next_version,
+                    "accept_gate_evidence_ids": gate_evidence_ids,
                 },
             )
             return ChapterHead(
@@ -763,37 +801,57 @@ class ChapterSnapshotRepository:
                 accepted_decision_id, selection_decision_id,
             )
 
-    def read_active_chapter_text(self, *, project_id: int, chapter_id: int) -> str:
-        stale = self.conn.execute(
+    def read_active_chapter_snapshot(
+        self, *, project_id: int, chapter_id: int
+    ) -> ActiveChapterSnapshot:
+        row = self.conn.execute(
             """
-            SELECT sm.stale_reason
+            SELECT s.snapshot_id, s.snapshot_hash, s.sealed_at, sm.stale_reason
             FROM writing_chapter_heads h
-            JOIN writing_chapter_snapshot_stale_marks sm
-              ON sm.snapshot_id = h.active_snapshot_id
+            JOIN writing_chapter_snapshots s ON s.snapshot_id = h.active_snapshot_id
+            LEFT JOIN writing_chapter_snapshot_stale_marks sm
+              ON sm.snapshot_id = s.snapshot_id
             WHERE h.project_id = ? AND h.chapter_id = ?
             """,
             (project_id, chapter_id),
         ).fetchone()
-        if stale is not None:
+        if row is None:
+            raise DataIntegrityError(f"no active Chapter Snapshot for {project_id}/{chapter_id}")
+        if row[2] is None:
             raise DataIntegrityError(
-                f"active chapter snapshot contains stale Scene lineage: {stale[0]}"
+                f"active Chapter Snapshot is not sealed for {project_id}/{chapter_id}"
             )
-        rows = self.conn.execute(
+        if row[3] is not None:
+            raise DataIntegrityError(
+                f"active chapter snapshot contains stale Scene lineage: {row[3]}"
+            )
+        text_rows = self.conn.execute(
             """
             SELECT sr.text
-            FROM writing_chapter_heads h
-            JOIN writing_chapter_snapshots s
-              ON s.snapshot_id = h.active_snapshot_id AND s.sealed_at IS NOT NULL
-            JOIN writing_chapter_snapshot_scenes ss ON ss.snapshot_id = s.snapshot_id
+            FROM writing_chapter_snapshot_scenes ss
             JOIN writing_scene_revisions sr ON sr.scene_revision_id = ss.scene_revision_id
-            WHERE h.project_id = ? AND h.chapter_id = ?
+            WHERE ss.snapshot_id = ?
             ORDER BY ss.scene_order
             """,
-            (project_id, chapter_id),
+            (int(row[0]),),
         ).fetchall()
-        if not rows:
-            raise DataIntegrityError(f"no active Chapter Snapshot for {project_id}/{chapter_id}")
-        return "\n\n".join(str(row[0]) for row in rows)
+        if not text_rows:
+            raise DataIntegrityError(
+                f"active Chapter Snapshot has no Scene bindings for {project_id}/{chapter_id}"
+            )
+        return ActiveChapterSnapshot(
+            project_id=project_id,
+            chapter_id=chapter_id,
+            snapshot_id=int(row[0]),
+            snapshot_hash=str(row[1]),
+            sealed_at=str(row[2]),
+            text="\n\n".join(str(text_row[0]) for text_row in text_rows),
+        )
+
+    def read_active_chapter_text(self, *, project_id: int, chapter_id: int) -> str:
+        return self.read_active_chapter_snapshot(
+            project_id=project_id, chapter_id=chapter_id
+        ).text
 
     def emit_runtime_event(
         self,

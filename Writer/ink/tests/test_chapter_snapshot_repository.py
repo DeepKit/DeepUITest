@@ -8,7 +8,12 @@ import pytest
 from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
 from ink.core.scene_repository import SceneRepository
 from ink.errors import ConcurrentModificationError
-from factories import NOW, insert_contract_approve_reviews, make_schema_db
+from factories import (
+    NOW,
+    insert_contract_approve_reviews,
+    insert_passing_accept_gates,
+    make_schema_db,
+)
 
 
 def _accepted_fixture() -> tuple[
@@ -83,6 +88,7 @@ def _accepted_fixture() -> tuple[
         generation_task_id=branch_id,
     )
     snapshots.freeze_branch_version(branch_version_id, actor="author")
+    insert_passing_accept_gates(conn, branch_version_id)
     conn.execute(
         "UPDATE writing_chapter_candidate_branches SET status = 'eligible' WHERE branch_id = ?",
         (branch_id,),
@@ -139,6 +145,7 @@ def _next_selected_candidate(
         generation_task_id=branch_id,
     )
     snapshots.freeze_branch_version(branch_version_id, actor="author")
+    insert_passing_accept_gates(conn, branch_version_id)
     conn.execute(
         "UPDATE writing_chapter_candidate_branches SET status = 'eligible' WHERE branch_id = ?",
         (branch_id,),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from ink.core.chapter_accept_gate_repository import ChapterAcceptGateRepository
 from ink.schema import connect_memory, initialize_schema
 
 
@@ -24,6 +25,46 @@ SCORE_COLUMNS = (
 
 def make_schema_db() -> sqlite3.Connection:
     return initialize_schema(connect_memory())
+
+
+def insert_passing_accept_gates(
+    conn: sqlite3.Connection,
+    branch_version_id: int,
+) -> dict[str, int]:
+    repo = ChapterAcceptGateRepository(conn)
+    identity = conn.execute(
+        """
+        SELECT r.project_id, r.chapter_id
+        FROM writing_chapter_candidate_branch_versions bv
+        JOIN writing_chapter_candidate_branches b ON b.branch_id = bv.branch_id
+        JOIN writing_chapter_generation_rounds r
+          ON r.generation_round_id = b.generation_round_id
+        WHERE bv.branch_version_id = ?
+        """,
+        (branch_version_id,),
+    ).fetchone()
+    predecessor_hash = repo.predecessor_heads_hash(
+        project_id=int(identity[0]), chapter_id=int(identity[1])
+    )
+    payloads = {
+        "scene_integrity": {"scene_count": 1},
+        "chapter_quality": {"scores": {"fixture": 90}, "blocking_issues": []},
+        "book_continuity": {"blocking_issues": [], "predecessor_heads_hash": predecessor_hash},
+        "ethics": {"required": False, "risk_level": "low", "recommendation": "approve"},
+    }
+    return {
+        gate_type: repo.record_evidence(
+            branch_version_id=branch_version_id,
+            gate_type=gate_type,
+            passed=True,
+            evidence=payload,
+            predecessor_heads_hash=(
+                predecessor_hash if gate_type == "book_continuity" else None
+            ),
+            producer_actor="test-fixture",
+        )
+        for gate_type, payload in payloads.items()
+    }
 
 
 def insert_contract_approve_reviews(

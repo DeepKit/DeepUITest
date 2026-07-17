@@ -25,7 +25,6 @@ from ink.decision_sessions import DecisionSessionStore
 from ink.errors import ConfigError, InkError
 from ink.pipeline.chapter_review_orchestrator import ChapterReviewOrchestrator
 from ink.pipeline.chesil_patch_orchestrator import ChesilPatchOrchestrator
-from ink.pipeline.export_orchestrator import ExportOrchestrator
 from ink.pipeline.scene_export_orchestrator import SceneExportOrchestrator
 from ink.pipeline.ethics_review_orchestrator import EthicsReviewOrchestrator
 from ink.pipeline.hard_gate_orchestrator import HardGateOrchestrator
@@ -1283,18 +1282,21 @@ def _cmd_ethics_review(conn: sqlite3.Connection, args: argparse.Namespace) -> di
 
 
 def _cmd_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, int]:
+    from ink.errors import DataIntegrityError
+
     project_id = _project_id(conn, args)
     run_id = _run_id(conn, args, project_id)
     if args.dry_run:
-        return {"project_id": project_id, "chapter_id": args.chapter, "run_id": run_id, "planned_decisions": 1}
-    decision_id = HumanReviewOrchestrator(conn).accept_chapter(
-        project_id,
-        args.chapter,
-        run_id,
-        actor=args.actor,
-        reason=args.reason,
+        return {
+            "project_id": project_id,
+            "chapter_id": args.chapter,
+            "run_id": run_id,
+            "blocked": True,
+            "use": "scene-accept --branch-version-id <id>",
+        }
+    raise DataIntegrityError(
+        "legacy Shot accept is disabled; use scene-accept with a selected frozen Branch Version"
     )
-    return {"decision_id": decision_id}
 
 
 def _cmd_revise(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -1420,33 +1422,7 @@ def _cmd_import(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str,
 
 
 def _cmd_export(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
-    project_id = _project_id(conn, args)
-    if args.dry_run:
-        row = conn.execute(
-            """
-            SELECT count(DISTINCT r.chapter_id), count(*)
-            FROM writing_chapter_reviews r
-            JOIN writing_shots s
-              ON s.project_id = r.project_id
-             AND s.chapter_id = r.chapter_id
-             AND s.run_id = r.run_id
-            WHERE r.project_id = ?
-              AND r.status = 'accepted'
-              AND s.status = 'hard_sealed'
-            """,
-            (project_id,),
-        ).fetchone()
-        return {
-            "project_id": project_id,
-            "output": args.output,
-            "accepted_chapters": int(row[0]),
-            "hard_sealed_shots": int(row[1]),
-        }
-    artifact = ExportOrchestrator(conn).export_project(project_id)
-    if args.output:
-        Path(args.output).write_text(artifact, encoding="utf-8")
-        return {"project_id": project_id, "output": args.output, "bytes": len(artifact.encode("utf-8"))}
-    return {"project_id": project_id, "artifact": artifact}
+    return _export_active_snapshots(conn, args)
 
 
 def _cmd_scene_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -1468,9 +1444,12 @@ def _cmd_scene_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dic
             "branch_version_id": args.branch_version_id,
             "actor": args.actor,
             "expected_head_version": expected,
-            "would": "record decisions + seal snapshot + CAS head + emit CHAPTER_ACCEPTED",
+            "would": "run hard gates + record decisions + seal snapshot + CAS head + emit CHAPTER_ACCEPTED",
         }
-    head_row = repo.accept_chapter(
+    from ink.pipeline.scene_first_acceptance_gate_orchestrator import (
+        SceneFirstAcceptanceGateOrchestrator,
+    )
+    head_row = SceneFirstAcceptanceGateOrchestrator(conn).accept_chapter(
         branch_version_id=args.branch_version_id,
         expected_head_version=expected,
         actor=args.actor,
@@ -1493,18 +1472,41 @@ def _cmd_scene_accept(conn: sqlite3.Connection, args: argparse.Namespace) -> dic
 
 
 def _cmd_scene_export(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
+    return _export_active_snapshots(conn, args)
+
+
+def _export_active_snapshots(
+    conn: sqlite3.Connection, args: argparse.Namespace
+) -> dict[str, object]:
     project_id = _project_id(conn, args)
+    exporter = SceneExportOrchestrator(conn)
     if args.dry_run:
-        rows = conn.execute(
-            "SELECT count(DISTINCT chapter_id) FROM writing_chapter_heads WHERE project_id = ?",
-            (project_id,),
-        ).fetchone()
-        return {"project_id": project_id, "output": args.output, "accepted_chapters": int(rows[0])}
-    artifact = SceneExportOrchestrator(conn).export_project(project_id)
+        return {
+            **exporter.preview_project(project_id),
+            "output": args.output,
+            "canonical_command": "export",
+        }
     if args.output:
-        Path(args.output).write_text(artifact, encoding="utf-8")
-        return {"project_id": project_id, "output": args.output, "bytes": len(artifact.encode("utf-8"))}
-    return {"project_id": project_id, "artifact": artifact}
+        artifact = exporter.deliver_project(project_id, args.output)
+        return {
+            "project_id": project_id,
+            "output": args.output,
+            "metadata_output": f"{args.output}.metadata.json",
+            "bytes": artifact.bytes,
+            "artifact_sha256": artifact.artifact_sha256,
+            "snapshot_ids": [chapter.snapshot_id for chapter in artifact.chapters],
+            "canonical_command": "export",
+        }
+    artifact = exporter.build_project(project_id)
+    exporter.record_completed(artifact, delivery="stdout")
+    return {
+        "project_id": project_id,
+        "artifact": artifact.text,
+        "bytes": artifact.bytes,
+        "artifact_sha256": artifact.artifact_sha256,
+        "snapshot_ids": [chapter.snapshot_id for chapter in artifact.chapters],
+        "canonical_command": "export",
+    }
 
 
 def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> dict[str, object]:
@@ -1614,7 +1616,7 @@ def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> 
                 # frozen + selected but NOT accepted. Output (if given) writes the
                 # raw winner branch text for author review — NOT a sealed snapshot
                 # export, since no active snapshot exists yet.
-                exported = _maybe_export_branch_text(conn, winner_bv_id, args.output)
+                exported = _export_unaccepted_branch_for_review(conn, winner_bv_id, args.output)
                 return {
                     "project_id": project_id, "chapter_id": chapter_id,
                     "accepted": False, "no_accept": True, "round_id": round_id,
@@ -1625,7 +1627,10 @@ def _cmd_produce_chapter(conn: sqlite3.Connection, args: argparse.Namespace) -> 
                     "exported": exported,
                 }
             expected = _expected_head_version(conn, project_id, chapter_id)
-            head_row = repo.accept_chapter(
+            from ink.pipeline.scene_first_acceptance_gate_orchestrator import (
+                SceneFirstAcceptanceGateOrchestrator,
+            )
+            head_row = SceneFirstAcceptanceGateOrchestrator(conn).accept_chapter(
                 branch_version_id=winner_bv_id,
                 expected_head_version=expected,
                 actor=args.actor,
@@ -1825,12 +1830,11 @@ def _maybe_export(conn, project_id: int, chapter_id: int, output) -> str | None:
     if not output:
         return None
     from ink.pipeline.scene_export_orchestrator import SceneExportOrchestrator
-    artifact = SceneExportOrchestrator(conn).export_chapter(project_id, chapter_id)
-    Path(output).write_text(artifact, encoding="utf-8")
+    SceneExportOrchestrator(conn).deliver_chapter(project_id, chapter_id, output)
     return output
 
 
-def _maybe_export_branch_text(conn, branch_version_id: int, output) -> str | None:
+def _export_unaccepted_branch_for_review(conn, branch_version_id: int, output) -> str | None:
     """Write the raw frozen branch text — for --no-accept review, not a sealed export."""
     if not output:
         return None
@@ -1858,7 +1862,10 @@ def _force_accept_and_export(
     # accept_chapter requires the branch be marked 'selected' first.
     repo.select_branch(branch_id)
     expected = _expected_head_version(conn, project_id, chapter_id)
-    head_row = repo.accept_chapter(
+    from ink.pipeline.scene_first_acceptance_gate_orchestrator import (
+        SceneFirstAcceptanceGateOrchestrator,
+    )
+    head_row = SceneFirstAcceptanceGateOrchestrator(conn).accept_chapter(
         branch_version_id=branch_version_id,
         expected_head_version=expected,
         actor=actor,

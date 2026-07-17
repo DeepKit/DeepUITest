@@ -28,6 +28,24 @@ def test_sql_access_lint_blocks_f_string_sql_dynamic_sql_and_orm_revision_query(
     assert codes(lint_sql_access(orm_source, "src/ink/pipeline/writer.py")) == {"ORM_ACCESS"}
 
 
+def test_sql_access_lint_blocks_legacy_reads_and_imports_in_formal_export() -> None:
+    read_source = "conn.execute('SELECT * FROM writing_shots WHERE project_id=?', (project_id,))"
+    import_source = "from ink.pipeline.export_orchestrator import ExportOrchestrator"
+
+    assert codes(
+        lint_sql_access(read_source, "src/ink/pipeline/scene_export_orchestrator.py")
+    ) == {"LEGACY_EXPORT_BODY_READ"}
+    assert codes(lint_sql_access(import_source, "src/ink/cli.py")) == {
+        "LEGACY_EXPORT_IMPORT"
+    }
+    assert lint_sql_access(
+        read_source, "src/ink/pipeline/export_orchestrator.py"
+    ) == []
+    assert lint_sql_access(
+        import_source, "src/ink/pipeline/scene_export_orchestrator.py"
+    ) == []
+
+
 def test_sql_access_lint_blocks_scene_first_authority_access_outside_repositories() -> None:
     source = "conn.execute('UPDATE writing_chapter_heads SET version = version + 1')"
 
@@ -42,10 +60,15 @@ def test_sql_access_lint_blocks_scene_first_authority_access_outside_repositorie
 def test_production_source_has_no_scene_first_authority_sql_bypasses() -> None:
     root = Path(__file__).resolve().parents[1]
     violations = []
+    guarded_codes = {
+        "SCENE_FIRST_AUTHORITY_WRITE",
+        "LEGACY_EXPORT_BODY_READ",
+        "LEGACY_EXPORT_IMPORT",
+    }
     for path in (root / "src" / "ink").rglob("*.py"):
         relative = path.relative_to(root).as_posix()
         for violation in lint_sql_access(path.read_text(encoding="utf-8"), relative):
-            if violation.code == "SCENE_FIRST_AUTHORITY_WRITE":
+            if violation.code in guarded_codes:
                 violations.append(f"{relative}:{violation.line}: {violation.message}")
 
     assert violations == []

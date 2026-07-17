@@ -199,6 +199,9 @@ class SceneRepository:
                             now,
                         ),
                     )
+                # Contract superseded → scene-scoped guidance issued against the
+                # old contract no longer applies. Flip them stale too.
+                self.mark_guidance_cards_stale_for_scene(int(row[0]))
 
     def add_contract_clause(
         self,
@@ -845,6 +848,58 @@ class SceneRepository:
         if updated == 0:
             raise DataIntegrityError(f"unknown guidance card: {guidance_card_id}")
 
+    def apply_guidance_card(
+        self, *, guidance_card_id: int, applied_to_chapter_id: int,
+    ) -> None:
+        """Mark an active guidance card applied to a chapter.
+
+        Increments ``use_count`` and rejects cards that are not ``active``
+        (a dismissed/stale/applied card cannot be re-applied). Enforces the
+        optional ``max_uses`` ceiling.
+        """
+        row = self.conn.execute(
+            "SELECT status, use_count, max_uses FROM writing_guidance_cards "
+            "WHERE guidance_card_id = ?",
+            (guidance_card_id,),
+        ).fetchone()
+        if row is None:
+            raise DataIntegrityError(f"unknown guidance card: {guidance_card_id}")
+        status, use_count, max_uses = row
+        if str(status) != "active":
+            raise DataIntegrityError(
+                f"guidance card {guidance_card_id} is not active (status={status})"
+            )
+        if max_uses is not None and int(use_count) >= int(max_uses):
+            raise DataIntegrityError(
+                f"guidance card {guidance_card_id} reached max_uses={max_uses}"
+            )
+        self.conn.execute(
+            """
+            UPDATE writing_guidance_cards
+            SET status = 'applied', use_count = use_count + 1,
+                applied_at = ?, applied_to_chapter_id = ?
+            WHERE guidance_card_id = ?
+            """,
+            (now_utc_iso(), applied_to_chapter_id, guidance_card_id),
+        )
+
+    def mark_guidance_cards_stale_for_scene(self, scene_id: int) -> int:
+        """Flip scene-scoped active guidance cards to ``stale``.
+
+        Called when the Scene's Contract is superseded or one of its bound
+        facts changes, so previously issued guidance no longer matches the
+        current source of truth. Returns the number of cards marked stale.
+        """
+        updated = self.conn.execute(
+            """
+            UPDATE writing_guidance_cards
+            SET status = 'stale'
+            WHERE scene_id = ? AND status = 'active'
+            """,
+            (scene_id,),
+        ).rowcount
+        return int(updated)
+
     def create_fact_proposal(
         self, *, project_id: int, chapter_id: int, scene_id: int | None,
         proposed_fact: str, fact_type: str, source_text: str,
@@ -869,7 +924,7 @@ class SceneRepository:
         assert_can_confirm_fact(actor)
         row = self.conn.execute(
             "SELECT project_id, chapter_id, scene_id, proposed_fact, fact_type, source_text, "
-            "source_revision_id, confidence, status "
+            "source_revision_id, confidence, status, model_name "
             "FROM writing_fact_proposals WHERE fact_proposal_id = ?",
             (fact_proposal_id,),
         ).fetchone()
@@ -877,32 +932,227 @@ class SceneRepository:
             raise DataIntegrityError(f"unknown fact proposal: {fact_proposal_id}")
         if str(row[8]) != "proposed":
             raise DataIntegrityError("only a proposed fact can be confirmed")
+        from ink.core.actor_guard import assert_human_actor
+        assert_human_actor(actor, action="confirm fact proposal")
+        now = now_utc_iso()
+        fact_text = str(row[3])
+        source_span = str(row[5])[:120]
+        confidence = float(row[7])
+        proposer_model = str(row[9])
+        version_hash = hashlib.sha256(
+            f"{fact_text}|{source_span}|{confidence}".encode("utf-8")
+        ).hexdigest()
         with _atomic(self.conn):
             self.conn.execute(
-                "UPDATE writing_fact_proposals SET status = 'confirmed' WHERE fact_proposal_id = ?",
-                (fact_proposal_id,),
+                """
+                UPDATE writing_fact_proposals
+                SET status = 'confirmed',
+                    reviewed_by = ?, reviewed_at = ?,
+                    reviewer_model = ?, review_evidence_json = ?
+                WHERE fact_proposal_id = ?
+                """,
+                (actor, now, proposer_model,
+                 json.dumps({"decision": "confirmed", "actor": actor},
+                            ensure_ascii=False),
+                 fact_proposal_id),
             )
             anchor_cursor = self.conn.execute(
                 """
                 INSERT OR IGNORE INTO writing_fact_anchors
-                    (project_id, shot_id, revision_id, fact_text, source_span,
-                     confidence, status, created_at)
-                VALUES (?, NULL, ?, ?, ?, ?, 'confirmed', ?)
+                    (project_id, shot_id, revision_id, scene_id, chapter_id,
+                     fact_text, source_span, confidence, version_hash,
+                     status, created_at)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
                 """,
-                (int(row[0]), row[6], str(row[3]), str(row[5])[:120],
-                 float(row[7]), now_utc_iso()),
+                (int(row[0]), row[6], row[2], int(row[1]),
+                 fact_text, source_span, confidence, version_hash, now),
             )
             return int(anchor_cursor.lastrowid)
 
     def reject_fact_proposal(self, *, fact_proposal_id: int, actor: str) -> None:
         from ink.core.actor_guard import assert_human_actor
         assert_human_actor(actor, action="reject fact proposal")
+        now = now_utc_iso()
         updated = self.conn.execute(
-            "UPDATE writing_fact_proposals SET status = 'rejected' WHERE fact_proposal_id = ?",
-            (fact_proposal_id,),
+            """
+            UPDATE writing_fact_proposals
+            SET status = 'rejected',
+                reviewed_by = ?, reviewed_at = ?,
+                review_evidence_json = ?
+            WHERE fact_proposal_id = ?
+            """,
+            (actor, now,
+             json.dumps({"decision": "rejected", "actor": actor},
+                        ensure_ascii=False),
+             fact_proposal_id),
         ).rowcount
         if updated == 0:
             raise DataIntegrityError(f"unknown fact proposal: {fact_proposal_id}")
+
+    # -- Fact lifecycle: supersede / deprecate / list / bind (BFX-089) ---------
+
+    def list_fact_anchors_for_contract(self, scene_contract_id: int) -> list[dict]:
+        """Return fact anchors bound (any binding_type) to a Scene Contract."""
+        rows = self.conn.execute(
+            """
+            SELECT fa.anchor_id, fa.fact_text, fa.version_hash, fa.status,
+                   fa.scene_id, fa.chapter_id, b.binding_type, b.fact_version_hash
+            FROM writing_contract_fact_bindings b
+            JOIN writing_fact_anchors fa ON fa.anchor_id = b.fact_anchor_id
+            WHERE b.scene_contract_id = ?
+            ORDER BY fa.anchor_id
+            """,
+            (scene_contract_id,),
+        ).fetchall()
+        return [
+            {
+                "anchor_id": int(r[0]),
+                "fact_text": str(r[1]),
+                "version_hash": str(r[2]),
+                "status": str(r[3]),
+                "scene_id": int(r[4]) if r[4] is not None else None,
+                "chapter_id": int(r[5]) if r[5] is not None else None,
+                "binding_type": str(r[6]),
+                "bound_version_hash": str(r[7]),
+            }
+            for r in rows
+        ]
+
+    def bind_contract_fact(
+        self, *, scene_contract_id: int, fact_anchor_id: int,
+        binding_type: str, actor: str,
+    ) -> int:
+        """Bind a fact version to an *active* Scene Contract (fail-closed).
+
+        The binding is immutable: changing a fact constraint means superseding
+        the Contract, not editing the binding. Only active Contracts may be
+        bound, so a superseded Contract cannot be silently re-wired to facts.
+        """
+        from ink.core.actor_guard import assert_human_actor
+        assert_human_actor(actor, action="bind contract fact")
+        if binding_type not in ("required", "forbidden", "context"):
+            raise DataIntegrityError(f"invalid binding_type: {binding_type}")
+        contract_status = self.conn.execute(
+            "SELECT status FROM writing_scene_contracts WHERE scene_contract_id = ?",
+            (scene_contract_id,),
+        ).fetchone()
+        if contract_status is None:
+            raise DataIntegrityError(f"unknown scene contract: {scene_contract_id}")
+        if str(contract_status[0]) != "active":
+            raise DataIntegrityError(
+                "only an active Scene Contract may bind facts "
+                f"(contract {scene_contract_id} is {contract_status[0]})"
+            )
+        anchor = self.conn.execute(
+            "SELECT status, version_hash FROM writing_fact_anchors WHERE anchor_id = ?",
+            (fact_anchor_id,),
+        ).fetchone()
+        if anchor is None:
+            raise DataIntegrityError(f"unknown fact anchor: {fact_anchor_id}")
+        if str(anchor[0]) != "confirmed":
+            raise DataIntegrityError(
+                f"only a confirmed fact anchor may be bound (anchor {fact_anchor_id} is {anchor[0]})"
+            )
+        cursor = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO writing_contract_fact_bindings
+                (scene_contract_id, fact_anchor_id, fact_version_hash,
+                 binding_type, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scene_contract_id, fact_anchor_id, str(anchor[1]),
+             binding_type, now_utc_iso()),
+        )
+        return int(cursor.lastrowid)
+
+    def supersede_fact_anchor(
+        self, *, old_anchor_id: int, new_anchor_id: int | None,
+        actor: str, reason: str,
+    ) -> None:
+        """Mark a confirmed fact deprecated/superseded and propagate stale marks
+        to every Scene Contract that bound the old fact version.
+
+        The old anchor moves to 'superseded' (or 'deprecated' when there is no
+        replacement). Propagation is delegated to
+        ``SceneStalePropagationManager.mark_fact_changed`` so the downstream
+        Revision/Branch/Snapshot stale path is shared with Contract supersede.
+        The old Contract itself is NOT marked superseded — a Fact change does
+        not replace the Contract, it only invalidates its derivations.
+        """
+        from ink.core.actor_guard import assert_human_actor
+        assert_human_actor(actor, action="supersede fact anchor")
+        if not reason or not reason.strip():
+            raise DataIntegrityError("supersede reason must not be empty")
+        old = self.conn.execute(
+            "SELECT status FROM writing_fact_anchors WHERE anchor_id = ?",
+            (old_anchor_id,),
+        ).fetchone()
+        if old is None:
+            raise DataIntegrityError(f"unknown fact anchor: {old_anchor_id}")
+        if str(old[0]) not in ("confirmed", "violated"):
+            raise DataIntegrityError(
+                f"only a confirmed/violated fact can be superseded (anchor {old_anchor_id} is {old[0]})"
+            )
+        if new_anchor_id is not None:
+            new = self.conn.execute(
+                "SELECT status FROM writing_fact_anchors WHERE anchor_id = ?",
+                (new_anchor_id,),
+            ).fetchone()
+            if new is None:
+                raise DataIntegrityError(f"unknown replacement fact anchor: {new_anchor_id}")
+            if str(new[0]) != "confirmed":
+                raise DataIntegrityError(
+                    f"replacement fact anchor must be confirmed (anchor {new_anchor_id} is {new[0]})"
+                )
+        with _atomic(self.conn):
+            new_status = "superseded" if new_anchor_id is not None else "deprecated"
+            self.conn.execute(
+                """
+                UPDATE writing_fact_anchors
+                SET status = ?, superseded_by_anchor_id = ?, supersede_reason = ?
+                WHERE anchor_id = ?
+                """,
+                (new_status, new_anchor_id, reason, old_anchor_id),
+            )
+            # Delegate downstream propagation to the stale manager.
+            from ink.core.scene_stale_propagation import SceneStalePropagationManager
+            result = SceneStalePropagationManager(self.conn).mark_fact_changed(
+                fact_anchor_id=old_anchor_id, reason=reason,
+            )
+            # A bound fact changed → scene-scoped guidance issued against the
+            # old source of truth no longer applies. Flip them stale too.
+            # Resolve the affected scenes from the contracts that bound the
+            # superseded fact (and fall back to the anchor's own scene), so the
+            # sweep fires even before any revision consumes the fact.
+            scene_ids = {
+                int(row[0])
+                for row in self.conn.execute(
+                    """
+                    SELECT DISTINCT sc.scene_id
+                    FROM writing_contract_fact_bindings b
+                    JOIN writing_scene_contracts sc
+                      ON sc.scene_contract_id = b.scene_contract_id
+                    WHERE b.fact_anchor_id = ?
+                    """,
+                    (old_anchor_id,),
+                ).fetchall()
+            } | {
+                int(row[0])
+                for row in self.conn.execute(
+                    "SELECT scene_id FROM writing_fact_anchors "
+                    "WHERE anchor_id = ? AND scene_id IS NOT NULL",
+                    (old_anchor_id,),
+                ).fetchall()
+            }
+            for scene_id in scene_ids:
+                self.mark_guidance_cards_stale_for_scene(scene_id)
+
+    def deprecate_fact_anchor(self, *, anchor_id: int, actor: str, reason: str) -> None:
+        """Deprecate a fact with no replacement and propagate stale marks."""
+        self.supersede_fact_anchor(
+            old_anchor_id=anchor_id, new_anchor_id=None,
+            actor=actor, reason=reason,
+        )
 
 
 @contextmanager

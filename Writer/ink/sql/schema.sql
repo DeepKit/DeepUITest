@@ -790,21 +790,33 @@ CREATE TABLE writing_contract_changelog (
 );
 
 -- 35. writing_fact_anchors（事实锚点）
+-- Scene-first: facts are bound to Scene Contracts via writing_contract_fact_bindings.
+-- shot_id is a legacy provenance column (NULL for Scene-first anchors); the binding
+-- authority is scene_contract_id through the bindings table, plus version_hash which
+-- snapshots the fact's specific version for stale detection.
 CREATE TABLE writing_fact_anchors (
     anchor_id INTEGER PRIMARY KEY,
     project_id INTEGER NOT NULL,
     shot_id TEXT,
     revision_id INTEGER,
+    scene_id INTEGER,
+    chapter_id INTEGER,
     fact_text TEXT NOT NULL,
     source_span TEXT,
     confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','violated','deprecated')),
+    version_hash TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('proposed','confirmed','violated','deprecated','superseded')),
+    superseded_by_anchor_id INTEGER,
+    supersede_reason TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
     FOREIGN KEY (shot_id) REFERENCES writing_shots(shot_id) ON DELETE CASCADE,
-    FOREIGN KEY (revision_id) REFERENCES writing_shot_revisions(revision_id)
+    FOREIGN KEY (revision_id) REFERENCES writing_scene_revisions(scene_revision_id),
+    FOREIGN KEY (scene_id) REFERENCES writing_scenes(scene_id) ON DELETE CASCADE,
+    FOREIGN KEY (superseded_by_anchor_id) REFERENCES writing_fact_anchors(anchor_id)
 );
 CREATE INDEX idx_fact_anchors_project ON writing_fact_anchors(project_id, status);
+CREATE INDEX idx_fact_anchors_scene ON writing_fact_anchors(scene_id, status);
 
 -- 36. writing_context_snapshots（prompt/context 输入快照）
 CREATE TABLE writing_context_snapshots (
@@ -1279,10 +1291,15 @@ CREATE INDEX idx_scene_repair_tasks_scope
 ON writing_scene_repair_tasks(project_id, chapter_id, scene_id, status);
 
 -- Scene-first stale annotations preserve immutable prose/branch/snapshot rows.
+-- replacement_scene_contract_id is nullable: Contract-supersede rows carry a
+-- replacement; Fact-supersede rows mark Fact-caused staleness with a NULL
+-- replacement (the Contract itself is not superseded — only its derivations
+-- become stale). Consumers branch on stale_reason/row existence, not on
+-- replacement non-nullness.
 CREATE TABLE writing_scene_revision_stale_marks (
     scene_revision_id INTEGER PRIMARY KEY,
     source_scene_contract_id INTEGER NOT NULL,
-    replacement_scene_contract_id INTEGER NOT NULL,
+    replacement_scene_contract_id INTEGER,
     stale_reason TEXT NOT NULL CHECK (length(trim(stale_reason)) > 0),
     marked_at TEXT NOT NULL,
     FOREIGN KEY (scene_revision_id) REFERENCES writing_scene_revisions(scene_revision_id) ON DELETE CASCADE,
@@ -1295,7 +1312,7 @@ ON writing_scene_revision_stale_marks(source_scene_contract_id);
 CREATE TABLE writing_branch_version_stale_marks (
     branch_version_id INTEGER PRIMARY KEY,
     source_scene_contract_id INTEGER NOT NULL,
-    replacement_scene_contract_id INTEGER NOT NULL,
+    replacement_scene_contract_id INTEGER,
     stale_reason TEXT NOT NULL CHECK (length(trim(stale_reason)) > 0),
     marked_at TEXT NOT NULL,
     FOREIGN KEY (branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id) ON DELETE CASCADE,
@@ -1308,7 +1325,7 @@ ON writing_branch_version_stale_marks(source_scene_contract_id);
 CREATE TABLE writing_chapter_snapshot_stale_marks (
     snapshot_id INTEGER PRIMARY KEY,
     source_scene_contract_id INTEGER NOT NULL,
-    replacement_scene_contract_id INTEGER NOT NULL,
+    replacement_scene_contract_id INTEGER,
     stale_reason TEXT NOT NULL CHECK (length(trim(stale_reason)) > 0),
     marked_at TEXT NOT NULL,
     FOREIGN KEY (snapshot_id) REFERENCES writing_chapter_snapshots(snapshot_id) ON DELETE CASCADE,
@@ -1529,7 +1546,80 @@ CREATE TRIGGER trg_snapshot_scene_no_delete
 BEFORE DELETE ON writing_chapter_snapshot_scenes
 BEGIN SELECT RAISE(ABORT, 'snapshot scene bindings are immutable'); END;
 
--- 64. One optimistic-lock Head per chapter.
+-- 64. Immutable hard-gate evidence bound to one exact frozen Branch Version.
+CREATE TABLE writing_chapter_accept_gate_evidence (
+    evidence_id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    generation_round_id INTEGER NOT NULL,
+    branch_version_id INTEGER NOT NULL,
+    branch_content_hash TEXT NOT NULL CHECK (length(trim(branch_content_hash)) > 0),
+    gate_type TEXT NOT NULL CHECK (gate_type IN (
+        'scene_integrity', 'chapter_quality', 'book_continuity', 'ethics'
+    )),
+    attempt INTEGER NOT NULL CHECK (attempt >= 1),
+    policy_version TEXT NOT NULL CHECK (length(trim(policy_version)) > 0),
+    passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+    evidence_json TEXT NOT NULL CHECK (
+        json_valid(evidence_json) AND json_type(evidence_json) = 'object'
+    ),
+    predecessor_heads_hash TEXT,
+    producer_actor TEXT NOT NULL CHECK (length(trim(producer_actor)) > 0),
+    reviewer_models_json TEXT NOT NULL DEFAULT '[]' CHECK (
+        json_valid(reviewer_models_json) AND json_type(reviewer_models_json) = 'array'
+    ),
+    evaluated_at TEXT NOT NULL,
+    UNIQUE (branch_version_id, gate_type, attempt),
+    FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
+    FOREIGN KEY (generation_round_id) REFERENCES writing_chapter_generation_rounds(generation_round_id),
+    FOREIGN KEY (branch_version_id) REFERENCES writing_chapter_candidate_branch_versions(branch_version_id)
+);
+CREATE INDEX idx_accept_gate_evidence_branch
+ON writing_chapter_accept_gate_evidence(branch_version_id, gate_type, attempt DESC);
+CREATE TRIGGER trg_accept_gate_evidence_no_update
+BEFORE UPDATE ON writing_chapter_accept_gate_evidence
+BEGIN SELECT RAISE(ABORT, 'accept gate evidence is immutable'); END;
+CREATE TRIGGER trg_accept_gate_evidence_no_delete
+BEFORE DELETE ON writing_chapter_accept_gate_evidence
+BEGIN SELECT RAISE(ABORT, 'accept gate evidence is immutable'); END;
+
+-- 65. Exact hard-gate evidence consumed by an accepted Snapshot.
+CREATE TABLE writing_chapter_snapshot_gate_evidence (
+    snapshot_id INTEGER NOT NULL,
+    gate_type TEXT NOT NULL CHECK (gate_type IN (
+        'scene_integrity', 'chapter_quality', 'book_continuity', 'ethics'
+    )),
+    evidence_id INTEGER NOT NULL,
+    PRIMARY KEY (snapshot_id, gate_type),
+    UNIQUE (snapshot_id, evidence_id),
+    FOREIGN KEY (snapshot_id) REFERENCES writing_chapter_snapshots(snapshot_id),
+    FOREIGN KEY (evidence_id) REFERENCES writing_chapter_accept_gate_evidence(evidence_id)
+);
+CREATE TRIGGER trg_snapshot_gate_evidence_no_update
+BEFORE UPDATE ON writing_chapter_snapshot_gate_evidence
+BEGIN SELECT RAISE(ABORT, 'snapshot gate evidence bindings are immutable'); END;
+CREATE TRIGGER trg_snapshot_gate_evidence_no_delete
+BEFORE DELETE ON writing_chapter_snapshot_gate_evidence
+BEGIN SELECT RAISE(ABORT, 'snapshot gate evidence bindings are immutable'); END;
+CREATE TRIGGER trg_sealed_snapshot_gate_evidence_no_insert
+BEFORE INSERT ON writing_chapter_snapshot_gate_evidence
+WHEN (SELECT sealed_at FROM writing_chapter_snapshots WHERE snapshot_id = NEW.snapshot_id) IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'sealed snapshot gate evidence bindings are immutable'); END;
+CREATE TRIGGER trg_snapshot_gate_evidence_matches
+BEFORE INSERT ON writing_chapter_snapshot_gate_evidence
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM writing_chapter_snapshots s
+    JOIN writing_chapter_accept_gate_evidence e ON e.evidence_id = NEW.evidence_id
+    WHERE s.snapshot_id = NEW.snapshot_id
+      AND e.gate_type = NEW.gate_type
+      AND e.branch_version_id = s.source_branch_version_id
+      AND e.branch_content_hash = s.snapshot_hash
+      AND e.passed = 1
+)
+BEGIN SELECT RAISE(ABORT, 'snapshot gate evidence must be passing evidence for its source Branch'); END;
+
+-- 66. One optimistic-lock Head per chapter.
 CREATE TABLE writing_chapter_heads (
     project_id INTEGER NOT NULL,
     chapter_id INTEGER NOT NULL,
@@ -1623,6 +1713,13 @@ CREATE TABLE IF NOT EXISTS writing_guidance_cards (
     guidance_text TEXT NOT NULL,
     model_name TEXT NOT NULL,
     prompt_hash TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'scene'
+        CHECK (scope IN ('scene','chapter','project')),
+    cooldown_until TEXT,
+    use_count INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0),
+    max_uses INTEGER,
+    applied_at TEXT,
+    applied_to_chapter_id INTEGER,
     status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active','dismissed','applied','stale')),
     created_at TEXT NOT NULL,
@@ -1647,12 +1744,41 @@ CREATE TABLE IF NOT EXISTS writing_fact_proposals (
         CHECK (status IN ('proposed','confirmed','rejected','superseded','stale')),
     model_name TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    reviewer_model TEXT,
+    review_evidence_json TEXT,
+    superseded_by_proposal_id INTEGER,
     FOREIGN KEY (project_id) REFERENCES writing_projects(project_id) ON DELETE CASCADE,
     FOREIGN KEY (source_revision_id)
         REFERENCES writing_scene_revisions(scene_revision_id)
 );
 CREATE INDEX IF NOT EXISTS idx_fact_proposals_status
     ON writing_fact_proposals(project_id, status);
+
+-- P0-5b: Contract ↔ Fact version bindings (Scene-first fact authority).
+-- A binding records that an active Scene Contract references a specific fact
+-- version (version_hash snapshot at bind time). Fact supersede queries this
+-- table to find affected Contracts and mark their derivations stale. The
+-- binding is immutable once written (Contract immutability); changing a fact
+-- constraint means superseding the Contract, not editing the binding.
+CREATE TABLE IF NOT EXISTS writing_contract_fact_bindings (
+    binding_id INTEGER PRIMARY KEY,
+    scene_contract_id INTEGER NOT NULL,
+    fact_anchor_id INTEGER NOT NULL,
+    fact_version_hash TEXT NOT NULL,
+    binding_type TEXT NOT NULL CHECK (binding_type IN ('required','forbidden','context')),
+    created_at TEXT NOT NULL,
+    UNIQUE (scene_contract_id, fact_anchor_id),
+    FOREIGN KEY (scene_contract_id)
+        REFERENCES writing_scene_contracts(scene_contract_id) ON DELETE CASCADE,
+    FOREIGN KEY (fact_anchor_id)
+        REFERENCES writing_fact_anchors(anchor_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_contract_fact_bindings_contract
+    ON writing_contract_fact_bindings(scene_contract_id);
+CREATE INDEX IF NOT EXISTS idx_contract_fact_bindings_anchor
+    ON writing_contract_fact_bindings(fact_anchor_id);
 
 -- P0-4: Pareto frontier + minority champion for literary selection.
 -- Idempotent.

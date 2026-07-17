@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-07-16 旧库迁移整项移除（作者裁定：全新开发，不迁移）
+
+- 作者裁定 Ink 按全新系统重新投产，旧生产库不做迁移、不做 Cutover、不做影子回填；
+- 理由：旧 Shot/Contract/评分/Accept 不满足当前 Scene Contract 血统与硬门要求，迁入会
+  产生"结构兼容但缺真实三家族盲审/Gate Evidence/Decision 历史"的假权威数据，并长期
+  保留 legacy 与 Snapshot 双架构旁路面；
+- 工程侧旁路已先期收口：legacy Shot `ink accept` 已 fail-closed，正式 `export`/`scene-export`
+  统一只读 active sealed non-stale Snapshot；legacy `ExportOrchestrator` 仅保留给只读
+  `scene-export-parity` 诊断，正式导出不再依赖 legacy 权威；
+- 旧库降级为只读归档，旧正文仅作文学参考材料；需复用必须重走
+  Contract→Generation→Review→Accept 链路，禁止导入为权威正文；
+- `tasks.md` 移除原"旧生产库迁移与 Cutover"整项，重排为 Fact/Guidance 生命周期、生产运维
+  闭环、全新库初始化与重产第1/2章、预声明阈值 A/B、连续多章稳定性、卷级统稿投稿。
+
+## 2026-07-16 BFX-088 正式 Snapshot Export 单一权威收口
+
+- 新增 `SceneExportOrchestrator`，正式书稿只从 Chapter Head 指向的 active、sealed、
+  non-stale Chapter Snapshot 读取正文；未 Accept、未封存、stale lineage 均 fail-closed；
+- `export` 与 `scene-export` 统一走 Snapshot 权威入口，legacy Shot exporter 仅保留为
+  `scene-export-parity` 的迁移对照读取，不能再成为正式正文来源；
+- 文件交付使用 UTF-8 原子替换，同时生成 metadata sidecar，记录 artifact hash、字节数、
+  Snapshot ID/hash/sealed_at 和 authority marker，并写 `EXPORT_COMPLETED` 可追溯事件；
+- 增加生产 read-path/import 静态 lint，以及 stale Snapshot、legacy Shot 污染、Accept 前导出、
+  sidecar/event hash 一致性的反事实测试；
+- Export/lint/旧 M6 回归：20 passed；全量回归收集 856 条，846 passed、10 skipped，
+  skipped 均为未启用的真实模型/IFLYTEK opt-in 集成测试。
+
+## 2026-07-16 BFX-087 Scene-first Accept 四类硬门权威收口
+
+- Scene integrity、Chapter quality、Book continuity、Ethics 四类不可变 Gate Evidence
+  已绑定精确 frozen Branch Version、正文 hash、策略版本和前章 Heads hash，并在 Snapshot
+  上持久化实际消费的 evidence IDs；
+- 缺失确定性证据的计算与 Decision、sealed Snapshot/bindings、Head CAS、Runtime Event
+  现在位于同一 `BEGIN IMMEDIATE`/savepoint 权威事务，失败会整体回滚，不再遗留孤儿证据；
+- `scene-accept`、`produce-chapter` 自动 winner 和 force-accept 已统一走该入口；旧 Shot
+  `ink accept` 正式 fail-closed，不能再绕过 Scene-first 证据链；
+- Gate attempt 顶层写入取得 SQLite 写锁，消除并发 `max(attempt)+1` 冲突窗口；
+- Gate schema、迁移、Repository、真实 Validation 生产接线与 CLI 聚焦测试：26 passed；
+  全量回归：842 passed，10 skipped，skipped 均为未启用的真实模型/IFLYTEK opt-in 集成测试。
+
 ## 2026-07-16 任务账本与 Scene-first 完成状态对齐
 
 - `tasks.md` 重写为只保留真实未完成工作，清除旧投稿冲刺、已完成 Generation Round、
@@ -1903,3 +1943,23 @@ amy-review-synthesis.md`）。
 **登记**：BFX-079（架构根因）；tasks 插入 2.6 阻塞块，逐章滚动暂停待 BFX-079
 接线；BFX-078（context 注入补丁）降级并入方案 D。memory
 `ink-contract-layer-rewire-root-cause`（防再犯）。
+
+## 2026-07-15：Fact/Guidance 生命周期阶段1-7 完成 + 不变量矩阵转正
+
+**内容**：
+1. Fact Proposal 生命周期（proposed/confirmed/rejected/superseded/deprecated）与
+   Contract-Fact 绑定表 `writing_contract_fact_bindings`；
+2. Fact supersede 与 Contract supersede 联动 Revision/Branch/Snapshot stale 传播，
+   消费门 fail-closed：Branch accept 门拒绝 stale Branch、sealed Snapshot 读取拒绝
+   stale Scene binding；
+3. Guidance/Anti-pattern Card 生命周期（active/applied/dismissed/stale）、apply
+   翻转、`max_uses` 守卫、Fact/Contract supersede 联动 scene active 卡转 stale。
+4. 修复 BFX-089：supersede fact 联动原依赖 `mark_fact_changed().revision_ids` 反查，
+   无 revision 消费时联动跳过形成 stale 真空；改为从
+   `writing_contract_fact_bindings`→`writing_scene_contracts` 反查并 fallback
+   fact anchor `scene_id`。
+
+**登记**：INV-FACT-002~009、INV-GUIDANCE-001~007 登记
+（`docs/invariant-traceability.md`）；P0 清单第8条（Fact/Guidance 生命周期）与
+第6条（export read-path lint）转正移除，P0 清单收敛为 6 项。全量回归 863 passed、
+10 skipped。bugfix BFX-089。tasks 旧第1项移除。

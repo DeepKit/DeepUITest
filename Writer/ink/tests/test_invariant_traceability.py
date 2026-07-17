@@ -105,6 +105,24 @@ INVARIANT_EVIDENCE = {
     "INV-FACT-001": ["test_fact_anchor_gate"],
     "INV-JURY-001": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
     "INV-JURY-002": ["test_jury_scores_three_models_all_dimensions_and_selects_winner"],
+    "INV-FACT-002": ["test_confirm_writes_anchor_with_version_hash_and_review_evidence"],
+    "INV-FACT-003": ["test_reject_persists_review_evidence"],
+    "INV-FACT-004": ["test_bind_contract_fact_requires_active_contract_and_confirmed_anchor"],
+    "INV-FACT-005": ["test_supersede_fact_anchor_moves_status_and_records_replacement"],
+    "INV-FACT-006": ["test_supersede_requires_confirmed_old_and_new"],
+    "INV-FACT-007": ["test_deprecate_fact_anchor_marks_deprecated_with_no_replacement"],
+    "INV-FACT-008": ["test_accept_gate_refuses_branch_after_fact_supersede"],
+    "INV-FACT-009": ["test_active_snapshot_read_refuses_stale_after_fact_supersede"],
+    "INV-GUIDANCE-001": ["test_apply_flips_active_to_applied_and_bumps_use_count"],
+    "INV-GUIDANCE-002": ["test_apply_flips_active_to_applied_and_bumps_use_count"],
+    "INV-GUIDANCE-003": [
+        "test_apply_refuses_non_active_card",
+        "test_apply_refuses_reapply_after_applied",
+    ],
+    "INV-GUIDANCE-004": ["test_apply_enforces_max_uses_ceiling"],
+    "INV-GUIDANCE-005": ["test_fact_supersede_flips_scene_active_cards_stale"],
+    "INV-GUIDANCE-006": ["test_contract_supersede_flips_scene_active_cards_stale"],
+    "INV-GUIDANCE-007": ["test_fact_supersede_flips_scene_active_cards_stale"],
 }
 
 

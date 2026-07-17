@@ -1,9 +1,49 @@
 # InkFlow v2 Bugfix 记录
 
 > **用途**：记录开发中发现的缺陷、根因、修复和防回归测试。
-> **最后更新**：2026-07-16
+> **最后更新**：2026-07-15
 
 ---
+
+## 2026-07-16 旧库迁移旁路面裁定（不实现，非缺陷）
+
+- **现象**：`tasks.md` 原含"旧生产库迁移与 Cutover"待办，含影子回填、legacy/Snapshot
+  hash parity、authority marker、Cutover 与回滚演练。
+- **裁定**：作者裁定全新开发、旧库不迁移。此条不再作为待实现工程，仅记录旁路面收口结论。
+- **旁路收口结论**：legacy 权威读取已 fail-closed（BFX-087），正式导出已只读 Snapshot
+  （BFX-088），legacy exporter 仅供只读 `scene-export-parity` 诊断，不构成正式正文旁路。
+  因此旧库迁移相关代码无需再实现，整项从 `tasks.md` 移除；旧库降级只读归档。
+
+## 2026-07-16 BFX-088 正式 Export 仍可读取 legacy Shot 正文
+
+- **现象**：Scene-first Accept 已形成 sealed Chapter Snapshot，但顶层 `export` 仍调用旧
+  `ExportOrchestrator`，从 accepted Chapter Review、hard-sealed Shot 和 Shot Revision 拼正文；
+  stale Snapshot、未 Accept Scene 候选与 legacy Shot 权威可能分裂，导出结果也没有可验证的
+  Snapshot lineage metadata。
+- **根因**：Scene-first `scene-export` 只覆盖单章辅助读取，书级正式导出没有完成 authority
+  cutover；源码静态门只保护写权限，未保护正式正文 read path。
+- **修复**：新增 Snapshot 书级 artifact builder 和原子交付；`export`/`scene-export` 统一只读
+  active、sealed、non-stale Snapshot；生成含 authority marker、artifact hash、章节 Snapshot
+  hash 的 metadata sidecar 与 `EXPORT_COMPLETED` 事件；legacy exporter 仅供显式 parity 命令。
+- **防回归**：新增 Accept 前导出失败、stale active Snapshot 失败、legacy accepted Shot 不污染、
+  sidecar/event hash 一致性，以及生产 read-path/import lint；相关回归 20 passed。
+
+## 2026-07-16 BFX-087 Scene-first Accept 硬门仍有旁路与分裂事务
+
+- **现象**：四类 Gate Evidence 与 Snapshot binding 已实现，但旧 `ink accept` 仍直接走
+  Shot `HumanReviewOrchestrator`，完全不产生 Scene-first Gate Evidence；另三条 Scene-first
+  接受路径先 `prepare_acceptance`、后 `accept_chapter`，两个调用不在同一事务，接受失败时会
+  遗留不可删除的孤儿通过证据。`record_evidence` 的 `max(attempt)+1` 也未取得写锁。
+- **根因**：硬门被设计成 Accept 前置步骤，而非 Accept 权威事务的一部分；旧 Shot CLI
+  仍被当作正式接受入口保留；证据 attempt 分配默认依赖单进程串行执行。
+- **修复**：新增 `SceneFirstAcceptanceGateOrchestrator.accept_chapter`，以外层
+  `BEGIN IMMEDIATE`/嵌套 savepoint 包住缺失证据计算和 Snapshot Repository Accept；
+  `scene-accept`、自动 winner、force-accept 三条生产路径统一调用该入口；旧 `ink accept`
+  fail-closed 并提示改用 `scene-accept`；独立证据写入在顶层调用时以 `BEGIN IMMEDIATE`
+  串行化 attempt 分配。
+- **防回归**：新增 Accept 失败后 Gate Evidence 数量仍为 0 的反事实测试；CLI 回归明确
+  断言 legacy accept 返回失败且不写 accept Decision。Gate/CLI 聚焦测试 26 passed；
+  全量回归 842 passed、10 skipped。
 
 ## 2026-07-16 BFX-086 Scene-first Accept 决定记录位于权威事务外
 
@@ -1069,3 +1109,22 @@ BFX-079 架构根因修复（方案 B/C/D）落地时连带暴露的代码缺陷
 - **防回归**：`tests/test_scene_stale_propagation.py` 覆盖自动 supersede、三层传播、旧
   generation 拒绝、新 Contract repair 解封、open repair task 取消、active Snapshot 读取
   拒绝和幂等；聚焦测试通过；全量 `pytest` 为 820 passed、10 skipped。
+
+## BFX-089 Fact/Guidance 消费门依赖 revision 反查致无 revision 时 stale 不传播（P0，2026-07-15）
+
+- **现象**：`supersede_fact_anchor` 后，scene 内 active Guidance Card 应联动转 stale，但
+  联动逻辑从 `mark_fact_changed().revision_ids` 反查 scene——当被 supersede 的 fact 尚未被
+  任何 Scene Revision 消费时 `revision_ids` 为空，联动整段跳过，active Card 仍 active，
+  下游可能 apply 已失效卡。同时 `test_apply_enforces_max_uses_ceiling` 用例未先消费 use_count，
+  无法触发 max_uses 守卫。
+- **根因**：Guidance Card 的失效语义绑定在“是否有 revision 消费该 fact”，而非“该 fact 是否
+  被任何 active Scene Contract 绑定”——前者把消费证据当成失效前提，使早期（无 revision）
+  阶段出现 stale 真空。
+- **修复**：`scene_repository.supersede_fact_anchor` 改为从 `writing_contract_fact_bindings`
+  →`writing_scene_contracts` 反查受影响 scene，并 fallback 到 fact anchor 自身 `scene_id`；
+  不再依赖 revision 存在。测试用例改为先 `use_count=1, status=active` 再 apply 以正面触发
+  max_uses 守卫。
+- **防回归**：`tests/test_guidance_card_lifecycle.py` 6 条覆盖创建/apply/守卫/supersede 联动；
+  `tests/test_fact_consumer_gates.py` 覆盖 Branch accept 门与 sealed Snapshot 读取门；
+  新增 INV-FACT-002~009、INV-GUIDANCE-001~007 登记。聚焦测试 22 passed；全量 `pytest` 为
+  863 passed、10 skipped。

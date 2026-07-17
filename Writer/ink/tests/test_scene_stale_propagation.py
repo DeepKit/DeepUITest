@@ -4,7 +4,12 @@ import sqlite3
 
 import pytest
 
-from factories import NOW, insert_contract_approve_reviews, make_schema_db
+from factories import (
+    NOW,
+    insert_contract_approve_reviews,
+    insert_passing_accept_gates,
+    make_schema_db,
+)
 from ink.core.chapter_snapshot_repository import ChapterSnapshotRepository
 from ink.core.scene_repository import SceneRepository
 from ink.errors import DataIntegrityError
@@ -166,6 +171,7 @@ def test_supersede_marks_active_snapshot_unreadable() -> None:
         (branch_id,),
     )
     snapshots.select_branch(branch_id)
+    insert_passing_accept_gates(conn, branch_version_id)
     head = snapshots.accept_chapter(
         branch_version_id=branch_version_id,
         expected_head_version=0,

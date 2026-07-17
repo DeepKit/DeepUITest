@@ -13,6 +13,8 @@ SCENE_FIRST_TERMINAL_AUTHORITY_TABLES = frozenset(
         "writing_selection_decisions",
         "writing_chapter_snapshots",
         "writing_chapter_snapshot_scenes",
+        "writing_chapter_accept_gate_evidence",
+        "writing_chapter_snapshot_gate_evidence",
         "writing_chapter_heads",
     }
 )
@@ -23,6 +25,7 @@ SQL_WHITELIST_PARTS = {
 }
 SCENE_FIRST_TERMINAL_AUTHORITY_WHITELIST_PARTS = {
     "core/chapter_snapshot_repository.py",
+    "core/chapter_accept_gate_repository.py",
     "core/scene_repository.py",
     "core/scene_stale_propagation.py",
     "schema.py",
@@ -33,6 +36,14 @@ SCENE_FIRST_TERMINAL_AUTHORITY_WRITE_KEYWORDS = (
     "delete from",
     "replace into",
 )
+LEGACY_EXPORT_BODY_TABLES = frozenset(
+    {"writing_shots", "writing_shot_revisions", "writing_text_blocks", "v_current_text"}
+)
+FORMAL_EXPORT_SOURCE_PARTS = {
+    "pipeline/scene_export_orchestrator.py",
+}
+LEGACY_EXPORT_IMPORT_FORBIDDEN_PARTS = {"cli.py"}
+LEGACY_EXPORTER_MODULE = "ink.pipeline.export_orchestrator"
 
 
 @dataclass(frozen=True)
@@ -53,6 +64,23 @@ class _SqlAccessVisitor(ast.NodeVisitor):
     def __init__(self, filename: str) -> None:
         self.filename = filename.replace("\\", "/")
         self.violations: list[SqlAccessViolation] = []
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if (
+            node.module == LEGACY_EXPORTER_MODULE
+            and any(
+                self.filename.endswith(part)
+                for part in LEGACY_EXPORT_IMPORT_FORBIDDEN_PARTS
+            )
+        ):
+            self.violations.append(
+                SqlAccessViolation(
+                    "LEGACY_EXPORT_IMPORT",
+                    "formal export modules may not import the legacy Shot exporter",
+                    node.lineno,
+                )
+            )
+        self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         call_name = _call_name(node.func)
@@ -85,6 +113,18 @@ class _SqlAccessVisitor(ast.NodeVisitor):
             return
 
         sql = arg.value.lower()
+        if self._is_formal_export_source():
+            legacy_reads = sorted(table for table in LEGACY_EXPORT_BODY_TABLES if table in sql)
+            if legacy_reads and "select" in sql:
+                self.violations.append(
+                    SqlAccessViolation(
+                        "LEGACY_EXPORT_BODY_READ",
+                        "formal export may only read active Chapter Snapshots: "
+                        + ", ".join(legacy_reads),
+                        line,
+                    )
+                )
+
         if TEXT_REVISIONS_TABLE in sql and not self._is_whitelisted(SQL_WHITELIST_PARTS):
             self.violations.append(
                 SqlAccessViolation(
@@ -115,6 +155,9 @@ class _SqlAccessVisitor(ast.NodeVisitor):
                     line,
                 )
             )
+
+    def _is_formal_export_source(self) -> bool:
+        return any(self.filename.endswith(part) for part in FORMAL_EXPORT_SOURCE_PARTS)
 
     def _is_whitelisted(self, whitelist_parts: set[str]) -> bool:
         if "/tests/" in f"/{self.filename}" or self.filename.startswith("tests/"):
