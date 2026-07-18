@@ -1,7 +1,0 @@
--- Applied by tools/migrate_chapter_ethics_review.py.
--- SQLite ADD COLUMN has no portable IF NOT EXISTS; the Python migration probes
--- PRAGMA table_info before adding writing_projects.require_ethics_review.
---
--- Adds:
---   writing_projects.require_ethics_review INTEGER NOT NULL DEFAULT 0
---   writing_chapter_ethics_reviews table + index

@@ -1,6 +1,0 @@
--- Applied by tools/migrate_scene_repair_tasks.py.
--- Adds writing_scene_repair_tasks, the canonical audit record required before
--- an AI Scene revision may use repair_task_id.
---
--- Existing writing_scene_revisions are not rewritten. Historical non-null
--- repair_task_id values remain legacy evidence and must not be reused.

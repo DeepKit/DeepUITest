@@ -1,3 +1,6 @@
 # 本地目录 junction:指向共享 skill 库 D:/_Progs/00Common/skills
 # 由 mklink /J 创建,仅本地工具发现用,不应提交。
 skills/
+
+# Writer/ 已拆为独立 git repo(2026-07-18),不再由 02Business 跟踪。
+Writer/
