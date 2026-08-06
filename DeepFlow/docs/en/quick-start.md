@@ -1,6 +1,6 @@
 ﻿# Quick Start Guide
 
-Get UniFlow running in your Delphi application in 5 minutes.
+Get DeepFlow running in your Delphi application in 5 minutes.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ Get UniFlow running in your Delphi application in 5 minutes.
 
 ### 1. Add Source Files
 
-Copy the UniFlow source files to your project:
+Copy the DeepFlow source files to your project:
 
 ```
 Source/
@@ -295,7 +295,7 @@ begin
     Session.AddMessage(TSessionMessage.CreateUser('Give me an example.'));
     Executor.ExecuteWithSession(Session);
     
-    // Get conversation hiDeepDeepDeepDeepDeepStory
+    // Get conversation hiDeepStory
     for var Msg in Session.Messages do
       Memo1.Lines.Add(Msg.Role + ': ' + Msg.Content);
       

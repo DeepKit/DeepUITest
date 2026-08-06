@@ -1,6 +1,6 @@
 ﻿# 生产部署指南
 
-使用 Docker、Kubernetes 和云平台部署 UniFlow 到生产环境�?
+使用 Docker、Kubernetes 和云平台部署 DeepFlow 到生产环境�?
 
 ## 架构概览
 
@@ -46,8 +46,8 @@
 docker compose build
 
 # 或单独构�?
-docker build -t uniflow-python-skills:latest ./Skills/Python
-docker build -t uniflow-node-skills:latest ./Skills/NodeJS
+docker build -t deepflow-python-skills:latest ./Skills/Python
+docker build -t deepflow-node-skills:latest ./Skills/NodeJS
 ```
 
 ### 生产环境 docker-compose.yml
@@ -57,7 +57,7 @@ version: '3.8'
 
 services:
   python-skills:
-    image: uniflow-python-skills:latest
+    image: deepflow-python-skills:latest
     build:
       context: ./Skills/Python
       dockerfile: Dockerfile
@@ -89,7 +89,7 @@ services:
         max-file: "3"
 
   node-skills:
-    image: uniflow-node-skills:latest
+    image: deepflow-node-skills:latest
     build:
       context: ./Skills/NodeJS
       dockerfile: Dockerfile
@@ -228,9 +228,9 @@ docker compose up -d --scale python-skills=3
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: uniflow
+  name: deepflow
   labels:
-    app.kubernetes.io/name: uniflow
+    app.kubernetes.io/name: deepflow
 ```
 
 ### ConfigMap
@@ -240,8 +240,8 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: uniflow-config
-  namespace: uniflow
+  name: deepflow-config
+  namespace: deepflow
 data:
   LOG_LEVEL: "INFO"
   PYTHON_WORKERS: "4"
@@ -255,12 +255,12 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: uniflow-secrets
-  namespace: uniflow
+  name: deepflow-secrets
+  namespace: deepflow
 type: Opaque
 stringData:
   OPENAI_API_KEY: "your-api-key"
-  DATABASE_URL: "postgresql://user:pass@host:5432/uniflow"
+  DATABASE_URL: "postgresql://user:pass@host:5432/deepflow"
 ```
 
 ### Python Skills 部署
@@ -271,7 +271,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: python-skills
-  namespace: uniflow
+  namespace: deepflow
   labels:
     app: python-skills
 spec:
@@ -286,14 +286,14 @@ spec:
     spec:
       containers:
       - name: python-skills
-        image: ghcr.io/your-org/uniflow-python-skills:latest
+        image: ghcr.io/your-org/deepflow-python-skills:latest
         ports:
         - containerPort: 8000
         envFrom:
         - configMapRef:
-            name: uniflow-config
+            name: deepflow-config
         - secretRef:
-            name: uniflow-secrets
+            name: deepflow-secrets
         resources:
           requests:
             cpu: "250m"
@@ -329,7 +329,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: python-skills
-  namespace: uniflow
+  namespace: deepflow
 spec:
   selector:
     app: python-skills
@@ -347,7 +347,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: node-skills
-  namespace: uniflow
+  namespace: deepflow
   labels:
     app: node-skills
 spec:
@@ -362,14 +362,14 @@ spec:
     spec:
       containers:
       - name: node-skills
-        image: ghcr.io/your-org/uniflow-node-skills:latest
+        image: ghcr.io/your-org/deepflow-node-skills:latest
         ports:
         - containerPort: 3000
         envFrom:
         - configMapRef:
-            name: uniflow-config
+            name: deepflow-config
         - secretRef:
-            name: uniflow-secrets
+            name: deepflow-secrets
         resources:
           requests:
             cpu: "100m"
@@ -394,7 +394,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: node-skills
-  namespace: uniflow
+  namespace: deepflow
 spec:
   selector:
     app: node-skills
@@ -411,8 +411,8 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: uniflow-ingress
-  namespace: uniflow
+  name: deepflow-ingress
+  namespace: deepflow
   annotations:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
@@ -421,10 +421,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - uniflow.example.com
-    secretName: uniflow-tls
+    - deepflow.example.com
+    secretName: deepflow-tls
   rules:
-  - host: uniflow.example.com
+  - host: deepflow.example.com
     http:
       paths:
       - path: /api/skills/python
@@ -451,7 +451,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: python-skills-hpa
-  namespace: uniflow
+  namespace: deepflow
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -500,12 +500,12 @@ kubectl apply -f ingress.yaml
 kubectl apply -f hpa.yaml
 
 # 检查状�?
-kubectl get pods -n uniflow
-kubectl get svc -n uniflow
-kubectl get hpa -n uniflow
+kubectl get pods -n deepflow
+kubectl get svc -n deepflow
+kubectl get hpa -n deepflow
 
 # 查看日志
-kubectl logs -f deployment/python-skills -n uniflow
+kubectl logs -f deployment/python-skills -n deepflow
 ```
 
 ---
@@ -520,9 +520,9 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 
 # 数据�?
-DATABASE_URL=postgresql://user:pass@host:5432/uniflow
+DATABASE_URL=postgresql://user:pass@host:5432/deepflow
 # 或使�?SQLite
-DATABASE_PATH=/data/uniflow.db
+DATABASE_PATH=/data/deepflow.db
 
 # Redis（用于分布式会话�?
 REDIS_URL=redis://host:6379/0
@@ -600,8 +600,8 @@ curl http://localhost/api/skills/python/health
 curl http://localhost/api/skills/node/health
 
 # Kubernetes 就绪状�?
-kubectl get pods -n uniflow
-kubectl describe pod <pod-name> -n uniflow
+kubectl get pods -n deepflow
+kubectl describe pod <pod-name> -n deepflow
 ```
 
 ---
@@ -615,8 +615,8 @@ kubectl describe pod <pod-name> -n uniflow
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: uniflow-network-policy
-  namespace: uniflow
+  name: deepflow-network-policy
+  namespace: deepflow
 spec:
   podSelector: {}
   policyTypes:
@@ -687,24 +687,24 @@ async def execute(request: SkillRequest):
 
 ```bash
 # PostgreSQL
-pg_dump -h localhost -U uniflow -d uniflow > backup.sql
+pg_dump -h localhost -U deepflow -d deepflow > backup.sql
 
 # SQLite
-sqlite3 uniflow.db ".backup 'backup.db'"
+sqlite3 deepflow.db ".backup 'backup.db'"
 
 # 自动备份脚本
 #!/bin/bash
 DATE=$(date +%Y%m%d_%H%M%S)
-pg_dump -h $DB_HOST -U $DB_USER -d $DB_NAME | gzip > /backups/uniflow_$DATE.sql.gz
-find /backups -name "uniflow_*.sql.gz" -mtime +7 -delete
+pg_dump -h $DB_HOST -U $DB_USER -d $DB_NAME | gzip > /backups/deepflow_$DATE.sql.gz
+find /backups -name "deepflow_*.sql.gz" -mtime +7 -delete
 ```
 
 ### Kubernetes 备份
 
 ```bash
 # 备份 Secrets �?ConfigMaps
-kubectl get secret uniflow-secrets -n uniflow -o yaml > secrets-backup.yaml
-kubectl get configmap uniflow-config -n uniflow -o yaml > config-backup.yaml
+kubectl get secret deepflow-secrets -n deepflow -o yaml > secrets-backup.yaml
+kubectl get configmap deepflow-config -n deepflow -o yaml > config-backup.yaml
 ```
 
 ---
@@ -717,11 +717,11 @@ kubectl get configmap uniflow-config -n uniflow -o yaml > config-backup.yaml
 ```bash
 # 检查日�?
 docker compose logs python-skills
-kubectl logs -f deployment/python-skills -n uniflow
+kubectl logs -f deployment/python-skills -n deepflow
 
 # 检查资�?
 docker stats
-kubectl top pods -n uniflow
+kubectl top pods -n deepflow
 ```
 
 **高延�?*

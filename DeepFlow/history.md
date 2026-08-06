@@ -1,4 +1,4 @@
-﻿# UniFlow 开发历史记�?
+﻿# DeepFlow 开发历史记�?
 
 > 记录已完成的开发任务、里程碑和重要决�?
 
@@ -113,7 +113,7 @@
 - �?创建 `docs/DeepBase-reuse-strategy.md` 复用策略文档
 
 #### 技术决�?
-- **TD-004**: UniFlow 复用 DeepBase.LLM 而非自建 LLM 客户�?
+- **TD-004**: DeepFlow 复用 DeepBase.LLM 而非自建 LLM 客户�?
   - 删除重复�?`UniFlow.AI.Types.pas` �?`UniFlow.AI.LLMClient.pas`
   - 创建轻量�?`UniFlow.AI.Adapter.pas` 适配�?
 
@@ -447,7 +447,7 @@
     - 命名空间/子系统支�?
     - Counter/Gauge/Histogram/Summary 注册
     - Prometheus/JSON 导出
-  - `TUniFlowMetrics` - 预定�?UniFlow 指标
+  - `TUniFlowMetrics` - 预定�?DeepFlow 指标
     - Workflow: started/completed/failed/duration/active
     - Step: executed/failed/duration
     - LLM: requests/errors/duration/tokens/cost
@@ -505,7 +505,7 @@
 **Editor/js/utils.js** (~238 lines)
 - Utility functions: generateId, deepClone, debounce, clamp
 - EventEmitter class for pub/sub
-- UndoManager with 50-level hiDeepDeepDeepDeepDeepStory
+- UndoManager with 50-level hiDeepStory
 - SVG helper functions for connection paths
 
 **Editor/js/node-types.js** (~746 lines)
@@ -539,10 +539,10 @@
 - Pan with mouse drag, zoom with scroll wheel
 - Fit-to-view and zoom controls
 - Properties panel with type-specific editors
-- Export to UniFlow workflow JSON format
+- Export to DeepFlow workflow JSON format
 - Import existing workflow definitions
 - Auto-save to browser localStorage
-- Undo/redo with 50-level hiDeepDeepDeepDeepDeepStory
+- Undo/redo with 50-level hiDeepStory
 
 ---
 
@@ -729,7 +729,7 @@
 - �?创建 Editor/tests/canvas.test.js (~450 �?
   - 画布初始化测�?
   - 节点管理测试 (addNode/removeNode/事件)
-  - 连接管理测试 (addConnection/reDeepDeepDeepDeepDeepMoveConnection/验证)
+  - 连接管理测试 (addConnection/reDeepMoveConnection/验证)
   - 选择功能测试 (select/deselect/multi-select)
   - 视图控制测试 (zoom/pan/screenToCanvas)
   - 序列化测�?(toJSON/fromJSON/toWorkflowDefinition)
@@ -1012,8 +1012,8 @@
     - ForkAt - 从指定序列号分叉
     - CloneFlow - 完整克隆
     - CreateWhatIf - 创建 what-if 临时分支
-  - **THiDeepDeepDeepDeepDeepStoryBrowser - 历史浏览�?*
-    - `THiDeepDeepDeepDeepDeepStoryPoint` - 历史�?
+  - **THiDeepStoryBrowser - 历史浏览�?*
+    - `THiDeepStoryPoint` - 历史�?
     - GetAllPoints/GetPointAt/GetPointsInRange/GetPointsByStep
   - **TTimeTravelDebugger - 时间旅行调试�?*
     - MoveFirst/MoveLast - 跳转到首/�?
@@ -1313,7 +1313,7 @@ Inc(LRecord.Count) �?LCount := LRecord.Count; Inc(LCount); LRecord.Count := LC
 - �?创建 TenantConsole/js/utils.js (~658 �?
   - 日期工具 (format/relative/duration/getTimeRange)
   - 数字工具 (format/compact/percent/bytes)
-  - DOM 工具 ($/$$, create/show/hide/addClass/reDeepDeepDeepDeepDeepMoveClass)
+  - DOM 工具 ($/$$, create/show/hide/addClass/reDeepMoveClass)
   - Storage (localStorage 封装)
   - EventBus �?
   - 验证�?(email/tenantName/required/range)
@@ -1667,7 +1667,7 @@ Inc(LRecord.Count) �?LCount := LRecord.Count; Inc(LCount); LRecord.Count := LC
 
 ## 项目完成总结
 
-### 2025-12-05 - UniFlow v1.0 开发完�?🎉
+### 2025-12-05 - DeepFlow v1.0 开发完�?🎉
 
 #### 已完成里程碑
 
@@ -1732,4 +1732,4 @@ Inc(LRecord.Count) �?LCount := LRecord.Count; Inc(LCount); LRecord.Count := LC
 
 ---
 
-**UniFlow Workflow Engine v1.0 - 开发完�?*
+**DeepFlow Workflow Engine v1.0 - 开发完�?*

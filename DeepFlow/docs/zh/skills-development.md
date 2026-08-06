@@ -1,6 +1,6 @@
 ﻿# Skill 开发指�?
 
-创建自定�?Skill 来扩�?UniFlow 功能�?
+创建自定�?Skill 来扩�?DeepFlow 功能�?
 
 ## 概述
 
@@ -353,7 +353,7 @@ Content-Type: application/json
 
 ### 配置
 
-�?`uniflow.config.json` 中添�?Skill�?
+�?`deepflow.config.json` 中添�?Skill�?
 
 ```json
 {

@@ -1,6 +1,6 @@
 ﻿# Skills Development Guide
 
-Create custom skills to extend UniFlow capabilities.
+Create custom skills to extend DeepFlow capabilities.
 
 ## Overview
 

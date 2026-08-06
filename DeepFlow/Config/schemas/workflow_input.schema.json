@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "uniflow://schemas/workflow_input",
+  "$id": "deepflow://schemas/workflow_input",
   "title": "Workflow Input Schema",
   "description": "Schema for validating workflow input parameters",
   "type": "object",

@@ -1,10 +1,10 @@
-﻿# UniFlow 开发任务清�?
+﻿# DeepFlow 开发任务清�?
 
 > 更新日期: 2025-12-07
 >
-> **当前状�? UniFlow v1.0 开发完�?* �?
+> **当前状�? DeepFlow v1.0 开发完�?* �?
 >
-> UniFlow Workflow Engine v1.0 功能完整，所有计划任务已完成�?
+> DeepFlow Workflow Engine v1.0 功能完整，所有计划任务已完成�?
 
 ---
 
@@ -104,7 +104,7 @@
 
 | 任务 ID | 名称 | 描述 | 状�?|
 |---------|------|------|------|
-| TASK-1300 | EventBus 内存保护 | �?`TEventBus.FEventHiDeepDeepDeepDeepDeepStory` 增加最大内存限制或默认禁用历史记录，防止内存泄�?| 待开�?|
+| TASK-1300 | EventBus 内存保护 | �?`TEventBus.FEventHiDeepStory` 增加最大内存限制或默认禁用历史记录，防止内存泄�?| 待开�?|
 | TASK-1301 | 日志脱敏机制 | �?`TDeepBaseLogger` 中实�?`LogSanitizer` 拦截器，自动掩盖密码/Token等敏感字�?| 待开�?|
 | TASK-1302 | WorkerQueue 持久�?| 实现 `TFileJobStorage` �?`TDbJobStorage`，并设为生产环境默认，防止重启丢�?| 待开�?|
 | TASK-1303 | 安全配置加固 | 标记 `GetConfigEncrypted` 为已过时，强制迁移到 `DeepBase.Security`；TCorsMiddleware 增加白名�?| 待开�?|
@@ -355,7 +355,7 @@
 
 ## 相关文档
 
-- `hiDeepDeepDeepDeepDeepStory.md` - 开发历史详细记�?
+- `hiDeepStory.md` - 开发历史详细记�?
 - `bugfix.md` - Bug 修复详细记录
 - `docs/en/` - 英文文档
 - `docs/zh/` - 中文文档

@@ -1,0 +1,25 @@
+{
+  "schema": "spw/evidence/v1",
+  "execution_status": "failed",
+  "artifact_verdict": null,
+  "errors": [
+    "H1 missing claims: ['controlled_entry_only']",
+    "H2 missing claims: ['active_detail_trigger', 'required_fields_on_activation', 'state_machine_check']",
+    "H3 missing claims: ['counterfactual_1', 'counterfactual_2', 'counterfactual_3', 'counterfactual_4', 'counterfactual_5', 'counterfactual_6', 'counterfactual_7', 'counterfactual_8']",
+    "claim_evidence missing locator for active_detail_trigger",
+    "claim_evidence missing locator for controlled_entry_only",
+    "claim_evidence missing locator for counterfactual_1",
+    "claim_evidence missing locator for counterfactual_2",
+    "claim_evidence missing locator for counterfactual_3",
+    "claim_evidence missing locator for counterfactual_4",
+    "claim_evidence missing locator for counterfactual_5",
+    "claim_evidence missing locator for counterfactual_6",
+    "claim_evidence missing locator for counterfactual_7",
+    "claim_evidence missing locator for counterfactual_8",
+    "claim_evidence missing locator for required_fields_on_activation",
+    "claim_evidence missing locator for state_machine_check",
+    "min_observer_families must be an integer >= 2"
+  ],
+  "integrity_binding": "none",
+  "evidence_self_sha256": "237f38dfccd0b1ca7b47664bdd20ca24ce2d520cee28096f0a16a2680ba20c99"
+}

@@ -1,6 +1,6 @@
 ﻿# Workflow Definition Format
 
-Complete reference for the UniFlow workflow JSON format.
+Complete reference for the DeepFlow workflow JSON format.
 
 ## Basic Structure
 
@@ -464,7 +464,7 @@ Lifecycle callbacks.
 
 ## Expression Syntax
 
-UniFlow uses a Jinja2-like template syntax.
+DeepFlow uses a Jinja2-like template syntax.
 
 ### Variable Access
 

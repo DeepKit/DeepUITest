@@ -1,4 +1,4 @@
-﻿# UniFlow Bug 修复记录
+﻿# DeepFlow Bug 修复记录
 
 > 记录开发过程中发现和修复的 Bug
 >
@@ -362,7 +362,7 @@ Inc(LRecord.Count) �?
 - **影响范围**: Monitoring
 - **内容**: 
   - `Deploy/monitoring/prometheus.yml` Prometheus 配置
-  - `Deploy/monitoring/grafana/dashboards/uniflow.json` Grafana 仪表�?
+  - `Deploy/monitoring/grafana/dashboards/DeepFlow.json` Grafana 仪表�?
   - 仪表板包�? 工作流统�?LLM指标/Skill指标/系统指标
   - 告警阈�? 错误�?延迟/并发�?
 
@@ -385,7 +385,7 @@ Inc(LRecord.Count) �?
   - 新增 `UniFlow.Workflow.Version.API.pas` (~788 �?
   - `TVersionAPIService` REST API 服务
   - 支持分页/筛�?排序/标签
-  - 新增 `Source/Editor/version-hiDeepDeepDeepDeepDeepStory.html` (~1220 �?
+  - 新增 `Source/Editor/version-hiDeepStory.html` (~1220 �?
   - 版本历史列表与详情面�?
   - Diff 可视化查看器
   - 版本时间�?
@@ -529,7 +529,7 @@ Inc(LRecord.Count) �?
 - **影响范围**: Deploy
 - **内容**: 
   - 新建 `Deploy/k8s/` 目录
-  - `uniflow-deployment.yaml` (~587 �?: 主部署清�?
+  - `DeepFlow-deployment.yaml` (~587 �?: 主部署清�?
     - Namespace / ConfigMap / Secret
     - Deployment (API) + initContainers
     - Service (ClusterIP + Headless)
@@ -538,7 +538,7 @@ Inc(LRecord.Count) �?
     - ServiceAccount / RBAC
     - Ingress (TLS + 限流)
     - PVC (持久化存�?
-  - `uniflow-worker.yaml` (~435 �?: Worker 部署
+  - `DeepFlow-worker.yaml` (~435 �?: Worker 部署
     - Worker Deployment + HPA
     - Scheduler Deployment (单实�?+ Leader Election)
     - Leader Election RBAC
@@ -549,7 +549,7 @@ Inc(LRecord.Count) �?
 - **优先�?*: Medium
 - **影响范围**: Deploy
 - **内容**: 
-  - 新建 `Deploy/helm/uniflow/` 目录
+  - 新建 `Deploy/helm/DeepFlow/` 目录
   - `Chart.yaml` Chart 定义 (依赖 PostgreSQL/Redis/RabbitMQ)
   - `values.yaml` (~337 �?: 完整配置
     - API/Worker/Scheduler 配置
@@ -568,7 +568,7 @@ Inc(LRecord.Count) �?
 - **影响范围**: Deploy
 - **内容**: 
   - 新建 `Deploy/istio/` 目录
-  - `uniflow-mesh.yaml` (~407 �?: Istio 配置
+  - `DeepFlow-mesh.yaml` (~407 �?: Istio 配置
     - Gateway (HTTP/HTTPS 入口)
     - VirtualService (路由规则 + 重试 + 超时)
     - DestinationRule (负载均衡 + 熔断 + 子集)

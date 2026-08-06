@@ -1,6 +1,6 @@
 ﻿# API Reference
 
-Complete API documentation for UniFlow Workflow Engine.
+Complete API documentation for DeepFlow Workflow Engine.
 
 ## Table of Contents
 
@@ -244,7 +244,7 @@ TVariableScope = (
 
 ### Expression Syntax
 
-UniFlow uses a template syntax for expressions:
+DeepFlow uses a template syntax for expressions:
 
 ```
 {{ vars.variable_name }}           - Access variable

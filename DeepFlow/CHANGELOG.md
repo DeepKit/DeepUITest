@@ -1,6 +1,6 @@
-﻿# UniFlow Changelog
+﻿# DeepFlow Changelog
 
-All notable changes to UniFlow Workflow Engine are documented in this file.
+All notable changes to DeepFlow Workflow Engine are documented in this file.
 
 ## [1.0.0] - 2025-12-08
 
@@ -117,6 +117,6 @@ These are optimization tasks and do not affect core functionality.
 
 ---
 
-**UniFlow Version**: 1.0.0
+**DeepFlow Version**: 1.0.0
 **Minimum DeepBase Version**: 1.0.0
 **Generated**: 2025-12-08
