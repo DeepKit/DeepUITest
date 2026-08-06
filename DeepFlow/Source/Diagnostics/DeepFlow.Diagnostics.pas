@@ -188,7 +188,7 @@ type
   // 核心诊断�?
   // ============================================================================
   
-  TUniFlowDiagnostics = class
+  TDeepFlowDiagnostics = class
   private
     FConfig: TDiagnosticsConfig;
     FLoggerFactory: ILoggerFactory;
@@ -274,7 +274,7 @@ type
 // 全局实例
 // ============================================================================
 
-function Diagnostics: TUniFlowDiagnostics;
+function Diagnostics: TDeepFlowDiagnostics;
 procedure InitializeDiagnostics(const AConfig: TDiagnosticsConfig);
 procedure FinalizeDiagnostics;
 
@@ -286,7 +286,7 @@ function TraceLevelToString(Level: TTraceLevel): string;
 implementation
 
 var
-  GDiagnostics: TUniFlowDiagnostics = nil;
+  GDiagnostics: TDeepFlowDiagnostics = nil;
   GDiagnosticsLock: TCriticalSection = nil;
 
 // ============================================================================
@@ -568,10 +568,10 @@ begin
 end;
 
 // ============================================================================
-// TUniFlowDiagnostics
+// TDeepFlowDiagnostics
 // ============================================================================
 
-constructor TUniFlowDiagnostics.Create(const AConfig: TDiagnosticsConfig);
+constructor TDeepFlowDiagnostics.Create(const AConfig: TDiagnosticsConfig);
 begin
   inherited Create;
   FConfig := AConfig;
@@ -588,7 +588,7 @@ begin
   FDefaultLogger := FLoggerFactory.CreateLogger('DeepFlow');
 end;
 
-destructor TUniFlowDiagnostics.Destroy;
+destructor TDeepFlowDiagnostics.Destroy;
 begin
   FStepStartTimes.Free;
   FExecutedSteps.Free;
@@ -597,7 +597,7 @@ begin
   inherited;
 end;
 
-procedure TUniFlowDiagnostics.SetLoggerFactory(AFactory: ILoggerFactory);
+procedure TDeepFlowDiagnostics.SetLoggerFactory(AFactory: ILoggerFactory);
 begin
   FLock.Enter;
   try
@@ -609,7 +609,7 @@ begin
   end;
 end;
 
-function TUniFlowDiagnostics.GetLogger(const Category: string): ILogger;
+function TDeepFlowDiagnostics.GetLogger(const Category: string): ILogger;
 begin
   FLock.Enter;
   try
@@ -623,7 +623,7 @@ begin
   end;
 end;
 
-procedure TUniFlowDiagnostics.BeginCorrelation(const ACorrelationId: string);
+procedure TDeepFlowDiagnostics.BeginCorrelation(const ACorrelationId: string);
 begin
   FLock.Enter;
   try
@@ -639,7 +639,7 @@ begin
   end;
 end;
 
-procedure TUniFlowDiagnostics.EndCorrelation;
+procedure TDeepFlowDiagnostics.EndCorrelation;
 begin
   FLock.Enter;
   try
@@ -652,7 +652,7 @@ begin
   end;
 end;
 
-procedure TUniFlowDiagnostics.SetWorkflowContext(const AWorkflowId: string);
+procedure TDeepFlowDiagnostics.SetWorkflowContext(const AWorkflowId: string);
 begin
   FLock.Enter;
   try
@@ -662,7 +662,7 @@ begin
   end;
 end;
 
-function TUniFlowDiagnostics.GetCorrelationId: string;
+function TDeepFlowDiagnostics.GetCorrelationId: string;
 begin
   FLock.Enter;
   try
@@ -672,7 +672,7 @@ begin
   end;
 end;
 
-procedure TUniFlowDiagnostics.AddTraceEntry(const Entry: TTraceEntry);
+procedure TDeepFlowDiagnostics.AddTraceEntry(const Entry: TTraceEntry);
 begin
   FLock.Enter;
   try
@@ -683,7 +683,7 @@ begin
   end;
 end;
 
-function TUniFlowDiagnostics.GetTraceEntries: TTraceEntryArray;
+function TDeepFlowDiagnostics.GetTraceEntries: TTraceEntryArray;
 var
   Count, I, Idx: Integer;
 begin
@@ -712,7 +712,7 @@ end;
 // 日志方法
 // ============================================================================
 
-procedure TUniFlowDiagnostics.Trace(const Category, Msg: string);
+procedure TDeepFlowDiagnostics.Trace(const Category, Msg: string);
 var
   Entry: TLogEntry;
 begin
@@ -730,12 +730,12 @@ begin
   GetLogger(Category).Log(Entry);
 end;
 
-procedure TUniFlowDiagnostics.Trace(const Category, Msg: string; const Args: array of const);
+procedure TDeepFlowDiagnostics.Trace(const Category, Msg: string; const Args: array of const);
 begin
   Trace(Category, Format(Msg, Args));
 end;
 
-procedure TUniFlowDiagnostics.Debug(const Category, Msg: string);
+procedure TDeepFlowDiagnostics.Debug(const Category, Msg: string);
 var
   Entry: TLogEntry;
 begin
@@ -753,12 +753,12 @@ begin
   GetLogger(Category).Log(Entry);
 end;
 
-procedure TUniFlowDiagnostics.Debug(const Category, Msg: string; const Args: array of const);
+procedure TDeepFlowDiagnostics.Debug(const Category, Msg: string; const Args: array of const);
 begin
   Debug(Category, Format(Msg, Args));
 end;
 
-procedure TUniFlowDiagnostics.Info(const Category, Msg: string);
+procedure TDeepFlowDiagnostics.Info(const Category, Msg: string);
 var
   Entry: TLogEntry;
 begin
@@ -776,12 +776,12 @@ begin
   GetLogger(Category).Log(Entry);
 end;
 
-procedure TUniFlowDiagnostics.Info(const Category, Msg: string; const Args: array of const);
+procedure TDeepFlowDiagnostics.Info(const Category, Msg: string; const Args: array of const);
 begin
   Info(Category, Format(Msg, Args));
 end;
 
-procedure TUniFlowDiagnostics.Warning(const Category, Msg: string);
+procedure TDeepFlowDiagnostics.Warning(const Category, Msg: string);
 var
   Entry: TLogEntry;
 begin
@@ -799,12 +799,12 @@ begin
   GetLogger(Category).Log(Entry);
 end;
 
-procedure TUniFlowDiagnostics.Warning(const Category, Msg: string; const Args: array of const);
+procedure TDeepFlowDiagnostics.Warning(const Category, Msg: string; const Args: array of const);
 begin
   Warning(Category, Format(Msg, Args));
 end;
 
-procedure TUniFlowDiagnostics.Error(const Category, Msg: string);
+procedure TDeepFlowDiagnostics.Error(const Category, Msg: string);
 var
   Entry: TLogEntry;
 begin
@@ -820,12 +820,12 @@ begin
   GetLogger(Category).Log(Entry);
 end;
 
-procedure TUniFlowDiagnostics.Error(const Category, Msg: string; const Args: array of const);
+procedure TDeepFlowDiagnostics.Error(const Category, Msg: string; const Args: array of const);
 begin
   Error(Category, Format(Msg, Args));
 end;
 
-procedure TUniFlowDiagnostics.Fatal(const Category, Msg: string);
+procedure TDeepFlowDiagnostics.Fatal(const Category, Msg: string);
 var
   Entry: TLogEntry;
 begin
@@ -841,7 +841,7 @@ begin
   GetLogger(Category).Log(Entry);
 end;
 
-procedure TUniFlowDiagnostics.Fatal(const Category, Msg: string; const Args: array of const);
+procedure TDeepFlowDiagnostics.Fatal(const Category, Msg: string; const Args: array of const);
 begin
   Fatal(Category, Format(Msg, Args));
 end;
@@ -850,7 +850,7 @@ end;
 // 步骤追踪
 // ============================================================================
 
-procedure TUniFlowDiagnostics.TraceStepEnter(const StepId, StepType: string; Input: TJSONObject);
+procedure TDeepFlowDiagnostics.TraceStepEnter(const StepId, StepType: string; Input: TJSONObject);
 var
   Entry: TTraceEntry;
   Args: TStepEventArgs;
@@ -899,7 +899,7 @@ begin
     Info('Workflow', 'Step [%s] (%s) started', [StepId, StepType]);
 end;
 
-procedure TUniFlowDiagnostics.TraceStepExit(const StepId: string; Output: TJSONObject);
+procedure TDeepFlowDiagnostics.TraceStepExit(const StepId: string; Output: TJSONObject);
 var
   Entry: TTraceEntry;
   Args: TStepEventArgs;
@@ -949,7 +949,7 @@ begin
     Info('Workflow', 'Step [%s] completed (duration: %dms)', [StepId, Entry.Duration]);
 end;
 
-procedure TUniFlowDiagnostics.TraceStepError(const StepId, ErrorMsg: string);
+procedure TDeepFlowDiagnostics.TraceStepError(const StepId, ErrorMsg: string);
 var
   Entry: TTraceEntry;
   StartTime: TDateTime;
@@ -983,7 +983,7 @@ end;
 // 错误上下�?
 // ============================================================================
 
-function TUniFlowDiagnostics.CaptureErrorContext(const StepId, ErrorMsg, ErrorClass: string;
+function TDeepFlowDiagnostics.CaptureErrorContext(const StepId, ErrorMsg, ErrorClass: string;
   Variables, InputData: TJSONObject): TErrorContext;
 var
   I: Integer;
@@ -1039,7 +1039,7 @@ end;
 // 状态导�?
 // ============================================================================
 
-function TUniFlowDiagnostics.DumpState: string;
+function TDeepFlowDiagnostics.DumpState: string;
 var
   JSON: TJSONObject;
   StepsArr: TJSONArray;
@@ -1070,7 +1070,7 @@ begin
   end;
 end;
 
-function TUniFlowDiagnostics.ExportTrace(Format: string): string;
+function TDeepFlowDiagnostics.ExportTrace(Format: string): string;
 var
   Entries: TTraceEntryArray;
   JSON: TJSONArray;
@@ -1117,7 +1117,7 @@ begin
   end;
 end;
 
-function TUniFlowDiagnostics.GetRecentTrace(Count: Integer): TTraceEntryArray;
+function TDeepFlowDiagnostics.GetRecentTrace(Count: Integer): TTraceEntryArray;
 var
   All: TTraceEntryArray;
   StartIdx: Integer;
@@ -1133,7 +1133,7 @@ begin
   end;
 end;
 
-procedure TUniFlowDiagnostics.ClearTrace;
+procedure TDeepFlowDiagnostics.ClearTrace;
 begin
   FLock.Enter;
   try
@@ -1143,7 +1143,7 @@ begin
   end;
 end;
 
-function TUniFlowDiagnostics.GetStepDuration(const StepId: string): Int64;
+function TDeepFlowDiagnostics.GetStepDuration(const StepId: string): Int64;
 var
   StartTime: TDateTime;
 begin
@@ -1162,14 +1162,14 @@ end;
 // 全局实例
 // ============================================================================
 
-function Diagnostics: TUniFlowDiagnostics;
+function Diagnostics: TDeepFlowDiagnostics;
 begin
   if GDiagnostics = nil then
   begin
     GDiagnosticsLock.Enter;
     try
       if GDiagnostics = nil then
-        GDiagnostics := TUniFlowDiagnostics.Create(TDiagnosticsConfig.Default);
+        GDiagnostics := TDeepFlowDiagnostics.Create(TDiagnosticsConfig.Default);
     finally
       GDiagnosticsLock.Leave;
     end;
@@ -1183,7 +1183,7 @@ begin
   try
     if GDiagnostics <> nil then
       FreeAndNil(GDiagnostics);
-    GDiagnostics := TUniFlowDiagnostics.Create(AConfig);
+    GDiagnostics := TDeepFlowDiagnostics.Create(AConfig);
   finally
     GDiagnosticsLock.Leave;
   end;

@@ -1237,7 +1237,7 @@ begin
   ScopeObj := TJSONObject.Create;
   ScopeSpans.Add(ScopeObj);
   ScopeObj.AddPair('scope', TJSONObject.Create
-    .AddPair('name', 'uniflow')
+    .AddPair('name', 'deepflow')
     .AddPair('version', '1.0.0'));
   
   Spans := TJSONArray.Create;
@@ -1356,7 +1356,7 @@ begin
   ScopeObj := TJSONObject.Create;
   ScopeMetrics.Add(ScopeObj);
   ScopeObj.AddPair('scope', TJSONObject.Create
-    .AddPair('name', 'uniflow')
+    .AddPair('name', 'deepflow')
     .AddPair('version', '1.0.0'));
   
   Metrics := TJSONArray.Create;
@@ -1474,7 +1474,7 @@ begin
   ScopeObj := TJSONObject.Create;
   ScopeLogs.Add(ScopeObj);
   ScopeObj.AddPair('scope', TJSONObject.Create
-    .AddPair('name', 'uniflow')
+    .AddPair('name', 'deepflow')
     .AddPair('version', '1.0.0'));
   
   Logs := TJSONArray.Create;

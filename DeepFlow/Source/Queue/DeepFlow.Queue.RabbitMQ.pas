@@ -1226,8 +1226,8 @@ constructor TRabbitMQWorkflowTrigger.Create(AConnection: IRabbitMQConnection);
 begin
   inherited Create;
   FConnection := AConnection;
-  FExchange := 'uniflow.workflow';
-  FQueue := 'uniflow.workflow.trigger';
+  FExchange := 'deepflow.workflow';
+  FQueue := 'deepflow.workflow.trigger';
 end;
 
 destructor TRabbitMQWorkflowTrigger.Destroy;

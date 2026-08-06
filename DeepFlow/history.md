@@ -1,4 +1,4 @@
-﻿# DeepFlow 开发历史记�?
+# DeepFlow 开发历史记�?
 
 > 记录已完成的开发任务、里程碑和重要决�?
 
@@ -1733,3 +1733,95 @@ Inc(LRecord.Count) �?LCount := LRecord.Count; Inc(LCount); LRecord.Count := LC
 ---
 
 **DeepFlow Workflow Engine v1.0 - 开发完�?*
+
+---
+
+## 2026-08-06: DeepFlow 正名 + 术语纠正 (工单 WO-20260806-0001-luoji)
+
+### 背景
+项目从代号 UniFlow 正名为 DeepFlow，文件名/目录/分支已更新，但文档正文与代码 unit 名未跟上。核查发现文档概念层确有两层架构：上层角色协作引擎 UpFlow(原 UniFlow 大写)、下层事件溯源引擎 deepFlow(原 uniFlow 小写)。
+
+### 完成内容
+- **文档正名**: 73 篇 .md 正文语义替换，项目名 DeepFlow、上层 UpFlow、下层 deepFlow
+- **03.07 自指修复**: 标题修正为两层关系说明，修正对比表/命名约定
+- **代码 unit 改名**: 68 个 .pas 的 unit/program 声明 + uses 引用(127处) + 注释项目名全改 DeepFlow.*
+  - 类型标识符 560 处保留 (TUniFlowXxx/UniFlowClient 等，另起任务)
+- **schema URI 纠正**: $id uniflow:// 转 deepflow://、URL 转 docs.deepflow.ai、author 转 DeepFlow Team
+- **DeepDeep 乱码修复**: 9 形态 73 处 (DeepDeepDeepDeepDeepInsight 转 DeepInsight 等)
+- **simple_qa 修复**: 23 处 UTF-8 损坏逐字节还原 + 补引号
+- **冗余清理**: 3 个冗余 prompt 删除 + Editor 加 favicon
+- **ADR 备案**: ADR-002 已批准
+
+### 验证
+- tools/verify-term-rename.py 确定性脚本 T1-T6 全 PASS
+- dcc32 编译验证零改名回归 (T7)
+- release_ready = true
+
+### 交付 commit
+- f7a9b2f2: 术语纠正 + 两层命名 + ADR-002
+- 77b750c6: unit 改名 + simple_qa 修复
+- 3902526a: 冗余清理 + favicon
+
+---
+
+## 2026-08-07: 类型标识符重命名 (TASK-0101)
+
+### 背景
+ADR-002 正名后，68 个 .pas 的 unit/program/uses 已改 DeepFlow.*，但类型标识符 (TUniFlowXxx/IUniFlow/etc.) 560 处保留，与文件名/unit 名不一致。本任务统一类型标识符。
+
+### 方法与工具
+- 新建 `Tools/rename-identifiers.py`: 字节级替换 (UniFlow 是纯 ASCII, 不依赖文件编码)
+- 作用域: Source/ + Examples/ 下 .pas/.py/.js/.html/.md
+- 规则: UniFlow→DeepFlow, UNIFLOW→DEEPFLOW, uniflow→deepflow
+
+### 完成内容
+- **25 个文件, 477 处替换** (440 .pas + 37 .py/.html/.js/.md)
+- 类型: TUniFlowType→TDeepFlowType, TUniFlowEvent→TDeepFlowEvent, TUniFlowAdapter→TDeepFlowLLMAdapter 等
+- 枚举值 (uftBuild/ufsCreated) 保留 (缩写, 非 UniFlow 扩展)
+- `--verify`: 零残留 UniFlow 引用
+
+### 验证
+- 一致性校验: 旧类型 0 处, 新类型 493 处
+- 字节级替换不触碰编码, 未引入新乱码
+
+### 交付
+- 本分支 (deepframes-docs-review-fixes) 待 commit
+
+---
+
+## 2025-12-07: P7 远期规划 (未启动，归档备查)
+
+> 以下为 2025-12 规划的 P7 企业级远期任务，从未启动。TASK-4000 编号为旧体系，已由 2026 年 TASK-01xx 新体系取代。归档备查。
+
+### P7-A: 企业级功能
+| 任务 | 描述 | 复杂度 |
+|------|------|--------|
+| TASK-4001 | SSO/SAML/OAuth2 集成 | High |
+| TASK-4002 | 工作流审核/人工介入节点 | Medium |
+| TASK-4003 | 企业级审计合规(SOC2/GDPR) | High |
+| TASK-4004 | 多数据中心容灾 | High |
+
+### P7-B: 开发体验优化
+| 任务 | 描述 | 复杂度 |
+|------|------|--------|
+| TASK-4010 | 工作流 DSL 语言设计 | High |
+| TASK-4011 | VS Code / IDE 插件 | Medium |
+| TASK-4012 | CLI 工具完善 | Low |
+| TASK-4013 | SDK (Python/Go/TypeScript) | Medium |
+
+### P7-C: 生态集成
+| 任务 | 描述 | 复杂度 |
+|------|------|--------|
+| TASK-4020 | Webhook 运营商集成(Stripe/Twilio/SendGrid) | Medium |
+| TASK-4021 | 低代码平台集成(Retool/Appsmith) | Medium |
+| TASK-4022 | BI 工具集成(Metabase/Superset) | Low |
+| TASK-4023 | 工单系统集成(Jira/ServiceNow) | Medium |
+
+### P7-D: 性能与质量
+| 任务 | 描述 | 复杂度 |
+|------|------|--------|
+| TASK-4030 | 工作流执行回放(Replay/Debug) | High |
+| TASK-4031 | 性能基线自动化 | Medium |
+| TASK-4032 | 混沌工程测试 | High |
+| TASK-4033 | 全链路压测平台 | Medium |
+

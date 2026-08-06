@@ -86,25 +86,25 @@ type
     /// 事件一旦追加，不可修改或删除�?
     /// 返回�?SequenceNumber �?Flow 内单调递增�?
     /// </remarks>
-    function Append(AEvent: TUniFlowEvent): TAppendResult;
+    function Append(AEvent: TDeepFlowEvent): TAppendResult;
     
     /// <summary>批量追加事件</summary>
-    function AppendBatch(AEvents: TArray<TUniFlowEvent>): TArray<TAppendResult>;
+    function AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
     
     /// <summary>读取事件</summary>
-    function ReadEvents(const AQuery: TEventQuery): TArray<TUniFlowEvent>;
+    function ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
     
     /// <summary>获取流程的最后一个事�?/summary>
-    function GetLastEvent(const AFlowId: string): TUniFlowEvent;
+    function GetLastEvent(const AFlowId: string): TDeepFlowEvent;
     
     /// <summary>获取流程的事件计�?/summary>
     function GetEventCount(const AFlowId: string): Int64;
     
     /// <summary>保存快照</summary>
-    function SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;
+    function SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;
     
     /// <summary>获取快照</summary>
-    function GetSnapshot(const AQuery: TSnapshotQuery): TUniFlowSnapshot;
+    function GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
     
     /// <summary>获取所有流�?ID</summary>
     function GetAllFlowIds: TArray<string>;
@@ -124,21 +124,21 @@ type
   TMemoryEventStore = class(TInterfacedObject, IEventStore)
   private
     FLock: TCriticalSection;
-    FEvents: TObjectDictionary<string, TObjectList<TUniFlowEvent>>;
-    FSnapshots: TObjectDictionary<string, TObjectList<TUniFlowSnapshot>>;
+    FEvents: TObjectDictionary<string, TObjectList<TDeepFlowEvent>>;
+    FSnapshots: TObjectDictionary<string, TObjectList<TDeepFlowSnapshot>>;
     FSequenceCounters: TDictionary<string, Int64>;
   public
     constructor Create;
     destructor Destroy; override;
     
     // IEventStore
-    function Append(AEvent: TUniFlowEvent): TAppendResult;
-    function AppendBatch(AEvents: TArray<TUniFlowEvent>): TArray<TAppendResult>;
-    function ReadEvents(const AQuery: TEventQuery): TArray<TUniFlowEvent>;
-    function GetLastEvent(const AFlowId: string): TUniFlowEvent;
+    function Append(AEvent: TDeepFlowEvent): TAppendResult;
+    function AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
+    function ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
+    function GetLastEvent(const AFlowId: string): TDeepFlowEvent;
     function GetEventCount(const AFlowId: string): Int64;
-    function SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;
-    function GetSnapshot(const AQuery: TSnapshotQuery): TUniFlowSnapshot;
+    function SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;
+    function GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
     function GetAllFlowIds: TArray<string>;
     function FlowExists(const AFlowId: string): Boolean;
     
@@ -158,29 +158,29 @@ type
   private
     FBasePath: string;
     FLock: TCriticalSection;
-    FCache: TObjectDictionary<string, TObjectList<TUniFlowEvent>>;
+    FCache: TObjectDictionary<string, TObjectList<TDeepFlowEvent>>;
     FCacheEnabled: Boolean;
     
     function GetFlowPath(const AFlowId: string): string;
     function GetEventsFilePath(const AFlowId: string): string;
     function GetSnapshotsFilePath(const AFlowId: string): string;
-    function LoadEvents(const AFlowId: string): TObjectList<TUniFlowEvent>;
-    function LoadSnapshots(const AFlowId: string): TObjectList<TUniFlowSnapshot>;
-    procedure SaveEvents(const AFlowId: string; AEvents: TObjectList<TUniFlowEvent>);
-    procedure SaveSnapshots(const AFlowId: string; ASnapshots: TObjectList<TUniFlowSnapshot>);
-    function GetNextSequence(const AFlowId: string; AEvents: TObjectList<TUniFlowEvent>): Int64;
+    function LoadEvents(const AFlowId: string): TObjectList<TDeepFlowEvent>;
+    function LoadSnapshots(const AFlowId: string): TObjectList<TDeepFlowSnapshot>;
+    procedure SaveEvents(const AFlowId: string; AEvents: TObjectList<TDeepFlowEvent>);
+    procedure SaveSnapshots(const AFlowId: string; ASnapshots: TObjectList<TDeepFlowSnapshot>);
+    function GetNextSequence(const AFlowId: string; AEvents: TObjectList<TDeepFlowEvent>): Int64;
   public
     constructor Create(const ABasePath: string; ACacheEnabled: Boolean = True);
     destructor Destroy; override;
     
     // IEventStore
-    function Append(AEvent: TUniFlowEvent): TAppendResult;
-    function AppendBatch(AEvents: TArray<TUniFlowEvent>): TArray<TAppendResult>;
-    function ReadEvents(const AQuery: TEventQuery): TArray<TUniFlowEvent>;
-    function GetLastEvent(const AFlowId: string): TUniFlowEvent;
+    function Append(AEvent: TDeepFlowEvent): TAppendResult;
+    function AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
+    function ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
+    function GetLastEvent(const AFlowId: string): TDeepFlowEvent;
     function GetEventCount(const AFlowId: string): Int64;
-    function SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;
-    function GetSnapshot(const AQuery: TSnapshotQuery): TUniFlowSnapshot;
+    function SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;
+    function GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
     function GetAllFlowIds: TArray<string>;
     function FlowExists(const AFlowId: string): Boolean;
     
@@ -216,11 +216,11 @@ type
     
     /// <summary>检查是否需要生成快�?/summary>
     function ShouldCreateSnapshot(const AFlowId: string; AEventCount: Int64;
-      AFlowStatus: TUniFlowStatus): Boolean;
+      AFlowStatus: TDeepFlowStatus): Boolean;
     
     /// <summary>创建快照</summary>
     function CreateSnapshot(const AFlowId: string; AState: TJSONObject;
-      AFlowStatus: TUniFlowStatus; AEventSequence: Int64): TUniFlowSnapshot;
+      AFlowStatus: TDeepFlowStatus; AEventSequence: Int64): TDeepFlowSnapshot;
     
     property Policy: TSnapshotPolicy read FPolicy write FPolicy;
   end;
@@ -236,7 +236,7 @@ type
     FFlowId: string;
     FCurrentSequence: Int64;
     FBatchSize: Integer;
-    FEvents: TArray<TUniFlowEvent>;
+    FEvents: TArray<TDeepFlowEvent>;
     FIndex: Integer;
     FEndOfStream: Boolean;
   public
@@ -247,7 +247,7 @@ type
     function MoveNext: Boolean;
     
     /// <summary>当前事件</summary>
-    function Current: TUniFlowEvent;
+    function Current: TDeepFlowEvent;
     
     /// <summary>重置到起始位�?/summary>
     procedure Reset(AFromSequence: Int64 = 1);
@@ -317,8 +317,8 @@ constructor TMemoryEventStore.Create;
 begin
   inherited;
   FLock := TCriticalSection.Create;
-  FEvents := TObjectDictionary<string, TObjectList<TUniFlowEvent>>.Create([doOwnsValues]);
-  FSnapshots := TObjectDictionary<string, TObjectList<TUniFlowSnapshot>>.Create([doOwnsValues]);
+  FEvents := TObjectDictionary<string, TObjectList<TDeepFlowEvent>>.Create([doOwnsValues]);
+  FSnapshots := TObjectDictionary<string, TObjectList<TDeepFlowSnapshot>>.Create([doOwnsValues]);
   FSequenceCounters := TDictionary<string, Int64>.Create;
 end;
 
@@ -331,11 +331,11 @@ begin
   inherited;
 end;
 
-function TMemoryEventStore.Append(AEvent: TUniFlowEvent): TAppendResult;
+function TMemoryEventStore.Append(AEvent: TDeepFlowEvent): TAppendResult;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
   Seq: Int64;
-  ClonedEvent: TUniFlowEvent;
+  ClonedEvent: TDeepFlowEvent;
 begin
   if AEvent = nil then
     Exit(TAppendResult.Fail('Event is nil'));
@@ -348,7 +348,7 @@ begin
     // 获取或创建事件列�?
     if not FEvents.TryGetValue(AEvent.FlowId, FlowEvents) then
     begin
-      FlowEvents := TObjectList<TUniFlowEvent>.Create(True);
+      FlowEvents := TObjectList<TDeepFlowEvent>.Create(True);
       FEvents.Add(AEvent.FlowId, FlowEvents);
       FSequenceCounters.Add(AEvent.FlowId, 0);
     end;
@@ -368,7 +368,7 @@ begin
   end;
 end;
 
-function TMemoryEventStore.AppendBatch(AEvents: TArray<TUniFlowEvent>): TArray<TAppendResult>;
+function TMemoryEventStore.AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
 var
   I: Integer;
 begin
@@ -377,11 +377,11 @@ begin
     Result[I] := Append(AEvents[I]);
 end;
 
-function TMemoryEventStore.ReadEvents(const AQuery: TEventQuery): TArray<TUniFlowEvent>;
+function TMemoryEventStore.ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
-  ResultList: TList<TUniFlowEvent>;
-  Event: TUniFlowEvent;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
+  ResultList: TList<TDeepFlowEvent>;
+  Event: TDeepFlowEvent;
 begin
   Result := nil;
   
@@ -390,7 +390,7 @@ begin
     if not FEvents.TryGetValue(AQuery.FlowId, FlowEvents) then
       Exit;
       
-    ResultList := TList<TUniFlowEvent>.Create;
+    ResultList := TList<TDeepFlowEvent>.Create;
     try
       for Event in FlowEvents do
       begin
@@ -430,9 +430,9 @@ begin
   end;
 end;
 
-function TMemoryEventStore.GetLastEvent(const AFlowId: string): TUniFlowEvent;
+function TMemoryEventStore.GetLastEvent(const AFlowId: string): TDeepFlowEvent;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
 begin
   Result := nil;
   
@@ -447,7 +447,7 @@ end;
 
 function TMemoryEventStore.GetEventCount(const AFlowId: string): Int64;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
 begin
   Result := 0;
   
@@ -460,10 +460,10 @@ begin
   end;
 end;
 
-function TMemoryEventStore.SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;
+function TMemoryEventStore.SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;
 var
-  FlowSnapshots: TObjectList<TUniFlowSnapshot>;
-  ClonedSnapshot: TUniFlowSnapshot;
+  FlowSnapshots: TObjectList<TDeepFlowSnapshot>;
+  ClonedSnapshot: TDeepFlowSnapshot;
 begin
   Result := False;
   if ASnapshot = nil then Exit;
@@ -472,7 +472,7 @@ begin
   try
     if not FSnapshots.TryGetValue(ASnapshot.FlowId, FlowSnapshots) then
     begin
-      FlowSnapshots := TObjectList<TUniFlowSnapshot>.Create(True);
+      FlowSnapshots := TObjectList<TDeepFlowSnapshot>.Create(True);
       FSnapshots.Add(ASnapshot.FlowId, FlowSnapshots);
     end;
     
@@ -485,9 +485,9 @@ begin
   end;
 end;
 
-function TMemoryEventStore.GetSnapshot(const AQuery: TSnapshotQuery): TUniFlowSnapshot;
+function TMemoryEventStore.GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
 var
-  FlowSnapshots: TObjectList<TUniFlowSnapshot>;
+  FlowSnapshots: TObjectList<TDeepFlowSnapshot>;
   I: Integer;
 begin
   Result := nil;
@@ -569,7 +569,7 @@ begin
   FBasePath := ABasePath;
   FCacheEnabled := ACacheEnabled;
   FLock := TCriticalSection.Create;
-  FCache := TObjectDictionary<string, TObjectList<TUniFlowEvent>>.Create([doOwnsValues]);
+  FCache := TObjectDictionary<string, TObjectList<TDeepFlowEvent>>.Create([doOwnsValues]);
   
   // 确保基础目录存在
   if not TDirectory.Exists(FBasePath) then
@@ -598,13 +598,13 @@ begin
   Result := TPath.Combine(GetFlowPath(AFlowId), 'snapshots.json');
 end;
 
-function TFileEventStore.LoadEvents(const AFlowId: string): TObjectList<TUniFlowEvent>;
+function TFileEventStore.LoadEvents(const AFlowId: string): TObjectList<TDeepFlowEvent>;
 var
   FilePath: string;
   JsonStr: string;
   JsonArr: TJSONArray;
   I: Integer;
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
   // 检查缓�?
   if FCacheEnabled then
@@ -613,7 +613,7 @@ begin
       Exit;
   end;
   
-  Result := TObjectList<TUniFlowEvent>.Create(True);
+  Result := TObjectList<TDeepFlowEvent>.Create(True);
   FilePath := GetEventsFilePath(AFlowId);
   
   if TFile.Exists(FilePath) then
@@ -625,7 +625,7 @@ begin
       try
         for I := 0 to JsonArr.Count - 1 do
         begin
-          Event := TUniFlowEvent.Create;
+          Event := TDeepFlowEvent.Create;
           Event.LoadFromJSON(JsonArr.Items[I] as TJSONObject);
           Result.Add(Event);
         end;
@@ -650,15 +650,15 @@ begin
   end;
 end;
 
-function TFileEventStore.LoadSnapshots(const AFlowId: string): TObjectList<TUniFlowSnapshot>;
+function TFileEventStore.LoadSnapshots(const AFlowId: string): TObjectList<TDeepFlowSnapshot>;
 var
   FilePath: string;
   JsonStr: string;
   JsonArr: TJSONArray;
   I: Integer;
-  Snapshot: TUniFlowSnapshot;
+  Snapshot: TDeepFlowSnapshot;
 begin
-  Result := TObjectList<TUniFlowSnapshot>.Create(True);
+  Result := TObjectList<TDeepFlowSnapshot>.Create(True);
   FilePath := GetSnapshotsFilePath(AFlowId);
   
   if TFile.Exists(FilePath) then
@@ -670,7 +670,7 @@ begin
       try
         for I := 0 to JsonArr.Count - 1 do
         begin
-          Snapshot := TUniFlowSnapshot.Create;
+          Snapshot := TDeepFlowSnapshot.Create;
           Snapshot.LoadFromJSON(JsonArr.Items[I] as TJSONObject);
           Result.Add(Snapshot);
         end;
@@ -689,11 +689,11 @@ begin
   end;
 end;
 
-procedure TFileEventStore.SaveEvents(const AFlowId: string; AEvents: TObjectList<TUniFlowEvent>);
+procedure TFileEventStore.SaveEvents(const AFlowId: string; AEvents: TObjectList<TDeepFlowEvent>);
 var
   FlowPath, FilePath: string;
   JsonArr: TJSONArray;
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
   FlowPath := GetFlowPath(AFlowId);
   if not TDirectory.Exists(FlowPath) then
@@ -710,11 +710,11 @@ begin
   end;
 end;
 
-procedure TFileEventStore.SaveSnapshots(const AFlowId: string; ASnapshots: TObjectList<TUniFlowSnapshot>);
+procedure TFileEventStore.SaveSnapshots(const AFlowId: string; ASnapshots: TObjectList<TDeepFlowSnapshot>);
 var
   FlowPath, FilePath: string;
   JsonArr: TJSONArray;
-  Snapshot: TUniFlowSnapshot;
+  Snapshot: TDeepFlowSnapshot;
 begin
   FlowPath := GetFlowPath(AFlowId);
   if not TDirectory.Exists(FlowPath) then
@@ -732,7 +732,7 @@ begin
 end;
 
 function TFileEventStore.GetNextSequence(const AFlowId: string; 
-  AEvents: TObjectList<TUniFlowEvent>): Int64;
+  AEvents: TObjectList<TDeepFlowEvent>): Int64;
 begin
   if AEvents.Count > 0 then
     Result := AEvents.Last.SequenceNumber + 1
@@ -740,11 +740,11 @@ begin
     Result := 1;
 end;
 
-function TFileEventStore.Append(AEvent: TUniFlowEvent): TAppendResult;
+function TFileEventStore.Append(AEvent: TDeepFlowEvent): TAppendResult;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
   Seq: Int64;
-  ClonedEvent: TUniFlowEvent;
+  ClonedEvent: TDeepFlowEvent;
   OwnsList: Boolean;
 begin
   if AEvent = nil then
@@ -780,7 +780,7 @@ begin
   end;
 end;
 
-function TFileEventStore.AppendBatch(AEvents: TArray<TUniFlowEvent>): TArray<TAppendResult>;
+function TFileEventStore.AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
 var
   I: Integer;
 begin
@@ -789,11 +789,11 @@ begin
     Result[I] := Append(AEvents[I]);
 end;
 
-function TFileEventStore.ReadEvents(const AQuery: TEventQuery): TArray<TUniFlowEvent>;
+function TFileEventStore.ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
-  ResultList: TList<TUniFlowEvent>;
-  Event: TUniFlowEvent;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
+  ResultList: TList<TDeepFlowEvent>;
+  Event: TDeepFlowEvent;
   OwnsList: Boolean;
 begin
   Result := nil;
@@ -803,7 +803,7 @@ begin
     OwnsList := not FCacheEnabled;
     FlowEvents := LoadEvents(AQuery.FlowId);
     try
-      ResultList := TList<TUniFlowEvent>.Create;
+      ResultList := TList<TDeepFlowEvent>.Create;
       try
         for Event in FlowEvents do
         begin
@@ -847,9 +847,9 @@ begin
   end;
 end;
 
-function TFileEventStore.GetLastEvent(const AFlowId: string): TUniFlowEvent;
+function TFileEventStore.GetLastEvent(const AFlowId: string): TDeepFlowEvent;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
   OwnsList: Boolean;
 begin
   Result := nil;
@@ -872,7 +872,7 @@ end;
 
 function TFileEventStore.GetEventCount(const AFlowId: string): Int64;
 var
-  FlowEvents: TObjectList<TUniFlowEvent>;
+  FlowEvents: TObjectList<TDeepFlowEvent>;
   OwnsList: Boolean;
 begin
   Result := 0;
@@ -892,10 +892,10 @@ begin
   end;
 end;
 
-function TFileEventStore.SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;
+function TFileEventStore.SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;
 var
-  FlowSnapshots: TObjectList<TUniFlowSnapshot>;
-  ClonedSnapshot: TUniFlowSnapshot;
+  FlowSnapshots: TObjectList<TDeepFlowSnapshot>;
+  ClonedSnapshot: TDeepFlowSnapshot;
 begin
   Result := False;
   if ASnapshot = nil then Exit;
@@ -918,9 +918,9 @@ begin
   end;
 end;
 
-function TFileEventStore.GetSnapshot(const AQuery: TSnapshotQuery): TUniFlowSnapshot;
+function TFileEventStore.GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
 var
-  FlowSnapshots: TObjectList<TUniFlowSnapshot>;
+  FlowSnapshots: TObjectList<TDeepFlowSnapshot>;
   I: Integer;
 begin
   Result := nil;
@@ -1024,7 +1024,7 @@ begin
 end;
 
 function TSnapshotManager.ShouldCreateSnapshot(const AFlowId: string;
-  AEventCount: Int64; AFlowStatus: TUniFlowStatus): Boolean;
+  AEventCount: Int64; AFlowStatus: TDeepFlowStatus): Boolean;
 begin
   // 终态强制生�?
   if FPolicy.ForceOnTerminal and (AFlowStatus in [ufsSucceeded, ufsFailed, ufsCancelled]) then
@@ -1038,9 +1038,9 @@ begin
 end;
 
 function TSnapshotManager.CreateSnapshot(const AFlowId: string; AState: TJSONObject;
-  AFlowStatus: TUniFlowStatus; AEventSequence: Int64): TUniFlowSnapshot;
+  AFlowStatus: TDeepFlowStatus; AEventSequence: Int64): TDeepFlowSnapshot;
 begin
-  Result := TUniFlowSnapshot.Create;
+  Result := TDeepFlowSnapshot.Create;
   Result.FlowId := AFlowId;
   Result.FlowStatus := AFlowStatus;
   Result.EventSequence := AEventSequence;
@@ -1112,7 +1112,7 @@ begin
   Result := True;
 end;
 
-function TEventStream.Current: TUniFlowEvent;
+function TEventStream.Current: TDeepFlowEvent;
 begin
   if (FIndex >= 0) and (FIndex < Length(FEvents)) then
     Result := FEvents[FIndex]

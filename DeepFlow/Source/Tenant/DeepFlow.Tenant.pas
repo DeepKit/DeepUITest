@@ -198,13 +198,13 @@ type
     constructor Create(AInnerStore: IEventStore; ATenant: TTenant);
 
     // IEventStore 实现
-    function Append(AEvent: TUniFlowEvent): TAppendResult;
-    function AppendBatch(AEvents: TArray<TUniFlowEvent>): TAppendResult;
-    function ReadEvents(AQuery: TEventQuery): TArray<TUniFlowEvent>;
-    function GetLastEvent(const AFlowId: string): TUniFlowEvent;
+    function Append(AEvent: TDeepFlowEvent): TAppendResult;
+    function AppendBatch(AEvents: TArray<TDeepFlowEvent>): TAppendResult;
+    function ReadEvents(AQuery: TEventQuery): TArray<TDeepFlowEvent>;
+    function GetLastEvent(const AFlowId: string): TDeepFlowEvent;
     function GetEventCount(const AFlowId: string): Int64;
-    function SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;  // ARCH-002: 返回 Boolean 对齐 IEventStore
-    function GetSnapshot(AQuery: TSnapshotQuery): TUniFlowSnapshot;
+    function SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;  // ARCH-002: 返回 Boolean 对齐 IEventStore
+    function GetSnapshot(AQuery: TSnapshotQuery): TDeepFlowSnapshot;
     function GetAllFlowIds: TArray<string>;
     function FlowExists(const AFlowId: string): Boolean;
 
@@ -843,7 +843,7 @@ begin
   Result := FTenant.VerifyFlowId(InnerFlowId);
 end;
 
-function TTenantEventStore.Append(AEvent: TUniFlowEvent): TAppendResult;
+function TTenantEventStore.Append(AEvent: TDeepFlowEvent): TAppendResult;
 begin
   // 配额检�?
   if not FTenant.CheckQuota('events_per_flow') then
@@ -860,7 +860,7 @@ begin
     FTenant.IncrementUsage('event', 1);
 end;
 
-function TTenantEventStore.AppendBatch(AEvents: TArray<TUniFlowEvent>): TAppendResult;
+function TTenantEventStore.AppendBatch(AEvents: TArray<TDeepFlowEvent>): TAppendResult;
 begin
   for var Event in AEvents do
     Event.FlowId := PrefixFlowId(Event.FlowId);
@@ -871,7 +871,7 @@ begin
     FTenant.IncrementUsage('event', Length(AEvents));
 end;
 
-function TTenantEventStore.ReadEvents(AQuery: TEventQuery): TArray<TUniFlowEvent>;
+function TTenantEventStore.ReadEvents(AQuery: TEventQuery): TArray<TDeepFlowEvent>;
 begin
   AQuery.FlowId := PrefixFlowId(AQuery.FlowId);
   Result := FInnerStore.ReadEvents(AQuery);
@@ -881,7 +881,7 @@ begin
     Event.FlowId := UnprefixFlowId(Event.FlowId);
 end;
 
-function TTenantEventStore.GetLastEvent(const AFlowId: string): TUniFlowEvent;
+function TTenantEventStore.GetLastEvent(const AFlowId: string): TDeepFlowEvent;
 begin
   Result := FInnerStore.GetLastEvent(PrefixFlowId(AFlowId));
   if Result <> nil then
@@ -893,7 +893,7 @@ begin
   Result := FInnerStore.GetEventCount(PrefixFlowId(AFlowId));
 end;
 
-function TTenantEventStore.SaveSnapshot(ASnapshot: TUniFlowSnapshot): Boolean;
+function TTenantEventStore.SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;
 begin
   // ARCH-002: 返回 Boolean 对齐 IEventStore 接口
   ASnapshot.FlowId := PrefixFlowId(ASnapshot.FlowId);
@@ -902,7 +902,7 @@ begin
     FTenant.IncrementUsage('snapshot', 1);
 end;
 
-function TTenantEventStore.GetSnapshot(AQuery: TSnapshotQuery): TUniFlowSnapshot;
+function TTenantEventStore.GetSnapshot(AQuery: TSnapshotQuery): TDeepFlowSnapshot;
 begin
   AQuery.FlowId := PrefixFlowId(AQuery.FlowId);
   Result := FInnerStore.GetSnapshot(AQuery);

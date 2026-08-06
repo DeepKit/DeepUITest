@@ -7,8 +7,8 @@ unit DeepFlow.EventSourcing.Types;
   Event Sourcing 核心类型定义�?
   
   核心概念:
-  - UniFlowEvent: 所有状态变化的唯一记录
-  - UniFlowSnapshot: 事件聚合后的状态快�?
+  - DeepFlowEvent: 所有状态变化的唯一记录
+  - DeepFlowSnapshot: 事件聚合后的状态快�?
   - FlowInstance: 一次流程执行的实例
   
   设计原则:
@@ -29,7 +29,7 @@ type
   // ============================================================================
   
   /// <summary>流程类型</summary>
-  TUniFlowType = (
+  TDeepFlowType = (
     uftBuild,       // 构建流（Loop A�? �?0 �?1
     uftMaintain,    // 维护流（Loop B�? �?N �?N+1
     uftNlConvert,   // 自然语言→结构化转换子流
@@ -39,7 +39,7 @@ type
   );
   
   /// <summary>流程实例状�?/summary>
-  TUniFlowStatus = (
+  TDeepFlowStatus = (
     ufsCreated,     // 已创建，尚未开�?
     ufsRunning,     // 运行�?
     ufsWaitingUser, // 等待用户输入
@@ -56,18 +56,18 @@ type
   );
   
   // ============================================================================
-  // UniFlowEvent - 事件
+  // DeepFlowEvent - 事件
   // ============================================================================
   
   /// <summary>
   /// DeepFlow 事件 - 所有状态变化的唯一记录
-  /// 约定: 所有状态变化都通过 UniFlowEvent 体现，禁止静默变�?
+  /// 约定: 所有状态变化都通过 DeepFlowEvent 体现，禁止静默变�?
   /// </summary>
-  TUniFlowEvent = class
+  TDeepFlowEvent = class
   private
     FId: string;              // 事件 ID（全局唯一�?
     FFlowId: string;          // 所�?FlowInstance
-    FFlowType: TUniFlowType;  // 流程类型
+    FFlowType: TDeepFlowType;  // 流程类型
     FStep: string;            // 业务步骤�?
     FSource: string;          // 事件来源模块
     FStatus: TEventStatus;    // 事件状�?
@@ -87,14 +87,14 @@ type
     class function GenerateEventId: string;
     
     /// <summary>创建 Started 事件</summary>
-    class function Started(const AFlowId, AStep, ASource: string): TUniFlowEvent;
+    class function Started(const AFlowId, AStep, ASource: string): TDeepFlowEvent;
     
     /// <summary>创建 Succeeded 事件</summary>
     class function Succeeded(const AFlowId, AStep, ASource: string;
-      APayload: TJSONObject = nil): TUniFlowEvent;
+      APayload: TJSONObject = nil): TDeepFlowEvent;
     
     /// <summary>创建 Failed 事件</summary>
-    class function Failed(const AFlowId, AStep, ASource, AErrorCode, AErrorMessage: string): TUniFlowEvent;
+    class function Failed(const AFlowId, AStep, ASource, AErrorCode, AErrorMessage: string): TDeepFlowEvent;
     
     /// <summary>验证事件完整�?/summary>
     function Validate: Boolean;
@@ -106,12 +106,12 @@ type
     procedure LoadFromJSON(AJson: TJSONObject);
     
     /// <summary>克隆事件</summary>
-    function Clone: TUniFlowEvent;
+    function Clone: TDeepFlowEvent;
     
     // 属�?
     property Id: string read FId write FId;
     property FlowId: string read FFlowId write FFlowId;
-    property FlowType: TUniFlowType read FFlowType write FFlowType;
+    property FlowType: TDeepFlowType read FFlowType write FFlowType;
     property Step: string read FStep write FStep;
     property Source: string read FSource write FSource;
     property Status: TEventStatus read FStatus write FStatus;
@@ -126,14 +126,14 @@ type
   end;
   
   // ============================================================================
-  // UniFlowSnapshot - 快照
+  // DeepFlowSnapshot - 快照
   // ============================================================================
   
   /// <summary>
   /// DeepFlow 快照 - 事件聚合后的状�?
   /// 可由事件「重放」得到，也可在关键节点直接持久化
   /// </summary>
-  TUniFlowSnapshot = class
+  TDeepFlowSnapshot = class
   private
     FId: string;              // 快照 ID
     FFlowId: string;          // 所�?FlowInstance
@@ -141,7 +141,7 @@ type
     FEventSequence: Int64;    // 对应的最后一个事件序列号
     FStateJson: TJSONObject;  // 聚合后的当前状�?
     FCreatedAt: TDateTime;    // 创建时间
-    FFlowStatus: TUniFlowStatus; // 流程状�?
+    FFlowStatus: TDeepFlowStatus; // 流程状�?
   public
     constructor Create;
     destructor Destroy; override;
@@ -153,7 +153,7 @@ type
     procedure LoadFromJSON(AJson: TJSONObject);
     
     /// <summary>克隆快照</summary>
-    function Clone: TUniFlowSnapshot;
+    function Clone: TDeepFlowSnapshot;
     
     property Id: string read FId write FId;
     property FlowId: string read FFlowId write FFlowId;
@@ -161,7 +161,7 @@ type
     property EventSequence: Int64 read FEventSequence write FEventSequence;
     property StateJson: TJSONObject read FStateJson;
     property CreatedAt: TDateTime read FCreatedAt write FCreatedAt;
-    property FlowStatus: TUniFlowStatus read FFlowStatus write FFlowStatus;
+    property FlowStatus: TDeepFlowStatus read FFlowStatus write FFlowStatus;
   end;
   
   // ============================================================================
@@ -170,13 +170,13 @@ type
   
   /// <summary>
   /// 流程实例 - 一次流程执�?
-  /// FlowInstance 完全由事件（UniFlowEvent）和快照（UniFlowSnapshot）在存储中体�?
+  /// FlowInstance 完全由事件（DeepFlowEvent）和快照（DeepFlowSnapshot）在存储中体�?
   /// </summary>
   TFlowInstance = class
   private
     FId: string;              // 流程实例 ID
-    FFlowType: TUniFlowType;  // 流程类型
-    FStatus: TUniFlowStatus;  // 当前状�?
+    FFlowType: TDeepFlowType;  // 流程类型
+    FStatus: TDeepFlowStatus;  // 当前状�?
     FCreatedAt: TDateTime;    // 创建时间
     FUpdatedAt: TDateTime;    // 最后更新时�?
     FCompletedAt: TDateTime;  // 完成时间
@@ -196,16 +196,16 @@ type
     class function GenerateFlowId: string;
     
     /// <summary>创建新流程实�?/summary>
-    class function CreateNew(AFlowType: TUniFlowType; const ASource: string): TFlowInstance;
+    class function CreateNew(AFlowType: TDeepFlowType; const ASource: string): TFlowInstance;
     
     /// <summary>从父流程分叉</summary>
-    class function Fork(const AParentFlowId: string; AFlowType: TUniFlowType): TFlowInstance;
+    class function Fork(const AParentFlowId: string; AFlowType: TDeepFlowType): TFlowInstance;
     
     /// <summary>检查状态是否为终�?/summary>
     function IsTerminal: Boolean;
     
     /// <summary>检查状态迁移是否合�?/summary>
-    function CanTransitionTo(ANewStatus: TUniFlowStatus): Boolean;
+    function CanTransitionTo(ANewStatus: TDeepFlowStatus): Boolean;
     
     /// <summary>序列化为 JSON</summary>
     function ToJSON: TJSONObject;
@@ -214,8 +214,8 @@ type
     procedure LoadFromJSON(AJson: TJSONObject);
     
     property Id: string read FId write FId;
-    property FlowType: TUniFlowType read FFlowType write FFlowType;
-    property Status: TUniFlowStatus read FStatus write FStatus;
+    property FlowType: TDeepFlowType read FFlowType write FFlowType;
+    property Status: TDeepFlowStatus read FStatus write FStatus;
     property CreatedAt: TDateTime read FCreatedAt write FCreatedAt;
     property UpdatedAt: TDateTime read FUpdatedAt write FUpdatedAt;
     property CompletedAt: TDateTime read FCompletedAt write FCompletedAt;
@@ -230,13 +230,13 @@ type
   end;
   
   // ============================================================================
-  // UniFlowNode - 节点
+  // DeepFlowNode - 节点
   // ============================================================================
   
   /// <summary>
   /// DeepFlow 节点 - 用于在不同层次上定位
   /// </summary>
-  TUniFlowNode = class
+  TDeepFlowNode = class
   private
     FNodeId: string;          // 节点 ID
     FNodeType: string;        // 节点类型
@@ -269,10 +269,10 @@ type
   // 辅助函数
   // ============================================================================
   
-function FlowTypeToString(AType: TUniFlowType): string;
-function StringToFlowType(const AStr: string): TUniFlowType;
-function FlowStatusToString(AStatus: TUniFlowStatus): string;
-function StringToFlowStatus(const AStr: string): TUniFlowStatus;
+function FlowTypeToString(AType: TDeepFlowType): string;
+function StringToFlowType(const AStr: string): TDeepFlowType;
+function FlowStatusToString(AStatus: TDeepFlowStatus): string;
+function StringToFlowStatus(const AStr: string): TDeepFlowStatus;
 function EventStatusToString(AStatus: TEventStatus): string;
 function StringToEventStatus(const AStr: string): TEventStatus;
 
@@ -285,16 +285,16 @@ uses
 // 辅助函数实现
 // ============================================================================
 
-function FlowTypeToString(AType: TUniFlowType): string;
+function FlowTypeToString(AType: TDeepFlowType): string;
 const
-  Names: array[TUniFlowType] of string = (
+  Names: array[TDeepFlowType] of string = (
     'Build', 'Maintain', 'NlConvert', 'SceneChange', 'CodeChange', 'Custom'
   );
 begin
   Result := Names[AType];
 end;
 
-function StringToFlowType(const AStr: string): TUniFlowType;
+function StringToFlowType(const AStr: string): TDeepFlowType;
 begin
   if SameText(AStr, 'Build') then Result := uftBuild
   else if SameText(AStr, 'Maintain') then Result := uftMaintain
@@ -304,16 +304,16 @@ begin
   else Result := uftCustom;
 end;
 
-function FlowStatusToString(AStatus: TUniFlowStatus): string;
+function FlowStatusToString(AStatus: TDeepFlowStatus): string;
 const
-  Names: array[TUniFlowStatus] of string = (
+  Names: array[TDeepFlowStatus] of string = (
     'Created', 'Running', 'WaitingUser', 'Succeeded', 'Failed', 'Cancelled'
   );
 begin
   Result := Names[AStatus];
 end;
 
-function StringToFlowStatus(const AStr: string): TUniFlowStatus;
+function StringToFlowStatus(const AStr: string): TDeepFlowStatus;
 begin
   if SameText(AStr, 'Created') then Result := ufsCreated
   else if SameText(AStr, 'Running') then Result := ufsRunning
@@ -340,10 +340,10 @@ begin
 end;
 
 // ============================================================================
-// TUniFlowEvent
+// TDeepFlowEvent
 // ============================================================================
 
-constructor TUniFlowEvent.Create;
+constructor TDeepFlowEvent.Create;
 begin
   inherited;
   FId := GenerateEventId;
@@ -353,14 +353,14 @@ begin
   FSequenceNumber := 0;
 end;
 
-destructor TUniFlowEvent.Destroy;
+destructor TDeepFlowEvent.Destroy;
 begin
   FPayload.Free;
   FMetadata.Free;
   inherited;
 end;
 
-class function TUniFlowEvent.GenerateEventId: string;
+class function TDeepFlowEvent.GenerateEventId: string;
 var
   GUID: TGUID;
 begin
@@ -368,19 +368,19 @@ begin
   Result := 'evt-' + Copy(GUIDToString(GUID), 2, 36);
 end;
 
-class function TUniFlowEvent.Started(const AFlowId, AStep, ASource: string): TUniFlowEvent;
+class function TDeepFlowEvent.Started(const AFlowId, AStep, ASource: string): TDeepFlowEvent;
 begin
-  Result := TUniFlowEvent.Create;
+  Result := TDeepFlowEvent.Create;
   Result.FFlowId := AFlowId;
   Result.FStep := AStep;
   Result.FSource := ASource;
   Result.FStatus := esStarted;
 end;
 
-class function TUniFlowEvent.Succeeded(const AFlowId, AStep, ASource: string;
-  APayload: TJSONObject): TUniFlowEvent;
+class function TDeepFlowEvent.Succeeded(const AFlowId, AStep, ASource: string;
+  APayload: TJSONObject): TDeepFlowEvent;
 begin
-  Result := TUniFlowEvent.Create;
+  Result := TDeepFlowEvent.Create;
   Result.FFlowId := AFlowId;
   Result.FStep := AStep;
   Result.FSource := ASource;
@@ -392,9 +392,9 @@ begin
   end;
 end;
 
-class function TUniFlowEvent.Failed(const AFlowId, AStep, ASource, AErrorCode, AErrorMessage: string): TUniFlowEvent;
+class function TDeepFlowEvent.Failed(const AFlowId, AStep, ASource, AErrorCode, AErrorMessage: string): TDeepFlowEvent;
 begin
-  Result := TUniFlowEvent.Create;
+  Result := TDeepFlowEvent.Create;
   Result.FFlowId := AFlowId;
   Result.FStep := AStep;
   Result.FSource := ASource;
@@ -403,7 +403,7 @@ begin
   Result.FErrorMessage := AErrorMessage;
 end;
 
-function TUniFlowEvent.Validate: Boolean;
+function TDeepFlowEvent.Validate: Boolean;
 begin
   // 基础字段必须存在
   if FId.IsEmpty or FFlowId.IsEmpty or FStep.IsEmpty or FSource.IsEmpty then
@@ -416,7 +416,7 @@ begin
   Result := True;
 end;
 
-function TUniFlowEvent.ToJSON: TJSONObject;
+function TDeepFlowEvent.ToJSON: TJSONObject;
 begin
   Result := TJSONObject.Create;
   Result.AddPair('id', FId);
@@ -442,7 +442,7 @@ begin
     Result.AddPair('metadata', FMetadata.Clone as TJSONObject);
 end;
 
-procedure TUniFlowEvent.LoadFromJSON(AJson: TJSONObject);
+procedure TDeepFlowEvent.LoadFromJSON(AJson: TJSONObject);
 var
   Obj: TJSONObject;
 begin
@@ -485,9 +485,9 @@ begin
   end;
 end;
 
-function TUniFlowEvent.Clone: TUniFlowEvent;
+function TDeepFlowEvent.Clone: TDeepFlowEvent;
 begin
-  Result := TUniFlowEvent.Create;
+  Result := TDeepFlowEvent.Create;
   Result.FId := FId;
   Result.FFlowId := FFlowId;
   Result.FFlowType := FFlowType;
@@ -507,10 +507,10 @@ begin
 end;
 
 // ============================================================================
-// TUniFlowSnapshot
+// TDeepFlowSnapshot
 // ============================================================================
 
-constructor TUniFlowSnapshot.Create;
+constructor TDeepFlowSnapshot.Create;
 var
   GUID: TGUID;
 begin
@@ -522,13 +522,13 @@ begin
   FVersion := 0;
 end;
 
-destructor TUniFlowSnapshot.Destroy;
+destructor TDeepFlowSnapshot.Destroy;
 begin
   FStateJson.Free;
   inherited;
 end;
 
-function TUniFlowSnapshot.ToJSON: TJSONObject;
+function TDeepFlowSnapshot.ToJSON: TJSONObject;
 begin
   Result := TJSONObject.Create;
   Result.AddPair('id', FId);
@@ -541,7 +541,7 @@ begin
     Result.AddPair('stateJson', FStateJson.Clone as TJSONObject);
 end;
 
-procedure TUniFlowSnapshot.LoadFromJSON(AJson: TJSONObject);
+procedure TDeepFlowSnapshot.LoadFromJSON(AJson: TJSONObject);
 var
   Obj: TJSONObject;
 begin
@@ -567,9 +567,9 @@ begin
   end;
 end;
 
-function TUniFlowSnapshot.Clone: TUniFlowSnapshot;
+function TDeepFlowSnapshot.Clone: TDeepFlowSnapshot;
 begin
-  Result := TUniFlowSnapshot.Create;
+  Result := TDeepFlowSnapshot.Create;
   Result.FId := FId;
   Result.FFlowId := FFlowId;
   Result.FVersion := FVersion;
@@ -609,14 +609,14 @@ begin
   Result := 'flow-' + Copy(GUIDToString(GUID), 2, 36);
 end;
 
-class function TFlowInstance.CreateNew(AFlowType: TUniFlowType; const ASource: string): TFlowInstance;
+class function TFlowInstance.CreateNew(AFlowType: TDeepFlowType; const ASource: string): TFlowInstance;
 begin
   Result := TFlowInstance.Create;
   Result.FFlowType := AFlowType;
   Result.FSource := ASource;
 end;
 
-class function TFlowInstance.Fork(const AParentFlowId: string; AFlowType: TUniFlowType): TFlowInstance;
+class function TFlowInstance.Fork(const AParentFlowId: string; AFlowType: TDeepFlowType): TFlowInstance;
 begin
   Result := TFlowInstance.Create;
   Result.FFlowType := AFlowType;
@@ -629,7 +629,7 @@ begin
   Result := FStatus in [ufsSucceeded, ufsFailed, ufsCancelled];
 end;
 
-function TFlowInstance.CanTransitionTo(ANewStatus: TUniFlowStatus): Boolean;
+function TFlowInstance.CanTransitionTo(ANewStatus: TDeepFlowStatus): Boolean;
 begin
   // 终态不能再迁移
   if IsTerminal then
@@ -716,10 +716,10 @@ begin
 end;
 
 // ============================================================================
-// TUniFlowNode
+// TDeepFlowNode
 // ============================================================================
 
-constructor TUniFlowNode.Create;
+constructor TDeepFlowNode.Create;
 var
   GUID: TGUID;
 begin
@@ -731,18 +731,18 @@ begin
   FAttributes := TJSONObject.Create;
 end;
 
-destructor TUniFlowNode.Destroy;
+destructor TDeepFlowNode.Destroy;
 begin
   FAttributes.Free;
   inherited;
 end;
 
-function TUniFlowNode.GetPath: string;
+function TDeepFlowNode.GetPath: string;
 begin
   Result := FNodeType + ':' + FNodeId;
 end;
 
-class function TUniFlowNode.ParsePath(const APath: string): TArray<TPair<string, string>>;
+class function TDeepFlowNode.ParsePath(const APath: string): TArray<TPair<string, string>>;
 var
   Parts: TArray<string>;
   TypeId: TArray<string>;
@@ -762,7 +762,7 @@ begin
   end;
 end;
 
-function TUniFlowNode.ToJSON: TJSONObject;
+function TDeepFlowNode.ToJSON: TJSONObject;
 begin
   Result := TJSONObject.Create;
   Result.AddPair('nodeId', FNodeId);
@@ -775,7 +775,7 @@ begin
     Result.AddPair('attributes', FAttributes.Clone as TJSONObject);
 end;
 
-procedure TUniFlowNode.LoadFromJSON(AJson: TJSONObject);
+procedure TDeepFlowNode.LoadFromJSON(AJson: TJSONObject);
 var
   Obj: TJSONObject;
 begin

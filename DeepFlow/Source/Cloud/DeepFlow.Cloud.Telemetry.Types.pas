@@ -476,29 +476,29 @@ type
   TWorkflowMetrics = class
   public const
     // Workflow 指标
-    WORKFLOW_EXECUTIONS_TOTAL = 'uniflow.workflow.executions.total';
-    WORKFLOW_EXECUTION_DURATION = 'uniflow.workflow.execution.duration';
-    WORKFLOW_ACTIVE = 'uniflow.workflow.active';
-    WORKFLOW_ERRORS_TOTAL = 'uniflow.workflow.errors.total';
+    WORKFLOW_EXECUTIONS_TOTAL = 'deepflow.workflow.executions.total';
+    WORKFLOW_EXECUTION_DURATION = 'deepflow.workflow.execution.duration';
+    WORKFLOW_ACTIVE = 'deepflow.workflow.active';
+    WORKFLOW_ERRORS_TOTAL = 'deepflow.workflow.errors.total';
     
     // Skill 指标
-    SKILL_EXECUTIONS_TOTAL = 'uniflow.skill.executions.total';
-    SKILL_EXECUTION_DURATION = 'uniflow.skill.execution.duration';
-    SKILL_ERRORS_TOTAL = 'uniflow.skill.errors.total';
+    SKILL_EXECUTIONS_TOTAL = 'deepflow.skill.executions.total';
+    SKILL_EXECUTION_DURATION = 'deepflow.skill.execution.duration';
+    SKILL_ERRORS_TOTAL = 'deepflow.skill.errors.total';
     
     // LLM 指标
-    LLM_REQUESTS_TOTAL = 'uniflow.llm.requests.total';
-    LLM_REQUEST_DURATION = 'uniflow.llm.request.duration';
-    LLM_TOKENS_TOTAL = 'uniflow.llm.tokens.total';
-    LLM_ERRORS_TOTAL = 'uniflow.llm.errors.total';
+    LLM_REQUESTS_TOTAL = 'deepflow.llm.requests.total';
+    LLM_REQUEST_DURATION = 'deepflow.llm.request.duration';
+    LLM_TOKENS_TOTAL = 'deepflow.llm.tokens.total';
+    LLM_ERRORS_TOTAL = 'deepflow.llm.errors.total';
     
     // Session 指标
-    SESSION_ACTIVE = 'uniflow.session.active';
-    SESSION_MESSAGES_TOTAL = 'uniflow.session.messages.total';
+    SESSION_ACTIVE = 'deepflow.session.active';
+    SESSION_MESSAGES_TOTAL = 'deepflow.session.messages.total';
     
     // Queue 指标
-    QUEUE_MESSAGES_TOTAL = 'uniflow.queue.messages.total';
-    QUEUE_MESSAGE_DURATION = 'uniflow.queue.message.duration';
+    QUEUE_MESSAGES_TOTAL = 'deepflow.queue.messages.total';
+    QUEUE_MESSAGE_DURATION = 'deepflow.queue.message.duration';
   end;
   
   {$ENDREGION}
@@ -1315,7 +1315,7 @@ end;
 class function TResource.Default: TResource;
 begin
   Result := TResource.Create;
-  Result.FAttributes.SetAttribute('telemetry.sdk.name', 'uniflow-otel');
+  Result.FAttributes.SetAttribute('telemetry.sdk.name', 'deepflow-otel');
   Result.FAttributes.SetAttribute('telemetry.sdk.language', 'delphi');
   Result.FAttributes.SetAttribute('telemetry.sdk.version', '1.0.0');
 end;
@@ -1474,23 +1474,23 @@ end;
 class procedure TWorkflowTraceAttributes.SetWorkflowAttributes(ASpan: TSpan;
   const AWorkflowId, AWorkflowName: string; AVersion: Integer);
 begin
-  ASpan.SetAttribute('uniflow.workflow.id', AWorkflowId);
-  ASpan.SetAttribute('uniflow.workflow.name', AWorkflowName);
-  ASpan.SetAttribute('uniflow.workflow.version', AVersion);
+  ASpan.SetAttribute('deepflow.workflow.id', AWorkflowId);
+  ASpan.SetAttribute('deepflow.workflow.name', AWorkflowName);
+  ASpan.SetAttribute('deepflow.workflow.version', AVersion);
 end;
 
 class procedure TWorkflowTraceAttributes.SetSkillAttributes(ASpan: TSpan;
   const ASkillId, ASkillType: string);
 begin
-  ASpan.SetAttribute('uniflow.skill.id', ASkillId);
-  ASpan.SetAttribute('uniflow.skill.type', ASkillType);
+  ASpan.SetAttribute('deepflow.skill.id', ASkillId);
+  ASpan.SetAttribute('deepflow.skill.type', ASkillType);
 end;
 
 class procedure TWorkflowTraceAttributes.SetSessionAttributes(ASpan: TSpan;
   const ASessionId, AUserId: string);
 begin
-  ASpan.SetAttribute('uniflow.session.id', ASessionId);
-  ASpan.SetAttribute('uniflow.user.id', AUserId);
+  ASpan.SetAttribute('deepflow.session.id', ASessionId);
+  ASpan.SetAttribute('deepflow.user.id', AUserId);
 end;
 
 class procedure TWorkflowTraceAttributes.SetLLMAttributes(ASpan: TSpan;

@@ -312,7 +312,7 @@ uses
 
 const
   PACKAGE_VERSION = '1.0';
-  PACKAGE_MAGIC = 'UNIFLOW';
+  PACKAGE_MAGIC = 'DEEPFLOW';
 
 // ============================================================================
 // TExportOptions Implementation

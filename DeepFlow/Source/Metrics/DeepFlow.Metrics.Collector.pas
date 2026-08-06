@@ -78,10 +78,10 @@ type
   end;
 
   //----------------------------------------------------------------------------
-  // TUniFlowMetrics - Predefined DeepFlow metrics
+  // TDeepFlowMetrics - Predefined DeepFlow metrics
   //----------------------------------------------------------------------------
 
-  TUniFlowMetrics = class
+  TDeepFlowMetrics = class
   private
     FRegistry: TMetricsRegistry;
 
@@ -201,10 +201,10 @@ type
 
   TMetricsHTTPHandler = class
   private
-    FMetrics: TUniFlowMetrics;
+    FMetrics: TDeepFlowMetrics;
     FPath: string;
   public
-    constructor Create(AMetrics: TUniFlowMetrics; const APath: string = '/metrics');
+    constructor Create(AMetrics: TDeepFlowMetrics; const APath: string = '/metrics');
 
     /// <summary>Handle HTTP request, returns response body and content type</summary>
     function HandleRequest(const AAcceptHeader: string;
@@ -241,11 +241,11 @@ type
   //----------------------------------------------------------------------------
 
 var
-  DefaultMetrics: TUniFlowMetrics;
+  DefaultMetrics: TDeepFlowMetrics;
 
   procedure InitializeMetrics(ARegistry: TMetricsRegistry = nil);
   procedure FinalizeMetrics;
-  function Metrics: TUniFlowMetrics;
+  function Metrics: TDeepFlowMetrics;
 
 implementation
 
@@ -519,10 +519,10 @@ begin
 end;
 
 //------------------------------------------------------------------------------
-// TUniFlowMetrics
+// TDeepFlowMetrics
 //------------------------------------------------------------------------------
 
-constructor TUniFlowMetrics.Create(ARegistry: TMetricsRegistry);
+constructor TDeepFlowMetrics.Create(ARegistry: TMetricsRegistry);
 begin
   inherited Create;
   FStartTime := Now;
@@ -531,20 +531,20 @@ begin
     FRegistry := ARegistry
   else
   begin
-    FRegistry := TMetricsRegistry.Create('uniflow', '');
+    FRegistry := TMetricsRegistry.Create('deepflow', '');
   end;
 
   RegisterMetrics;
 end;
 
-destructor TUniFlowMetrics.Destroy;
+destructor TDeepFlowMetrics.Destroy;
 begin
   // Registry owns the metric families
   FRegistry.Free;
   inherited Destroy;
 end;
 
-procedure TUniFlowMetrics.RegisterMetrics;
+procedure TDeepFlowMetrics.RegisterMetrics;
 begin
   // Workflow metrics
   FWorkflowsStarted := FRegistry.RegisterCounter('workflows_started_total',
@@ -613,7 +613,7 @@ begin
     'Time since metrics initialization in seconds');
 end;
 
-procedure TUniFlowMetrics.WorkflowStarted(const AWorkflowName: string);
+procedure TDeepFlowMetrics.WorkflowStarted(const AWorkflowName: string);
 var
   Labels: TMetricLabels;
 begin
@@ -625,7 +625,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.WorkflowCompleted(const AWorkflowName: string; ADurationMs: Double);
+procedure TDeepFlowMetrics.WorkflowCompleted(const AWorkflowName: string; ADurationMs: Double);
 var
   Labels: TMetricLabels;
 begin
@@ -638,7 +638,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.WorkflowFailed(const AWorkflowName: string; const AError: string);
+procedure TDeepFlowMetrics.WorkflowFailed(const AWorkflowName: string; const AError: string);
 var
   Labels: TMetricLabels;
 begin
@@ -650,12 +650,12 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.SetActiveWorkflows(ACount: Integer);
+procedure TDeepFlowMetrics.SetActiveWorkflows(ACount: Integer);
 begin
   FActiveWorkflows.GetGauge.Set_(ACount);
 end;
 
-procedure TUniFlowMetrics.StepExecuted(const AWorkflowName, AStepName, AStepType: string;
+procedure TDeepFlowMetrics.StepExecuted(const AWorkflowName, AStepName, AStepType: string;
   ADurationMs: Double);
 var
   Labels: TMetricLabels;
@@ -669,7 +669,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.StepFailed(const AWorkflowName, AStepName, AStepType: string);
+procedure TDeepFlowMetrics.StepFailed(const AWorkflowName, AStepName, AStepType: string);
 var
   Labels: TMetricLabels;
 begin
@@ -681,7 +681,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.LLMRequest(const AProvider, AModel: string; ADurationMs: Double;
+procedure TDeepFlowMetrics.LLMRequest(const AProvider, AModel: string; ADurationMs: Double;
   AInputTokens, AOutputTokens: Integer; ACost: Double);
 var
   Labels: TMetricLabels;
@@ -699,7 +699,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.LLMError(const AProvider, AModel, AErrorType: string);
+procedure TDeepFlowMetrics.LLMError(const AProvider, AModel, AErrorType: string);
 var
   Labels: TMetricLabels;
 begin
@@ -711,7 +711,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.SkillInvoked(const ASkillName: string; ADurationMs: Double);
+procedure TDeepFlowMetrics.SkillInvoked(const ASkillName: string; ADurationMs: Double);
 var
   Labels: TMetricLabels;
 begin
@@ -724,7 +724,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.SkillError(const ASkillName, AErrorType: string);
+procedure TDeepFlowMetrics.SkillError(const ASkillName, AErrorType: string);
 var
   Labels: TMetricLabels;
 begin
@@ -736,22 +736,22 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.SessionCreated;
+procedure TDeepFlowMetrics.SessionCreated;
 begin
   FSessionsCreated.GetCounter.Inc;
 end;
 
-procedure TUniFlowMetrics.SessionExpired;
+procedure TDeepFlowMetrics.SessionExpired;
 begin
   FSessionsExpired.GetCounter.Inc;
 end;
 
-procedure TUniFlowMetrics.SetActiveSessions(ACount: Integer);
+procedure TDeepFlowMetrics.SetActiveSessions(ACount: Integer);
 begin
   FActiveSessions.GetGauge.Set_(ACount);
 end;
 
-procedure TUniFlowMetrics.MessageProcessed(const ARole: string);
+procedure TDeepFlowMetrics.MessageProcessed(const ARole: string);
 var
   Labels: TMetricLabels;
 begin
@@ -763,7 +763,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.RateLimitHit(const AScope, AIdentifier: string);
+procedure TDeepFlowMetrics.RateLimitHit(const AScope, AIdentifier: string);
 var
   Labels: TMetricLabels;
 begin
@@ -775,7 +775,7 @@ begin
   end;
 end;
 
-procedure TUniFlowMetrics.QuotaExceeded(const AUserId: string);
+procedure TDeepFlowMetrics.QuotaExceeded(const AUserId: string);
 var
   Labels: TMetricLabels;
 begin
@@ -787,19 +787,19 @@ begin
   end;
 end;
 
-function TUniFlowMetrics.GetUptimeSeconds: Double;
+function TDeepFlowMetrics.GetUptimeSeconds: Double;
 begin
   Result := SecondSpan(Now, FStartTime);
 end;
 
-function TUniFlowMetrics.ToPrometheusText: string;
+function TDeepFlowMetrics.ToPrometheusText: string;
 begin
   // Update uptime before export
   FUptime.GetGauge.Set_(GetUptimeSeconds);
   Result := FRegistry.ToPrometheusText;
 end;
 
-function TUniFlowMetrics.ToJSON: TJSONObject;
+function TDeepFlowMetrics.ToJSON: TJSONObject;
 begin
   // Update uptime before export
   FUptime.GetGauge.Set_(GetUptimeSeconds);
@@ -810,7 +810,7 @@ end;
 // TMetricsHTTPHandler
 //------------------------------------------------------------------------------
 
-constructor TMetricsHTTPHandler.Create(AMetrics: TUniFlowMetrics; const APath: string);
+constructor TMetricsHTTPHandler.Create(AMetrics: TDeepFlowMetrics; const APath: string);
 begin
   inherited Create;
   FMetrics := AMetrics;
@@ -897,7 +897,7 @@ end;
 procedure InitializeMetrics(ARegistry: TMetricsRegistry);
 begin
   FinalizeMetrics;
-  DefaultMetrics := TUniFlowMetrics.Create(ARegistry);
+  DefaultMetrics := TDeepFlowMetrics.Create(ARegistry);
 end;
 
 procedure FinalizeMetrics;
@@ -905,7 +905,7 @@ begin
   FreeAndNil(DefaultMetrics);
 end;
 
-function Metrics: TUniFlowMetrics;
+function Metrics: TDeepFlowMetrics;
 begin
   if DefaultMetrics = nil then
     InitializeMetrics(nil);

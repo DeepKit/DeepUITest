@@ -30,7 +30,7 @@ type
     esSoIs,         // SoIs 代理 (需求澄�?
     esSayDone,      // SayDone 代理 (代码生成)
     esDevDirector,  // DevDirector 代理 (流程协调)
-    esUniFlow,      // DeepFlow 流程引擎
+    esDeepFlow,      // DeepFlow 流程引擎
     esSkill,        // 外部 Skill 插件
     esUser,         // 用户手动操作
     esSystem,       // 系统自动触发

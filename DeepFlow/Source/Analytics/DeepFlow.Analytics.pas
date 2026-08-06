@@ -201,9 +201,9 @@ type
     function TryGetFromCache(const AKey: string; out AValue: TJSONObject): Boolean;
     procedure AddToCache(const AKey: string; AValue: TJSONObject);
     
-    function CollectFlowEvents(const AFlowId: string): TArray<TUniFlowEvent>;
-    function CalculateDuration(AEvents: TArray<TUniFlowEvent>): Double;
-    function GetFlowStatus(AEvents: TArray<TUniFlowEvent>): TUniFlowStatus;
+    function CollectFlowEvents(const AFlowId: string): TArray<TDeepFlowEvent>;
+    function CalculateDuration(AEvents: TArray<TDeepFlowEvent>): Double;
+    function GetFlowStatus(AEvents: TArray<TDeepFlowEvent>): TDeepFlowStatus;
     function GetBucketStart(ATime: TDateTime; AGranularity: TTimeGranularity): TDateTime;
   public
     constructor Create(AStore: IEventStore; AConfig: TAnalyticsConfig);
@@ -633,7 +633,7 @@ begin
   FCacheTimestamps.AddOrSetValue(AKey, Now);
 end;
 
-function TAnalyticsEngine.CollectFlowEvents(const AFlowId: string): TArray<TUniFlowEvent>;
+function TAnalyticsEngine.CollectFlowEvents(const AFlowId: string): TArray<TDeepFlowEvent>;
 var
   Query: TEventQuery;
 begin
@@ -641,7 +641,7 @@ begin
   Result := FStore.ReadEvents(Query);
 end;
 
-function TAnalyticsEngine.CalculateDuration(AEvents: TArray<TUniFlowEvent>): Double;
+function TAnalyticsEngine.CalculateDuration(AEvents: TArray<TDeepFlowEvent>): Double;
 var
   FirstTime, LastTime: TDateTime;
 begin
@@ -653,9 +653,9 @@ begin
   Result := MilliSecondsBetween(LastTime, FirstTime);
 end;
 
-function TAnalyticsEngine.GetFlowStatus(AEvents: TArray<TUniFlowEvent>): TUniFlowStatus;
+function TAnalyticsEngine.GetFlowStatus(AEvents: TArray<TDeepFlowEvent>): TDeepFlowStatus;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
   StatusStr: string;
 begin
   Result := ufsCreated;
@@ -695,12 +695,12 @@ end;
 function TAnalyticsEngine.GetExecutionSummary(ARange: TTimeRange): TExecutionSummary;
 var
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
-  Status: TUniFlowStatus;
+  Events: TArray<TDeepFlowEvent>;
+  Status: TDeepFlowStatus;
   Duration: Double;
   TotalDuration: Double;
   UniqueNames: TDictionary<string, Boolean>;
-  FirstEvent: TUniFlowEvent;
+  FirstEvent: TDeepFlowEvent;
 begin
   Result := Default(TExecutionSummary);
   Result.TimeRange := ARange;
@@ -766,8 +766,8 @@ function TAnalyticsEngine.GetWorkflowStats(ARange: TTimeRange): TArray<TWorkflow
 var
   StatsMap: TDictionary<string, TWorkflowStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
-  Status: TUniFlowStatus;
+  Events: TArray<TDeepFlowEvent>;
+  Status: TDeepFlowStatus;
   Duration: Double;
   WFName: string;
   Stats: TWorkflowStats;
@@ -868,10 +868,10 @@ function TAnalyticsEngine.GetStepStats(ARange: TTimeRange): TArray<TStepStats>;
 var
   StatsMap: TDictionary<string, TStepStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
   Stats: TStepStats;
   StepKey: string;
-  PrevEvent: TUniFlowEvent;
+  PrevEvent: TDeepFlowEvent;
   Duration: Double;
 begin
   StatsMap := TDictionary<string, TStepStats>.Create;
@@ -950,10 +950,10 @@ function TAnalyticsEngine.GetTimeSeriesStats(ARange: TTimeRange;
 var
   BucketMap: TDictionary<TDateTime, TTimeBucketStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
   BucketStart: TDateTime;
   Stats: TTimeBucketStats;
-  Status: TUniFlowStatus;
+  Status: TDeepFlowStatus;
   Duration: Double;
   SortedKeys: TList<TDateTime>;
 begin
@@ -1024,7 +1024,7 @@ function TAnalyticsEngine.GetErrorStats(ARange: TTimeRange): TArray<TErrorStats>
 var
   ErrorMap: TDictionary<string, TErrorStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
   Stats: TErrorStats;
   AffectedList: TDictionary<string, TList<string>>;
   WFName: string;

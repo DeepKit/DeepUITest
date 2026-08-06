@@ -6,7 +6,7 @@
                Workflow Context. Does NOT duplicate DeepBase.LLM functionality.
 
   Usage:
-    var Adapter := TUniFlowLLMAdapter.Create(DeepBaseLLM);
+    var Adapter := TDeepFlowLLMAdapter.Create(DeepBaseLLM);
     try
       var Response := Adapter.ExecuteFromContext(WorkflowContext, StepConfig);
       // Response is written back to Context automatically
@@ -69,7 +69,7 @@ type
   /// <summary>
   /// Adapter that bridges DeepBase.LLM with DeepFlow Workflow
   /// </summary>
-  TUniFlowLLMAdapter = class
+  TDeepFlowLLMAdapter = class
   private
     FLLM: TDeepBaseLLM;
     FOwnsLLM: Boolean;
@@ -107,10 +107,10 @@ type
   /// </summary>
   TLLMActionExecutor = class(TInterfacedObject, IActionExecutor)
   private
-    FAdapter: TUniFlowLLMAdapter;
+    FAdapter: TDeepFlowLLMAdapter;
     FOwnsAdapter: Boolean;
   public
-    constructor Create(AAdapter: TUniFlowLLMAdapter; AOwnsAdapter: Boolean = False);
+    constructor Create(AAdapter: TDeepFlowLLMAdapter; AOwnsAdapter: Boolean = False);
     destructor Destroy; override;
 
     function Execute(const Action: TActionDefinition; Context: TWorkflowContext): TStepResult;
@@ -186,30 +186,30 @@ begin
   ErrorMessage := '';
 end;
 
-{ TUniFlowLLMAdapter }
+{ TDeepFlowLLMAdapter }
 
-constructor TUniFlowLLMAdapter.Create(ALLM: TDeepBaseLLM; AOwnsLLM: Boolean);
+constructor TDeepFlowLLMAdapter.Create(ALLM: TDeepBaseLLM; AOwnsLLM: Boolean);
 begin
   inherited Create;
   FLLM := ALLM;
   FOwnsLLM := AOwnsLLM;
 end;
 
-destructor TUniFlowLLMAdapter.Destroy;
+destructor TDeepFlowLLMAdapter.Destroy;
 begin
   if FOwnsLLM and Assigned(FLLM) then
     FLLM.Free;
   inherited;
 end;
 
-function TUniFlowLLMAdapter.ResolveTemplate(const Template: string;
+function TDeepFlowLLMAdapter.ResolveTemplate(const Template: string;
   Context: TWorkflowContext): string;
 begin
   // Use workflow context's expression evaluator to resolve {{ vars.xxx }}
   Result := Context.EvaluateExpression(Template);
 end;
 
-function TUniFlowLLMAdapter.ExtractJsonValue(const JSON: TJSONObject;
+function TDeepFlowLLMAdapter.ExtractJsonValue(const JSON: TJSONObject;
   const Path: string): string;
 var
   Parts: TArray<string>;
@@ -241,7 +241,7 @@ begin
     Result := Current.ToString;
 end;
 
-function TUniFlowLLMAdapter.Execute(const Options: TLLMExecutionOptions;
+function TDeepFlowLLMAdapter.Execute(const Options: TLLMExecutionOptions;
   Context: TWorkflowContext): TLLMExecutionResult;
 var
   Messages: TLLMMessages;
@@ -338,7 +338,7 @@ begin
   end;
 end;
 
-function TUniFlowLLMAdapter.ExecuteFromAction(const Action: TActionDefinition;
+function TDeepFlowLLMAdapter.ExecuteFromAction(const Action: TActionDefinition;
   Context: TWorkflowContext): TLLMExecutionResult;
 var
   Options: TLLMExecutionOptions;
@@ -379,7 +379,7 @@ begin
   Result := Execute(Options, Context);
 end;
 
-function TUniFlowLLMAdapter.QuickChat(const SystemPrompt, UserPrompt: string;
+function TDeepFlowLLMAdapter.QuickChat(const SystemPrompt, UserPrompt: string;
   const ConfigName: string): string;
 var
   Messages: TLLMMessages;
@@ -409,7 +409,7 @@ end;
 
 { TLLMActionExecutor }
 
-constructor TLLMActionExecutor.Create(AAdapter: TUniFlowLLMAdapter; AOwnsAdapter: Boolean);
+constructor TLLMActionExecutor.Create(AAdapter: TDeepFlowLLMAdapter; AOwnsAdapter: Boolean);
 begin
   inherited Create;
   FAdapter := AAdapter;
@@ -466,10 +466,10 @@ end;
 
 procedure RegisterLLMExecutor(Executor: TWorkflowExecutor; LLM: TDeepBaseLLM);
 var
-  Adapter: TUniFlowLLMAdapter;
+  Adapter: TDeepFlowLLMAdapter;
   LLMExecutor: TLLMActionExecutor;
 begin
-  Adapter := TUniFlowLLMAdapter.Create(LLM, False);
+  Adapter := TDeepFlowLLMAdapter.Create(LLM, False);
   LLMExecutor := TLLMActionExecutor.Create(Adapter, True);
   Executor.RegisterActionExecutor(LLMExecutor);
 end;

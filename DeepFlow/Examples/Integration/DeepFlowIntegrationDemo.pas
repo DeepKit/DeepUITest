@@ -27,7 +27,7 @@ uses
   DeepBase.DeepFlow;
 
 var
-  Engine: TUniFlowEngine;
+  Engine: TDeepFlowEngine;
 
 // ============================================================================
 // 事件处理
@@ -57,7 +57,7 @@ end;
 
 procedure Demo1_BasicRequest;
 var
-  Response: TUniFlowResponse;
+  Response: TDeepFlowResponse;
 begin
   Writeln('');
   Writeln('=== Demo 1: Basic Request Processing ===');
@@ -176,7 +176,7 @@ const
 procedure Demo2_WorkflowExecution;
 var
   WorkflowId: string;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
   Input: TJSONObject;
 begin
   Writeln('');
@@ -240,8 +240,8 @@ end;
 
 procedure Demo3_SessionManagement;
 var
-  Session: TUniFlowSession;
-  Response: TUniFlowResponse;
+  Session: TDeepFlowSession;
+  Response: TDeepFlowResponse;
 begin
   Writeln('');
   Writeln('=== Demo 3: Session Management ===');
@@ -295,7 +295,7 @@ end;
 
 procedure Demo4_IntentRecognition;
 var
-  Response: TUniFlowResponse;
+  Response: TDeepFlowResponse;
 begin
   Writeln('');
   Writeln('=== Demo 4: Intent Recognition ===');
@@ -340,7 +340,7 @@ end;
 
 procedure Demo5_Diagnostics;
 var
-  Diag: TUniFlowDiagnostics;
+  Diag: TDeepFlowDiagnostics;
 begin
   Writeln('');
   Writeln('=== Demo 5: Diagnostics ===');
@@ -384,7 +384,7 @@ begin
   Writeln('============================================');
   
   // 创建引擎
-  Engine := TUniFlowEngine.Create;
+  Engine := TDeepFlowEngine.Create;
   try
     // 配置
     Engine.Config.EnableAudit := True;

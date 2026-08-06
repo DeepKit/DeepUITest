@@ -306,7 +306,7 @@ constructor TKafkaConnectionConfig.Create;
 begin
   inherited Create;
   FBootstrapServers := 'localhost:9092';
-  FClientId := 'uniflow-client';
+  FClientId := 'deepflow-client';
   FAcks := 'all';
   FRetries := 3;
   FRetryBackoffMs := 100;
@@ -479,7 +479,7 @@ var
   LResult: TJSONObject;
   LStream: TStringStream;
 begin
-  FInstanceId := 'uniflow_' + TGUID.NewGuid.ToString.Replace('{', '').Replace('}', '').Replace('-', '');
+  FInstanceId := 'deepflow_' + TGUID.NewGuid.ToString.Replace('{', '').Replace('}', '').Replace('-', '');
   
   LBody := TJSONObject.Create;
   try
@@ -864,7 +864,7 @@ begin
   inherited Create;
   FProducer := AProducer;
   FConsumer := AConsumer;
-  FTopic := 'uniflow-workflow-trigger';
+  FTopic := 'deepflow-workflow-trigger';
   FRunning := False;
 end;
 

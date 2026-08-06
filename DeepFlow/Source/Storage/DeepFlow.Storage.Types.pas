@@ -410,7 +410,7 @@ begin
   inherited Create;
   FHost := 'localhost';
   FPort := 5432;
-  FDatabase := 'uniflow';
+  FDatabase := 'deepflow';
   FUsername := 'postgres';
   FPassword := '';
   FSchema := 'public';

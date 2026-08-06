@@ -1,5 +1,5 @@
 /**
- * UniFlow Skill Template: Node.js File Utils
+ * DeepFlow Skill Template: Node.js File Utils
  * ==========================================
  * TASK-2012: 更多 Skill 模板
  *
@@ -382,7 +382,7 @@ class FileUtils {
 }
 
 // ============================================================================
-// UniFlow Skill 接口
+// DeepFlow Skill 接口
 // ============================================================================
 
 /**

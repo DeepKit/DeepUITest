@@ -1,5 +1,5 @@
 """
-UniFlow Skill Template: Python HTTP Client
+DeepFlow Skill Template: Python HTTP Client
 ==========================================
 TASK-2012: 更多 Skill 模板
 
@@ -68,7 +68,7 @@ class HTTPClient:
         
         # 默认请求�?
         self.default_headers = {
-            "User-Agent": "UniFlow-Skill/1.0",
+            "User-Agent": "DeepFlow-Skill/1.0",
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
@@ -204,7 +204,7 @@ class HTTPClient:
 
 
 # ============================================================================
-# UniFlow Skill 接口
+# DeepFlow Skill 接口
 # ============================================================================
 
 def execute_skill(input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -261,7 +261,7 @@ def execute_skill(input_data: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="UniFlow HTTP Client Skill")
+    parser = argparse.ArgumentParser(description="DeepFlow HTTP Client Skill")
     parser.add_argument("--url", required=True, help="Request URL")
     parser.add_argument("--method", default="GET", choices=["GET", "POST", "PUT", "DELETE", "PATCH"])
     parser.add_argument("--params", type=json.loads, help="Query parameters (JSON)")

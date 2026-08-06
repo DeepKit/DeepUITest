@@ -1,5 +1,5 @@
 """
-UniFlow Skill Template: Python Data Transformer
+DeepFlow Skill Template: Python Data Transformer
 ================================================
 TASK-2012: 更多 Skill 模板
 
@@ -371,7 +371,7 @@ class DataTransformer:
 
 
 # ============================================================================
-# UniFlow Skill 接口
+# DeepFlow Skill 接口
 # ============================================================================
 
 def execute_skill(input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -412,7 +412,7 @@ def execute_skill(input_data: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="UniFlow Data Transformer Skill")
+    parser = argparse.ArgumentParser(description="DeepFlow Data Transformer Skill")
     parser.add_argument("--input", required=True, help="Input data (JSON)")
     parser.add_argument("--transform", required=True, 
                         choices=["map", "filter", "reduce", "sort", "group", "flatten", 

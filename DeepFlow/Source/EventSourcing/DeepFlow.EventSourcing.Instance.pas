@@ -34,14 +34,14 @@ type
   
   /// <summary>流程创建参数</summary>
   TCreateFlowParams = record
-    FlowType: TUniFlowType;
+    FlowType: TDeepFlowType;
     Source: string;
     UserId: string;
     SessionId: string;
     RootNodePath: string;
     Metadata: TJSONObject;
     
-    class function Create(AType: TUniFlowType; const ASource: string): TCreateFlowParams; static;
+    class function Create(AType: TDeepFlowType; const ASource: string): TCreateFlowParams; static;
   end;
   
   /// <summary>事件发布结果</summary>
@@ -49,23 +49,23 @@ type
     Success: Boolean;
     EventId: string;
     SequenceNumber: Int64;
-    NewStatus: TUniFlowStatus;
+    NewStatus: TDeepFlowStatus;
     ErrorMessage: string;
     SnapshotCreated: Boolean;
     
-    class function Ok(const AEventId: string; ASeq: Int64; AStatus: TUniFlowStatus): TEmitResult; static;
+    class function Ok(const AEventId: string; ASeq: Int64; AStatus: TDeepFlowStatus): TEmitResult; static;
     class function Fail(const AMessage: string): TEmitResult; static;
   end;
   
   /// <summary>状态迁移结�?/summary>
   TTransitionResult = record
     Success: Boolean;
-    OldStatus: TUniFlowStatus;
-    NewStatus: TUniFlowStatus;
+    OldStatus: TDeepFlowStatus;
+    NewStatus: TDeepFlowStatus;
     ErrorMessage: string;
     
-    class function Ok(AOld, ANew: TUniFlowStatus): TTransitionResult; static;
-    class function Fail(const AMessage: string; AOld: TUniFlowStatus): TTransitionResult; static;
+    class function Ok(AOld, ANew: TDeepFlowStatus): TTransitionResult; static;
+    class function Fail(const AMessage: string; AOld: TDeepFlowStatus): TTransitionResult; static;
   end;
   
   /// <summary>
@@ -80,8 +80,8 @@ type
     
     function LoadInstance(const AFlowId: string): TFlowInstance;
     procedure SaveInstance(AInstance: TFlowInstance);
-    procedure UpdateInstanceFromEvent(AInstance: TFlowInstance; AEvent: TUniFlowEvent);
-    function DetermineNewStatus(AInstance: TFlowInstance; AEvent: TUniFlowEvent): TUniFlowStatus;
+    procedure UpdateInstanceFromEvent(AInstance: TFlowInstance; AEvent: TDeepFlowEvent);
+    function DetermineNewStatus(AInstance: TFlowInstance; AEvent: TDeepFlowEvent): TDeepFlowStatus;
     function BuildCurrentState(const AFlowId: string): TJSONObject;
   public
     constructor Create(AStore: IEventStore; ASnapshotPolicy: TSnapshotPolicy);
@@ -101,7 +101,7 @@ type
     /// 这是状态变化的唯一入口�?
     /// 事件发布后，会自动更新流程状态，并在必要时生成快照�?
     /// </remarks>
-    function EmitEvent(AEvent: TUniFlowEvent): TEmitResult;
+    function EmitEvent(AEvent: TDeepFlowEvent): TEmitResult;
     
     /// <summary>发布 Started 事件</summary>
     function EmitStarted(const AFlowId, AStep, ASource: string): TEmitResult;
@@ -118,7 +118,7 @@ type
     /// 内部方法，通过发布特殊事件来实现�?
     /// 推荐使用 EmitEvent 而非直接调用此方法�?
     /// </remarks>
-    function TransitionTo(const AFlowId: string; ANewStatus: TUniFlowStatus;
+    function TransitionTo(const AFlowId: string; ANewStatus: TDeepFlowStatus;
       const AReason: string = ''): TTransitionResult;
     
     /// <summary>开始流�?/summary>
@@ -146,10 +146,10 @@ type
     function GetActiveFlows: TArray<TFlowInstance>;
     
     /// <summary>获取流程的所有事�?/summary>
-    function GetFlowEvents(const AFlowId: string; AFromSeq: Int64 = 1): TArray<TUniFlowEvent>;
+    function GetFlowEvents(const AFlowId: string; AFromSeq: Int64 = 1): TArray<TDeepFlowEvent>;
     
     /// <summary>获取流程的最新快�?/summary>
-    function GetLatestSnapshot(const AFlowId: string): TUniFlowSnapshot;
+    function GetLatestSnapshot(const AFlowId: string): TDeepFlowSnapshot;
     
     property Store: IEventStore read FStore;
     property SnapshotManager: TSnapshotManager read FSnapshotManager;
@@ -169,7 +169,7 @@ type
   public
     constructor Create(AManager: TFlowInstanceManager);
     
-    function WithType(AType: TUniFlowType): TFlowBuilder;
+    function WithType(AType: TDeepFlowType): TFlowBuilder;
     function WithSource(const ASource: string): TFlowBuilder;
     function WithUser(const AUserId: string): TFlowBuilder;
     function WithSession(const ASessionId: string): TFlowBuilder;
@@ -230,7 +230,7 @@ implementation
 // TCreateFlowParams
 // ============================================================================
 
-class function TCreateFlowParams.Create(AType: TUniFlowType; const ASource: string): TCreateFlowParams;
+class function TCreateFlowParams.Create(AType: TDeepFlowType; const ASource: string): TCreateFlowParams;
 begin
   Result := Default(TCreateFlowParams);
   Result.FlowType := AType;
@@ -242,7 +242,7 @@ end;
 // ============================================================================
 
 class function TEmitResult.Ok(const AEventId: string; ASeq: Int64;
-  AStatus: TUniFlowStatus): TEmitResult;
+  AStatus: TDeepFlowStatus): TEmitResult;
 begin
   Result.Success := True;
   Result.EventId := AEventId;
@@ -266,7 +266,7 @@ end;
 // TTransitionResult
 // ============================================================================
 
-class function TTransitionResult.Ok(AOld, ANew: TUniFlowStatus): TTransitionResult;
+class function TTransitionResult.Ok(AOld, ANew: TDeepFlowStatus): TTransitionResult;
 begin
   Result.Success := True;
   Result.OldStatus := AOld;
@@ -274,7 +274,7 @@ begin
   Result.ErrorMessage := '';
 end;
 
-class function TTransitionResult.Fail(const AMessage: string; AOld: TUniFlowStatus): TTransitionResult;
+class function TTransitionResult.Fail(const AMessage: string; AOld: TDeepFlowStatus): TTransitionResult;
 begin
   Result.Success := False;
   Result.OldStatus := AOld;
@@ -305,10 +305,10 @@ end;
 
 function TFlowInstanceManager.LoadInstance(const AFlowId: string): TFlowInstance;
 var
-  Snapshot: TUniFlowSnapshot;
-  Events: TArray<TUniFlowEvent>;
+  Snapshot: TDeepFlowSnapshot;
+  Events: TArray<TDeepFlowEvent>;
   Query: TEventQuery;
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
   // 检查缓�?
   FLock.Enter;
@@ -399,7 +399,7 @@ begin
 end;
 
 procedure TFlowInstanceManager.UpdateInstanceFromEvent(AInstance: TFlowInstance;
-  AEvent: TUniFlowEvent);
+  AEvent: TDeepFlowEvent);
 begin
   AInstance.UpdatedAt := AEvent.Timestamp;
   AInstance.LastEventId := AEvent.Id;
@@ -426,7 +426,7 @@ begin
 end;
 
 function TFlowInstanceManager.DetermineNewStatus(AInstance: TFlowInstance;
-  AEvent: TUniFlowEvent): TUniFlowStatus;
+  AEvent: TDeepFlowEvent): TDeepFlowStatus;
 begin
   Result := AInstance.Status;
   
@@ -462,7 +462,7 @@ end;
 
 function TFlowInstanceManager.CreateFlow(const AParams: TCreateFlowParams): TFlowInstance;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
   Result := TFlowInstance.CreateNew(AParams.FlowType, AParams.Source);
   Result.UserId := AParams.UserId;
@@ -480,7 +480,7 @@ begin
   end;
   
   // 发布创建事件
-  Event := TUniFlowEvent.Create;
+  Event := TDeepFlowEvent.Create;
   try
     Event.FlowId := Result.Id;
     Event.FlowType := Result.FlowType;
@@ -512,11 +512,11 @@ begin
   Result := FStore.FlowExists(AFlowId);
 end;
 
-function TFlowInstanceManager.EmitEvent(AEvent: TUniFlowEvent): TEmitResult;
+function TFlowInstanceManager.EmitEvent(AEvent: TDeepFlowEvent): TEmitResult;
 var
   Instance: TFlowInstance;
   AppendResult: TAppendResult;
-  NewStatus: TUniFlowStatus;
+  NewStatus: TDeepFlowStatus;
 begin
   if AEvent = nil then
     Exit(TEmitResult.Fail('Event is nil'));
@@ -556,9 +556,9 @@ end;
 
 function TFlowInstanceManager.EmitStarted(const AFlowId, AStep, ASource: string): TEmitResult;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
-  Event := TUniFlowEvent.Started(AFlowId, AStep, ASource);
+  Event := TDeepFlowEvent.Started(AFlowId, AStep, ASource);
   try
     Result := EmitEvent(Event);
   finally
@@ -569,9 +569,9 @@ end;
 function TFlowInstanceManager.EmitSucceeded(const AFlowId, AStep, ASource: string;
   APayload: TJSONObject): TEmitResult;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
-  Event := TUniFlowEvent.Succeeded(AFlowId, AStep, ASource, APayload);
+  Event := TDeepFlowEvent.Succeeded(AFlowId, AStep, ASource, APayload);
   try
     Result := EmitEvent(Event);
   finally
@@ -582,9 +582,9 @@ end;
 function TFlowInstanceManager.EmitFailed(const AFlowId, AStep, ASource, AErrorCode,
   AErrorMessage: string): TEmitResult;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
-  Event := TUniFlowEvent.Failed(AFlowId, AStep, ASource, AErrorCode, AErrorMessage);
+  Event := TDeepFlowEvent.Failed(AFlowId, AStep, ASource, AErrorCode, AErrorMessage);
   try
     Result := EmitEvent(Event);
   finally
@@ -593,11 +593,11 @@ begin
 end;
 
 function TFlowInstanceManager.TransitionTo(const AFlowId: string;
-  ANewStatus: TUniFlowStatus; const AReason: string): TTransitionResult;
+  ANewStatus: TDeepFlowStatus; const AReason: string): TTransitionResult;
 var
   Instance: TFlowInstance;
-  Event: TUniFlowEvent;
-  OldStatus: TUniFlowStatus;
+  Event: TDeepFlowEvent;
+  OldStatus: TDeepFlowStatus;
 begin
   Instance := GetInstance(AFlowId);
   if Instance = nil then
@@ -614,7 +614,7 @@ begin
       ]), OldStatus));
       
   // 发布状态变化事�?
-  Event := TUniFlowEvent.Create;
+  Event := TDeepFlowEvent.Create;
   try
     Event.FlowId := AFlowId;
     Event.Step := '_flow_status';
@@ -655,8 +655,8 @@ function TFlowInstanceManager.FailFlow(const AFlowId, AErrorCode,
   AErrorMessage: string): TTransitionResult;
 var
   Instance: TFlowInstance;
-  OldStatus: TUniFlowStatus;
-  Event: TUniFlowEvent;
+  OldStatus: TDeepFlowStatus;
+  Event: TDeepFlowEvent;
 begin
   Instance := GetInstance(AFlowId);
   if Instance = nil then
@@ -668,7 +668,7 @@ begin
     Exit(TTransitionResult.Fail('Cannot fail flow in current state', OldStatus));
     
   // 发布失败事件
-  Event := TUniFlowEvent.Failed(AFlowId, '_flow_failed', 'FlowInstanceManager', AErrorCode, AErrorMessage);
+  Event := TDeepFlowEvent.Failed(AFlowId, '_flow_failed', 'FlowInstanceManager', AErrorCode, AErrorMessage);
   try
     Event.Payload.AddPair('oldStatus', FlowStatusToString(OldStatus));
     Event.Payload.AddPair('newStatus', 'Failed');
@@ -739,7 +739,7 @@ begin
 end;
 
 function TFlowInstanceManager.GetFlowEvents(const AFlowId: string;
-  AFromSeq: Int64): TArray<TUniFlowEvent>;
+  AFromSeq: Int64): TArray<TDeepFlowEvent>;
 var
   Query: TEventQuery;
 begin
@@ -748,7 +748,7 @@ begin
   Result := FStore.ReadEvents(Query);
 end;
 
-function TFlowInstanceManager.GetLatestSnapshot(const AFlowId: string): TUniFlowSnapshot;
+function TFlowInstanceManager.GetLatestSnapshot(const AFlowId: string): TDeepFlowSnapshot;
 begin
   Result := FStore.GetSnapshot(TSnapshotQuery.Latest(AFlowId));
 end;
@@ -766,7 +766,7 @@ begin
   FParams.Source := 'FlowBuilder';
 end;
 
-function TFlowBuilder.WithType(AType: TUniFlowType): TFlowBuilder;
+function TFlowBuilder.WithType(AType: TDeepFlowType): TFlowBuilder;
 begin
   FParams.FlowType := AType;
   Result := Self;
@@ -861,9 +861,9 @@ end;
 function TFlowSession.Emit(const AStep: string; AStatus: TEventStatus;
   APayload: TJSONObject): TFlowSession;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
 begin
-  Event := TUniFlowEvent.Create;
+  Event := TDeepFlowEvent.Create;
   try
     Event.FlowId := FFlowId;
     Event.Step := AStep;

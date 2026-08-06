@@ -13,9 +13,9 @@ unit DeepBase.DeepFlow;
   DeepBase.Exceptions;
   
   var
-    Engine: TUniFlowEngine;
+    Engine: TDeepFlowEngine;
   begin
-    Engine := TUniFlowEngine.Create;
+    Engine := TDeepFlowEngine.Create;
     try
       // 加载工作流定�?
       Engine.LoadWorkflow('Config/workflows/simple_qa.workflow.json');
@@ -33,7 +33,7 @@ unit DeepBase.DeepFlow;
   
   ```
   ┌─────────────────────────────────────────────────────────────�?
-  �?                   TUniFlowEngine (Facade)                  �?
+  �?                   TDeepFlowEngine (Facade)                  �?
   ├─────────────────────────────────────────────────────────────�?
   �? ProcessRequest()   Execute()   LoadWorkflow()              �?
   └─────────────────────────────────────────────────────────────�?
@@ -103,38 +103,38 @@ type
   // ============================================================================
   
   // Workflow
-  TUniFlowDefinition = DeepFlow.Workflow.Definition.TWorkflowDefinition;
-  TUniFlowStep = DeepFlow.Workflow.Definition.TWorkflowStep;
-  TUniFlowStepType = DeepFlow.Workflow.Definition.TStepType;
-  TUniFlowActionType = DeepFlow.Workflow.Definition.TActionType;
+  TDeepFlowDefinition = DeepFlow.Workflow.Definition.TWorkflowDefinition;
+  TDeepFlowStep = DeepFlow.Workflow.Definition.TWorkflowStep;
+  TDeepFlowStepType = DeepFlow.Workflow.Definition.TStepType;
+  TDeepFlowActionType = DeepFlow.Workflow.Definition.TActionType;
   
   // Execution
-  TUniFlowExecutor = DeepFlow.Workflow.Executor.TWorkflowExecutor;
-  TUniFlowContext = DeepFlow.Workflow.Context.TWorkflowContext;
-  TUniFlowStepResult = DeepFlow.Workflow.Executor.TStepResult;
-  TUniFlowExecutionStatus = DeepFlow.Workflow.Executor.TExecutionStatus;
+  TDeepFlowExecutor = DeepFlow.Workflow.Executor.TWorkflowExecutor;
+  TDeepFlowContext = DeepFlow.Workflow.Context.TWorkflowContext;
+  TDeepFlowStepResult = DeepFlow.Workflow.Executor.TStepResult;
+  TDeepFlowExecutionStatus = DeepFlow.Workflow.Executor.TExecutionStatus;
   
   // Session
-  TUniFlowSession = DeepFlow.Session.Types.TSession;
-  TUniFlowSessionManager = DeepFlow.Session.Manager.TSessionManager;
+  TDeepFlowSession = DeepFlow.Session.Types.TSession;
+  TDeepFlowSessionManager = DeepFlow.Session.Manager.TSessionManager;
   
   // Commander
-  TUniFlowRequest = DeepFlow.Roles.Commander.TUserRequest;
-  TUniFlowResponse = DeepFlow.Roles.Commander.TCommanderResponse;
-  TUniFlowCommander = DeepFlow.Roles.Commander.TCommander;
+  TDeepFlowRequest = DeepFlow.Roles.Commander.TUserRequest;
+  TDeepFlowResponse = DeepFlow.Roles.Commander.TCommanderResponse;
+  TDeepFlowCommander = DeepFlow.Roles.Commander.TCommander;
   
   // Diagnostics
-  TUniFlowDiagnostics = DeepFlow.Diagnostics.TUniFlowDiagnostics;
-  TUniFlowDebugger = DeepFlow.Diagnostics.Debugger.TWorkflowDebugger;
+  TDeepFlowDiagnostics = DeepFlow.Diagnostics.TDeepFlowDiagnostics;
+  TDeepFlowDebugger = DeepFlow.Diagnostics.Debugger.TWorkflowDebugger;
   
   // Metrics
-  TUniFlowMetrics = DeepFlow.Metrics.Collector.TUniFlowMetrics;
+  TDeepFlowMetrics = DeepFlow.Metrics.Collector.TDeepFlowMetrics;
   
   // ============================================================================
   // Engine 配置
   // ============================================================================
   
-  TUniFlowEngineConfig = class
+  TDeepFlowEngineConfig = class
   private
     FWorkflowDir: string;
     FSessionTimeout: Integer;
@@ -175,18 +175,18 @@ type
   TOnErrorEvent = procedure(Sender: TObject; const ErrorCode, ErrorMessage: string) of object;
   
   // ============================================================================
-  // TUniFlowEngine - 主引擎外观类
+  // TDeepFlowEngine - 主引擎外观类
   // ============================================================================
   
-  TUniFlowEngine = class
+  TDeepFlowEngine = class
   private
-    FConfig: TUniFlowEngineConfig;
+    FConfig: TDeepFlowEngineConfig;
     FSessionManager: TSessionManager;
     FCommander: TCommander;
     FWorkflowRegistry: TSimpleWorkflowRegistry;
     FWorkflows: TObjectDictionary<string, TWorkflowDefinition>;
     FSkillClient: TSkillClient;
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FLock: TCriticalSection;
     FInitialized: Boolean;
     
@@ -205,7 +205,7 @@ type
     procedure DoError(const AErrorCode, AErrorMessage: string);
   public
     constructor Create; overload;
-    constructor Create(AConfig: TUniFlowEngineConfig); overload;
+    constructor Create(AConfig: TDeepFlowEngineConfig); overload;
     destructor Destroy; override;
     
     /// <summary>初始化引�?/summary>
@@ -262,7 +262,7 @@ type
     // ========================================================================
     
     /// <summary>获取诊断实例</summary>
-    function GetDiagnostics: TUniFlowDiagnostics;
+    function GetDiagnostics: TDeepFlowDiagnostics;
     
     /// <summary>创建工作流调试器</summary>
     function CreateDebugger(const AWorkflowId, ASessionId: string): TWorkflowDebugger;
@@ -274,7 +274,7 @@ type
     // 属�?
     // ========================================================================
     
-    property Config: TUniFlowEngineConfig read FConfig;
+    property Config: TDeepFlowEngineConfig read FConfig;
     property SessionManager: TSessionManager read FSessionManager;
     property Commander: TCommander read FCommander;
     property Initialized: Boolean read FInitialized;
@@ -291,28 +291,28 @@ type
 // ============================================================================
 
 /// <summary>获取全局 DeepFlow 引擎实例</summary>
-function UniFlowEngine: TUniFlowEngine;
+function DeepFlowEngine: TDeepFlowEngine;
 
 /// <summary>初始化全局引擎</summary>
-procedure InitializeUniFlow(AConfig: TUniFlowEngineConfig = nil);
+procedure InitializeDeepFlow(AConfig: TDeepFlowEngineConfig = nil);
 
 /// <summary>关闭全局引擎</summary>
-procedure FinalizeUniFlow;
+procedure FinalizeDeepFlow;
 
 implementation
 
 var
-  GEngine: TUniFlowEngine = nil;
+  GEngine: TDeepFlowEngine = nil;
   GEngineLock: TCriticalSection = nil;
 
-function UniFlowEngine: TUniFlowEngine;
+function DeepFlowEngine: TDeepFlowEngine;
 begin
   if GEngine = nil then
-    raise EOperationException.Create('DeepFlow engine not initialized. Call InitializeUniFlow first.');
+    raise EOperationException.Create('DeepFlow engine not initialized. Call InitializeDeepFlow first.');
   Result := GEngine;
 end;
 
-procedure InitializeUniFlow(AConfig: TUniFlowEngineConfig);
+procedure InitializeDeepFlow(AConfig: TDeepFlowEngineConfig);
 begin
   if GEngineLock = nil then
     GEngineLock := TCriticalSection.Create;
@@ -322,9 +322,9 @@ begin
     if GEngine = nil then
     begin
       if AConfig <> nil then
-        GEngine := TUniFlowEngine.Create(AConfig)
+        GEngine := TDeepFlowEngine.Create(AConfig)
       else
-        GEngine := TUniFlowEngine.Create;
+        GEngine := TDeepFlowEngine.Create;
       GEngine.Initialize;
     end;
   finally
@@ -332,7 +332,7 @@ begin
   end;
 end;
 
-procedure FinalizeUniFlow;
+procedure FinalizeDeepFlow;
 begin
   if GEngineLock <> nil then
   begin
@@ -350,9 +350,9 @@ begin
   end;
 end;
 
-{ TUniFlowEngineConfig }
+{ TDeepFlowEngineConfig }
 
-constructor TUniFlowEngineConfig.Create;
+constructor TDeepFlowEngineConfig.Create;
 begin
   inherited;
   FWorkflowDir := 'Config/workflows';
@@ -365,14 +365,14 @@ begin
   FLLMConfigName := 'Default';
 end;
 
-{ TUniFlowEngine }
+{ TDeepFlowEngine }
 
-constructor TUniFlowEngine.Create;
+constructor TDeepFlowEngine.Create;
 begin
-  Create(TUniFlowEngineConfig.Create);
+  Create(TDeepFlowEngineConfig.Create);
 end;
 
-constructor TUniFlowEngine.Create(AConfig: TUniFlowEngineConfig);
+constructor TDeepFlowEngine.Create(AConfig: TDeepFlowEngineConfig);
 begin
   inherited Create;
   FConfig := AConfig;
@@ -381,7 +381,7 @@ begin
   FInitialized := False;
 end;
 
-destructor TUniFlowEngine.Destroy;
+destructor TDeepFlowEngine.Destroy;
 begin
   Shutdown;
   FWorkflows.Free;
@@ -390,7 +390,7 @@ begin
   inherited;
 end;
 
-procedure TUniFlowEngine.Initialize;
+procedure TDeepFlowEngine.Initialize;
 var
   SessionConfig: TSessionConfig;
 begin
@@ -432,7 +432,7 @@ begin
   end;
 end;
 
-procedure TUniFlowEngine.Shutdown;
+procedure TDeepFlowEngine.Shutdown;
 begin
   FLock.Enter;
   try
@@ -454,13 +454,13 @@ begin
   end;
 end;
 
-procedure TUniFlowEngine.EnsureInitialized;
+procedure TDeepFlowEngine.EnsureInitialized;
 begin
   if not FInitialized then
     raise EOperationException.Create('DeepFlow engine not initialized. Call Initialize first.');
 end;
 
-procedure TUniFlowEngine.RegisterBuiltinIntents;
+procedure TDeepFlowEngine.RegisterBuiltinIntents;
 begin
   // 默认意图
   FCommander.IntentRecognizer.RegisterIntent('greeting',
@@ -481,7 +481,7 @@ begin
   FCommander.IntentRecognizer.DefaultIntent := 'chat';
 end;
 
-function TUniFlowEngine.LoadWorkflow(const AFilePath: string): string;
+function TDeepFlowEngine.LoadWorkflow(const AFilePath: string): string;
 var
   JSON: string;
 begin
@@ -492,7 +492,7 @@ begin
   Result := LoadWorkflowFromJSON(JSON);
 end;
 
-function TUniFlowEngine.LoadWorkflowFromJSON(const AJSON: string): string;
+function TDeepFlowEngine.LoadWorkflowFromJSON(const AJSON: string): string;
 var
   Workflow: TWorkflowDefinition;
   JSONObj: TJSONObject;
@@ -531,7 +531,7 @@ begin
   end;
 end;
 
-function TUniFlowEngine.GetWorkflow(const AWorkflowId: string): TWorkflowDefinition;
+function TDeepFlowEngine.GetWorkflow(const AWorkflowId: string): TWorkflowDefinition;
 begin
   FLock.Enter;
   try
@@ -542,7 +542,7 @@ begin
   end;
 end;
 
-function TUniFlowEngine.GetWorkflowIds: TArray<string>;
+function TDeepFlowEngine.GetWorkflowIds: TArray<string>;
 begin
   FLock.Enter;
   try
@@ -552,20 +552,20 @@ begin
   end;
 end;
 
-procedure TUniFlowEngine.RegisterRoute(const AIntentName, AWorkflowId: string);
+procedure TDeepFlowEngine.RegisterRoute(const AIntentName, AWorkflowId: string);
 begin
   EnsureInitialized;
   FCommander.RegisterRoute(AIntentName, AWorkflowId);
 end;
 
-procedure TUniFlowEngine.RegisterIntent(const AIntentName: string;
+procedure TDeepFlowEngine.RegisterIntent(const AIntentName: string;
   const APatterns, AKeywords: TArray<string>; APriority: Integer);
 begin
   EnsureInitialized;
   FCommander.IntentRecognizer.RegisterIntent(AIntentName, APatterns, AKeywords, APriority);
 end;
 
-function TUniFlowEngine.ProcessRequest(const ASessionId, AMessage: string;
+function TDeepFlowEngine.ProcessRequest(const ASessionId, AMessage: string;
   const AUserId: string): TCommanderResponse;
 var
   Request: TUserRequest;
@@ -585,7 +585,7 @@ begin
   end;
 end;
 
-function TUniFlowEngine.ProcessRequestObj(ARequest: TUserRequest): TCommanderResponse;
+function TDeepFlowEngine.ProcessRequestObj(ARequest: TUserRequest): TCommanderResponse;
 begin
   EnsureInitialized;
   
@@ -613,7 +613,7 @@ begin
   end;
 end;
 
-function TUniFlowEngine.CreateExecutor(const AWorkflowId: string;
+function TDeepFlowEngine.CreateExecutor(const AWorkflowId: string;
   ASession: TSession): TWorkflowExecutor;
 var
   Workflow: TWorkflowDefinition;
@@ -645,7 +645,7 @@ begin
     Result.RegisterActionExecutor(TSkillActionExecutor.Create(FSkillClient));
 end;
 
-function TUniFlowEngine.ExecuteWorkflow(const AWorkflowId, ASessionId: string;
+function TDeepFlowEngine.ExecuteWorkflow(const AWorkflowId, ASessionId: string;
   AInput: TJSONObject): TStepResult;
 var
   Session: TSession;
@@ -681,19 +681,19 @@ begin
   end;
 end;
 
-function TUniFlowEngine.GetOrCreateSession(const ASessionId: string;
+function TDeepFlowEngine.GetOrCreateSession(const ASessionId: string;
   const AUserId: string): TSession;
 begin
   EnsureInitialized;
   Result := FSessionManager.GetOrCreateSession(ASessionId, AUserId);
 end;
 
-function TUniFlowEngine.GetDiagnostics: TUniFlowDiagnostics;
+function TDeepFlowEngine.GetDiagnostics: TDeepFlowDiagnostics;
 begin
   Result := FDiagnostics;
 end;
 
-function TUniFlowEngine.CreateDebugger(const AWorkflowId, ASessionId: string): TWorkflowDebugger;
+function TDeepFlowEngine.CreateDebugger(const AWorkflowId, ASessionId: string): TWorkflowDebugger;
 var
   Workflow: TWorkflowDefinition;
   Session: TSession;
@@ -711,7 +711,7 @@ begin
   Result := TWorkflowDebugger.Create(Executor, FDiagnostics);
 end;
 
-function TUniFlowEngine.ExportTrace(const ACorrelationId: string): string;
+function TDeepFlowEngine.ExportTrace(const ACorrelationId: string): string;
 var
   Exporter: TTraceExporter;
 begin
@@ -726,7 +726,7 @@ begin
   end;
 end;
 
-procedure TUniFlowEngine.DoWorkflowStart(const AWorkflowId, ASessionId: string);
+procedure TDeepFlowEngine.DoWorkflowStart(const AWorkflowId, ASessionId: string);
 begin
   if Assigned(FOnWorkflowStart) then
     FOnWorkflowStart(Self, AWorkflowId, ASessionId);
@@ -735,7 +735,7 @@ begin
     Metrics.WorkflowStarted(AWorkflowId);
 end;
 
-procedure TUniFlowEngine.DoWorkflowComplete(const AWorkflowId: string; ASuccess: Boolean);
+procedure TDeepFlowEngine.DoWorkflowComplete(const AWorkflowId: string; ASuccess: Boolean);
 begin
   if Assigned(FOnWorkflowComplete) then
     FOnWorkflowComplete(Self, AWorkflowId, ASuccess);
@@ -749,13 +749,13 @@ begin
   end;
 end;
 
-procedure TUniFlowEngine.DoStepExecute(const AWorkflowId, AStepId: string);
+procedure TDeepFlowEngine.DoStepExecute(const AWorkflowId, AStepId: string);
 begin
   if Assigned(FOnStepExecute) then
     FOnStepExecute(Self, AWorkflowId, AStepId);
 end;
 
-procedure TUniFlowEngine.DoError(const AErrorCode, AErrorMessage: string);
+procedure TDeepFlowEngine.DoError(const AErrorCode, AErrorMessage: string);
 begin
   if Assigned(FOnError) then
     FOnError(Self, AErrorCode, AErrorMessage);
@@ -765,6 +765,6 @@ initialization
   GEngineLock := TCriticalSection.Create;
 
 finalization
-  FinalizeUniFlow;
+  FinalizeDeepFlow;
 
 end.

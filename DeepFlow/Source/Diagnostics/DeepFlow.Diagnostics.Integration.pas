@@ -18,7 +18,7 @@ type
   
   TWorkflowDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FWorkflowId: string;
     FWorkflowName: string;
     FCorrelationId: string;
@@ -59,7 +59,7 @@ type
   
   THTTPDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FCorrelationId: string;
   public
     constructor Create(const ACorrelationId: string = '');
@@ -84,7 +84,7 @@ type
   
   TLLMDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FCorrelationId: string;
     FStartTime: TDateTime;
     FProvider: string;
@@ -109,7 +109,7 @@ type
   
   TSkillDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FCorrelationId: string;
     FSkillName: string;
     FStartTime: TDateTime;
