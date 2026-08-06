@@ -1,5 +1,5 @@
 { ============================================================================
-  UniFlow.Security.Sanitizer - Input Sanitization Module
+  DeepFlow.Security.Sanitizer - Input Sanitization Module
 
   Version: 1.0
   Description: Provides input sanitization to prevent injection attacks
@@ -19,7 +19,7 @@
     var Safe := TSanitizer.Sanitize(Input, [soHTML, soTrim, soMaxLength]);
   ============================================================================ }
 
-unit UniFlow.Security.Sanitizer;
+unit DeepFlow.Security.Sanitizer;
 
 interface
 

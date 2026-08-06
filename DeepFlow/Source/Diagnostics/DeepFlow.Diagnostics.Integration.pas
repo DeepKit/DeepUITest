@@ -1,6 +1,6 @@
-unit UniFlow.Diagnostics.Integration;
+unit DeepFlow.Diagnostics.Integration;
 (*
-  UniFlow Diagnostics Integration
+  DeepFlow Diagnostics Integration
   ===============================
   诊断集成助手，提�?HTTP/LLM/Skill 调用的简化跟踪接口�?
 *)
@@ -9,7 +9,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.DateUtils, System.JSON, 
-  UniFlow.Diagnostics;
+  DeepFlow.Diagnostics;
 
 type
   // ============================================================================

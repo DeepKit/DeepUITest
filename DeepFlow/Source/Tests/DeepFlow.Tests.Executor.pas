@@ -1,6 +1,6 @@
-unit UniFlow.Tests.Executor;
+unit DeepFlow.Tests.Executor;
 (*
-  UniFlow Executor Unit Tests
+  DeepFlow Executor Unit Tests
   ===========================
   QA-001: 核心单元测试
   
@@ -18,7 +18,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   DUnitX.TestFramework,
-  UniFlow.Workflow.Definition, UniFlow.Workflow.Context, UniFlow.Workflow.Executor;
+  DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Executor;
 
 type
   // ============================================================================

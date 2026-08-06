@@ -1,10 +1,10 @@
-unit UniFlow.Queue.RabbitMQ;
+unit DeepFlow.Queue.RabbitMQ;
 
 {*******************************************************}
 {                                                       }
-{       UniFlow RabbitMQ 消息队列集成                   }
+{       DeepFlow RabbitMQ 消息队列集成                   }
 {                                                       }
-{       版权所�?(C) 2024 UniFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -13,7 +13,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.SyncObjs, System.Threading, System.Net.HttpClient,
-  System.NetEncoding, UniFlow.Queue.Types,
+  System.NetEncoding, DeepFlow.Queue.Types,
   DeepBase.Exceptions;
 
 type

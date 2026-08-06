@@ -1,7 +1,7 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Interface                                                     
-  Plugin system interface definitions for UniFlow                              
+  DeepFlow Plugin Interface                                                     
+  Plugin system interface definitions for DeepFlow                              
                                                                                
   Features:                                                                    
   - IUniFlowPlugin: Main plugin interface                                      
@@ -19,7 +19,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Intf;
+unit DeepFlow.Plugin.Intf;
 
 interface
 

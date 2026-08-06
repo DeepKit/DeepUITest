@@ -1,6 +1,6 @@
-unit UniFlow.Performance.Cache;
+unit DeepFlow.Performance.Cache;
 (*
-  UniFlow Performance - Cache System
+  DeepFlow Performance - Cache System
   ===================================
   高性能缓存系统，提供：
   - 泛型 LRU 缓存
@@ -8,7 +8,7 @@ unit UniFlow.Performance.Cache;
   - Schema 缓存
   - 统一缓存管理�?
 
-  Author: UniFlow Team
+  Author: DeepFlow Team
   Date: 2025-12-05
 *)
 

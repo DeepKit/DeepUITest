@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Registry                                                      
+  DeepFlow Plugin Registry                                                      
   Central plugin management and lifecycle control                              
                                                                                
   Features:                                                                    
@@ -12,7 +12,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Registry;
+unit DeepFlow.Plugin.Registry;
 
 interface
 
@@ -24,8 +24,8 @@ uses
   System.Generics.Collections,
   System.Generics.Defaults,
   System.SyncObjs,
-  UniFlow.Plugin.Intf,
-  UniFlow.Plugin.Loader;
+  DeepFlow.Plugin.Intf,
+  DeepFlow.Plugin.Loader;
 
 type
   //----------------------------------------------------------------------------

@@ -1,10 +1,10 @@
-unit UniFlow.Queue.Types;
+unit DeepFlow.Queue.Types;
 
 {*******************************************************}
 {                                                       }
-{       UniFlow 消息队列类型定义                        }
+{       DeepFlow 消息队列类型定义                        }
 {                                                       }
-{       版权所�?(C) 2024 UniFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -911,7 +911,7 @@ begin
   FContext := TDictionary<string, Variant>.Create;
   FTriggerType := 'manual';
   ContentType := 'application/json';
-  Headers['X-UniFlow-Type'] := 'WorkflowTrigger';
+  Headers['X-DeepFlow-Type'] := 'WorkflowTrigger';
 end;
 
 destructor TWorkflowTriggerMessage.Destroy;

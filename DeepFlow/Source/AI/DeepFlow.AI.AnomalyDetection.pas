@@ -1,7 +1,7 @@
-unit UniFlow.AI.AnomalyDetection;
+unit DeepFlow.AI.AnomalyDetection;
 
 {*******************************************************************************
-  UniFlow AI 异常检测引�?
+  DeepFlow AI 异常检测引�?
   
   功能:
   - 工作流执行异常检�?
@@ -10,7 +10,7 @@ unit UniFlow.AI.AnomalyDetection;
   - 自适应阈值学�?
   - 异常根因分析
   
-  作�? UniFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 

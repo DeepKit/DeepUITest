@@ -1,6 +1,6 @@
-unit UniFlow.Tenant;
+unit DeepFlow.Tenant;
 (*
-  UniFlow Multi-Tenant Support
+  DeepFlow Multi-Tenant Support
   ============================
 
   多租�?项目隔离支持�?
@@ -22,8 +22,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.SyncObjs,
-  UniFlow.EventSourcing.Types,
-  UniFlow.EventSourcing.Store,
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store,
   DeepBase.Exceptions;
 
 type

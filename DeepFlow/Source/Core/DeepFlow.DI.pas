@@ -1,6 +1,6 @@
-unit UniFlow.DI;
+unit DeepFlow.DI;
 (*
-  UniFlow Dependency Injection Container
+  DeepFlow Dependency Injection Container
   ======================================
   ARCH-001: 轻量级依赖注入支�?
   

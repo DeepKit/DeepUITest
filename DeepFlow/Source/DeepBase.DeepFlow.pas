@@ -1,15 +1,15 @@
-unit DeepBase.UniFlow;
+unit DeepBase.DeepFlow;
 (*
-  DeepBase.UniFlow - Facade Unit for UniFlow Integration
+  DeepBase.DeepFlow - Facade Unit for DeepFlow Integration
   =====================================================
   
-  统一导出 UniFlow 所有功能的外观单元，简化集成�?
+  统一导出 DeepFlow 所有功能的外观单元，简化集成�?
   
   使用示例:
   
   ```pascal
   uses
-    DeepBase.UniFlow,
+    DeepBase.DeepFlow,
   DeepBase.Exceptions;
   
   var
@@ -62,40 +62,40 @@ uses
   System.IOUtils,
   System.SyncObjs,
   // Workflow
-  UniFlow.Workflow.Definition,
-  UniFlow.Workflow.Context,
-  UniFlow.Workflow.Executor,
-  UniFlow.Workflow.State,
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Context,
+  DeepFlow.Workflow.Executor,
+  DeepFlow.Workflow.State,
   // Session
-  UniFlow.Session.Types,
-  UniFlow.Session.Manager,
+  DeepFlow.Session.Types,
+  DeepFlow.Session.Manager,
   // Roles
-  UniFlow.Roles.Commander,
+  DeepFlow.Roles.Commander,
   // AI Integration
-  UniFlow.AI.Adapter,
+  DeepFlow.AI.Adapter,
   // Skill
-  UniFlow.Skill.Types,
-  UniFlow.Skill.Client,
-  UniFlow.Skill.Executor,
+  DeepFlow.Skill.Types,
+  DeepFlow.Skill.Client,
+  DeepFlow.Skill.Executor,
   // Security
-  UniFlow.Security.Sanitizer,
-  UniFlow.Security.Filter,
-  UniFlow.Security.RateLimit,
+  DeepFlow.Security.Sanitizer,
+  DeepFlow.Security.Filter,
+  DeepFlow.Security.RateLimit,
   // Validation
-  UniFlow.Validation.Schema,
+  DeepFlow.Validation.Schema,
   // Audit
-  UniFlow.Audit.Types,
-  UniFlow.Audit.Store,
-  UniFlow.Audit.Manager,
+  DeepFlow.Audit.Types,
+  DeepFlow.Audit.Store,
+  DeepFlow.Audit.Manager,
   // Metrics
-  UniFlow.Metrics.Types,
-  UniFlow.Metrics.Collector,
+  DeepFlow.Metrics.Types,
+  DeepFlow.Metrics.Collector,
   // Diagnostics
-  UniFlow.Diagnostics,
-  UniFlow.Diagnostics.Integration,
-  UniFlow.Diagnostics.ErrorCollector,
-  UniFlow.Diagnostics.TraceExporter,
-  UniFlow.Diagnostics.Debugger;
+  DeepFlow.Diagnostics,
+  DeepFlow.Diagnostics.Integration,
+  DeepFlow.Diagnostics.ErrorCollector,
+  DeepFlow.Diagnostics.TraceExporter,
+  DeepFlow.Diagnostics.Debugger;
 
 type
   // ============================================================================
@@ -103,32 +103,32 @@ type
   // ============================================================================
   
   // Workflow
-  TUniFlowDefinition = UniFlow.Workflow.Definition.TWorkflowDefinition;
-  TUniFlowStep = UniFlow.Workflow.Definition.TWorkflowStep;
-  TUniFlowStepType = UniFlow.Workflow.Definition.TStepType;
-  TUniFlowActionType = UniFlow.Workflow.Definition.TActionType;
+  TUniFlowDefinition = DeepFlow.Workflow.Definition.TWorkflowDefinition;
+  TUniFlowStep = DeepFlow.Workflow.Definition.TWorkflowStep;
+  TUniFlowStepType = DeepFlow.Workflow.Definition.TStepType;
+  TUniFlowActionType = DeepFlow.Workflow.Definition.TActionType;
   
   // Execution
-  TUniFlowExecutor = UniFlow.Workflow.Executor.TWorkflowExecutor;
-  TUniFlowContext = UniFlow.Workflow.Context.TWorkflowContext;
-  TUniFlowStepResult = UniFlow.Workflow.Executor.TStepResult;
-  TUniFlowExecutionStatus = UniFlow.Workflow.Executor.TExecutionStatus;
+  TUniFlowExecutor = DeepFlow.Workflow.Executor.TWorkflowExecutor;
+  TUniFlowContext = DeepFlow.Workflow.Context.TWorkflowContext;
+  TUniFlowStepResult = DeepFlow.Workflow.Executor.TStepResult;
+  TUniFlowExecutionStatus = DeepFlow.Workflow.Executor.TExecutionStatus;
   
   // Session
-  TUniFlowSession = UniFlow.Session.Types.TSession;
-  TUniFlowSessionManager = UniFlow.Session.Manager.TSessionManager;
+  TUniFlowSession = DeepFlow.Session.Types.TSession;
+  TUniFlowSessionManager = DeepFlow.Session.Manager.TSessionManager;
   
   // Commander
-  TUniFlowRequest = UniFlow.Roles.Commander.TUserRequest;
-  TUniFlowResponse = UniFlow.Roles.Commander.TCommanderResponse;
-  TUniFlowCommander = UniFlow.Roles.Commander.TCommander;
+  TUniFlowRequest = DeepFlow.Roles.Commander.TUserRequest;
+  TUniFlowResponse = DeepFlow.Roles.Commander.TCommanderResponse;
+  TUniFlowCommander = DeepFlow.Roles.Commander.TCommander;
   
   // Diagnostics
-  TUniFlowDiagnostics = UniFlow.Diagnostics.TUniFlowDiagnostics;
-  TUniFlowDebugger = UniFlow.Diagnostics.Debugger.TWorkflowDebugger;
+  TUniFlowDiagnostics = DeepFlow.Diagnostics.TUniFlowDiagnostics;
+  TUniFlowDebugger = DeepFlow.Diagnostics.Debugger.TWorkflowDebugger;
   
   // Metrics
-  TUniFlowMetrics = UniFlow.Metrics.Collector.TUniFlowMetrics;
+  TUniFlowMetrics = DeepFlow.Metrics.Collector.TUniFlowMetrics;
   
   // ============================================================================
   // Engine 配置
@@ -290,7 +290,7 @@ type
 // 全局实例访问
 // ============================================================================
 
-/// <summary>获取全局 UniFlow 引擎实例</summary>
+/// <summary>获取全局 DeepFlow 引擎实例</summary>
 function UniFlowEngine: TUniFlowEngine;
 
 /// <summary>初始化全局引擎</summary>
@@ -308,7 +308,7 @@ var
 function UniFlowEngine: TUniFlowEngine;
 begin
   if GEngine = nil then
-    raise EOperationException.Create('UniFlow engine not initialized. Call InitializeUniFlow first.');
+    raise EOperationException.Create('DeepFlow engine not initialized. Call InitializeUniFlow first.');
   Result := GEngine;
 end;
 
@@ -457,7 +457,7 @@ end;
 procedure TUniFlowEngine.EnsureInitialized;
 begin
   if not FInitialized then
-    raise EOperationException.Create('UniFlow engine not initialized. Call Initialize first.');
+    raise EOperationException.Create('DeepFlow engine not initialized. Call Initialize first.');
 end;
 
 procedure TUniFlowEngine.RegisterBuiltinIntents;

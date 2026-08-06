@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Audit Manager                                                        
+  DeepFlow Audit Manager                                                        
   Central audit logging manager with report generation                         
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Audit.Manager;
+unit DeepFlow.Audit.Manager;
 
 interface
 
@@ -21,8 +21,8 @@ uses
   System.Generics.Collections,
   System.JSON,
   System.SyncObjs,
-  UniFlow.Audit.Types,
-  UniFlow.Audit.Store;
+  DeepFlow.Audit.Types,
+  DeepFlow.Audit.Store;
 
 type
   //----------------------------------------------------------------------------

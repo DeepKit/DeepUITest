@@ -1,7 +1,7 @@
-unit UniFlow.Cloud.Telemetry.Types;
+unit DeepFlow.Cloud.Telemetry.Types;
 
 {*******************************************************************************
-  UniFlow OpenTelemetry 类型定义
+  DeepFlow OpenTelemetry 类型定义
   
   功能:
   - Trace/Span 类型
@@ -10,7 +10,7 @@ unit UniFlow.Cloud.Telemetry.Types;
   - 属性和上下�?
   - 导出器配�?
   
-  作�? UniFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 

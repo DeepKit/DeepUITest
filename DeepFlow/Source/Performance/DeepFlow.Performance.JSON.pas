@@ -1,6 +1,6 @@
-unit UniFlow.Performance.JSON;
+unit DeepFlow.Performance.JSON;
 (*
-  UniFlow Performance - JSON Optimization
+  DeepFlow Performance - JSON Optimization
   ========================================
   高性能 JSON 处理模块，提供：
   - 流式解析（大文件支持�?
@@ -8,7 +8,7 @@ unit UniFlow.Performance.JSON;
   - 解析结果缓存
   - 高效 JSON 构建
 
-  Author: UniFlow Team
+  Author: DeepFlow Team
   Date: 2025-12-05
 *)
 

@@ -1,6 +1,6 @@
-unit UniFlow.Diagnostics;
+unit DeepFlow.Diagnostics;
 (*
-  UniFlow Diagnostics
+  DeepFlow Diagnostics
   ===================
   诊断与日志模块，提供统一的日志门面和执行追踪功能�?
 *)
@@ -585,7 +585,7 @@ begin
   
   // 默认使用控制台日�?
   FLoggerFactory := TConsoleLoggerFactory.Create(FConfig.LogLevel);
-  FDefaultLogger := FLoggerFactory.CreateLogger('UniFlow');
+  FDefaultLogger := FLoggerFactory.CreateLogger('DeepFlow');
 end;
 
 destructor TUniFlowDiagnostics.Destroy;
@@ -603,7 +603,7 @@ begin
   try
     FLoggerFactory := AFactory;
     FLoggers.Clear;
-    FDefaultLogger := FLoggerFactory.CreateLogger('UniFlow');
+    FDefaultLogger := FLoggerFactory.CreateLogger('DeepFlow');
   finally
     FLock.Leave;
   end;
@@ -1094,7 +1094,7 @@ begin
   begin
     SB := TStringBuilder.Create;
     try
-      SB.AppendLine('=== UniFlow Execution Trace ===');
+      SB.AppendLine('=== DeepFlow Execution Trace ===');
       SB.AppendLine;
       for I := 0 to High(Entries) do
       begin

@@ -1,8 +1,8 @@
 { ============================================================================
-  UniFlow.AI.Adapter - LLM Adapter for Workflow Integration
+  DeepFlow.AI.Adapter - LLM Adapter for Workflow Integration
 
   Version: 1.0
-  Description: Lightweight adapter that bridges DeepBase.LLM with UniFlow
+  Description: Lightweight adapter that bridges DeepBase.LLM with DeepFlow
                Workflow Context. Does NOT duplicate DeepBase.LLM functionality.
 
   Usage:
@@ -15,7 +15,7 @@
     end;
   ============================================================================ }
 
-unit UniFlow.AI.Adapter;
+unit DeepFlow.AI.Adapter;
 
 interface
 
@@ -27,9 +27,9 @@ uses
   {$IFDEF MSWINDOWS}Winapi.Windows,{$ENDIF}
   DeepBase.LLM,
   DeepBase.Types,
-  UniFlow.Workflow.Context,
-  UniFlow.Workflow.Definition,
-  UniFlow.Workflow.Executor;
+  DeepFlow.Workflow.Context,
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Executor;
 
 type
   /// <summary>
@@ -67,7 +67,7 @@ type
   end;
 
   /// <summary>
-  /// Adapter that bridges DeepBase.LLM with UniFlow Workflow
+  /// Adapter that bridges DeepBase.LLM with DeepFlow Workflow
   /// </summary>
   TUniFlowLLMAdapter = class
   private

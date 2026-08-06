@@ -1,6 +1,6 @@
-﻿unit UniFlow.Workflow.ImportExport;
+﻿unit DeepFlow.Workflow.ImportExport;
 (*
-  UniFlow Workflow Import/Export
+  DeepFlow Workflow Import/Export
   ==============================
   TASK-2013: 工作流导�?导出
   
@@ -17,7 +17,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.IOUtils, System.Zip, System.DateUtils, System.Hash,
-  UniFlow.Workflow.Definition,
+  DeepFlow.Workflow.Definition,
   DeepBase.Exceptions;
 
 type
@@ -923,8 +923,8 @@ begin
   LPackage := TExportPackage.Create;
   LDeps := TDictionary<string, TWorkflowDefinition>.Create;
   try
-    LPackage.ExportedBy := 'UniFlow';
-    LPackage.SourceSystem := 'UniFlow v1.0';
+    LPackage.ExportedBy := 'DeepFlow';
+    LPackage.SourceSystem := 'DeepFlow v1.0';
     
     for LId in AWorkflowIds do
     begin

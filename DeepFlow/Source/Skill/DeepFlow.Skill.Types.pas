@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Skill Types                                                          
+  DeepFlow Skill Types                                                          
   Type definitions for Skill service integration                               
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Skill.Types;
+unit DeepFlow.Skill.Types;
 
 interface
 

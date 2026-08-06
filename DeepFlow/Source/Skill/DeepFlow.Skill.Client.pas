@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Skill Client                                                         
+  DeepFlow Skill Client                                                         
   HTTP client for communicating with Python Skill service                      
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Skill.Client;
+unit DeepFlow.Skill.Client;
 
 interface
 
@@ -23,7 +23,7 @@ uses
   System.Net.HttpClient,
   System.Net.URLClient,
   System.Threading,
-  UniFlow.Skill.Types;
+  DeepFlow.Skill.Types;
 
 type
   //----------------------------------------------------------------------------

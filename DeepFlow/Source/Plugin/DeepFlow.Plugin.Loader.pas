@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Loader                                                        
+  DeepFlow Plugin Loader                                                        
   Dynamic plugin loading for BPL and DLL plugins                               
                                                                                
   Features:                                                                    
@@ -17,7 +17,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Loader;
+unit DeepFlow.Plugin.Loader;
 
 interface
 
@@ -31,7 +31,7 @@ uses
   {$IFDEF MSWINDOWS}
   Winapi.Windows,
   {$ENDIF}
-  UniFlow.Plugin.Intf;
+  DeepFlow.Plugin.Intf;
 
 type
   //----------------------------------------------------------------------------

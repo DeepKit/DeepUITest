@@ -1,6 +1,6 @@
-﻿unit UniFlow.Tests.E2E;
+﻿unit DeepFlow.Tests.E2E;
 (*
-  UniFlow End-to-End Integration Tests
+  DeepFlow End-to-End Integration Tests
   =====================================
   TASK-2001: 端到端集成测�?
   
@@ -19,8 +19,8 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.SyncObjs, System.DateUtils, System.IOUtils,
   DUnitX.TestFramework,
-  UniFlow.Workflow.Definition, UniFlow.Workflow.Context, UniFlow.Workflow.Executor,
-  UniFlow.Workflow.State, UniFlow.Session.Types, UniFlow.Session.Manager;
+  DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Executor,
+  DeepFlow.Workflow.State, DeepFlow.Session.Types, DeepFlow.Session.Manager;
 
 type
   // ============================================================================

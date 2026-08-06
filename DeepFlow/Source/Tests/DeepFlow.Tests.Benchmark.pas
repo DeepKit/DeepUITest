@@ -1,6 +1,6 @@
-unit UniFlow.Tests.Benchmark;
+unit DeepFlow.Tests.Benchmark;
 (*
-  UniFlow Benchmark and Stress Tests
+  DeepFlow Benchmark and Stress Tests
   ==================================
   TASK-2002: 压力测试与基�?
   
@@ -19,8 +19,8 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.SyncObjs, System.DateUtils, System.Diagnostics, System.Threading,
   DUnitX.TestFramework,
-  UniFlow.Workflow.Definition, UniFlow.Workflow.Context, UniFlow.Workflow.Executor,
-  UniFlow.Performance.Pool;
+  DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Executor,
+  DeepFlow.Performance.Pool;
 
 type
   // ============================================================================

@@ -1,6 +1,6 @@
-program UniFlowE2ETest;
+program DeepFlowE2ETest;
 (*
-  UniFlow End-to-End Test
+  DeepFlow End-to-End Test
   =======================
   
   端到端测试：验证完整工作流执行链�?
@@ -22,7 +22,7 @@ uses
   System.JSON,
   System.Classes,
   System.Diagnostics,
-  DeepBase.UniFlow;
+  DeepBase.DeepFlow;
 
 type
   TTestResult = record
@@ -358,7 +358,7 @@ begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
   try
-    Input.AddPair('question', 'What is UniFlow?');
+    Input.AddPair('question', 'What is DeepFlow?');
     Result := Engine.ExecuteWorkflow('e2e-simple-qa', 'test-session-1', Input);
     try
       if Result.Success then
@@ -635,7 +635,7 @@ begin
   
   Writeln('');
   Writeln('============================================');
-  Writeln('     UniFlow End-to-End Tests');
+  Writeln('     DeepFlow End-to-End Tests');
   Writeln('============================================');
   Writeln('');
   

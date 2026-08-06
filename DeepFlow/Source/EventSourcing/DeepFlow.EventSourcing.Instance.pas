@@ -1,6 +1,6 @@
-unit UniFlow.EventSourcing.Instance;
+unit DeepFlow.EventSourcing.Instance;
 (*
-  UniFlow Event Sourcing - FlowInstance Manager
+  DeepFlow Event Sourcing - FlowInstance Manager
   ==============================================
   
   流程实例生命周期管理�?
@@ -24,8 +24,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.SyncObjs, System.DateUtils, System.Variants,
-  UniFlow.EventSourcing.Types,
-  UniFlow.EventSourcing.Store;
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store;
 
 type
   // ============================================================================

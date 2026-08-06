@@ -1,6 +1,6 @@
-unit UniFlow.Workflow.Errors;
+unit DeepFlow.Workflow.Errors;
 (*
-  UniFlow Workflow Error Helpers
+  DeepFlow Workflow Error Helpers
   ==============================
   UX-001: 提供友好的错误信�?
   
@@ -12,7 +12,7 @@ unit UniFlow.Workflow.Errors;
   
   错误码格�?
   - 统一格式: {Source}/{Category}/{Specific}
-  - 示例: UniFlow/Validation/InvalidWorkflow, Skill/Network/ConnectionFailed
+  - 示例: DeepFlow/Validation/InvalidWorkflow, Skill/Network/ConnectionFailed
   - 参�? docs/AI编程低熵约束指南.md
 *)
 
@@ -30,7 +30,7 @@ type
     esSoIs,         // SoIs 代理 (需求澄�?
     esSayDone,      // SayDone 代理 (代码生成)
     esDevDirector,  // DevDirector 代理 (流程协调)
-    esUniFlow,      // UniFlow 流程引擎
+    esUniFlow,      // DeepFlow 流程引擎
     esSkill,        // 外部 Skill 插件
     esUser,         // 用户手动操作
     esSystem,       // 系统自动触发
@@ -81,7 +81,7 @@ type
   // ============================================================================
   
   TErrorCode = record
-    Source: string;         // 来源: SoIs, SayDone, DevDirector, UniFlow, Skill, User, System, External
+    Source: string;         // 来源: SoIs, SayDone, DevDirector, DeepFlow, Skill, User, System, External
     Category: string;       // 分类: Validation, Timeout, LLM, Skill, Network, Internal, External
     Specific: string;       // 具体错误: InvalidWorkflow, StepTimeout, ConnectionFailed �?
     
@@ -158,80 +158,80 @@ type
   // ============================================================================
 
 const
-  // === UniFlow/Validation/* - 验证错误 ===
-  ERR_INVALID_WORKFLOW = 'UniFlow/Validation/InvalidWorkflow';
-  ERR_INVALID_STEP = 'UniFlow/Validation/InvalidStep';
-  ERR_INVALID_EXPRESSION = 'UniFlow/Validation/InvalidExpression';
-  ERR_MISSING_REQUIRED = 'UniFlow/Validation/MissingRequired';
-  ERR_TYPE_MISMATCH = 'UniFlow/Validation/TypeMismatch';
+  // === DeepFlow/Validation/* - 验证错误 ===
+  ERR_INVALID_WORKFLOW = 'DeepFlow/Validation/InvalidWorkflow';
+  ERR_INVALID_STEP = 'DeepFlow/Validation/InvalidStep';
+  ERR_INVALID_EXPRESSION = 'DeepFlow/Validation/InvalidExpression';
+  ERR_MISSING_REQUIRED = 'DeepFlow/Validation/MissingRequired';
+  ERR_TYPE_MISMATCH = 'DeepFlow/Validation/TypeMismatch';
   
-  // === UniFlow/Timeout/* - 超时错误 ===
-  ERR_STEP_TIMEOUT = 'UniFlow/Timeout/StepTimeout';
-  ERR_CONNECTION_TIMEOUT = 'UniFlow/Timeout/ConnectionTimeout';
+  // === DeepFlow/Timeout/* - 超时错误 ===
+  ERR_STEP_TIMEOUT = 'DeepFlow/Timeout/StepTimeout';
+  ERR_CONNECTION_TIMEOUT = 'DeepFlow/Timeout/ConnectionTimeout';
   
-  // === UniFlow/Execution/* - 执行错误 ===
-  ERR_EXECUTION_FAILED = 'UniFlow/Execution/Failed';
-  ERR_CANCELLED = 'UniFlow/Execution/Cancelled';
-  ERR_PARALLEL_FAILED = 'UniFlow/Execution/ParallelFailed';
-  ERR_LOOP_EXCEEDED = 'UniFlow/Execution/LoopExceeded';
-  ERR_CONDITION_ERROR = 'UniFlow/Execution/ConditionError';
+  // === DeepFlow/Execution/* - 执行错误 ===
+  ERR_EXECUTION_FAILED = 'DeepFlow/Execution/Failed';
+  ERR_CANCELLED = 'DeepFlow/Execution/Cancelled';
+  ERR_PARALLEL_FAILED = 'DeepFlow/Execution/ParallelFailed';
+  ERR_LOOP_EXCEEDED = 'DeepFlow/Execution/LoopExceeded';
+  ERR_CONDITION_ERROR = 'DeepFlow/Execution/ConditionError';
   
-  // === UniFlow/Internal/* - 内部错误 ===
-  ERR_CONFIG_INVALID = 'UniFlow/Internal/ConfigInvalid';
-  ERR_NO_EXECUTOR = 'UniFlow/Internal/NoExecutor';
-  ERR_SUBWORKFLOW_NOT_FOUND = 'UniFlow/Internal/SubworkflowNotFound';
-  ERR_INTERNAL = 'UniFlow/Internal/Error';
-  ERR_NOT_IMPLEMENTED = 'UniFlow/Internal/NotImplemented';
-  ERR_UNKNOWN = 'UniFlow/Internal/Unknown';
+  // === DeepFlow/Internal/* - 内部错误 ===
+  ERR_CONFIG_INVALID = 'DeepFlow/Internal/ConfigInvalid';
+  ERR_NO_EXECUTOR = 'DeepFlow/Internal/NoExecutor';
+  ERR_SUBWORKFLOW_NOT_FOUND = 'DeepFlow/Internal/SubworkflowNotFound';
+  ERR_INTERNAL = 'DeepFlow/Internal/Error';
+  ERR_NOT_IMPLEMENTED = 'DeepFlow/Internal/NotImplemented';
+  ERR_UNKNOWN = 'DeepFlow/Internal/Unknown';
   
   // === Skill/* - Skill 相关错误 ===
   ERR_SKILL_NOT_FOUND = 'Skill/Validation/NotFound';
   ERR_SKILL_EXECUTION_FAILED = 'Skill/Execution/Failed';
   
-  // === UniFlow/Network/* - 网络错误 ===
-  ERR_CONNECTION_FAILED = 'UniFlow/Network/ConnectionFailed';
-  ERR_SERVICE_UNAVAILABLE = 'UniFlow/Network/ServiceUnavailable';
-  ERR_RATE_LIMITED = 'UniFlow/Network/RateLimited';
+  // === DeepFlow/Network/* - 网络错误 ===
+  ERR_CONNECTION_FAILED = 'DeepFlow/Network/ConnectionFailed';
+  ERR_SERVICE_UNAVAILABLE = 'DeepFlow/Network/ServiceUnavailable';
+  ERR_RATE_LIMITED = 'DeepFlow/Network/RateLimited';
   
-  // === UniFlow/Permission/* - 权限错误 ===
-  ERR_AUTH_REQUIRED = 'UniFlow/Permission/AuthRequired';
-  ERR_ACCESS_DENIED = 'UniFlow/Permission/AccessDenied';
-  ERR_QUOTA_EXCEEDED = 'UniFlow/Permission/QuotaExceeded';
-  ERR_TENANT_INVALID = 'UniFlow/Permission/TenantInvalid';
+  // === DeepFlow/Permission/* - 权限错误 ===
+  ERR_AUTH_REQUIRED = 'DeepFlow/Permission/AuthRequired';
+  ERR_ACCESS_DENIED = 'DeepFlow/Permission/AccessDenied';
+  ERR_QUOTA_EXCEEDED = 'DeepFlow/Permission/QuotaExceeded';
+  ERR_TENANT_INVALID = 'DeepFlow/Permission/TenantInvalid';
   
-  // === UniFlow/Resource/* - 资源错误 ===
-  ERR_RESOURCE_NOT_FOUND = 'UniFlow/Resource/NotFound';
-  ERR_RESOURCE_LOCKED = 'UniFlow/Resource/Locked';
-  ERR_OUT_OF_MEMORY = 'UniFlow/Resource/OutOfMemory';
+  // === DeepFlow/Resource/* - 资源错误 ===
+  ERR_RESOURCE_NOT_FOUND = 'DeepFlow/Resource/NotFound';
+  ERR_RESOURCE_LOCKED = 'DeepFlow/Resource/Locked';
+  ERR_OUT_OF_MEMORY = 'DeepFlow/Resource/OutOfMemory';
   
   // === LLM 相关错误 ===
-  ERR_LLM_CALL_FAILED = 'UniFlow/LLM/CallFailed';
-  ERR_LLM_TOKEN_EXCEEDED = 'UniFlow/LLM/TokenExceeded';
-  ERR_LLM_RATE_LIMITED = 'UniFlow/LLM/RateLimited';
+  ERR_LLM_CALL_FAILED = 'DeepFlow/LLM/CallFailed';
+  ERR_LLM_TOKEN_EXCEEDED = 'DeepFlow/LLM/TokenExceeded';
+  ERR_LLM_RATE_LIMITED = 'DeepFlow/LLM/RateLimited';
   
   // === 外部系统集成错误 ===
   ERR_EXTERNAL_SERVICE_FAILED = 'External/Execution/ServiceFailed';
   ERR_EXTERNAL_TIMEOUT = 'External/Timeout/ServiceTimeout';
   
-  // === UniFlow/Guard/* - Guard 校验错误 (ENTROPY-010) ===
-  ERR_GUARD_REQUIRED = 'UniFlow/Guard/Required';
-  ERR_GUARD_MIN_LENGTH = 'UniFlow/Guard/MinLength';
-  ERR_GUARD_MAX_LENGTH = 'UniFlow/Guard/MaxLength';
-  ERR_GUARD_PATTERN = 'UniFlow/Guard/Pattern';
+  // === DeepFlow/Guard/* - Guard 校验错误 (ENTROPY-010) ===
+  ERR_GUARD_REQUIRED = 'DeepFlow/Guard/Required';
+  ERR_GUARD_MIN_LENGTH = 'DeepFlow/Guard/MinLength';
+  ERR_GUARD_MAX_LENGTH = 'DeepFlow/Guard/MaxLength';
+  ERR_GUARD_PATTERN = 'DeepFlow/Guard/Pattern';
   
-  // === UniFlow/Execution/* - 执行错误补充 (ENTROPY-010) ===
-  ERR_ALREADY_RUNNING = 'UniFlow/Execution/AlreadyRunning';
-  ERR_UNKNOWN_STEP_TYPE = 'UniFlow/Execution/UnknownStepType';
-  ERR_ACTION_NOT_HANDLED = 'UniFlow/Execution/ActionNotHandled';
-  ERR_INVALID_COLLECTION = 'UniFlow/Execution/InvalidCollection';
-  ERR_PARALLEL_ERROR = 'UniFlow/Execution/ParallelError';
-  ERR_SUBWORKFLOW_ERROR = 'UniFlow/Execution/SubworkflowError';
+  // === DeepFlow/Execution/* - 执行错误补充 (ENTROPY-010) ===
+  ERR_ALREADY_RUNNING = 'DeepFlow/Execution/AlreadyRunning';
+  ERR_UNKNOWN_STEP_TYPE = 'DeepFlow/Execution/UnknownStepType';
+  ERR_ACTION_NOT_HANDLED = 'DeepFlow/Execution/ActionNotHandled';
+  ERR_INVALID_COLLECTION = 'DeepFlow/Execution/InvalidCollection';
+  ERR_PARALLEL_ERROR = 'DeepFlow/Execution/ParallelError';
+  ERR_SUBWORKFLOW_ERROR = 'DeepFlow/Execution/SubworkflowError';
   
-  // === UniFlow/Internal/* - 未实现错�?===
-  ERR_SKILL_NOT_IMPLEMENTED = 'UniFlow/Internal/SkillNotImplemented';
-  ERR_LLM_NOT_IMPLEMENTED = 'UniFlow/Internal/LLMNotImplemented';
-  ERR_HTTP_NOT_IMPLEMENTED = 'UniFlow/Internal/HTTPNotImplemented';
-  ERR_SCRIPT_NOT_IMPLEMENTED = 'UniFlow/Internal/ScriptNotImplemented';
+  // === DeepFlow/Internal/* - 未实现错�?===
+  ERR_SKILL_NOT_IMPLEMENTED = 'DeepFlow/Internal/SkillNotImplemented';
+  ERR_LLM_NOT_IMPLEMENTED = 'DeepFlow/Internal/LLMNotImplemented';
+  ERR_HTTP_NOT_IMPLEMENTED = 'DeepFlow/Internal/HTTPNotImplemented';
+  ERR_SCRIPT_NOT_IMPLEMENTED = 'DeepFlow/Internal/ScriptNotImplemented';
   
   // === v1 兼容 (deprecated, 将在未来版本移除) ===
   ERR_INVALID_WORKFLOW_V1 = 'INVALID_WORKFLOW' deprecated 'Use ERR_INVALID_WORKFLOW';
@@ -259,7 +259,7 @@ begin
   else
   begin
     // v1 兼容: 旧格式错误码映射到新格式
-    Result.Source := 'UniFlow';
+    Result.Source := 'DeepFlow';
     Result.Category := 'Internal';
     Result.Specific := ACode;
   end;

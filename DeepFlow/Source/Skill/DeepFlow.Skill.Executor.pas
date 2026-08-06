@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Skill Executor                                                       
+  DeepFlow Skill Executor                                                       
   Workflow action executor for Skill invocations                               
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Skill.Executor;
+unit DeepFlow.Skill.Executor;
 
 interface
 
@@ -21,8 +21,8 @@ uses
   System.Rtti,
   System.Generics.Collections,
   System.JSON,
-  UniFlow.Skill.Types,
-  UniFlow.Skill.Client;
+  DeepFlow.Skill.Types,
+  DeepFlow.Skill.Client;
 
 type
   //----------------------------------------------------------------------------

@@ -1,6 +1,6 @@
-unit UniFlow.Workflow.Executor;
+unit DeepFlow.Workflow.Executor;
 (*
-  UniFlow Workflow Executor
+  DeepFlow Workflow Executor
   =========================
   工作流步骤执行引擎，实现�?
   - 线性步骤执�?
@@ -20,7 +20,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
   System.JSON, System.SyncObjs, System.Threading,
-  UniFlow.Workflow.Definition, UniFlow.Workflow.Context, UniFlow.Workflow.Errors;
+  DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Errors;
 
 type
   // ============================================================================

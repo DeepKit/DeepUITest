@@ -1,6 +1,6 @@
-unit UniFlow.Performance.Pool;
+unit DeepFlow.Performance.Pool;
 (*
-  UniFlow Performance - Object Pool
+  DeepFlow Performance - Object Pool
   ==================================
   高性能对象池实现，减少频繁创建/销毁对象的开销�?
   
@@ -11,7 +11,7 @@ unit UniFlow.Performance.Pool;
   - 对象重置机制
   - 统计信息
   
-  Author: UniFlow Team
+  Author: DeepFlow Team
   Date: 2025-12-05
 *)
 

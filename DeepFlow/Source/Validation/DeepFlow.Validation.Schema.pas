@@ -1,5 +1,5 @@
 (* ============================================================================
-  UniFlow.Validation.Schema - JSON Schema Validator
+  DeepFlow.Validation.Schema - JSON Schema Validator
 
   Version: 1.0
   Description: Validates JSON data against JSON Schema (Draft-07 subset)
@@ -23,7 +23,7 @@
       ShowErrors(Result.Errors);
   ============================================================================ *)
 
-unit UniFlow.Validation.Schema;
+unit DeepFlow.Validation.Schema;
 
 interface
 

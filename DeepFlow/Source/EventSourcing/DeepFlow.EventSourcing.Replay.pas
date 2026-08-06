@@ -1,6 +1,6 @@
-﻿unit UniFlow.EventSourcing.Replay;
+﻿unit DeepFlow.EventSourcing.Replay;
 (*
-  UniFlow Event Sourcing - Event Replay & Fork
+  DeepFlow Event Sourcing - Event Replay & Fork
   =============================================
   
   事件重放和分叉能力�?
@@ -27,9 +27,9 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.StrUtils, System.Math,
-  UniFlow.EventSourcing.Types,
-  UniFlow.EventSourcing.Store,
-  UniFlow.EventSourcing.Instance;
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store,
+  DeepFlow.EventSourcing.Instance;
 
 type
   // ============================================================================

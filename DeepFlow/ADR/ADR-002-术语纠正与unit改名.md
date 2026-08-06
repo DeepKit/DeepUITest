@@ -23,7 +23,7 @@ DeepFlow 项目存在一次**未完成的产品更名遗留**：项目从代号 
 
 ## 关键约束
 
-DeepFlow 目录**无任何 Delphi 工程文件**（.dpr/.dpk/.dproj）也无编译脚本，改完 unit 名无法在本目录内重编译验证。代码 unit 改名另涉工程影响面，**本轮冻结，待开会定夺**（见 D2）。本轮验证依赖静态一致性检查（grep 残留 + 文档术语一致）+ 人工复核，作为 SPW H4 evidence。
+DeepFlow 目录**无任何 Delphi 工程文件**（.dpr/.dpk/.dproj）也无编译脚本，但本机装了 Embarcadero Studio 37.0 的 `dcc32` 编译器（`/d/Program Files (x86)/Embarcadero/Studio/37.0/bin/dcc32`），可对单 unit 做编译验证（带 `-U Source/...` 搜索路径）。D2 已于 2026-08-06 解冻执行选项 A，编译验证见 D4/T7。
 
 ## 决策
 
@@ -40,14 +40,32 @@ DeepFlow 目录**无任何 Delphi 工程文件**（.dpr/.dpk/.dproj）也无编�
 - 指角色协作引擎层（与事件溯源层对比、强调 11 角色协作这层抽象）→ `UpFlow`
 - 指事件溯源引擎层（小写 uniFlow，Flow/Event/Snapshot）→ `deepFlow`
 
-### D2：代码 unit 名冻结，待开会
+### D2：代码 unit 名——已执行选项 A（2026-08-06 解冻）
 
-55 个 `unit UniFlow.*` 及 202 处 `uses UniFlow.*` 引用 **本轮不改**，待开会讨论确定：
+老板 2026-08-06 指令"改代码 unit 名"解冻 D2。原三选项：
+
 - 选项 A：unit 改 `DeepFlow.*`（跟项目名）
 - 选项 B：unit 改 `UpFlow.*`（跟上层架构名）
 - 选项 C：unit 分两层（角色协作 UpFlow.* / 事件溯源保持 DeepFlow.EventSourcing.*）
 
-代码冻结期间，文档中引用代码标识符（`UniFlow.AI.Types.pas`、`TUniFlowEngine` 等）**保留原样**，与实际文件保持一致。
+**采用选项 A**。理由：文件名已是 `DeepFlow.*.pas`（含 EventSourcing，均为大写 DeepFlow），unit 名对齐文件名是 Delphi 编译的强制要求（`unit X;` 必须与 `X.pas` 文件名一致）；选项 B/C 会让 unit 名与文件名不符，需同时改 68 个文件名，超出"改 unit 名"字面范围且工程更大。选项 A 最小必要、与现有文件名零歧义。
+
+**执行结果**（字节级 ASCII 替换，不受 .pas 既有 UTF-8 损坏影响）：
+
+| 项 | 实测 |
+|------|------|
+| `unit UniFlow.*` 声明 → `unit DeepFlow.*` | 55 处 |
+| `unit DeepBase.UniFlow` 声明 → `unit DeepBase.DeepFlow` | 1 处 |
+| `uses`/全限定 `UniFlow.*` 引用 → `DeepFlow.*` | 127 处 |
+| `DeepBase.UniFlow` uses 引用 → `DeepBase.DeepFlow` | 4 处 |
+| 注释/字符串内项目名 `UniFlow` → `DeepFlow`（前后非标识符字符） | 169 处 |
+| `program UniFlowXxx` → `program DeepFlowXxx`（2 个 Examples program） | 2 处 |
+| 改写 .pas 文件总数 | 68 |
+| 改名后残留 `UniFlow.`（带点 unit 引用） | 0 |
+| 改名后 `unit`/`program` 声明含 UniFlow | 0 |
+| 保留的类型标识符 `TUniFlowXxx`/`InitializeUniFlow`/`UniFlowClient` 等 | 560 处（按规则3保留，类型重命名另议） |
+
+类型标识符（`TUniFlowEngine`、`UniFlowClient`、`IUniFlow`、`InitializeUniFlow` 等 560 处）**保留不改**：本轮范围是"unit 名"（声明 + uses），类型重命名是更大的独立工程（涉所有声明/实例化/转型），且文档大量引用这些标识符，另起任务。
 
 ### D3：schema URI 与 URL 纠正（已完成）
 
@@ -76,6 +94,8 @@ DeepFlow 目录**无任何 Delphi 工程文件**（.dpr/.dpk/.dproj）也无编�
 | T5 schema URI 纯净 | PASS | `uniflow://`/`docs.uniflow.ai`/`UniFlow Team` 零残留 |
 | T5b 未新引入 JSON 破坏 | PASS | 本轮新破坏 0；`Config/workflows/simple_qa.workflow.json` 既有 UTF-8 损坏（HEAD 版本已损坏，非本轮引入，已标记 preexisting） |
 | T6 DeepDeep 乱码 | PASS | 残留 0 处 |
+| T7 代码 unit 改名编译验证 | PASS | dcc32 批量编译 65 个 Source unit：`DeepFlow.* not found`（改名引入的 unit 缺失）= 0；20 个通过，21 个因缺外部 `DeepBase.*` 依赖未过（预存），24 个因预存 UTF-8 损坏（`Unterminated string`）未过。回归对照：HEAD 版（unit=UniFlow）编译同样报 `Unterminated string at 448`，证明改名零回归 |
+| T8 simple_qa 修复 | PASS | 23 处 UTF-8 损坏（中文/箭头第三字节→0x3f，其中 9 处伴随闭合引号塌缩）逐字节还原并补引号；独立 `json.load` 通过，17 个 step 完整，description 等字段语义通顺 |
 
 **release_ready = true**（依据 T1-T6 确定性 PASS）。
 
@@ -117,7 +137,9 @@ DeepFlow 目录**无任何 Delphi 工程文件**（.dpr/.dpk/.dproj）也无编�
 
 ## 待办（代码层，另起）
 
-代码 unit 改名（D2 三选项之一）+ uses 引用同步 + 编译验证，待开会决策后单独执行，不属本轮文档纠正范围。
+1. **类型标识符重命名**（可选，大工程）：560 处 `TUniFlowXxx`/`UniFlowClient`/`IUniFlow`/`InitializeUniFlow` 等类型/函数标识符是否改 `DeepFlowXxx`/`UpFlowXxx`，待定。涉所有声明/实例化/转型 + 文档引用同步。
+2. **`.pas` 既有 UTF-8 损坏修复**（新发现，预存）：41 个 `.pas` 文件入库时即存在 UTF-8 损坏（中文/全角字符第三字节→0x3f，部分伴随闭合引号塌缩），其中 24 个因 `Unterminated string` 等阻碍编译（HEAD 版同样损坏，非 unit 改名引入）。损坏不可逆（0x3f 推不回原字节），需按上下文语义逐字还原，量大。simple_qa.workflow.json 已作为同类样本修复（T8），`.pas` 的修复另起独立任务。
+3. 外部 `DeepBase.*` 依赖（`DeepBase.Exceptions` 等 21 处 not found）的工程路径配置，待配 .dpr/.dproj 工程文件时统一。
 
 ## 变更记录
 
@@ -125,3 +147,4 @@ DeepFlow 目录**无任何 Delphi 工程文件**（.dpr/.dpk/.dproj）也无编�
 |------|------|------|------|
 | 1.0 | 2026-08-06 | 初始：档 C 彻底纠正，含 unit 改名、schema URI、DeepDeep 乱码、白名单 | 罗辑 |
 | 1.1 | 2026-08-06 | 决策变更：核查发现文档确有两层架构（角色协作/事件溯源），改"全改 DeepFlow"为"项目=DeepFlow，内部两层 UpFlow/deepFlow"；代码 unit 名冻结待开会；DeepDeep 乱码与 schema 已修复 | 罗辑 |
+| 1.2 | 2026-08-06 | D2 解冻执行选项 A：68 个 .pas 的 unit/program 声明 + uses 引用 + 注释项目名全改 DeepFlow（类型标识符 560 处保留）；dcc32 编译验证零改名回归（T7）；simple_qa.workflow.json 23 处 UTF-8 损坏修复（T8）；新发现 41 个 .pas 既有 UTF-8 损坏待办 | 罗辑 |

@@ -1,6 +1,6 @@
-unit UniFlow.Analytics;
+unit DeepFlow.Analytics;
 (*
-  UniFlow Analytics
+  DeepFlow Analytics
   =================
   
   工作流执行统计、聚合和报告生成�?
@@ -17,8 +17,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.Math,
-  UniFlow.EventSourcing.Types,
-  UniFlow.EventSourcing.Store;
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store;
 
 type
   // ============================================================================
@@ -1344,7 +1344,7 @@ begin
     SB.AppendLine('<html lang="en">');
     SB.AppendLine('<head>');
     SB.AppendLine('  <meta charset="UTF-8">');
-    SB.AppendLine('  <title>UniFlow Analytics Report</title>');
+    SB.AppendLine('  <title>DeepFlow Analytics Report</title>');
     SB.AppendLine('  <style>');
     SB.AppendLine('    body { font-family: Arial, sans-serif; margin: 20px; background: #1e1e2e; color: #cdd6f4; }');
     SB.AppendLine('    .card { background: #313244; border-radius: 8px; padding: 20px; margin: 10px 0; }');
@@ -1357,7 +1357,7 @@ begin
     SB.AppendLine('  </style>');
     SB.AppendLine('</head>');
     SB.AppendLine('<body>');
-    SB.AppendLine('  <h1>UniFlow Analytics Report</h1>');
+    SB.AppendLine('  <h1>DeepFlow Analytics Report</h1>');
     SB.AppendFormat('  <p>Generated: %s</p>', [FormatDateTime('yyyy-mm-dd hh:nn:ss', Now)]);
     SB.AppendLine;
     

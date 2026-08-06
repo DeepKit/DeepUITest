@@ -1,6 +1,6 @@
-unit UniFlow.Constants;
+unit DeepFlow.Constants;
 (*
-  UniFlow 全局常量定义
+  DeepFlow 全局常量定义
   
   ENTROPY-012: 硬编码常量消�?  - 集中管理超时、重试、URL 等可配置常量
   - 生产环境应通过 Config 覆盖这些默认�?*)

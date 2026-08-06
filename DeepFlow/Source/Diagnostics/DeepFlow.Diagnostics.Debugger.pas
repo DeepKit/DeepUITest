@@ -1,6 +1,6 @@
-unit UniFlow.Diagnostics.Debugger;
+unit DeepFlow.Diagnostics.Debugger;
 (*
-  UniFlow Diagnostics Debugger
+  DeepFlow Diagnostics Debugger
   ============================
   工作流调试器，支持断点、单步执行、变量检查等调试功能�?
 *)
@@ -10,7 +10,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.SyncObjs, System.Generics.Collections, 
   System.JSON,
-  UniFlow.Diagnostics;
+  DeepFlow.Diagnostics;
 
 type
   // ============================================================================
@@ -877,7 +877,7 @@ end;
 
 procedure TDebugConsole.PrintHelp;
 begin
-  WriteLn('UniFlow Debugger Commands:');
+  WriteLn('DeepFlow Debugger Commands:');
   WriteLn('  c, continue    - Continue execution');
   WriteLn('  p, pause       - Pause execution');
   WriteLn('  s, step        - Step into next');
@@ -1029,7 +1029,7 @@ var
   Input: string;
 begin
   FRunning := True;
-  WriteLn('UniFlow Debugger');
+  WriteLn('DeepFlow Debugger');
   WriteLn('Type "help" for available commands');
   WriteLn('');
   

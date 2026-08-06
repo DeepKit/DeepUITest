@@ -1,5 +1,5 @@
 { ============================================================================
-  UniFlow.Session.Manager - Session Lifecycle Manager
+  DeepFlow.Session.Manager - Session Lifecycle Manager
 
   Version: 1.0
   Description: Manages session lifecycle including creation, lookup, expiry
@@ -19,7 +19,7 @@
     Session := Manager.GetSession(SessionId);
   ============================================================================ }
 
-unit UniFlow.Session.Manager;
+unit DeepFlow.Session.Manager;
 
 interface
 
@@ -31,7 +31,7 @@ uses
   System.SyncObjs,
   System.IOUtils,
   System.Threading,
-  UniFlow.Session.Types,
+  DeepFlow.Session.Types,
   DeepBase.Exceptions;
 
 type

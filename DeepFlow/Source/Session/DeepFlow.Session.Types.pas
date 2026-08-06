@@ -1,11 +1,11 @@
 { ============================================================================
-  UniFlow.Session.Types - Session Type Definitions
+  DeepFlow.Session.Types - Session Type Definitions
 
   Version: 1.0
   Description: Core types for session management
   ============================================================================ }
 
-unit UniFlow.Session.Types;
+unit DeepFlow.Session.Types;
 
 interface
 

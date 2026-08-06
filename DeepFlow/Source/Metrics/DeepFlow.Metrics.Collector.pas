@@ -1,18 +1,18 @@
 {******************************************************************************}
 {                                                                              }
-{  UniFlow Metrics Collector                                                   }
+{  DeepFlow Metrics Collector                                                   }
 {  Central metrics registry and collection system                              }
 {                                                                              }
 {  Features:                                                                   }
 {  - Global metrics registry                                                   }
-{  - Predefined UniFlow metrics                                                }
+{  - Predefined DeepFlow metrics                                                }
 {  - Prometheus text format export                                             }
 {  - JSON format export                                                        }
 {  - HTTP endpoint handler                                                     }
 {                                                                              }
 {******************************************************************************}
 
-unit UniFlow.Metrics.Collector;
+unit DeepFlow.Metrics.Collector;
 
 interface
 
@@ -23,7 +23,7 @@ uses
   System.JSON,
   System.SyncObjs,
   System.DateUtils,
-  UniFlow.Metrics.Types,
+  DeepFlow.Metrics.Types,
   DeepBase.Exceptions;
 
 type
@@ -78,7 +78,7 @@ type
   end;
 
   //----------------------------------------------------------------------------
-  // TUniFlowMetrics - Predefined UniFlow metrics
+  // TUniFlowMetrics - Predefined DeepFlow metrics
   //----------------------------------------------------------------------------
 
   TUniFlowMetrics = class

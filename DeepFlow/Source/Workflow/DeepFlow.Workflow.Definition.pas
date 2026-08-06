@@ -1,6 +1,6 @@
-unit UniFlow.Workflow.Definition;
+unit DeepFlow.Workflow.Definition;
 {
-  UniFlow Workflow Definition
+  DeepFlow Workflow Definition
   ===========================
   工作流定义数据结构，支持 JSON 配置解析�?
   
@@ -9,7 +9,7 @@ unit UniFlow.Workflow.Definition;
   - Step: 执行单元，支持多种类型（action/condition/loop/parallel�?
   - Action: 具体动作（skill/llm/guard/log/assign/http/script�?
   
-  参�? 05.03.API-UniFlow-Workflow定义规范-v1.0.md
+  参�? 05.03.API-DeepFlow-Workflow定义规范-v1.0.md
 }
 
 interface

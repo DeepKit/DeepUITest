@@ -1,9 +1,9 @@
-program UniFlowIntegrationDemo;
+program DeepFlowIntegrationDemo;
 (*
-  UniFlow Integration Demo
+  DeepFlow Integration Demo
   ========================
   
-  演示如何�?DeepBase 应用中集�?UniFlow 工作流引擎�?
+  演示如何�?DeepBase 应用中集�?DeepFlow 工作流引擎�?
   
   运行方式:
     1. 确保 Python Skill 服务已启�?(cd Skills && python -m uvicorn main:app)
@@ -24,7 +24,7 @@ uses
   System.SysUtils,
   System.JSON,
   System.Classes,
-  DeepBase.UniFlow;
+  DeepBase.DeepFlow;
 
 var
   Engine: TUniFlowEngine;
@@ -128,7 +128,7 @@ const
           "assignments": [
             {
               "target": "greeting",
-              "value": "Hello, {{ vars.user_name }}! Welcome to UniFlow."
+              "value": "Hello, {{ vars.user_name }}! Welcome to DeepFlow."
             }
           ]
         },
@@ -380,7 +380,7 @@ procedure RunAllDemos;
 begin
   Writeln('');
   Writeln('============================================');
-  Writeln('     UniFlow Integration Demo');
+  Writeln('     DeepFlow Integration Demo');
   Writeln('============================================');
   
   // 创建引擎

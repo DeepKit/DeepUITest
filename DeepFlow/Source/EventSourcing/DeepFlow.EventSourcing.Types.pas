@@ -1,6 +1,6 @@
-unit UniFlow.EventSourcing.Types;
+unit DeepFlow.EventSourcing.Types;
 (*
-  UniFlow Event Sourcing - Core Types
+  DeepFlow Event Sourcing - Core Types
   ====================================
   
   基于设计文档 03.02.Design-uniFlow-CoreModelAndPrinciples 实现�?
@@ -60,7 +60,7 @@ type
   // ============================================================================
   
   /// <summary>
-  /// UniFlow 事件 - 所有状态变化的唯一记录
+  /// DeepFlow 事件 - 所有状态变化的唯一记录
   /// 约定: 所有状态变化都通过 UniFlowEvent 体现，禁止静默变�?
   /// </summary>
   TUniFlowEvent = class
@@ -130,7 +130,7 @@ type
   // ============================================================================
   
   /// <summary>
-  /// UniFlow 快照 - 事件聚合后的状�?
+  /// DeepFlow 快照 - 事件聚合后的状�?
   /// 可由事件「重放」得到，也可在关键节点直接持久化
   /// </summary>
   TUniFlowSnapshot = class
@@ -234,7 +234,7 @@ type
   // ============================================================================
   
   /// <summary>
-  /// UniFlow 节点 - 用于在不同层次上定位
+  /// DeepFlow 节点 - 用于在不同层次上定位
   /// </summary>
   TUniFlowNode = class
   private

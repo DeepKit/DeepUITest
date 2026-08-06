@@ -1,6 +1,6 @@
-unit UniFlow.Diagnostics.ErrorCollector;
+unit DeepFlow.Diagnostics.ErrorCollector;
 (*
-  UniFlow Diagnostics Error Collector
+  DeepFlow Diagnostics Error Collector
   ===================================
   增强的错误收集器，包含错误分类、上下文收集、智能建议等功能�?
 *)
@@ -10,7 +10,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.DateUtils, System.SyncObjs, 
   System.Generics.Collections, System.JSON, Winapi.Windows,
-  UniFlow.Diagnostics;
+  DeepFlow.Diagnostics;
 
 type
   // ============================================================================

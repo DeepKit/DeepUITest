@@ -1,7 +1,7 @@
-unit UniFlow.Cloud.Telemetry.SDK;
+unit DeepFlow.Cloud.Telemetry.SDK;
 
 {*******************************************************************************
-  UniFlow OpenTelemetry SDK
+  DeepFlow OpenTelemetry SDK
   
   功能:
   - TracerProvider / Tracer
@@ -10,7 +10,7 @@ unit UniFlow.Cloud.Telemetry.SDK;
   - 批处理导出器
   - OTLP HTTP/gRPC 导出
   
-  作�? UniFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -21,7 +21,7 @@ uses
   System.JSON, System.SyncObjs, System.Threading, System.Net.HttpClient,
   System.Net.URLClient, System.DateUtils, System.NetEncoding,
   {$IFDEF MSWINDOWS}Winapi.Windows,{$ENDIF}
-  UniFlow.Cloud.Telemetry.Types;
+  DeepFlow.Cloud.Telemetry.Types;
 
 type
   {$REGION 'Tracer Provider'}

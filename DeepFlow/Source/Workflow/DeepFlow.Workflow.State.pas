@@ -1,6 +1,6 @@
-﻿unit UniFlow.Workflow.State;
+﻿unit DeepFlow.Workflow.State;
 (*
-  UniFlow Workflow State Persistence
+  DeepFlow Workflow State Persistence
   ==================================
   工作流状态持久化，支持：
   - SQLite 存储
@@ -18,7 +18,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
   System.JSON, System.DateUtils,
-  UniFlow.Workflow.Definition, UniFlow.Workflow.Context, UniFlow.Workflow.Executor;
+  DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Executor;
 
 type
   // ============================================================================

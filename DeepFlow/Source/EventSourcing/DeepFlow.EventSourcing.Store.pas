@@ -1,6 +1,6 @@
-unit UniFlow.EventSourcing.Store;
+unit DeepFlow.EventSourcing.Store;
 (*
-  UniFlow Event Sourcing - Event Store
+  DeepFlow Event Sourcing - Event Store
   =====================================
   
   事件存储层，实现 Append-Only 语义�?
@@ -26,7 +26,7 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.IOUtils, System.SyncObjs, System.DateUtils,
   {$IFDEF MSWINDOWS}Winapi.Windows,{$ENDIF}
-  UniFlow.EventSourcing.Types;
+  DeepFlow.EventSourcing.Types;
 
 type
   // ============================================================================

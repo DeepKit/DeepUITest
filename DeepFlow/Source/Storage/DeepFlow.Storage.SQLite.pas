@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow SQLite Storage                                                       
+  DeepFlow SQLite Storage                                                       
   Complete SQLite-based persistent storage for audit logs and sessions         
                                                                                
   Features:                                                                    
@@ -23,7 +23,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Storage.SQLite;
+unit DeepFlow.Storage.SQLite;
 
 interface
 
@@ -36,10 +36,10 @@ uses
   System.IOUtils,
   System.DateUtils,
   System.StrUtils,
-  UniFlow.Audit.Types,
-  UniFlow.Audit.Store,
-  UniFlow.Session.Types,
-  UniFlow.Session.Manager;
+  DeepFlow.Audit.Types,
+  DeepFlow.Audit.Store,
+  DeepFlow.Session.Types,
+  DeepFlow.Session.Manager;
 
 type
   //----------------------------------------------------------------------------

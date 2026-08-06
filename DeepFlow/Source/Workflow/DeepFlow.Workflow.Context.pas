@@ -1,13 +1,13 @@
-unit UniFlow.Workflow.Context;
+unit DeepFlow.Workflow.Context;
 (*
-  UniFlow Workflow Context
+  DeepFlow Workflow Context
   ========================
   工作流执行上下文管理，包括：
   - 变量作用域管理（global/workflow/step/input/output�?
   - 变量引用解析（{{ vars.xxx }} 语法�?
   - 条件表达式求�?
   
-  参�? 05.03.API-UniFlow-Workflow定义规范-v1.0.md �?�?
+  参�? 05.03.API-DeepFlow-Workflow定义规范-v1.0.md �?�?
 *)
 
 interface
@@ -15,7 +15,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
   System.JSON, System.RegularExpressions, System.Variants,
-  UniFlow.Workflow.Definition,
+  DeepFlow.Workflow.Definition,
   DeepBase.Exceptions;
 
 type

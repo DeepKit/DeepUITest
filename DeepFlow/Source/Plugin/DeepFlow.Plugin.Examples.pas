@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Examples                                                      
+  DeepFlow Plugin Examples                                                      
   Example plugins demonstrating how to create custom extensions                
                                                                                
   Features:                                                                    
@@ -24,7 +24,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Examples;
+unit DeepFlow.Plugin.Examples;
 
 interface
 
@@ -35,7 +35,7 @@ uses
   System.RegularExpressions,
   System.DateUtils,
   System.Generics.Collections,
-  UniFlow.Plugin.Intf;
+  DeepFlow.Plugin.Intf;
 
 type
   //============================================================================
@@ -775,7 +775,7 @@ end;
 constructor TCustomActionsPlugin.Create;
 begin
   inherited Create('uniflow.actions.custom', 'Custom Actions Plugin', '1.0.0');
-  FInfo.Author := 'UniFlow Team';
+  FInfo.Author := 'DeepFlow Team';
   FInfo.Description := 'Provides custom action executors: delay, email, http_get';
 end;
 
@@ -801,7 +801,7 @@ end;
 constructor TCustomValidatorsPlugin.Create;
 begin
   inherited Create('uniflow.validators.custom', 'Custom Validators Plugin', '1.0.0');
-  FInfo.Author := 'UniFlow Team';
+  FInfo.Author := 'DeepFlow Team';
   FInfo.Description := 'Provides custom validators: china_phone, id_card, email';
 end;
 
@@ -827,7 +827,7 @@ end;
 constructor TCombinedExamplePlugin.Create;
 begin
   inherited Create('uniflow.examples.combined', 'Combined Example Plugin', '1.0.0');
-  FInfo.Author := 'UniFlow Team';
+  FInfo.Author := 'DeepFlow Team';
   FInfo.Description := 'Combined plugin with all custom actions and validators';
 end;
 

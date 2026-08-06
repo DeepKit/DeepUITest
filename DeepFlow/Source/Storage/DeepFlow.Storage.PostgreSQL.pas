@@ -1,10 +1,10 @@
-unit UniFlow.Storage.PostgreSQL;
+unit DeepFlow.Storage.PostgreSQL;
 
 {*******************************************************}
 {                                                       }
-{       UniFlow PostgreSQL 存储后端实现                 }
+{       DeepFlow PostgreSQL 存储后端实现                 }
 {                                                       }
-{       版权所�?(C) 2024 UniFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -13,7 +13,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.SyncObjs, System.Threading, System.Net.HttpClient,
-  UniFlow.Storage.Types,
+  DeepFlow.Storage.Types,
   DeepBase.Exceptions;
 
 type
