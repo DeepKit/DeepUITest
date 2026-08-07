@@ -753,4 +753,26 @@ Inc(LRecord.Count) �?
 - **问题描述**: ADR-002 正名后 unit/文件名已改 DeepFlow.*, 但类型标识符 (TUniFlowXxx/IUniFlow) 仍 560 处, 与 unit 名不一致
 - **修复方案**: Tools/rename-identifiers.py 字节级替换 (不依赖编码, 可处理曾阻碍文本替换的损坏文件), 25 文件 477 处改完
 - **验证**: 零残留 UniFlow 引用; 旧类型 0 / 新类型 493; 枚举值缩写保留
-- **状态**: 已修复 (本分支待 commit)
+- **状态**: 已修复 (commit fb6fbadf, 2026-08-07)
+
+---
+
+## 2026-08-07: 工作区发现的新问题
+
+### BUG-2026-007: 39 个.pas 文件 UTF-8 损坏 (新增发现) (P0)
+- **发现日期**: 2026-08-07
+- **严重程度**: Critical (24 个阻碍编译)
+- **影响范围**: 39 个 .pas 文件（相比 commit fb6fbadf 的工作区差异）
+- **问题描述**: 
+  - git diff HEAD 显示 39 个文件有修改，经检查均为注释中文 UTF-8 损坏
+  - 例如：`值？` → `值？`,冒号缺失，行末字符塌缩等
+  - 这是入库时即存在的已有损坏，之前未被 rename-identifiers.py 工具处理
+- **已发现示例**:
+  - `DeepFlow.AI.Adapter.pas`: `使用默认?` → 应为 `使用默认值`
+  - `DeepFlow.Workflow.Executor.pas`: `线性步骤执？` → 应为 `线性步骤执行`
+- **修复方案**: 
+  - 需像 simple_qa.workflow.json 一样逐字语义还原
+  - 先统计所有 39 个文件的损坏点，再按上下文逐字修复
+  - 预计需要大量手工工作（参考简单 QA 的 23 处修复）
+- **关联任务**: 这是 TASK-0102 的一部分，但现在已明确是工作区未 committed 状态的问题
+- **状态**: pending (需要在 tasks.md 中优先处理)

@@ -1825,3 +1825,51 @@ ADR-002 正名后，68 个 .pas 的 unit/program/uses 已改 DeepFlow.*，但类
 | TASK-4032 | 混沌工程测试 | High |
 | TASK-4033 | 全链路压测平台 | Medium |
 
+---
+
+## 2026-08-07: 文档与代码状态对齐完成
+
+> **任务**: 将已完成的任务从 tasks.md 移入 history.md，记录新发现的 bug 到 bugfix.md，更新 tasks.md 为待办状态
+
+### 完成情况总结
+
+#### ✅ 已归档的工单 (WO-20260806-0001-luoji)
+**执行日期**: 2026-08-06  
+**提交 commit**: f7a9b2f2, 77b750c6, 3902526a
+
+| 子任务 | 状态 | Commit |
+|--------|------|--------|
+| R1 | 文档正文项目名统一 (73 篇 .md) | 已完成 | f7a9b2f2 |
+| R2 | 修复 03.07 自指错误 | 已完成 | f7a9b2f2 |
+| R3 | 代码 unit 名同步改名 (68 个.pas) | 已完成 | 77b750c6 |
+| R4 | uses 引用同步改名 (127 处) | 已完成 | 77b750c6 |
+| R5 | schema URI 与 URL 纠正 | 已完成 | f7a9b2f2 |
+| R6 | 组件名中英并列 | 已完成 | f7a9b2f2 |
+| R7 | 术语表扩写为权威基准 | 已完成 | f7a9b2f2 |
+| R8 | ADR 备案 | 已完成 | f7a9b2f2 |
+
+#### ✅ 已完成任务 (TASK-0104)
+**提交 commit**: 3902526a
+- 清理 code_review/qa_assistant/system_default 3 个冗余 prompt
+- Editor/index.html 添加 favicon
+
+#### ✅ 已完成任务 (TASK-0101)
+**提交 commit**: fb6fbadf
+- 25 个代码/模板文件 477 处类型标识符重命名
+- TUniFlowXxx → TDeepFlowXxx 字节级替换，零残留
+- Tools/rename-identifiers.py 专用工具脚本验证
+
+### 发现的新问题
+
+#### 🐛 BUG-2026-007: 39 个.pas 文件 UTF-8 损坏 (新增发现)
+- **严重程度**: Critical (24 个阻碍编译)
+- **状态**: pending (已在 bugfix.md 详细记录)
+- **关联任务**: TASK-0102 的一部分
+
+### 下一步待办
+
+详见 updated [tasks.md](d:\_Progs\02Business\DeepFlow\tasks.md):
+- **TASK-0102**: .pas UTF-8 损坏修复 (高优先级)
+- **TASK-0103**: 外部 DeepBase.*依赖配置
+
+---
