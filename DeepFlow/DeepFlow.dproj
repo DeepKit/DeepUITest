@@ -1,0 +1,110 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+        <MainSource>DeepFlow.dpk</MainSource>
+        <Base>True</Base>
+        <Config Condition="'$(Config)'==''">Debug</Config>
+        <ProjectName Condition="'$(ProjectName)'==''">DeepFlow</ProjectName>
+        <TargetedPlatforms>1741953</TargetedPlatforms>
+        <AppType>Package</AppType>
+        <FrameworkType>None</FrameworkType>
+        <ProjectVersion>12.0</ProjectVersion>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Platform)'=='Win64' or '$(Platform)'=='Win64x'">
+        <DCC_DCUOutput>BuildOutput\dcu64</DCC_DCUOutput>
+        <DCC_DcuOutput>BuildOutput\dcu64</DCC_DcuOutput>
+        <DCC_BPLOutput>BuildOutput\bpl64</DCC_BPLOutput>
+        <DCC_BplOutput>BuildOutput\bpl64</DCC_BplOutput>
+        <DCC_DCPOutput>BuildOutput\dcp64</DCC_DCPOutput>
+        <DCC_DcpOutput>BuildOutput\dcp64</DCC_DcpOutput>
+        <DCC_UnitSearchPath>
+            BuildOutput\dcp64;
+            ..\DeepBase\Core;
+            ..\DeepBase\DCUOutput\Win64;
+            $(DCC_UnitSearchPath)
+        </DCC_UnitSearchPath>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Platform)'=='Win32'">
+        <DCC_DCUOutput>BuildOutput\dcu32</DCC_DCUOutput>
+        <DCC_DcuOutput>BuildOutput\dcu32</DCC_DcuOutput>
+        <DCC_BPLOutput>BuildOutput\bpl32</DCC_BPLOutput>
+        <DCC_BplOutput>BuildOutput\bpl32</DCC_BplOutput>
+        <DCC_DCPOutput>BuildOutput\dcp32</DCC_DCPOutput>
+        <DCC_DcpOutput>BuildOutput\dcp32</DCC_DcpOutput>
+        <DCC_UnitSearchPath>
+            BuildOutput\dcp32;
+            ..\DeepBase\Core;
+            ..\DeepBase\DCUOutput\Win64;
+            $(DCC_UnitSearchPath)
+        </DCC_UnitSearchPath>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Base)'=='true') or '$(Base_Win64)'!=''">
+        <Base_Win64>true</Base_Win64>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win32' and '$(Base)'=='true') or '$(Base_Win32)'!=''">
+        <Base_Win32>true</Base_Win32>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base_Win64)'!=''">
+        <DCC_Define>$(DCC_Define)RELEASE</DCC_Define>
+        <DCC_Optimize>true</DCC_Optimize>
+        <DCC_GenerateHpp>false</DCC_GenerateHpp>
+        <DCC_Description>DeepFlow Workflow Engine Runtime Package</DCC_Description>
+        <DCC_LinkerOutput>BuildOutput</DCC_LinkerOutput>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base_Win32)'!=''">
+        <DCC_Define>$(DCC_Define)RELEASE</DCC_Define>
+        <DCC_Optimize>true</DCC_Optimize>
+        <DCC_GenerateHpp>false</DCC_GenerateHpp>
+        <DCC_Description>DeepFlow Workflow Engine Runtime Package</DCC_Description>
+        <DCC_LinkerOutput>BuildOutput</DCC_LinkerOutput>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Debug'">
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Release'">
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Debug_Win64)'!=''">
+        <CfgParent>Debug</CfgParent>
+        <Base>true</Base>
+        <DCC_Define>$(DCC_Define)DEBUG</DCC_Define>
+        <DCC_DebugInfoInExe>true</DCC_DebugInfoInExe>
+        <DCC_DebugDCU>true</DCC_DebugDCU>
+        <DCC_Optimize>false</DCC_Optimize>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Debug_Win32)'!=''">
+        <CfgParent>Debug</CfgParent>
+        <Base>true</Base>
+        <DCC_Define>$(DCC_Define)DEBUG</DCC_Define>
+        <DCC_DebugInfoInExe>true</DCC_DebugInfoInExe>
+        <DCC_DebugDCU>true</DCC_DebugDCU>
+        <DCC_Optimize>false</DCC_Optimize>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Release_Win64)'!=''">
+        <CfgParent>Release</CfgParent>
+        <Base>true</Base>
+        <DCC_Optimize>true</DCC_Optimize>
+        <DCC_DebugDCU>false</DCC_DebugDCU>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Release_Win32)'!=''">
+        <CfgParent>Release</CfgParent>
+        <Base>true</Base>
+        <DCC_Optimize>true</DCC_Optimize>
+        <DCC_DebugDCU>false</DCC_DebugDCU>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="..\DeepBase\DeepBaseCore.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+</Project>

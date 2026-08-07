@@ -2,17 +2,13 @@
 
 > 更新日期：2026-08-07
 >
-> 当前状态：**DeepFlow v1.0 核心完成 + 正名术语纠正完成 + 类型标识符重命名完成 + UTF-8 损坏修复完成**
+> 当前状态：**DeepFlow v1.0 核心完成 + 正名术语纠正完成 + 类型标识符重命名完成 + UTF-8 损坏修复完成 + 构建配置完成**
 
 ---
 
-## 待办 (TASK-0103)
+## 待办
 
-### TASK-0103: 外部 DeepBase.*依赖配置
-- **范围**: 21 处 `DeepBase.*` not found
-- **描述**: 配 .dpr/.dproj 工程文件时统一处理外部依赖路径
-- **复杂度**: Medium
-- **状态**: pending
+无待办任务。所有 TASK-01xx 系列工单（TASK-0101 ~ TASK-0104）已全部完成。
 
 ---
 
@@ -58,8 +54,16 @@
 | 任务 | 内容 | 状态 |
 |------|------|------|
 | TASK-0102 | 39 个 .pas 文件 UTF-8 损坏修复 | 已完成 |
-| BUG-2026-007 | 39 个文件评论中文损坏：git checkout HEAD 恢复 | 已完成 (commit 待) |
+| BUG-2026-007 | 39 个文件评论中文损坏：git checkout HEAD 恢复 | 已完成 (commit ea96fdc6) |
 | tools/utf8-fix-analyzer.py | UTF-8 损坏检测工具 | 已完成 |
+
+### 2026-08-07: 构建配置完成
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0103 | DeepBase 外部依赖路径配置 | 已完成 |
+| DeepFlow.dpk | DeepFlow 运行时包文件 | 已完成 |
+| DeepFlow.dproj | MSBuild 项目配置（含 DeepBase Core 搜索路径） | 已完成 |
 
 ---
 
@@ -70,6 +74,8 @@
 - `ADR/ADR-002-术语纠正与 unit 改名.md` - 正名决策记录
 - `tools/verify-term-rename.py` - 术语一致性检查脚本
 - `tools/utf8-fix-analyzer.py` - UTF-8 损坏检测工具
+- `DeepFlow.dpk` - DeepFlow 运行时包文件
+- `DeepFlow.dproj` - MSBuild 项目配置
 - `docs/zh/` - 中文文档
 
 ---
