@@ -2,20 +2,11 @@
 
 > 更新日期：2026-08-07
 >
-> 当前状态：**DeepFlow v1.0 核心完成 + 正名术语纠正完成 + 类型标识符重命名完成**
+> 当前状态：**DeepFlow v1.0 核心完成 + 正名术语纠正完成 + 类型标识符重命名完成 + UTF-8 损坏修复完成**
 
 ---
 
-## 待办 (TASK-0102 & TASK-0103)
-
-### TASK-0102: .pas UTF-8 损坏修复 (P0)
-- **范围**: 41 个 .pas 文件，其中 24 个阻碍编译
-- **描述**: 
-  - 入库时即存在的 UTF-8 损坏（中文/全角字符第三字节 0x3f，部分闭合引号塌缩）
-  - worktree diff HEAD 已发现 39 个文件的损坏点：`值？`,冒号缺失，行末字符塌缩等
-  - 需像 simple_qa.workflow.json 一样按上下文语义逐字还原
-- **复杂度**: High (大量手工)
-- **状态**: pending (已在 bugfix.md 记录为 BUG-2026-007)
+## 待办 (TASK-0103)
 
 ### TASK-0103: 外部 DeepBase.*依赖配置
 - **范围**: 21 处 `DeepBase.*` not found
@@ -62,6 +53,14 @@
 | 冗余清理 | 3 个冗余 prompt 删除 + Editor favicon | 已完成 |
 | 类型标识符重命名 | 25 个文件 477 处 TUniFlowXxx→TDeepFlowXxx, 零残留 | 已完成 (commit fb6fbadf) |
 
+### 2026-08-07: UTF-8 损坏修复
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0102 | 39 个 .pas 文件 UTF-8 损坏修复 | 已完成 |
+| BUG-2026-007 | 39 个文件评论中文损坏：git checkout HEAD 恢复 | 已完成 (commit 待) |
+| tools/utf8-fix-analyzer.py | UTF-8 损坏检测工具 | 已完成 |
+
 ---
 
 ## 相关文档
@@ -70,6 +69,7 @@
 - `bugfix.md` - Bug 修复详细记录
 - `ADR/ADR-002-术语纠正与 unit 改名.md` - 正名决策记录
 - `tools/verify-term-rename.py` - 术语一致性检查脚本
+- `tools/utf8-fix-analyzer.py` - UTF-8 损坏检测工具
 - `docs/zh/` - 中文文档
 
 ---
