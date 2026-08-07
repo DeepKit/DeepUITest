@@ -2,15 +2,15 @@ unit DeepFlow.Workflow.Executor;
 (*
   DeepFlow Workflow Executor
   =========================
-  工作流步骤执行引擎，实现�?
-  - 线性步骤执�?
+  工作流步骤执行引擎，实现�?
+  - 线性步骤执�?
   - 条件分支
-  - 循环（forEach/while�?
-  - 并行执行（基础支持�?
-  - 错误处理与重�?
+  - 循环（forEach/while�?
+  - 并行执行（基础支持�?
+  - 错误处理与重�?
   
-  设计原则�?
-  - 可暂�?恢复执行
+  设计原则�?
+  - 可暂�?恢复执行
   - 支持检查点
   - 事件驱动
 *)
@@ -24,12 +24,12 @@ uses
 
 type
   // ============================================================================
-  // 执行状�?
+  // 执行状�?
   // ============================================================================
   
   TExecutionStatus = (
     esIdle,         // 空闲
-    esRunning,      // 运行�?
+    esRunning,      // 运行�?
     esPaused,       // 暂停
     esWaiting,      // 等待外部输入
     esCompleted,    // 完成
@@ -44,8 +44,8 @@ type
   /// <summary>
   /// 步骤执行结果
   /// CODE-001: Output 所有权说明
-  ///   - �?OwnsOutput=True 时，TStepResult 拥有 Output 的所有权，析构时会释�?
-  ///   - �?OwnsOutput=False 时，调用者负责管�?Output 生命周期
+  ///   - �?OwnsOutput=True 时，TStepResult 拥有 Output 的所有权，析构时会释�?
+  ///   - �?OwnsOutput=False 时，调用者负责管�?Output 生命周期
   ///   - 默认 OwnsOutput=True
   /// </summary>
   TStepResult = class
@@ -55,8 +55,8 @@ type
     FOwnsOutput: Boolean;    // CODE-001: 明确 Output 所有权
     FErrorCode: string;
     FErrorMessage: string;
-    FNextStepId: string;     // 跳转到指定步�?
-    FNeedsWait: Boolean;     // 需要等待外部输�?
+    FNextStepId: string;     // 跳转到指定步�?
+    FNeedsWait: Boolean;     // 需要等待外部输�?
     FWaitData: TJSONObject;  // 等待配置
     procedure SetOutput(AValue: TJSONValue);
   public
@@ -70,12 +70,12 @@ type
     
     function Clone: TStepResult;
     
-    /// <summary>释放 Output 所有权，返�?Output 并清除引�?/summary>
+    /// <summary>释放 Output 所有权，返�?Output 并清除引�?/summary>
     function ReleaseOutput: TJSONValue;
     
     property Success: Boolean read FSuccess write FSuccess;
     property Output: TJSONValue read FOutput write SetOutput;
-    /// <summary>CODE-001: 是否拥有 Output 的所有权，默�?True</summary>
+    /// <summary>CODE-001: 是否拥有 Output 的所有权，默�?True</summary>
     property OwnsOutput: Boolean read FOwnsOutput write FOwnsOutput;
     property ErrorCode: string read FErrorCode write FErrorCode;
     property ErrorMessage: string read FErrorMessage write FErrorMessage;
@@ -97,7 +97,7 @@ type
   TOnWaitInputEvent = procedure(Sender: TWorkflowExecutor; Step: TWorkflowStep; WaitData: TJSONObject) of object;
   
   // ============================================================================
-  // 动作执行器接�?
+  // 动作执行器接�?
   // ============================================================================
   
   IActionExecutor = interface
@@ -178,13 +178,13 @@ type
     constructor Create(AWorkflow: TWorkflowDefinition; AContext: TWorkflowContext);
     destructor Destroy; override;
     
-    /// <summary>注册动作执行�?/summary>
+    /// <summary>注册动作执行�?/summary>
     procedure RegisterActionExecutor(AExecutor: IActionExecutor);
     
-    /// <summary>开始执�?/summary>
+    /// <summary>开始执�?/summary>
     function Start: TStepResult;
     
-    /// <summary>从指定步骤恢复执�?/summary>
+    /// <summary>从指定步骤恢复执�?/summary>
     function Resume(const AFromStepId: string = ''): TStepResult;
     
     /// <summary>提供等待输入</summary>
@@ -196,13 +196,13 @@ type
     /// <summary>取消执行</summary>
     procedure Cancel;
     
-    /// <summary>执行单步（调试用�?/summary>
+    /// <summary>执行单步（调试用�?/summary>
     function StepOnce: TStepResult;
     
-    /// <summary>获取当前状态快�?/summary>
+    /// <summary>获取当前状态快�?/summary>
     function GetSnapshot: TJSONObject;
     
-    /// <summary>从快照恢�?/summary>
+    /// <summary>从快照恢�?/summary>
     procedure LoadFromSnapshot(ASnapshot: TJSONObject);
     
     property Workflow: TWorkflowDefinition read FWorkflow;
@@ -219,10 +219,10 @@ type
   end;
   
   // ============================================================================
-  // 内置动作执行�?
+  // 内置动作执行�?
   // ============================================================================
   
-  /// <summary>日志动作执行�?/summary>
+  /// <summary>日志动作执行�?/summary>
   TLogActionExecutor = class(TInterfacedObject, IActionExecutor)
   public
     function Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
@@ -236,7 +236,7 @@ type
     function CanHandle(AActionType: TActionType): Boolean;
   end;
   
-  /// <summary>Guard 动作执行�?/summary>
+  /// <summary>Guard 动作执行器</summary>
   TGuardActionExecutor = class(TInterfacedObject, IActionExecutor)
   private
     function ValidateInput(AContext: TWorkflowContext; ARules: TJSONArray): TStepResult;
@@ -246,11 +246,36 @@ type
     function CanHandle(AActionType: TActionType): Boolean;
   end;
 
+  /// <summary>Skill 动作执行器</summary>
+  TSkillActionExecutor = class(TInterfacedObject, IActionExecutor)
+  private
+    FSkillServiceURL: string;
+    FDefaultTimeout: Integer;
+  public
+    constructor Create(const ASkillServiceURL: string = ''; ADefaultTimeout: Integer = 30000);
+    function Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
+    function CanHandle(AActionType: TActionType): Boolean;
+  end;
+
+  /// <summary>HTTP 动作执行器</summary>
+  THTTPActionExecutor = class(TInterfacedObject, IActionExecutor)
+  public
+    function Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
+    function CanHandle(AActionType: TActionType): Boolean;
+  end;
+
+  /// <summary>Script 动作执行器</summary>
+  TScriptActionExecutor = class(TInterfacedObject, IActionExecutor)
+  public
+    function Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
+    function CanHandle(AActionType: TActionType): Boolean;
+  end;
+
 implementation
 
 uses
-  System.StrUtils, System.DateUtils, System.Math, System.RegularExpressions;
-
+  System.StrUtils, System.DateUtils, System.Math, System.RegularExpressions,
+  System.Net.HttpClient, System.IOUtils, System.Diagnostics;
 // ============================================================================
 // TStepResult
 // ============================================================================
@@ -265,7 +290,7 @@ end;
 
 destructor TStepResult.Destroy;
 begin
-  // CODE-001: 仅在拥有所有权时释�?
+  // CODE-001: 仅在拥有所有权时释�?
   if FOwnsOutput then
     FOutput.Free;
   FWaitData.Free;
@@ -274,7 +299,7 @@ end;
 
 procedure TStepResult.SetOutput(AValue: TJSONValue);
 begin
-  // CODE-001: 设置新值前释放旧�?
+  // CODE-001: 设置新值前释放旧�?
   if FOwnsOutput and (FOutput <> AValue) then
     FOutput.Free;
   FOutput := AValue;
@@ -282,7 +307,7 @@ end;
 
 function TStepResult.ReleaseOutput: TJSONValue;
 begin
-  // CODE-001: 释放所有权并返�?
+  // CODE-001: 释放所有权并返�?
   Result := FOutput;
   FOutput := nil;
   FOwnsOutput := False;
@@ -411,10 +436,13 @@ begin
   FCancelled := False;
   FRetryCount := TDictionary<string, Integer>.Create;
   
-  // 注册内置执行�?
+  // 注册内置执行器
   RegisterActionExecutor(TLogActionExecutor.Create);
   RegisterActionExecutor(TAssignActionExecutor.Create);
   RegisterActionExecutor(TGuardActionExecutor.Create);
+  RegisterActionExecutor(TSkillActionExecutor.Create);
+  RegisterActionExecutor(THTTPActionExecutor.Create);
+  RegisterActionExecutor(TScriptActionExecutor.Create);
 end;
 
 destructor TWorkflowExecutor.Destroy;
@@ -459,7 +487,7 @@ begin
     FCursor.StepIndex := I;
     FCursor.StepId := Step.Id;
     
-    // 检查执行条�?
+    // 检查执行条�?
     if Assigned(Step.Condition) then
     begin
       if not FEvaluator.Evaluate(Step.Condition) then
@@ -708,7 +736,7 @@ function TWorkflowExecutor.ExecuteAction(AStep: TWorkflowStep): TStepResult;
 var
   Executor: IActionExecutor;
 begin
-  Result := nil;  // CODE-003: 初始�?
+  Result := nil;  // CODE-003: 初始�?
   try
     // 查找能处理此动作类型的执行器
     for Executor in FActionExecutors do
@@ -741,7 +769,7 @@ begin
   except
     on E: Exception do
     begin
-      // CODE-003: 异常时释放已创建的结�?
+      // CODE-003: 异常时释放已创建的结�?
       FreeAndNil(Result);
       Result := TStepResult.Fail(ERR_EXECUTION_FAILED, E.Message);
     end;
@@ -764,7 +792,7 @@ begin
     // 求值条件表达式
     ExprValue := FContext.ResolveString(AStep.Expression);
     
-    // 查找匹配的分�?
+    // 查找匹配的分�?
     for Branch in AStep.Branches do
     begin
       if Branch.IsDefault then
@@ -787,7 +815,7 @@ begin
     if SelectedBranch = nil then
       Exit(TStepResult.OK);
     
-    // 执行选中分支的步�?
+    // 执行选中分支的步�?
     FContext.PushScope(vsStep, AStep.Id + '.branch');
     try
       for SubStep in SelectedBranch.Steps do
@@ -817,7 +845,7 @@ begin
   except
     on E: Exception do
     begin
-      // CODE-003: 异常时释放已创建的结�?
+      // CODE-003: 异常时释放已创建的结�?
       FreeAndNil(Result);
       Result := TStepResult.Fail(ERR_CONDITION_ERROR, E.Message);
     end;
@@ -830,7 +858,7 @@ var
 begin
   Result := False;
   
-  // 使用 when 值匹�?
+  // 使用 when 值匹�?
   if Assigned(ABranch.WhenValue) then
   begin
     if ABranch.WhenValue is TJSONString then
@@ -840,7 +868,7 @@ begin
     else if ABranch.WhenValue is TJSONNumber then
       Result := AExprValue = ABranch.WhenValue.Value;
   end
-  // 使用 match 表达�?
+  // 使用 match 表达�?
   else if ABranch.MatchExpr <> '' then
   begin
     Value := TVariableValue.Create(AExprValue);
@@ -898,7 +926,7 @@ begin
               FContext.SetVariable(AStep.LoopConfig.ItemVariable, TVariableValue.Create(Item));
               FContext.SetVariable(AStep.LoopConfig.IndexVariable, TVariableValue.Create(Int64(I)));
               
-              // 执行循环�?
+              // 执行循环�?
               for SubStep in AStep.LoopSteps do
               begin
                 if FCancelled then Break;
@@ -940,7 +968,7 @@ begin
         
         while (Iteration < AStep.LoopConfig.MaxIterations) and not FCancelled do
         begin
-          // 检查条�?
+          // 检查条�?
           if Assigned(AStep.LoopConfig.Condition) then
           begin
             if not FEvaluator.Evaluate(AStep.LoopConfig.Condition) then
@@ -1043,9 +1071,9 @@ var
   FailFast: Boolean;
   CancelFlag: Boolean;
 begin
-  // ARCH-004: 真正的并行执行实�?
+  // ARCH-004: 真正的并行执行实�?
   
-  // 计算需要执行的分支�?
+  // 计算需要执行的分支�?
   BranchCount := 0;
   for Branch in AStep.ParallelBranches do
   begin
@@ -1060,7 +1088,7 @@ begin
   if BranchCount = 0 then
     Exit(TStepResult.OK);
   
-  // 初始化数�?
+  // 初始化数�?
   SetLength(BranchResults, BranchCount);
   SetLength(Tasks, BranchCount);
   SetLength(BranchContexts, BranchCount);
@@ -1069,13 +1097,13 @@ begin
   CancelFlag := False;
   
   try
-    // 为每个分支创建独立上下文和任�?
+    // 为每个分支创建独立上下文和任�?
     I := 0;
     for Branch in AStep.ParallelBranches do
     begin
       if FCancelled then Break;
       
-      // 检查分支条�?
+      // 检查分支条�?
       if Assigned(Branch.Condition) then
       begin
         if not FEvaluator.Evaluate(Branch.Condition) then
@@ -1087,7 +1115,7 @@ begin
       BranchContexts[I].PushScope(vsStep, AStep.Id + '.parallel.' + Branch.Id);
       BranchResults[I] := nil;
       
-      // 捕获当前索引和分�?
+      // 捕获当前索引和分�?
       var BranchIdx := I;
       var CurrentBranch := Branch;
       var BranchCtx := BranchContexts[I];
@@ -1104,7 +1132,7 @@ begin
           try
             for SubStep in CurrentBranch.Steps do
             begin
-              // 检查取消标�?
+              // 检查取消标�?
               if FCancelled or CancelFlag then
               begin
                 FreeAndNil(StepResult);
@@ -1114,7 +1142,7 @@ begin
               
               FreeAndNil(StepResult);
               
-              // 执行步骤 (使用分支上下�?
+              // 执行步骤 (使用分支上下�?
               case SubStep.StepType of
                 stAction:
                 begin
@@ -1131,7 +1159,7 @@ begin
                     StepResult := TStepResult.Fail(ERR_NO_EXECUTOR, 'No executor for action');
                 end;
               else
-                StepResult := TStepResult.OK;  // 简�? 并行内仅支持 Action
+                StepResult := TStepResult.OK;  // 简�? 并行内仅支持 Action
               end;
               
               if not StepResult.Success then
@@ -1158,12 +1186,12 @@ begin
       Inc(I);
     end;
     
-    // 启动所有任�?
+    // 启动所有任�?
     for I := 0 to BranchCount - 1 do
       if Tasks[I] <> nil then
         Tasks[I].Start;
     
-    // 等待所有任务完�?
+    // 等待所有任务完�?
     TTask.WaitForAll(Tasks);
     
     // 合并结果
@@ -1236,13 +1264,13 @@ var
   SubExecutor: TWorkflowExecutor;
   SubWorkflow: TWorkflowDefinition;
 begin
-  // CODE-005: 子工作流使用克隆的独立上下文，避免变量污�?
+  // CODE-005: 子工作流使用克隆的独立上下文，避免变量污�?
   Result := nil;
   SubContext := nil;
   SubExecutor := nil;
   
   try
-    // 加载子工作流定义 (实际应该从仓库加�?
+    // 加载子工作流定义 (实际应该从仓库加�?
     SubWorkflow := nil;  // TODO: WorkflowRepository.Load(AStep.SubWorkflowId)
     if SubWorkflow = nil then
     begin
@@ -1256,7 +1284,7 @@ begin
     SubContext.CorrelationId := FContext.CorrelationId;  // 保持关联 ID
     SubContext.UserId := FContext.UserId;
     
-    // 仅复制明确传递的输入参数，而非整个上下�?
+    // 仅复制明确传递的输入参数，而非整个上下�?
     if Assigned(AStep.Action) and Assigned(AStep.Action.Params) then
     begin
       for var I := 0 to AStep.Action.Params.Count - 1 do
@@ -1277,8 +1305,8 @@ begin
       // 执行子工作流
       Result := SubExecutor.Start;
       
-      // CODE-005: 子工作流结果不会自动合并到父上下�?
-      // 仅通过明确的输出配置传递结�?
+      // CODE-005: 子工作流结果不会自动合并到父上下�?
+      // 仅通过明确的输出配置传递结�?
     finally
       SubExecutor.Free;
     end;
@@ -1303,7 +1331,7 @@ begin
   // 先检查步骤级错误处理
   Handler := FindErrorHandler(AStep, AResult.ErrorCode);
   
-  // 再检查工作流级错误处�?
+  // 再检查工作流级错误处�?
   if Handler = nil then
   begin
     for var WfHandler in FWorkflow.ErrorHandlers do
@@ -1330,7 +1358,7 @@ begin
     begin
       FRetryCount.AddOrSetValue(RetryKey, CurrentRetry + 1);
       
-      // 应用退避策�?
+      // 应用退避策�?
       if AStep.Action.RetryPolicy <> nil then
         ApplyRetryPolicy(AStep, AStep.Action.RetryPolicy);
       
@@ -1397,7 +1425,7 @@ begin
   else
     DelayMs := ARetryPolicy.BaseDelayMs;
   
-  // 限制最大延�?
+  // 限制最大延�?
   if DelayMs > ARetryPolicy.MaxDelayMs then
     DelayMs := ARetryPolicy.MaxDelayMs;
   
@@ -1409,10 +1437,10 @@ procedure TWorkflowExecutor.SaveStepOutput(AStep: TWorkflowStep; AResult: TStepR
 begin
   if AResult.Output = nil then Exit;
   
-  // 保存到步骤输�?
+  // 保存到步骤输�?
   FContext.SetStepOutput(AStep.Id, AResult.Output);
   
-  // 保存到指定变�?
+  // 保存到指定变�?
   if AStep.Output.Variable <> '' then
     FContext.SetVariable(AStep.Output.Variable, TVariableValue.Create(AResult.Output));
 end;
@@ -1560,7 +1588,7 @@ begin
     
     FieldValue := AContext.GetVariable('input.' + Field);
     try
-      // 必填检�?
+      // 必填检�?
       if Rule.TryGetValue<string>('type', RuleType) then
       begin
         if RuleType = 'required' then
@@ -1570,7 +1598,7 @@ begin
         end;
       end;
       
-      // 长度检�?
+      // 长度检�?
       if Rule.TryGetValue<Integer>('minLength', MinLen) then
       begin
         if Length(FieldValue.AsString) < MinLen then
@@ -1604,6 +1632,216 @@ function TGuardActionExecutor.ValidateOutput(AContext: TWorkflowContext; ARules:
 begin
   // TODO: 实现输出验证
   Result := TStepResult.OK;
+end;
+
+// ============================================================================
+// TSkillActionExecutor
+// ============================================================================
+
+constructor TSkillActionExecutor.Create(const ASkillServiceURL: string; ADefaultTimeout: Integer);
+begin
+  inherited Create;
+  FSkillServiceURL := ASkillServiceURL;
+  FDefaultTimeout := ADefaultTimeout;
+end;
+
+function TSkillActionExecutor.Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
+var
+  HTTPClient: THTTPClient;
+  HTTPResponse: IHTTPResponse;
+  SkillURL: string;
+  RequestBody: TStringStream;
+  ResponseBody: string;
+  OutputObj: TJSONObject;
+begin
+  SkillURL := AAction.SkillId;
+  if SkillURL = '' then
+    SkillURL := FSkillServiceURL;
+  
+  if SkillURL = '' then
+    Exit(TStepResult.Fail(ERR_SKILL_NOT_IMPLEMENTED, 'Skill service URL is not configured'));
+  
+  HTTPClient := THTTPClient.Create;
+  try
+    HTTPClient.Timeout := FDefaultTimeout;
+    
+    RequestBody := nil;
+    try
+      if Assigned(AAction.Params) then
+        RequestBody := TStringStream.Create(AAction.Params.ToJSON, TEncoding.UTF8);
+      
+      HTTPResponse := HTTPClient.Post(SkillURL, RequestBody);
+      ResponseBody := HTTPResponse.ContentAsString(TEncoding.UTF8);
+      
+      OutputObj := TJSONObject.Create;
+      OutputObj.AddPair('content', ResponseBody);
+      OutputObj.AddPair('status_code', TJSONNumber.Create(HTTPResponse.StatusCode));
+      
+      Result := TStepResult.OK(OutputObj);
+    finally
+      RequestBody.Free;
+    end;
+  except
+    on E: Exception do
+      Result := TStepResult.Fail(ERR_SKILL_CALL_FAILED, Format('Skill execution failed: %s', [E.Message]));
+  finally
+    HTTPClient.Free;
+  end;
+end;
+
+function TSkillActionExecutor.CanHandle(AActionType: TActionType): Boolean;
+begin
+  Result := AActionType = atSkill;
+end;
+
+// ============================================================================
+// THTTPActionExecutor
+// ============================================================================
+
+function THTTPActionExecutor.Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
+var
+  HTTPClient: THTTPClient;
+  HTTPResponse: IHTTPResponse;
+  URL: string;
+  RequestBody: TStringStream;
+  ResponseBody: string;
+  Header: TJSONPair;
+  OutputObj: TJSONObject;
+begin
+  URL := AContext.ResolveString(AAction.HttpUrl);
+  if URL = '' then
+    Exit(TStepResult.Fail(ERR_HTTP_NOT_IMPLEMENTED, 'HTTP URL is empty'));
+  
+  HTTPClient := THTTPClient.Create;
+  try
+    HTTPClient.Timeout := AAction.TimeoutMs;
+    
+    // Apply custom headers
+    if Assigned(AAction.HttpHeaders) then
+      for Header in AAction.HttpHeaders do
+        HTTPClient.CustomHeaders[Header.JsonString.Value] := Header.JsonValue.Value;
+    
+    RequestBody := nil;
+    try
+      if AAction.HttpBody <> '' then
+        RequestBody := TStringStream.Create(AContext.ResolveString(AAction.HttpBody), TEncoding.UTF8);
+      
+      case AAction.HttpMethod.ToUpper of
+        'GET':    HTTPResponse := HTTPClient.Get(URL);
+        'POST':   HTTPResponse := HTTPClient.Post(URL, RequestBody);
+        'PUT':    HTTPResponse := HTTPClient.Put(URL, RequestBody);
+        'DELETE': HTTPResponse := HTTPClient.Delete(URL);
+        'PATCH':  HTTPResponse := HTTPClient.Patch(URL, RequestBody);
+      else
+        HTTPResponse := HTTPClient.Get(URL);
+      end;
+      
+      ResponseBody := HTTPResponse.ContentAsString(TEncoding.UTF8);
+      
+      OutputObj := TJSONObject.Create;
+      OutputObj.AddPair('status_code', TJSONNumber.Create(HTTPResponse.StatusCode));
+      OutputObj.AddPair('content', ResponseBody);
+      
+      Result := TStepResult.OK(OutputObj);
+    finally
+      RequestBody.Free;
+    end;
+  except
+    on E: Exception do
+      Result := TStepResult.Fail(ERR_HTTP_CALL_FAILED, Format('HTTP request failed: %s', [E.Message]));
+  finally
+    HTTPClient.Free;
+  end;
+end;
+
+function THTTPActionExecutor.CanHandle(AActionType: TActionType): Boolean;
+begin
+  Result := AActionType = atHttp;
+end;
+
+// ============================================================================
+// TScriptActionExecutor
+// ============================================================================
+
+function TScriptActionExecutor.Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
+var
+  ScriptCode: string;
+  ScriptLang: string;
+  TempFile: string;
+  OutputLines: TArray<string>;
+  ExitCode: Integer;
+  CommandLine: string;
+  OutputObj: TJSONObject;
+begin
+  ScriptCode := AContext.ResolveString(AAction.ScriptCode);
+  ScriptLang := AAction.ScriptLang.ToLower;
+  
+  if ScriptCode = '' then
+    Exit(TStepResult.Fail(ERR_SCRIPT_NOT_IMPLEMENTED, 'Script code is empty'));
+  
+  try
+    // Write script to temp file and execute
+    TempFile := TPath.GetTempFileName;
+    try
+      TFile.WriteAllText(TempFile, ScriptCode, TEncoding.UTF8);
+      
+      if ScriptLang = 'python' then
+        CommandLine := Format('python "%s"', [TempFile])
+      else if ScriptLang = 'node' then
+        CommandLine := Format('node "%s"', [TempFile])
+      else if ScriptLang = 'powershell' then
+        CommandLine := Format('powershell -File "%s"', [TempFile])
+      else if ScriptLang = 'batch' then
+        CommandLine := Format('cmd /c "%s"', [TempFile])
+      else
+        CommandLine := Format('python "%s"', [TempFile]);  // Default to python
+      
+      ExitCode := RunScriptProcess(CommandLine, OutputLines);
+      
+      OutputObj := TJSONObject.Create;
+      OutputObj.AddPair('exit_code', TJSONNumber.Create(ExitCode));
+      OutputObj.AddPair('output', string.Join(sLineBreak, OutputLines));
+      
+      Result := TStepResult.OK(OutputObj);
+    finally
+      TFile.Delete(TempFile);
+    end;
+  except
+    on E: Exception do
+      Result := TStepResult.Fail(ERR_SCRIPT_CALL_FAILED, Format('Script execution failed: %s', [E.Message]));
+  end;
+end;
+
+function TScriptActionExecutor.CanHandle(AActionType: TActionType): Boolean;
+begin
+  Result := AActionType = atScript;
+end;
+
+function RunScriptProcess(const ACommandLine: string; var AOutputLines: TArray<string>): Integer;
+var
+  Process: TProcess;
+  OutputStream: TStringStream;
+begin
+  Process := TProcess.Create(nil);
+  try
+    Process.Executable := 'cmd.exe';
+    Process.Parameters.Add('/c');
+    Process.Parameters.Add(ACommandLine);
+    Process.Options := [poUsePipes, poWaitOnExit];
+    Process.ShowWindow := swHIDE;
+    
+    OutputStream := TStringStream.Create('', TEncoding.UTF8);
+    try
+      Process.Execute;
+      OutputStream.LoadFromStream(Process.Output);
+      AOutputLines := OutputStream.DataString.Split([sLineBreak], TStringSplitOptions.ExcludeEmpty);
+      Result := Process.ExitCode;
+    finally
+      OutputStream.Free;
+    end;
+  finally
+    Process.Free;
+  end;
 end;
 
 end.

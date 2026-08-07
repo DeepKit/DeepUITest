@@ -114,7 +114,7 @@ type
     destructor Destroy; override;
 
     function Execute(const Action: TActionDefinition; Context: TWorkflowContext): TStepResult;
-    function GetActionType: TActionType;
+    function CanHandle(AActionType: TActionType): Boolean;
   end;
 
 /// <summary>
@@ -125,7 +125,8 @@ procedure RegisterLLMExecutor(Executor: TWorkflowExecutor; LLM: TDeepBaseLLM);
 implementation
 
 uses
-  System.StrUtils;
+  System.StrUtils,
+  DeepFlow.Workflow.Errors;
 
 { TLLMExecutionOptions }
 
@@ -342,28 +343,21 @@ function TDeepFlowLLMAdapter.ExecuteFromAction(const Action: TActionDefinition;
   Context: TWorkflowContext): TLLMExecutionResult;
 var
   Options: TLLMExecutionOptions;
-  ParamsJSON: TJSONObject;
 begin
   Result.Init;
 
   // Extract options from action parameters
   Options.Init;
 
-  // Parse action.Params (JSON string) to extract LLM options
-  if not Action.Params.IsEmpty then
+  // Use action.Params directly (already TJSONObject)
+  if Assigned(Action.Params) and (Action.Params.Count > 0) then
   begin
     try
-      ParamsJSON := TJSONObject.ParseJSONValue(Action.Params) as TJSONObject;
-      if Assigned(ParamsJSON) then
-      try
-        Options := TLLMExecutionOptions.FromJSON(ParamsJSON);
-      finally
-        ParamsJSON.Free;
-      end;
+      Options := TLLMExecutionOptions.FromJSON(Action.Params);
     except
       on E: Exception do
       begin
-        // ENTROPY-011: 记录参数解析失败，使用默认�?
+        // ENTROPY-011: 记录参数解析失败，使用默认值
         {$IFDEF DEBUG}
         OutputDebugString(PChar(Format('[LLMAdapter] Action params parsing failed: %s', [E.Message])));
         {$ENDIF}
@@ -372,8 +366,8 @@ begin
   end;
 
   // Override with action-level settings if present
-  if not Action.Skill.IsEmpty then
-    Options.ConfigName := Action.Skill;
+  if Action.SkillId <> '' then
+    Options.ConfigName := Action.SkillId;
 
   // Execute
   Result := Execute(Options, Context);
@@ -427,39 +421,30 @@ function TLLMActionExecutor.Execute(const Action: TActionDefinition;
   Context: TWorkflowContext): TStepResult;
 var
   LLMResult: TLLMExecutionResult;
+  OutputObj: TJSONObject;
 begin
-  Result.Init;
-  Result.StepId := ''; // Will be set by executor
-
   if not Assigned(FAdapter) then
-  begin
-    Result.Status := esFailed;
-    Result.ErrorMessage := 'LLM adapter not configured';
-    Exit;
-  end;
+    Exit(TStepResult.Fail(ERR_LLM_CALL_FAILED, 'LLM adapter not configured'));
 
   LLMResult := FAdapter.ExecuteFromAction(Action, Context);
 
   if LLMResult.Success then
   begin
-    Result.Status := esCompleted;
-    // Store response in outputs
-    Result.Outputs := TDictionary<string, TVariableValue>.Create;
-    Result.Outputs.Add('content', TVariableValue.FromString(LLMResult.Content));
-    Result.Outputs.Add('input_tokens', TVariableValue.FromInteger(LLMResult.InputTokens));
-    Result.Outputs.Add('output_tokens', TVariableValue.FromInteger(LLMResult.OutputTokens));
-    Result.Outputs.Add('duration_ms', TVariableValue.FromInteger(LLMResult.DurationMs));
+    OutputObj := TJSONObject.Create;
+    OutputObj.AddPair('content', LLMResult.Content);
+    OutputObj.AddPair('input_tokens', TJSONNumber.Create(LLMResult.InputTokens));
+    OutputObj.AddPair('output_tokens', TJSONNumber.Create(LLMResult.OutputTokens));
+    OutputObj.AddPair('duration_ms', TJSONNumber.Create(LLMResult.DurationMs));
+
+    Result := TStepResult.OK(OutputObj);
   end
   else
-  begin
-    Result.Status := esFailed;
-    Result.ErrorMessage := LLMResult.ErrorMessage;
-  end;
+    Result := TStepResult.Fail(ERR_LLM_CALL_FAILED, LLMResult.ErrorMessage);
 end;
 
-function TLLMActionExecutor.GetActionType: TActionType;
+function TLLMActionExecutor.CanHandle(AActionType: TActionType): Boolean;
 begin
-  Result := atLLM;
+  Result := AActionType = atLLM;
 end;
 
 { Helper }
