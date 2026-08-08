@@ -1,0 +1,18 @@
+# === DeepFlow 构建产物（本地生成，不应提交）===
+bin/
+BuildOutput/
+outputs/
+benchmark_*.json
+
+# === 编译辅助产物 ===
+build.rsp.tmp
+dcc_opts.rsp
+compile_out.txt
+compile_one_out.txt
+compile_all_out.txt
+damage_report.txt
+
+# === 一次性运行包装脚本 ===
+run_compile.cmd
+compile_one.cmd
+compile_deepbase.cmd
