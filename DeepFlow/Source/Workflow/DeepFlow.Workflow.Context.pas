@@ -3,11 +3,11 @@ unit DeepFlow.Workflow.Context;
   DeepFlow Workflow Context
   ========================
   工作流执行上下文管理，包括：
-  - 变量作用域管理（global/workflow/step/input/output�?
-  - 变量引用解析（{{ vars.xxx }} 语法�?
-  - 条件表达式求�?
+  - 变量作用域管理（global/workflow/step/input/output�?
+  - 变量引用解析（{{ vars.xxx }} 语法�?
+  - 条件表达式求�?
   
-  参�? 05.03.API-DeepFlow-Workflow定义规范-v1.0.md �?�?
+  参�? 05.03.API-DeepFlow-Workflow定义规范-v1.0.md �?�?
 *)
 
 interface
@@ -15,24 +15,25 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
   System.JSON, System.RegularExpressions, System.Variants,
+  System.SyncObjs,
   DeepFlow.Workflow.Definition,
   DeepBase.Exceptions;
 
 type
   // ============================================================================
-  // 变量作用�?
+  // 变量作用�?
   // ============================================================================
   
   TVariableScope = (
-    vsGlobal,     // 全局变量（跨 Workflow�?
-    vsWorkflow,   // Workflow 级变�?
-    vsStep,       // 步骤级变�?
+    vsGlobal,     // 全局变量（跨 Workflow�?
+    vsWorkflow,   // Workflow 级变�?
+    vsStep,       // 步骤级变�?
     vsInput,      // 输入变量
     vsOutput      // 输出变量
   );
   
   // ============================================================================
-  // 变量值包�?
+  // 变量值包�?
   // ============================================================================
   
   TVariableValue = class
@@ -70,7 +71,7 @@ type
   end;
   
   // ============================================================================
-  // 作用域栈�?
+  // 作用域栈�?
   // ============================================================================
   
   TScopeFrame = class
@@ -93,7 +94,7 @@ type
   end;
   
   // ============================================================================
-  // Workflow 上下�?
+  // Workflow 上下�?
   // ============================================================================
   
   TWorkflowContext = class
@@ -105,6 +106,7 @@ type
     
     FScopeStack: TObjectList<TScopeFrame>;
     FStepOutputs: TObjectDictionary<string, TJSONValue>;  // stepId -> output
+    FLock: TCriticalSection;  // 并发保护（Clone/遍历共享结构时加锁）
     
     function GetCurrentScope: TScopeFrame;
     function FindVariableInStack(const APath: string; out AValue: TVariableValue): Boolean;
@@ -113,7 +115,7 @@ type
     constructor Create(const AWorkflowId, AInstanceId: string);
     destructor Destroy; override;
     
-    // 作用域管�?
+    // 作用域管�?
     procedure PushScope(AScope: TVariableScope; const AName: string);
     procedure PopScope;
     function GetScopeDepth: Integer;
@@ -133,17 +135,17 @@ type
     procedure SetStepOutput(const AStepId: string; AOutput: TJSONValue);
     function GetStepOutput(const AStepId: string): TJSONValue;
     
-    // 表达式解�?
-    /// <summary>解析字符串中的变量引�?{{ xxx }}</summary>
+    // 表达式解�?
+    /// <summary>解析字符串中的变量引�?{{ xxx }}</summary>
     function ResolveString(const ATemplate: string): string;
     
-    /// <summary>解析并返�?JSON �?/summary>
+    /// <summary>解析并返�?JSON �?/summary>
     function ResolveJSON(const ATemplate: string): TJSONValue;
     
-    /// <summary>解析变量路径（如 vars.user.name�?/summary>
+    /// <summary>解析变量路径（如 vars.user.name�?/summary>
     function ResolvePath(const APath: string): TVariableValue;
     
-    // 上下文信�?
+    // 上下文信�?
     property WorkflowId: string read FWorkflowId;
     property InstanceId: string read FInstanceId;
     property CorrelationId: string read FCorrelationId write FCorrelationId;
@@ -159,7 +161,7 @@ type
   // 表达式求值器
   // ============================================================================
   
-  /// <summary>允许的表达式函数白名�?/summary>
+  /// <summary>允许的表达式函数白名�?/summary>
   TExpressionWhitelist = class
   private
     class var FAllowedFunctions: TList<string>;
@@ -178,7 +180,7 @@ type
   TExpressionEvaluator = class
   private
     FContext: TWorkflowContext;
-    FSafeMode: Boolean;  // SEC-001: 安全模式启用白名单验�?
+    FSafeMode: Boolean;  // SEC-001: 安全模式启用白名单验�?
     
     function CompareValues(ALeft, ARight: TVariableValue; AOp: TConditionOperator): Boolean;
     function EvaluateCondition(ACond: TConditionExpression): Boolean;
@@ -189,13 +191,13 @@ type
     /// <summary>求值条件表达式</summary>
     function Evaluate(ACond: TConditionExpression): Boolean; overload;
     
-    /// <summary>求值简单表达式字符�?/summary>
+    /// <summary>求值简单表达式字符�?/summary>
     function Evaluate(const AExpr: string): Boolean; overload;
     
-    /// <summary>求值并返回�?/summary>
+    /// <summary>求值并返回�?/summary>
     function EvaluateValue(const AExpr: string): TVariableValue;
     
-    /// <summary>检�?match 表达式（�?">= 0.9"�?/summary>
+    /// <summary>检�?match 表达式（�?">= 0.9"�?/summary>
     function MatchExpression(AValue: TVariableValue; const AMatchExpr: string): Boolean;
     
     /// <summary>安全模式 - 启用表达式白名单验证</summary>
@@ -320,7 +322,21 @@ begin
     'i': Result := IntToStr(FIntValue);
     'f': Result := FloatToStr(FFloatValue);
     'b': Result := BoolToStr(FBoolValue, True);
-    'j': if FJsonValue <> nil then Result := FJsonValue.ToJSON else Result := '';
+    'j':
+      if FJsonValue <> nil then
+      begin
+        // JSON 标量值返回无引号文本（TJSONString.ToJSON 会带引号）
+        if FJsonValue is TJSONString then
+          Result := TJSONString(FJsonValue).Value
+        else if FJsonValue is TJSONNumber then
+          Result := FJsonValue.ToJSON  // 数字字面量本就无引号
+        else if FJsonValue is TJSONBool then
+          Result := BoolToStr(TJSONBool(FJsonValue).AsBoolean, True)
+        else
+          Result := FJsonValue.ToJSON;
+      end
+      else
+        Result := '';
   else
     Result := '';
   end;
@@ -474,7 +490,7 @@ end;
 function TScopeFrame.GetVariable(const AName: string): TVariableValue;
 begin
   if FVariables.TryGetValue(AName, Result) then
-    // 返回克隆以避免外部修�?
+    // 返回克隆以避免外部修�?
     Result := Result.Clone
   else
     Result := nil;
@@ -510,8 +526,9 @@ begin
   
   FScopeStack := TObjectList<TScopeFrame>.Create(True);
   FStepOutputs := TObjectDictionary<string, TJSONValue>.Create([doOwnsValues]);
+  FLock := TCriticalSection.Create;
   
-  // 初始化全局�?Workflow 作用�?
+  // 初始化全局�?Workflow 作用�?
   PushScope(vsGlobal, 'global');
   PushScope(vsWorkflow, FWorkflowId);
   PushScope(vsInput, 'input');
@@ -519,6 +536,7 @@ end;
 
 destructor TWorkflowContext.Destroy;
 begin
+  FLock.Free;
   FScopeStack.Free;
   FStepOutputs.Free;
   inherited;
@@ -553,6 +571,10 @@ var
   CurrentScope: TScopeFrame;
 begin
   CurrentScope := GetCurrentScope;
+  // 输入作用域（vsInput）为只读输入区：无前缀变量默认写入 workflow（vars）作用域，
+  // 与文档契约一致（SetVariable('user_name', ...) 后可用 {{ vars.user_name }} 读取）
+  if (CurrentScope <> nil) and (CurrentScope.Scope = vsInput) and (FScopeStack.Count >= 2) then
+    CurrentScope := FScopeStack[FScopeStack.Count - 2];
   if CurrentScope <> nil then
     CurrentScope.SetVariable(AName, AValue);
 end;
@@ -616,10 +638,10 @@ begin
   // 解析路径
   ParseVariablePath(APath, ScopeName, VarPath);
   
-  // 特殊作用域处�?
+  // 特殊作用域处�?
   if ScopeName = 'input' then
   begin
-    // �?input 作用域查�?
+    // �?input 作用域查�?
     for I := FScopeStack.Count - 1 downto 0 do
     begin
       Frame := FScopeStack[I];
@@ -751,7 +773,7 @@ begin
   end
   else if ScopeName = 'steps' then
   begin
-    // 从步骤输出查�?
+    // 从步骤输出查�?
     DotPos := Pos('.', VarPath);
     if DotPos > 0 then
     begin
@@ -784,7 +806,7 @@ begin
   end
   else if ScopeName = 'ctx' then
   begin
-    // 上下文变�?
+    // 上下文变�?
     if VarPath = 'workflowId' then
       AValue := TVariableValue.Create(FWorkflowId)
     else if VarPath = 'instanceId' then
@@ -864,7 +886,7 @@ begin
     Match := Matches[I];
     VarPath := Match.Groups[1].Value;
     
-    // 处理过滤器（�?| default('xxx')�?
+    // 处理过滤器（�?| default('xxx')�?
     var FilterPos := Pos('|', VarPath);
     if FilterPos > 0 then
     begin
@@ -875,7 +897,7 @@ begin
       try
         if Value.IsNull or Value.IsEmpty then
         begin
-          // 处理 default 过滤�?
+          // 处理 default 过滤�?
           if StartsText('default(', FilterExpr) then
           begin
             var DefaultVal := Copy(FilterExpr, 9, Length(FilterExpr) - 9);
@@ -891,13 +913,15 @@ begin
         begin
           ResolvedValue := Value.AsString;
           
-          // 应用其他过滤�?
+          // 应用其他过滤�?
           if FilterExpr = 'upper' then
             ResolvedValue := UpperCase(ResolvedValue)
           else if FilterExpr = 'lower' then
             ResolvedValue := LowerCase(ResolvedValue)
           else if FilterExpr = 'trim' then
             ResolvedValue := Trim(ResolvedValue)
+          else if StartsText('length', FilterExpr) then
+            ResolvedValue := IntToStr(Length(ResolvedValue))  // length 过滤器（支持 `length > 0` 形式）
           else if FilterExpr = 'json' then
           begin
             var JsonVal := Value.AsJSON;
@@ -940,7 +964,7 @@ var
 begin
   ResolvedStr := ResolveString(ATemplate);
   
-  // 尝试解析�?JSON
+  // 尝试解析�?JSON
   try
     Result := TJSONObject.ParseJSONValue(ResolvedStr);
     if Result = nil then
@@ -1060,7 +1084,10 @@ begin
   Result.FCorrelationId := FCorrelationId;
   Result.FUserId := FUserId;
   
-  // 复制作用�?
+  // 并发保护：多个线程同时 Clone 同一 Context 时串行化遍历
+  FLock.Enter;
+  try
+  // 复制作用�?
   Result.FScopeStack.Clear;
   for var Frame in FScopeStack do
   begin
@@ -1079,6 +1106,9 @@ begin
   // 复制步骤输出
   for var Pair in FStepOutputs do
     Result.FStepOutputs.Add(Pair.Key, Pair.Value.Clone as TJSONValue);
+  finally
+    FLock.Leave;
+  end;
 end;
 
 // ============================================================================
@@ -1094,7 +1124,7 @@ begin
   FAllowedFunctions := TList<string>.Create;
   FAllowedOperators := TList<string>.Create;
   
-  // 默认允许的函�?
+  // 默认允许的函�?
   FAllowedFunctions.AddRange(['length', 'count', 'sum', 'avg', 'min', 'max',
     'trim', 'upper', 'lower', 'substr', 'concat', 'split', 'join',
     'now', 'today', 'formatdate', 'parsedate',
@@ -1175,13 +1205,13 @@ end;
 
 function TExpressionEvaluator.ValidateExpression(const AExpr: string): Boolean;
 begin
-  // SEC-001: 白名单验�?
+  // SEC-001: 白名单验�?
   Result := True;
   
   if not FSafeMode then
     Exit;
   
-  // 检查危险模�?
+  // 检查危险模�?
   if TExpressionWhitelist.ContainsDangerousPattern(AExpr) then
     Result := False;
 end;
@@ -1349,7 +1379,7 @@ begin
     end;
     
   else
-    // 二元操作�?
+    // 二元操作�?
     LeftValue := EvaluateValue(ACond.LeftExpr);
     try
       if ACond.Operator in [coIsEmpty, coIsNotEmpty] then
@@ -1379,14 +1409,14 @@ var
   ResolvedExpr: string;
   Cond: TConditionExpression;
 begin
-  // SEC-001: 白名单验�?
+  // SEC-001: 白名单验�?
   if not ValidateExpression(AExpr) then
     raise EOperationException.Create('Expression validation failed: potentially dangerous expression');
   
-  // 先解析变量引�?
+  // 先解析变量引�?
   ResolvedExpr := FContext.ResolveString(AExpr);
   
-  // 尝试直接作为布尔值解�?
+  // 尝试直接作为布尔值解�?
   if SameText(ResolvedExpr, 'true') then
     Exit(True);
   if SameText(ResolvedExpr, 'false') then
@@ -1407,7 +1437,7 @@ var
   IntVal: Int64;
   FloatVal: Double;
 begin
-  // 检查是否是字面�?
+  // 检查是否是字面�?
   if (Length(AExpr) >= 2) and CharInSet(AExpr[1], ['''', '"']) and (AExpr[Length(AExpr)] = AExpr[1]) then
   begin
     // 字符串字面量
@@ -1425,8 +1455,11 @@ begin
     Result := TVariableValue.Create(FloatVal)
   else
   begin
-    // 尝试作为变量路径解析
-    ResolvedStr := FContext.ResolveString('{{ ' + AExpr + ' }}');
+    // 尝试作为变量路径解析：已含 {{ }} 直接解析，避免嵌套包裹导致匹配失败
+    if Pos('{{', AExpr) > 0 then
+      ResolvedStr := FContext.ResolveString(AExpr)
+    else
+      ResolvedStr := FContext.ResolveString('{{ ' + AExpr + ' }}');
     
     // 尝试转换类型
     if TryStrToInt64(ResolvedStr, IntVal) then
@@ -1452,7 +1485,7 @@ begin
   ExprTrimmed := Trim(AMatchExpr);
   NumValue := AValue.AsFloat;
   
-  // 解析 match 表达�?
+  // 解析 match 表达�?
   if StartsStr('>=', ExprTrimmed) then
   begin
     Threshold := StrToFloatDef(Trim(Copy(ExprTrimmed, 3, Length(ExprTrimmed))), 0);
@@ -1480,7 +1513,7 @@ begin
     if ExprTrimmed[2] = '=' then StartPos := 3;
     var TargetStr := Trim(Copy(ExprTrimmed, StartPos, Length(ExprTrimmed)));
     
-    // 尝试数值比�?
+    // 尝试数值比�?
     if TryStrToFloat(TargetStr, Threshold) then
       Result := SameValue(NumValue, Threshold)
     else
@@ -1496,7 +1529,7 @@ begin
   end
   else
   begin
-    // 直接值比�?
+    // 直接值比�?
     Result := AValue.AsString = ExprTrimmed;
   end;
 end;

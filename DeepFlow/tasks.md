@@ -1,8 +1,8 @@
 # DeepFlow 开发任务清单
 
-> 更新日期：2026-08-07
+> 更新日期：2026-08-08
 >
-> 当前状态：**DeepFlow v1.0 核心完成 + 正名术语纠正完成 + 类型标识符重命名完成 + UTF-8 损坏修复完成 + 构建配置完成**
+> 当前状态：**DeepFlow v1.1 发布就绪 + 金路径闭环达成 + 六角色 LLM 真绿验证 + 104/104 测试全绿**
 
 ---
 
@@ -64,6 +64,54 @@
 | TASK-0103 | DeepBase 外部依赖路径配置 | 已完成 |
 | DeepFlow.dpk | DeepFlow 运行时包文件 | 已完成 |
 | DeepFlow.dproj | MSBuild 项目配置（含 DeepBase Core 搜索路径） | 已完成 |
+
+### 2026-08-07: Delphi 编译完整修复里程碑
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0104 | Source\*所有.pas 文件 Delphi 37 dcc32 编译通过 | 已完成 (零 Error) |
+| fix-nlwf | NLWorkflowGen.pas implicit forward + trailing comma | 已完成 |
+| fix-utf8 | 128 处代码字符串 UTF-8 损坏批量修复 | 已完成 |
+| fix-reco | Recommendation.pas TComparer/API mismatch 修复 | 已完成 |
+| fix-rabbitmq | RabbitMQ.pas 接口声明顺序修复 | 已完成 |
+| fix-kafka | Kafka.pas cross-unit reference + E2251 cascade | 已完成 |
+| fix-benchmark | Benchmark.pas Tests API 不匹配修复 | 已完成 |
+| fix-e2e | E2E.pas Tests API 不匹配修复 | 已完成 |
+| fix-executor | Executor.pas Uses/WillRaise/TTask.Run 修复 | 已完成 |
+| dcu-search-path | 添加 dcu 到 -U 搜索路径 | 已完成 |
+
+### 2026-08-07~08: DUnitX 测试驱动修复里程碑 (44→104 全绿)
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0105 | DUnitX 测试运行器建立（DeepFlow.Tests.Runner.dpr + XML 报告 + 逐 fixture 运行） | 已完成 |
+| TASK-0106 | Executor 测试 55/55（SetVariable 重定向/AsString 标量/表达式防嵌套/Start 保留输出/并行捕获修复/Mock 加锁） | 已完成 |
+| TASK-0107 | E2E 测试 29/29（Guard expression 守卫 + length 过滤器 + Session 定时器死锁 + 编译路径补 Source\Session） | 已完成 |
+| TASK-0108 | Benchmark 测试 20/20（TMemoryMonitor 匿名线程悬垂句柄 + LargeContext/LeakDetection JSON 泄漏修复） | 已完成 |
+| 测试总闸 | 104/104 通过，0 失败/0 泄漏/0 错误 | 已完成 (2026-08-08) |
+
+### 2026-08-08: Python Skill 服务真实联调里程碑
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0109 | Skills 服务依赖修复（补装 litellm/structlog/RestrictedPython/packaging，修复损坏 packaging 安装） | 已完成 |
+| TASK-0110 | 创建缺失 llm/client.py（LiteLLM 异步聊天客户端 + LLMConfig + ChatResult） | 已完成 |
+| TASK-0111 | Python Skill Service 启动验证：/health、/skills、/skills/execute 沙箱执行 5050、安全拦截 import os 拒绝 | 已完成 |
+| TASK-0112 | Delphi E2E 演示程序（DeepFlowSkillE2E.pas）：Health/ListSkills/沙箱执行/安全拦截四连验证 | 已完成 |
+| 联调成果 | Delphi TSkillClient ↔ Python FastAPI 全链路打通；修复 2 个真实契约 bug（见 bugfix.md BUG-2026-031/032） | 已完成 |
+| 回归验证 | 修改 Skill.Types/Client 后全量 104/104 仍全绿 | 已完成 |
+| LLM 真调 | /llm/chat 需要有效 OPENAI_API_KEY（当前环境网络受限，代码路径已就绪待真实 key） | 待真 key |
+
+### 2026-08-08: 金路径闭环 + 发布就绪（v1.1.0）
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0113 | LLM 链路修复（KIRO_API_KEY + DEFAULT_LLM_MODEL + LLM_BASE_URL 环境变量；Skills 服务重启后 /llm/chat 真实可用） | 已完成 |
+| TASK-0114 | 防假绿机制（六角色 system prompt 强制 JSON + _parse_response 围栏提取 + raw_analysis 检测主动降级） | 已完成 |
+| TASK-0115 | 聚合器扩容（max_tokens 8192 + _compact_view 输入压缩，修复真实数据截断降级） | 已完成 |
+| TASK-0116 | 金路径端到端演示（goldpath_demo.py 并行四视角 + 聚合 + 胶片 + 产物落盘） | 已完成 |
+| 发布验证 | Delphi 编译 64/64 + 测试 104/104 + 六角色 LLM 真绿 degraded=False + 端到端胶片产出 | 已完成 (2026-08-08) |
+| 版本 | CHANGELOG 更新至 v1.1.0 | 已完成 |
 
 ---
 

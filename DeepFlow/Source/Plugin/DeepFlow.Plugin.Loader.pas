@@ -737,11 +737,11 @@ begin
     begin
       {$IFDEF MSWINDOWS}
       try
-        UnloadPackage(Handle);
+        FreeLibrary(Handle);
       except
         on E: Exception do
         begin
-          // ENTROPY-011: 记录卸载错误（析构时允许继续�?
+          // ENTROPY-011: 记录卸载错误（析构时允许继续�?
           {$IFDEF DEBUG}
           OutputDebugString(PChar(Format('[PluginLoader] Package unload error: %s', [E.Message])));
           {$ENDIF}
@@ -800,7 +800,7 @@ begin
     @GetPluginFunc := GetProcAddress(Handle, 'GetDeepFlowPlugin');
     if not Assigned(GetPluginFunc) then
     begin
-      UnloadPackage(Handle);
+      FreeLibrary(Handle);
       Result := TPluginLoadResult.Fail(NormalizedPath, 'GetDeepFlowPlugin function not found');
       Exit;
     end;
@@ -810,14 +810,14 @@ begin
       Plugin := GetPluginFunc();
       if Plugin = nil then
       begin
-        UnloadPackage(Handle);
+        FreeLibrary(Handle);
         Result := TPluginLoadResult.Fail(NormalizedPath, 'GetDeepFlowPlugin returned nil');
         Exit;
       end;
     except
       on E: Exception do
       begin
-        UnloadPackage(Handle);
+        FreeLibrary(Handle);
         Result := TPluginLoadResult.Fail(NormalizedPath, 'Error calling GetDeepFlowPlugin: ' + E.Message);
         Exit;
       end;
@@ -1086,7 +1086,7 @@ end;
 
 class function TPluginLoaderConfig.Default: TPluginLoaderConfig;
 begin
-  Result := Default(TPluginLoaderConfig);
+  Result := System.Default(TPluginLoaderConfig);
   Result.PluginDir := TPath.Combine(ExtractFilePath(ParamStr(0)), 'Plugins');
   Result.DataDir := TPath.Combine(ExtractFilePath(ParamStr(0)), 'PluginData');
   Result.AutoDiscover := True;
@@ -1145,7 +1145,7 @@ begin
   // Load plugin config if exists
   ConfigFile := TPath.Combine(PluginDataDir, 'config.json');
   if TFile.Exists(ConfigFile) then
-    (Context.Config as TPluginConfig).LoadFromFile(ConfigFile);
+    (Context.GetConfig as TPluginConfig).LoadFromFile(ConfigFile);
   
   Result := Context;
 end;
@@ -1341,11 +1341,12 @@ procedure TPluginLoader.UnloadAll;
 var
   PluginIds: TArray<string>;
   PluginId: string;
+  I: Integer;
 begin
   FLock.Enter;
   try
     SetLength(PluginIds, FLoadedPlugins.Count);
-    var I := 0;
+    I := 0;
     for PluginId in FLoadedPlugins.Keys do
     begin
       PluginIds[I] := PluginId;
@@ -1364,7 +1365,7 @@ function TPluginLoader.ScanDirectory(const Directory: string): TArray<TPluginLoa
 var
   SearchDir: string;
   Pattern: string;
-  Files: TStringDynArray;
+  Files: TArray<string>;
   FilePath: string;
   ResultList: TList<TPluginLoadResult>;
 begin

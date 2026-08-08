@@ -520,7 +520,12 @@ end;
 
 class function TSkillInfo.FromJSON(const AJSON: TJSONObject): TSkillInfo;
 var
+  ParamsValue: TJSONValue;
   ParamsArray: TJSONArray;
+  ParamsObj, PropObj: TJSONObject;
+  RequiredArray: TJSONArray;
+  Pair: TJSONPair;
+  Param: TSkillParameter;
   I: Integer;
 begin
   Result := TSkillInfo.Create;
@@ -529,10 +534,45 @@ begin
   Result.Version := AJSON.GetValue<string>('version', '1.0.0');
   Result.Category := TSkillCategory.FromString(AJSON.GetValue<string>('category', 'custom'));
 
-  if AJSON.TryGetValue<TJSONArray>('parameters', ParamsArray) then
+  // Python Skill 服务返回 parameters 为 JSON Schema 对象 {type, properties, required};
+  // 兼容旧格式 parameters 为数组 [{name, type, description, required}, ...]
+  if AJSON.TryGetValue<TJSONValue>('parameters', ParamsValue) then
   begin
-    for I := 0 to ParamsArray.Count - 1 do
-      Result.Parameters.Add(TSkillParameter.FromJSON(ParamsArray.Items[I] as TJSONObject));
+    if ParamsValue is TJSONArray then
+    begin
+      ParamsArray := TJSONArray(ParamsValue);
+      for I := 0 to ParamsArray.Count - 1 do
+        Result.Parameters.Add(TSkillParameter.FromJSON(ParamsArray.Items[I] as TJSONObject));
+    end
+    else if ParamsValue is TJSONObject then
+    begin
+      ParamsObj := TJSONObject(ParamsValue);
+      if ParamsObj.TryGetValue<TJSONObject>('properties', PropObj) then
+      begin
+        RequiredArray := nil;
+        ParamsObj.TryGetValue<TJSONArray>('required', RequiredArray);
+        for Pair in PropObj do
+        begin
+          Param := TSkillParameter.Create;
+          Param.Name := Pair.JsonString.Value;
+          if Pair.JsonValue is TJSONObject then
+          begin
+            TJSONObject(Pair.JsonValue).GetValue<string>('type', Param.ParamType);
+            TJSONObject(Pair.JsonValue).GetValue<string>('description', Param.Description);
+          end;
+          // required 数组中包含参数名则必填（兼容旧格式：无 required 字段视为全必填）
+          Param.Required := (RequiredArray = nil);
+          if RequiredArray <> nil then
+            for I := 0 to RequiredArray.Count - 1 do
+              if RequiredArray.Items[I].Value = Param.Name then
+              begin
+                Param.Required := True;
+                Break;
+              end;
+          Result.Parameters.Add(Param);
+        end;
+      end;
+    end;
   end;
 end;
 

@@ -32,15 +32,15 @@ type
 
   /// <summary>认证类型 (SEC-004)</summary>
   TSkillAuthType = (
-    satNone,       // 无认�?
+    satNone,       // 无认�?
     satApiKey,     // API Key 认证
     satBearer,     // Bearer Token 认证
     satBasic       // Basic 认证
   );
 
   /// <summary>
-  /// Skill 客户端配�?
-  /// CODE-004: 所有超�?重试参数均可配置
+  /// Skill 客户端配�?
+  /// CODE-004: 所有超�?重试参数均可配置
   /// SEC-004: 支持多种认证方式
   /// </summary>
   TSkillClientConfig = class
@@ -58,20 +58,20 @@ type
     FBasicUsername: string;
     FBasicPassword: string;
     // CODE-004: 高级配置
-    FRetryBackoffMultiplier: Double;  // 退避乘�?
-    FMaxRetryDelayMs: Integer;        // 最大重试延�?
-    FEnableRetryOnTimeout: Boolean;   // 超时时重�?
-    FEnableRetryOn5xx: Boolean;       // 5xx 时重�?
+    FRetryBackoffMultiplier: Double;  // 退避乘�?
+    FMaxRetryDelayMs: Integer;        // 最大重试延�?
+    FEnableRetryOnTimeout: Boolean;   // 超时时重�?
+    FEnableRetryOn5xx: Boolean;       // 5xx 时重�?
   public
     constructor Create;
 
-    /// <summary>�?JSON 加载配置</summary>
+    /// <summary>�?JSON 加载配置</summary>
     procedure LoadFromJSON(AJson: TJSONObject);
-    /// <summary>导出�?JSON</summary>
+    /// <summary>导出�?JSON</summary>
     function ToJSON: TJSONObject;
-    /// <summary>从文件加�?/summary>
+    /// <summary>从文件加�?/summary>
     procedure LoadFromFile(const AFilePath: string);
-    /// <summary>保存到文�?/summary>
+    /// <summary>保存到文�?/summary>
     procedure SaveToFile(const AFilePath: string);
 
     // 基本配置
@@ -110,14 +110,14 @@ type
     FOwnsConfig: Boolean;
 
     function BuildURL(const AEndpoint: string): string;
-    procedure ApplyAuthentication;  // SEC-004: 应用认证�?
+    procedure ApplyAuthentication;  // SEC-004: 应用认证�?
     function CalculateRetryDelay(AAttempt: Integer): Integer;  // CODE-004: 计算重试延迟
     function ShouldRetry(AStatusCode: Integer; const AError: string): Boolean;  // CODE-004: 判断是否重试
     function DoRequest(const AMethod, AEndpoint: string;
-      const ABody: TJSONObject = nil): TJSONObject;
+      const ABody: TJSONObject = nil): TJSONValue;
     procedure DoRequestAsync(const AMethod, AEndpoint: string;
       const ABody: TJSONObject;
-      const AOnSuccess: TProc<TJSONObject>;
+      const AOnSuccess: TProc<TJSONValue>;
       const AOnError: TErrorCallback);
 
     function ParseSkillResponse(const AJSON: TJSONObject): TSkillResponse;
@@ -236,7 +236,7 @@ begin
   FMaxRetries := 3;
   FRetryDelayMs := 1000;
   FConnectTimeoutMs := 5000;
-  // SEC-004: 默认无认�?
+  // SEC-004: 默认无认�?
   FAuthType := satNone;
   FApiKeyHeader := 'X-API-Key';
   // CODE-004: 高级重试配置
@@ -291,7 +291,7 @@ begin
   Result.AddPair('maxRetries', TJSONNumber.Create(FMaxRetries));
   Result.AddPair('retryDelayMs', TJSONNumber.Create(FRetryDelayMs));
   Result.AddPair('connectTimeoutMs', TJSONNumber.Create(FConnectTimeoutMs));
-  // SEC-004: 认证配置 (不导出敏感信�?
+  // SEC-004: 认证配置 (不导出敏感信�?
   Result.AddPair('authType', AuthNames[FAuthType]);
   Result.AddPair('apiKeyHeader', FApiKeyHeader);
   // CODE-004: 高级重试配置
@@ -361,7 +361,7 @@ procedure TSkillClient.ApplyAuthentication;
 var
   Credentials: string;
 begin
-  // SEC-004: 根据配置应用认证�?
+  // SEC-004: 根据配置应用认证�?
   case FConfig.AuthType of
     satApiKey:
       if FConfig.ApiKey <> '' then
@@ -381,9 +381,9 @@ end;
 
 function TSkillClient.CalculateRetryDelay(AAttempt: Integer): Integer;
 begin
-  // CODE-004: 指数退避计�?
+  // CODE-004: 指数退避计�?
   Result := Round(FConfig.RetryDelayMs * Power(FConfig.RetryBackoffMultiplier, AAttempt - 1));
-  // 限制最大延�?
+  // 限制最大延�?
   if Result > FConfig.MaxRetryDelayMs then
     Result := FConfig.MaxRetryDelayMs;
 end;
@@ -393,7 +393,7 @@ begin
   // CODE-004: 判断是否应该重试
   Result := False;
   
-  // 5xx 服务器错�?
+  // 5xx 服务器错�?
   if (AStatusCode >= 500) and (AStatusCode < 600) then
     Result := FConfig.EnableRetryOn5xx;
   
@@ -426,7 +426,7 @@ begin
 end;
 
 function TSkillClient.DoRequest(const AMethod, AEndpoint: string;
-  const ABody: TJSONObject): TJSONObject;
+  const ABody: TJSONObject): TJSONValue;
 var
   URL: string;
   Response: IHTTPResponse;
@@ -469,12 +469,14 @@ begin
           begin
             ResponseStr := Response.ContentAsString(TEncoding.UTF8);
             if ResponseStr <> '' then
-              Result := TJSONObject.ParseJSONValue(ResponseStr) as TJSONObject
+              // 注意: 响应可能是 JSON 对象、数组或标量，
+              // 保留原始类型由调用方按需转换（如 /skills 返回数组）
+              Result := TJSONObject.ParseJSONValue(ResponseStr)
             else
               Result := TJSONObject.Create;
             Exit;
           end
-          // SEC-004: 401/403 认证错误不重�?
+          // SEC-004: 401/403 认证错误不重�?
           else if Response.StatusCode = 401 then
             raise ESkillException.Create('Authentication required (401)')
           else if Response.StatusCode = 403 then
@@ -498,7 +500,7 @@ begin
         raise;
       on E: ESkillException do
       begin
-        // SEC-004: 认证错误不重�?
+        // SEC-004: 认证错误不重�?
         if (Pos('401', E.Message) > 0) or (Pos('403', E.Message) > 0) then
           raise;
         LastError := E.Message;
@@ -525,13 +527,13 @@ end;
 
 procedure TSkillClient.DoRequestAsync(const AMethod, AEndpoint: string;
   const ABody: TJSONObject;
-  const AOnSuccess: TProc<TJSONObject>;
+  const AOnSuccess: TProc<TJSONValue>;
   const AOnError: TErrorCallback);
 begin
   TTask.Run(
     procedure
     var
-      Response: TJSONObject;
+      Response: TJSONValue;
     begin
       try
         Response := DoRequest(AMethod, AEndpoint, ABody);
@@ -576,11 +578,11 @@ end;
 
 function TSkillClient.CheckHealth: THealthResponse;
 var
-  ResponseJSON: TJSONObject;
+  ResponseJSON: TJSONValue;
 begin
   ResponseJSON := DoRequest('GET', '/health');
   try
-    Result := ParseHealthResponse(ResponseJSON);
+    Result := ParseHealthResponse(ResponseJSON as TJSONObject);
   finally
     ResponseJSON.Free;
   end;
@@ -590,12 +592,12 @@ procedure TSkillClient.CheckHealthAsync(const AOnSuccess: THealthCallback;
   const AOnError: TErrorCallback);
 begin
   DoRequestAsync('GET', '/health', nil,
-    procedure(Response: TJSONObject)
+    procedure(Response: TJSONValue)
     var
       HealthResponse: THealthResponse;
     begin
       try
-        HealthResponse := ParseHealthResponse(Response);
+        HealthResponse := ParseHealthResponse(Response as TJSONObject);
         if Assigned(AOnSuccess) then
           AOnSuccess(HealthResponse);
       finally
@@ -628,7 +630,7 @@ end;
 
 function TSkillClient.ListSkills: TObjectList<TSkillInfo>;
 var
-  ResponseJSON: TJSONObject;
+  ResponseJSON: TJSONValue;
   SkillsArray: TJSONArray;
   I: Integer;
 begin
@@ -636,11 +638,19 @@ begin
   try
     ResponseJSON := DoRequest('GET', '/skills');
     try
-      // Check if response contains skills array
-      if ResponseJSON.TryGetValue<TJSONArray>('skills', SkillsArray) then
+      // Python 服务返回裸 JSON 数组: [{...}, {...}]
+      if ResponseJSON is TJSONArray then
       begin
+        SkillsArray := TJSONArray(ResponseJSON);
         for I := 0 to SkillsArray.Count - 1 do
           Result.Add(TSkillInfo.FromJSON(SkillsArray.Items[I] as TJSONObject));
+      end
+      else if ResponseJSON is TJSONObject then
+      begin
+        // 兼容旧格式: {"skills": [...]}
+        if TJSONObject(ResponseJSON).TryGetValue<TJSONArray>('skills', SkillsArray) then
+          for I := 0 to SkillsArray.Count - 1 do
+            Result.Add(TSkillInfo.FromJSON(SkillsArray.Items[I] as TJSONObject));
       end;
     finally
       ResponseJSON.Free;
@@ -653,11 +663,11 @@ end;
 
 function TSkillClient.GetSkill(const ASkillName: string): TSkillInfo;
 var
-  ResponseJSON: TJSONObject;
+  ResponseJSON: TJSONValue;
 begin
   ResponseJSON := DoRequest('GET', '/skills/' + TNetEncoding.URL.Encode(ASkillName));
   try
-    Result := TSkillInfo.FromJSON(ResponseJSON);
+    Result := TSkillInfo.FromJSON(ResponseJSON as TJSONObject);
   finally
     ResponseJSON.Free;
   end;
@@ -665,13 +675,14 @@ end;
 
 function TSkillClient.ExecuteSkill(const ARequest: TSkillRequest): TSkillResponse;
 var
-  RequestJSON, ResponseJSON: TJSONObject;
+  RequestJSON: TJSONObject;
+  ResponseJSON: TJSONValue;
 begin
   RequestJSON := ARequest.ToJSON;
   try
     ResponseJSON := DoRequest('POST', '/skills/execute', RequestJSON);
     try
-      Result := ParseSkillResponse(ResponseJSON);
+      Result := ParseSkillResponse(ResponseJSON as TJSONObject);
     finally
       ResponseJSON.Free;
     end;
@@ -708,13 +719,13 @@ var
 begin
   RequestJSON := ARequest.ToJSON;
   DoRequestAsync('POST', '/skills/execute', RequestJSON,
-    procedure(Response: TJSONObject)
+    procedure(Response: TJSONValue)
     var
       SkillResponse: TSkillResponse;
     begin
       RequestJSON.Free;
       try
-        SkillResponse := ParseSkillResponse(Response);
+        SkillResponse := ParseSkillResponse(Response as TJSONObject);
         if Assigned(AOnSuccess) then
           AOnSuccess(SkillResponse);
       finally
@@ -771,13 +782,14 @@ end;
 
 function TSkillClient.Chat(const ARequest: TLLMRequest): TLLMResponse;
 var
-  RequestJSON, ResponseJSON: TJSONObject;
+  RequestJSON: TJSONObject;
+  ResponseJSON: TJSONValue;
 begin
   RequestJSON := ARequest.ToJSON;
   try
     ResponseJSON := DoRequest('POST', '/llm/chat', RequestJSON);
     try
-      Result := ParseLLMResponse(ResponseJSON);
+      Result := ParseLLMResponse(ResponseJSON as TJSONObject);
     finally
       ResponseJSON.Free;
     end;
@@ -842,13 +854,13 @@ var
 begin
   RequestJSON := ARequest.ToJSON;
   DoRequestAsync('POST', '/llm/chat', RequestJSON,
-    procedure(Response: TJSONObject)
+    procedure(Response: TJSONValue)
     var
       LLMResponse: TLLMResponse;
     begin
       RequestJSON.Free;
       try
-        LLMResponse := ParseLLMResponse(Response);
+        LLMResponse := ParseLLMResponse(Response as TJSONObject);
         if Assigned(AOnSuccess) then
           AOnSuccess(LLMResponse);
       finally

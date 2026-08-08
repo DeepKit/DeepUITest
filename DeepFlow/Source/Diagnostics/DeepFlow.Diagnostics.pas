@@ -1,8 +1,8 @@
-unit DeepFlow.Diagnostics;
+﻿unit DeepFlow.Diagnostics;
 (*
   DeepFlow Diagnostics
   ===================
-  诊断与日志模块，提供统一的日志门面和执行追踪功能�?
+  诊断与日志模块，提供统一的日志门面和执行追踪功能�?
 *)
 
 interface
@@ -20,9 +20,9 @@ type
   // ============================================================================
   
   TLogLevel = (
-    llTrace,    // 最详细，仅开�?
+    llTrace,    // 最详细，仅开�?
     llDebug,    // 调试信息
-    llInfo,     // 一般信�?
+    llInfo,     // 一般信�?
     llWarning,  // 警告
     llError,    // 错误
     llFatal     // 致命错误
@@ -34,9 +34,9 @@ type
   
   TTraceLevel = (
     tlOff,      // 关闭追踪
-    tlMinimal,  // 仅关键节�?
+    tlMinimal,  // 仅关键节�?
     tlNormal,   // 步骤级别
-    tlVerbose   // 包含变量�?
+    tlVerbose   // 包含变量�?
   );
 
   // ============================================================================
@@ -75,7 +75,7 @@ type
   end;
 
   // ============================================================================
-  // 默认控制台日志实�?
+  // 默认控制台日志实�?
   // ============================================================================
   
   TConsoleLogger = class(TInterfacedObject, ILogger)
@@ -123,7 +123,7 @@ type
   TTraceEntryArray = array of TTraceEntry;
 
   // ============================================================================
-  // 错误上下�?- 异常时自动收�?
+  // 错误上下�?- 异常时自动收�?
   // ============================================================================
   
   TErrorContext = record
@@ -185,7 +185,7 @@ type
   end;
 
   // ============================================================================
-  // 核心诊断�?
+  // 核心诊断�?
   // ============================================================================
   
   TDeepFlowDiagnostics = class
@@ -198,7 +198,7 @@ type
     FTraceIndex: Integer;
     FLock: TCriticalSection;
     
-    // 当前上下�?
+    // 当前上下�?
     FCurrentCorrelationId: string;
     FCurrentWorkflowId: string;
     FExecutedSteps: TStringList;
@@ -219,7 +219,7 @@ type
     // 日志工厂注入
     procedure SetLoggerFactory(AFactory: ILoggerFactory);
     
-    // 上下文管�?
+    // 上下文管�?
     procedure BeginCorrelation(const ACorrelationId: string = '');
     procedure EndCorrelation;
     procedure SetWorkflowContext(const AWorkflowId: string);
@@ -244,11 +244,11 @@ type
     procedure TraceStepExit(const StepId: string; Output: TJSONObject = nil);
     procedure TraceStepError(const StepId, ErrorMsg: string);
     
-    // 错误上下�?
+    // 错误上下�?
     function CaptureErrorContext(const StepId, ErrorMsg, ErrorClass: string;
       Variables, InputData: TJSONObject): TErrorContext;
     
-    // 状态导�?
+    // 状态导�?
     function DumpState: string;
     function ExportTrace(Format: string = 'json'): string;
     function GetRecentTrace(Count: Integer = 100): TTraceEntryArray;
@@ -257,7 +257,7 @@ type
     // 性能计数
     function GetStepDuration(const StepId: string): Int64;
     
-    // 属�?
+    // 属�?
     property Config: TDiagnosticsConfig read FConfig write FConfig;
     property TraceLevel: TTraceLevel read FConfig.TraceLevel write FConfig.TraceLevel;
     property LogLevel: TLogLevel read FConfig.LogLevel write FConfig.LogLevel;
@@ -298,7 +298,7 @@ var
   G: TGUID;
 begin
   CreateGUID(G);
-  Result := Copy(GUIDToString(G), 2, 8); // 短格�? 8字符
+  Result := Copy(GUIDToString(G), 2, 8); // 短格�? 8字符
 end;
 
 function LogLevelToString(Level: TLogLevel): string;
@@ -445,9 +445,9 @@ var
 begin
   SB := TStringBuilder.Create;
   try
-    SB.AppendLine('══════════════════════════════════════════════════════�?);
+    SB.AppendLine('═══════════════════════════════════════════════════════');
     SB.AppendLine('                    ERROR CONTEXT                       ');
-    SB.AppendLine('══════════════════════════════════════════════════════�?);
+    SB.AppendLine('═══════════════════════════════════════════════════════');
     SB.AppendFormat('Timestamp:      %s', [FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz', Timestamp)]).AppendLine;
     SB.AppendFormat('CorrelationId:  %s', [CorrelationId]).AppendLine;
     SB.AppendFormat('Workflow:       %s (%s)', [WorkflowName, WorkflowId]).AppendLine;
@@ -471,7 +471,7 @@ begin
       SB.AppendLine(StackTrace);
     end;
     
-    SB.AppendLine('══════════════════════════════════════════════════════�?);
+    SB.AppendLine('═══════════════════════════════════════════════════════');  
     
     Result := SB.ToString;
   finally
@@ -583,7 +583,7 @@ begin
   SetLength(FTraceEntries, FConfig.MaxTraceEntries);
   FTraceIndex := 0;
   
-  // 默认使用控制台日�?
+  // 默认使用控制台日�?
   FLoggerFactory := TConsoleLoggerFactory.Create(FConfig.LogLevel);
   FDefaultLogger := FLoggerFactory.CreateLogger('DeepFlow');
 end;
@@ -980,7 +980,7 @@ begin
 end;
 
 // ============================================================================
-// 错误上下�?
+// 错误上下�?
 // ============================================================================
 
 function TDeepFlowDiagnostics.CaptureErrorContext(const StepId, ErrorMsg, ErrorClass: string;
@@ -1036,7 +1036,7 @@ begin
 end;
 
 // ============================================================================
-// 状态导�?
+// 状态导�?
 // ============================================================================
 
 function TDeepFlowDiagnostics.DumpState: string;

@@ -3,20 +3,20 @@ unit DeepFlow.Analytics;
   DeepFlow Analytics
   =================
   
-  工作流执行统计、聚合和报告生成�?
+  工作流执行统计、聚合和报告生成�?
   
   功能:
-  - 执行统计聚合（按时间/工作�?步骤�?
+  - 执行统计聚合（按时间/工作�?步骤�?
   - 趋势分析
-  - 异常检�?
-  - 报告生成（JSON/HTML�?
+  - 异常检�?
+  - 报告生成（JSON/HTML�?
 *)
 
 interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
-  System.DateUtils, System.Math,
+  System.Generics.Defaults, System.DateUtils, System.Math,
   DeepFlow.EventSourcing.Types,
   DeepFlow.EventSourcing.Store;
 
@@ -69,7 +69,7 @@ type
     function ToJSON: TJSONObject;
   end;
   
-  /// <summary>工作流统�?/summary>
+  /// <summary>工作流统�?/summary>
   TWorkflowStats = record
     WorkflowName: string;
     TotalExecutions: Int64;
@@ -99,7 +99,7 @@ type
     function ToJSON: TJSONObject;
   end;
   
-  /// <summary>时间桶统�?/summary>
+  /// <summary>时间桶统�?/summary>
   TTimeBucketStats = record
     BucketStart: TDateTime;
     BucketEnd: TDateTime;
@@ -157,7 +157,7 @@ type
     function ToJSON: TJSONObject;
   end;
   
-  /// <summary>趋势数据�?/summary>
+  /// <summary>趋势数据�?/summary>
   TTrendPoint = record
     Timestamp: TDateTime;
     Value: Double;
@@ -188,7 +188,7 @@ type
   end;
   
   /// <summary>
-  /// 分析引擎 - 工作流执行分�?
+  /// 分析引擎 - 工作流执行分�?
   /// </summary>
   TAnalyticsEngine = class
   private
@@ -212,7 +212,7 @@ type
     /// <summary>获取执行摘要</summary>
     function GetExecutionSummary(ARange: TTimeRange): TExecutionSummary;
     
-    /// <summary>获取工作流统计列�?/summary>
+    /// <summary>获取工作流统计列�?/summary>
     function GetWorkflowStats(ARange: TTimeRange): TArray<TWorkflowStats>;
     
     /// <summary>获取单个工作流的详细统计</summary>
@@ -232,11 +232,11 @@ type
     function GetTrendReport(const AMetricName: string; ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
-    /// <summary>获取成功率趋�?/summary>
+    /// <summary>获取成功率趋�?/summary>
     function GetSuccessRateTrend(ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
-    /// <summary>获取执行量趋�?/summary>
+    /// <summary>获取执行量趋�?/summary>
     function GetExecutionCountTrend(ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
@@ -244,13 +244,13 @@ type
     function GetLatencyTrend(ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
-    /// <summary>获取热点步骤（最耗时�?/summary>
+    /// <summary>获取热点步骤（最耗时�?/summary>
     function GetHotspotSteps(ARange: TTimeRange; ATopN: Integer = 10): TArray<TStepStats>;
     
     /// <summary>获取失败热点（最常失败）</summary>
     function GetFailureHotspots(ARange: TTimeRange; ATopN: Integer = 10): TArray<TStepStats>;
     
-    /// <summary>检测异�?/summary>
+    /// <summary>检测异�?/summary>
     function DetectAnomalies(ARange: TTimeRange): TJSONArray;
     
     /// <summary>导出完整报告</summary>
@@ -282,7 +282,7 @@ type
     /// <summary>处理 API 请求</summary>
     function HandleRequest(const APath: string; AParams: TJSONObject): TJSONObject;
     
-    // 预定义端�?
+    // 预定义端�?
     function GetOverview(ARange: TTimeRange): TJSONObject;
     function GetWorkflows(ARange: TTimeRange): TJSONObject;
     function GetTimeline(ARange: TTimeRange; AGranularity: TTimeGranularity): TJSONObject;
@@ -718,7 +718,7 @@ begin
       try
         FirstEvent := Events[0];
         
-        // 检查是否在时间范围�?
+        // 检查是否在时间范围�?
         if not ARange.Contains(FirstEvent.Timestamp) then
         begin
           for var E in Events do E.Free;
@@ -728,12 +728,12 @@ begin
         Inc(Result.TotalFlows);
         Result.TotalEvents := Result.TotalEvents + Length(Events);
         
-        // 获取工作流名�?
+        // 获取工作流名�?
         var WFName: string;
         if FirstEvent.Payload.TryGetValue<string>('workflowName', WFName) then
           UniqueNames.TryAdd(WFName, True);
           
-        // 获取状�?
+        // 获取状�?
         Status := GetFlowStatus(Events);
         case Status of
           ufsSucceeded: Inc(Result.CompletedFlows);
@@ -792,12 +792,12 @@ begin
           Continue;
         end;
         
-        // 获取工作流名�?
+        // 获取工作流名�?
         WFName := '';
         if not Events[0].Payload.TryGetValue<string>('workflowName', WFName) then
           WFName := 'unknown';
           
-        // 获取或创建统�?
+        // 获取或创建统�?
         if not StatsMap.TryGetValue(WFName, Stats) then
         begin
           Stats := Default(TWorkflowStats);
@@ -828,7 +828,7 @@ begin
       end;
     end;
     
-    // 计算平均值和成功�?
+    // 计算平均值和成功�?
     SetLength(Result, StatsMap.Count);
     var I := 0;
     for var Pair in StatsMap do
@@ -1002,7 +1002,7 @@ begin
       end;
     end;
     
-    // 按时间排�?
+    // 按时间排�?
     SortedKeys := TList<TDateTime>.Create;
     try
       for var K in BucketMap.Keys do
@@ -1260,7 +1260,7 @@ begin
     Result.Add(Anomaly);
   end;
   
-  // 高延迟警�?
+  // 高延迟警�?
   if Summary.AvgDurationMs > 5000 then
   begin
     Anomaly := TJSONObject.Create;
@@ -1271,7 +1271,7 @@ begin
     Result.Add(Anomaly);
   end;
   
-  // 运行中流程过�?
+  // 运行中流程过�?
   if Summary.RunningFlows > 100 then
   begin
     Anomaly := TJSONObject.Create;
@@ -1298,7 +1298,7 @@ begin
   Summary := GetExecutionSummary(ARange);
   Result.AddPair('summary', Summary.ToJSON);
   
-  // 工作流统�?
+  // 工作流统�?
   WorkflowStats := GetWorkflowStats(ARange);
   Arr := TJSONArray.Create;
   for var S in WorkflowStats do

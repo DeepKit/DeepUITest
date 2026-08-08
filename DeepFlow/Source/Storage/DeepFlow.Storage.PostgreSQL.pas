@@ -4,7 +4,7 @@ unit DeepFlow.Storage.PostgreSQL;
 {                                                       }
 {       DeepFlow PostgreSQL 存储后端实现                 }
 {                                                       }
-{       版权所�?(C) 2024 DeepFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -18,7 +18,7 @@ uses
 
 type
   {==========================================================================}
-  {  数据库连接接�?                                                         }
+  {  数据库连接接�?                                                         }
   {==========================================================================}
   IDbConnection = interface
     ['{D1E2F3A4-B5C6-7890-ABCD-EF1234567890}']
@@ -65,7 +65,7 @@ type
   end;
 
   {==========================================================================}
-  {  连接�?                                                                 }
+  {  连接�?                                                                 }
   {==========================================================================}
   TConnectionPool = class
   private
@@ -108,7 +108,7 @@ type
   end;
 
   {==========================================================================}
-  {  工作流仓�?                                                             }
+  {  工作流仓�?                                                             }
   {==========================================================================}
   TWorkflowRepository = class(TInterfacedObject, IRepository<TWorkflowEntity>)
   private
@@ -164,7 +164,7 @@ type
   end;
 
   {==========================================================================}
-  {  技能仓�?                                                               }
+  {  技能仓�?                                                               }
   {==========================================================================}
   TSkillRepository = class(TInterfacedObject, IRepository<TSkillEntity>)
   private
@@ -221,7 +221,7 @@ type
   end;
 
   {==========================================================================}
-  {  Schema 迁移�?                                                          }
+  {  Schema 迁移�?                                                          }
   {==========================================================================}
   TSchemaMigration = record
     Version: Integer;
@@ -390,7 +390,7 @@ begin
   
   FLock.Enter;
   try
-    FHttpClient.Post(FRestEndpoint + '/disconnect', nil);
+    FHttpClient.Post(FRestEndpoint + '/disconnect', TStream(nil), nil);
     FConnected := False;
   finally
     FLock.Leave;
@@ -410,11 +410,11 @@ begin
   for I := 0 to High(AParams) do
   begin
     if VarIsNull(AParams[I].Value) then
-      LParams.Add(TJSONNull.Create)
+      LParams.AddElement(TJSONNull.Create)
     else if VarType(AParams[I].Value) = varBoolean then
-      LParams.Add(TJSONBool.Create(AParams[I].Value))
+      LParams.AddElement(TJSONBool.Create(AParams[I].Value))
     else if VarIsNumeric(AParams[I].Value) then
-      LParams.Add(TJSONNumber.Create(Double(AParams[I].Value)))
+      LParams.AddElement(TJSONNumber.Create(Double(AParams[I].Value)))
     else
       LParams.Add(VarToStr(AParams[I].Value));
   end;
@@ -428,6 +428,8 @@ var
   LRow: TJSONValue;
   LResultRow: TResultRow;
   LCols: TJSONArray;
+  LColsCount: Integer;
+  LColNames: TArray<string>;
   I: Integer;
 begin
   Result := TResultSet.Create;
@@ -441,9 +443,11 @@ begin
     
     if LJSON.TryGetValue<TJSONArray>('columns', LCols) then
     begin
-      SetLength(Result.ColumnNames, LCols.Count);
+      LColsCount := LCols.Count;
+      SetLength(LColNames, LColsCount);
       for I := 0 to LCols.Count - 1 do
-        Result.ColumnNames[I] := LCols.Items[I].Value;
+        LColNames[I] := LCols.Items[I].Value;
+      Result.ColumnNames := LColNames;
     end;
     
     if LJSON.TryGetValue<TJSONArray>('rows', LRows) then
@@ -633,7 +637,7 @@ begin
         raise EOperationException.Create('无法获取连接');
     end
     else
-      raise EOperationException.Create('连接池已�?);
+      raise EOperationException.Create('连接池已满');
   finally
     FLock.Leave;
   end;
@@ -924,7 +928,7 @@ var
   LSQL: string;
 begin
   AEntity.UpdatedAt := Now;
-  Inc(AEntity.FVersion);
+  AEntity.Version := AEntity.Version + 1;
   
   LSQL := 'UPDATE ' + FTableName + ' SET ' +
     'name = $1, description = $2, definition = $3, status = $4, ' +
@@ -1257,7 +1261,7 @@ end;
 
 procedure TSessionRepository.DeleteByConditions(const AConditions: TFilterConditions);
 begin
-  // 实现�?WorkflowRepository
+  // 实现�?WorkflowRepository
 end;
 
 function TSessionRepository.Exists(const AId: string): Boolean;

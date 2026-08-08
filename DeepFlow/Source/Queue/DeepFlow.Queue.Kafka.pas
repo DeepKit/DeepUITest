@@ -4,7 +4,7 @@ unit DeepFlow.Queue.Kafka;
 {                                                       }
 {       DeepFlow Kafka 消息队列集成                      }
 {                                                       }
-{       版权所�?(C) 2024 DeepFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -13,10 +13,13 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.SyncObjs, System.Threading, System.Net.HttpClient,
-  System.NetEncoding, DeepFlow.Queue.Types,
+  System.NetEncoding, DeepFlow.Queue.Types, DeepFlow.Queue.RabbitMQ,
   DeepBase.Exceptions;
 
 type
+  // 引入 RabbitMQ 连接接口（用于统一消息队列管理）
+  IRabbitMQConnection = DeepFlow.Queue.RabbitMQ.IRabbitMQConnection;
+
   {==========================================================================}
   {  Kafka 连接配置                                                          }
   {==========================================================================}
@@ -54,7 +57,7 @@ type
   end;
 
   {==========================================================================}
-  {  Kafka 生产者配�?                                                       }
+  {  Kafka 生产者配�?                                                       }
   {==========================================================================}
   TKafkaProducerConfig = class
   private
@@ -78,7 +81,7 @@ type
   end;
 
   {==========================================================================}
-  {  Kafka 生产者接�?                                                       }
+  {  Kafka 生产者接�?                                                       }
   {==========================================================================}
   IKafkaProducer = interface
     ['{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}']
@@ -90,7 +93,7 @@ type
   end;
 
   {==========================================================================}
-  {  Kafka 消费者接�?                                                       }
+  {  Kafka 消费者接�?                                                       }
   {==========================================================================}
   IKafkaConsumer = interface
     ['{B2C3D4E5-F6A7-8901-BCDE-F12345678901}']
@@ -116,7 +119,7 @@ type
   end;
 
   {==========================================================================}
-  {  Kafka 生产者实�?(HTTP REST Proxy)                                      }
+  {  Kafka 生产者实�?(HTTP REST Proxy)                                      }
   {==========================================================================}
   TKafkaProducer = class(TInterfacedObject, IKafkaProducer)
   private
@@ -144,7 +147,7 @@ type
   end;
 
   {==========================================================================}
-  {  Kafka 消费者实�?(HTTP REST Proxy)                                      }
+  {  Kafka 消费者实现 (HTTP REST Proxy)                                      }
   {==========================================================================}
   TKafkaConsumer = class(TInterfacedObject, IKafkaConsumer)
   private
@@ -221,7 +224,7 @@ type
     procedure Start;
     procedure Stop;
     
-    // 触发工作�?
+    // 触发工作流
     procedure TriggerWorkflow(const AWorkflowId: string; APayload: TJSONObject = nil);
     procedure ScheduleWorkflow(const AWorkflowId: string; AScheduledTime: TDateTime;
       APayload: TJSONObject = nil);
@@ -260,7 +263,7 @@ type
   end;
 
   {==========================================================================}
-  {  消息队列管理�?                                                         }
+  {  消息队列管理�?                                                         }
   {==========================================================================}
   TMessageQueueManager = class
   private
@@ -285,18 +288,12 @@ type
     function GetKafkaProducer(const AName: string): IKafkaProducer;
     function GetKafkaConsumer(const AName: string): IKafkaConsumer;
     
-    // 统一发送接�?
+    // 统一发送接�?
     procedure SendMessage(const AQueueName, ATopic: string; const AMessage: TQueueMessage);
     procedure SendKafkaRecord(const AProducerName, ATopic: string; const ARecord: TKafkaRecord);
   end;
 
-  // 引入 RabbitMQ 接口
-  IRabbitMQConnection = DeepFlow.Queue.RabbitMQ.IRabbitMQConnection;
-
 implementation
-
-uses
-  DeepFlow.Queue.RabbitMQ;
 
 {==========================================================================}
 {  TKafkaConnectionConfig                                                  }
@@ -389,7 +386,7 @@ begin
         LResponse := FHttpClient.Post(GetRestUrl('/topics/' + ATopic), LStream);
         
         if LResponse.StatusCode >= 400 then
-          raise EOperationException.CreateFmt('Kafka 发送失�? %d %s', 
+          raise EOperationException.CreateFmt('Kafka 发送失�? %d %s', 
             [LResponse.StatusCode, LResponse.StatusText]);
       finally
         LStream.Free;
@@ -503,7 +500,7 @@ begin
         end;
       end
       else
-        raise EOperationException.CreateFmt('创建 Kafka 消费者失�? %d', [LResponse.StatusCode]);
+        raise EOperationException.CreateFmt('创建 Kafka 消费者失�? %d', [LResponse.StatusCode]);
     finally
       LStream.Free;
     end;
@@ -640,10 +637,10 @@ var
 begin
   LResponse := FHttpClient.Post(
     GetRestUrl(Format('/consumers/%s/instances/%s/offsets',
-      [FConsumerConfig.GroupId, FConsumerId])), nil);
+      [FConsumerConfig.GroupId, FConsumerId])), TStream(nil));
       
   if LResponse.StatusCode >= 400 then
-    raise EOperationException.CreateFmt('提交偏移量失�? %d', [LResponse.StatusCode]);
+    raise EOperationException.CreateFmt('提交偏移量失败 %d', [LResponse.StatusCode]);
 end;
 
 procedure TKafkaConsumer.CommitAsync(ACallback: TProc<Boolean, string>);
@@ -1066,7 +1063,7 @@ begin
           for LRecord in LRecords do
           begin
             try
-              // 应用过滤�?
+              // 应用过滤�?
               if Assigned(FFilter) and not FFilter(LRecord) then
                 Continue;
                 

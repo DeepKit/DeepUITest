@@ -2,7 +2,7 @@ unit DeepFlow.Diagnostics.TraceExporter;
 (*
   DeepFlow Diagnostics Trace Exporter
   ==================================
-  执行轨迹导出器，支持多种格式输出�?
+  执行轨迹导出器，支持多种格式输出�?
 *)
 
 interface
@@ -17,12 +17,12 @@ type
   // ============================================================================
   
   TExecutionSnapshot = record
-    // 元数�?
+    // 元数�?
     Id: string;
     CapturedAt: TDateTime;
     Version: string;
     
-    // 工作流信�?
+    // 工作流信�?
     WorkflowId: string;
     WorkflowName: string;
     WorkflowVersion: string;
@@ -30,7 +30,7 @@ type
     // 追踪信息
     CorrelationId: string;
     
-    // 执行状�?
+    // 执行状�?
     CurrentStepId: string;
     CurrentStepIndex: Integer;
     ExecutedSteps: TStringArray;
@@ -43,7 +43,7 @@ type
     // 追踪条目
     TraceEntries: TTraceEntryArray;
     
-    // 错误信息（如果有�?
+    // 错误信息（如果有�?
     HasError: Boolean;
     ErrorMessage: string;
     ErrorClass: string;
@@ -62,11 +62,11 @@ type
     efText,       // 文本格式
     efMarkdown,   // Markdown 格式
     efHTML,       // HTML 报告
-    efTimeline    // 时间线格�?
+    efTimeline    // 时间线格�?
   );
 
   // ============================================================================
-  // 轨迹导出�?
+  // 轨迹导出�?
   // ============================================================================
   
   TTraceExporter = class
@@ -88,7 +88,7 @@ type
     // 导出追踪条目
     function ExportTraceEntries(const Entries: TTraceEntryArray; Format: TExportFormat): string;
     
-    // 保存到文�?
+    // 保存到文�?
     procedure SaveSnapshotToFile(const Snapshot: TExecutionSnapshot; const FileName: string);
     function LoadSnapshotFromFile(const FileName: string): TExecutionSnapshot;
     
@@ -104,7 +104,7 @@ type
 
 function CreateTraceExporter: TTraceExporter;
 
-// 快速导出当前追�?
+// 快速导出当前追�?
 function QuickExportTrace(Format: TExportFormat = efJSON): string;
 function QuickSaveSnapshot(const FileName: string): Boolean;
 
@@ -121,12 +121,12 @@ var
 begin
   Result := TJSONObject.Create;
   
-  // 元数�?
+  // 元数�?
   Result.AddPair('id', Id);
   Result.AddPair('capturedAt', FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', CapturedAt));
   Result.AddPair('version', Version);
   
-  // 工作流信�?
+  // 工作流信�?
   Result.AddPair('workflowId', WorkflowId);
   Result.AddPair('workflowName', WorkflowName);
   Result.AddPair('workflowVersion', WorkflowVersion);
@@ -134,7 +134,7 @@ begin
   // 追踪信息
   Result.AddPair('correlationId', CorrelationId);
   
-  // 执行状�?
+  // 执行状�?
   Result.AddPair('currentStepId', CurrentStepId);
   Result.AddPair('currentStepIndex', TJSONNumber.Create(CurrentStepIndex));
   
@@ -296,24 +296,24 @@ begin
   SB := TStringBuilder.Create;
   try
     SB.AppendLine('╔════════════════════════════════════════════════════════════════╗');
-    SB.AppendLine('�?                   EXECUTION SNAPSHOT                          �?);
+    SB.AppendLine('║                   EXECUTION SNAPSHOT                          ║');
     SB.AppendLine('╠════════════════════════════════════════════════════════════════╣');
-    SB.AppendFormat('�?ID:             %s', [Id]).AppendLine;
-    SB.AppendFormat('�?Captured:       %s', [FormatDateTime('yyyy-mm-dd hh:nn:ss', CapturedAt)]).AppendLine;
-    SB.AppendFormat('�?Correlation:    %s', [CorrelationId]).AppendLine;
+    SB.AppendFormat('║ID:             %s', [Id]).AppendLine;
+    SB.AppendFormat('║Captured:       %s', [FormatDateTime('yyyy-mm-dd hh:nn:ss', CapturedAt)]).AppendLine;
+    SB.AppendFormat('║Correlation:    %s', [CorrelationId]).AppendLine;
     SB.AppendLine('╠════════════════════════════════════════════════════════════════╣');
-    SB.AppendFormat('�?Workflow:       %s v%s', [WorkflowName, WorkflowVersion]).AppendLine;
-    SB.AppendFormat('�?Current Step:   %s (#%d)', [CurrentStepId, CurrentStepIndex]).AppendLine;
+    SB.AppendFormat('║Workflow:       %s v%s', [WorkflowName, WorkflowVersion]).AppendLine;
+    SB.AppendFormat('║Current Step:   %s (#%d)', [CurrentStepId, CurrentStepIndex]).AppendLine;
     SB.AppendLine('╠════════════════════════════════════════════════════════════════╣');
-    SB.AppendLine('�?Execution Path:');
+    SB.AppendLine('║Execution Path:');
     for I := 0 to High(ExecutedSteps) do
-      SB.AppendFormat('�?  %d. %s', [I + 1, ExecutedSteps[I]]).AppendLine;
+      SB.AppendFormat('║  %d. %s', [I + 1, ExecutedSteps[I]]).AppendLine;
     
     if HasError then
     begin
       SB.AppendLine('╠════════════════════════════════════════════════════════════════╣');
-      SB.AppendLine('�?�?ERROR:');
-      SB.AppendFormat('�?  %s: %s', [ErrorClass, ErrorMessage]).AppendLine;
+      SB.AppendLine('║�?ERROR:');
+      SB.AppendFormat('║  %s: %s', [ErrorClass, ErrorMessage]).AppendLine;
     end;
     
     SB.AppendLine('╚════════════════════════════════════════════════════════════════╝');
@@ -341,13 +341,13 @@ end;
 function TTraceExporter.GetActionIcon(const Action: string): string;
 begin
   if Action = 'enter' then
-    Result := '�?
+    Result := '▶'
   else if Action = 'exit' then
-    Result := '�?
+    Result := '✗'
   else if Action = 'error' then
-    Result := '�?
+    Result := '✗'
   else
-    Result := '�?;
+    Result := '•';
 end;
 
 function TTraceExporter.CreateSnapshot(
@@ -578,9 +578,9 @@ var
 begin
   SB := TStringBuilder.Create;
   try
-    SB.AppendLine('┌──────────────────────────────────────────────────────────────�?);
-    SB.AppendLine('�?                    EXECUTION TIMELINE                       �?);
-    SB.AppendLine('├──────────────────────────────────────────────────────────────�?);
+    SB.AppendLine('┌──────────────────────────────────────────────────────────────�?');
+    SB.AppendLine('�?                    EXECUTION TIMELINE                       �?');
+    SB.AppendLine('├──────────────────────────────────────────────────────────────�?');
     
     PrevTime := 0;
     for I := 0 to High(Entries) do
@@ -590,10 +590,10 @@ begin
       begin
         Gap := MilliSecondsBetween(Entries[I].Timestamp, PrevTime);
         if Gap > 10 then
-          SB.AppendFormat('�?    ... %s ...', [FormatDuration(Gap)]).AppendLine;
+          SB.AppendFormat('�?    ... %s ...', [FormatDuration(Gap)]).AppendLine;
       end;
       
-      SB.AppendFormat('�?%s %s %-20s %s',
+      SB.AppendFormat('�?%s %s %-20s %s',
         [FormatDateTime('hh:nn:ss.zzz', Entries[I].Timestamp),
          GetActionIcon(Entries[I].Action),
          Entries[I].StepId,
@@ -605,12 +605,12 @@ begin
       SB.AppendLine;
       
       if Entries[I].ErrorMessage <> '' then
-        SB.AppendFormat('�?    └─ ERROR: %s', [Entries[I].ErrorMessage]).AppendLine;
+        SB.AppendFormat('�?    └─ ERROR: %s', [Entries[I].ErrorMessage]).AppendLine;
       
       PrevTime := Entries[I].Timestamp;
     end;
     
-    SB.AppendLine('└──────────────────────────────────────────────────────────────�?);
+    SB.AppendLine('└──────────────────────────────────────────────────────────────�?');
     
     Result := SB.ToString;
   finally

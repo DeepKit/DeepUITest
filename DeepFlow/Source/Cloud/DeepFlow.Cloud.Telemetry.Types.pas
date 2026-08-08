@@ -7,10 +7,10 @@ unit DeepFlow.Cloud.Telemetry.Types;
   - Trace/Span 类型
   - Metrics 类型  
   - Logs 类型
-  - 属性和上下�?
-  - 导出器配�?
+  - 属性和上下�?
+  - 导出器配�?
   
-  作�? DeepFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -29,7 +29,7 @@ type
 
   {$REGION 'Trace 类型'}
   
-  /// <summary>Span 状�?/summary>
+  /// <summary>Span 状�?/summary>
   TSpanStatus = (
     ssUnset,
     ssOk,
@@ -45,7 +45,7 @@ type
     skConsumer
   );
   
-  /// <summary>属性值类�?/summary>
+  /// <summary>属性值类�?/summary>
   TAttributeValue = record
   private
     FValueType: (avtString, avtInt, avtDouble, avtBool, avtStringArray);
@@ -69,7 +69,7 @@ type
     function ToJSON: TJSONValue;
   end;
   
-  /// <summary>属性集�?/summary>
+  /// <summary>属性集�?/summary>
   TAttributes = class
   private
     FItems: TDictionary<string, TAttributeValue>;
@@ -121,7 +121,7 @@ type
     property Attributes: TAttributes read FAttributes;
   end;
   
-  /// <summary>Trace 上下�?/summary>
+  /// <summary>Trace 上下�?/summary>
   TTraceContext = class
   private
     FTraceId: string;
@@ -210,14 +210,14 @@ type
     mkExponentialHistogram
   );
   
-  /// <summary>指标数据�?/summary>
+  /// <summary>指标数据�?/summary>
   TDataPoint = record
     Timestamp: TDateTime;
     Value: Double;
     Attributes: TAttributes;
   end;
   
-  /// <summary>直方图边�?/summary>
+  /// <summary>直方图边�?/summary>
   THistogramBuckets = record
     Boundaries: TArray<Double>;
     Counts: TArray<Int64>;
@@ -260,7 +260,7 @@ type
     property Histogram: THistogramBuckets read FHistogram;
   end;
   
-  /// <summary>指标计数�?/summary>
+  /// <summary>指标计数�?/summary>
   TCounter = class
   private
     FMetric: TMetric;
@@ -292,7 +292,7 @@ type
     property Metric: TMetric read FMetric;
   end;
   
-  /// <summary>直方图指�?/summary>
+  /// <summary>直方图指�?/summary>
   THistogramMetric = class
   private
     FMetric: TMetric;
@@ -358,7 +358,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '资源和配�?}
+  {$REGION '资源和配�?}
   
   /// <summary>资源信息</summary>
   TResource = class
@@ -382,7 +382,7 @@ type
     property SchemaUrl: string read FSchemaUrl write FSchemaUrl;
   end;
   
-  /// <summary>导出器类�?/summary>
+  /// <summary>导出器类�?/summary>
   TExporterType = (
     etOTLP,
     etJaeger,
@@ -398,7 +398,7 @@ type
     opHttpJson
   );
   
-  /// <summary>导出器配�?/summary>
+  /// <summary>导出器配�?/summary>
   TExporterConfig = record
     ExporterType: TExporterType;
     Endpoint: string;
@@ -425,7 +425,7 @@ type
     stParentBased
   );
   
-  /// <summary>采样器配�?/summary>
+  /// <summary>采样器配�?/summary>
   TSamplerConfig = record
     SamplerType: TSamplerType;
     Ratio: Double;
@@ -457,9 +457,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '工作流特定类�?}
+  {$REGION '工作流特定类�?}
   
-  /// <summary>工作流追踪属�?/summary>
+  /// <summary>工作流追踪属�?/summary>
   TWorkflowTraceAttributes = class
   public
     class procedure SetWorkflowAttributes(ASpan: TSpan;
@@ -472,7 +472,7 @@ type
       const AProvider, AModel: string; ATokensIn, ATokensOut: Integer);
   end;
   
-  /// <summary>工作流指标名�?/summary>
+  /// <summary>工作流指标名�?/summary>
   TWorkflowMetrics = class
   public const
     // Workflow 指标
@@ -506,7 +506,7 @@ type
 implementation
 
 uses
-  System.Hash;
+  System.Hash, System.Math;
 
 {$REGION 'TAttributeValue'}
 

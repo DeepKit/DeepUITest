@@ -215,6 +215,7 @@ type
     procedure DoError(const PluginId, ErrorMessage: string);
     
     function GetPluginEntry(const PluginId: string): TPluginEntry;
+    function GetLoadedPluginIds: TArray<string>;
   public
     constructor Create(const AConfig: TPluginRegistryConfig); overload;
     constructor Create(ALoader: TPluginLoader; AOwnsLoader: Boolean = False); overload;
@@ -1307,25 +1308,6 @@ begin
   for Validator in Validators do
     if Validator.CanHandle(ValidatorType) then
       Exit(Validator);
-end;
-
-function TPluginRegistry.GetLoadedPluginIds: TArray<string>;
-var
-  Entry: TPluginEntry;
-  I: Integer;
-begin
-  FLock.Enter;
-  try
-    SetLength(Result, FPlugins.Count);
-    I := 0;
-    for Entry in FPlugins.Values do
-    begin
-      Result[I] := Entry.Info.Id;
-      Inc(I);
-    end;
-  finally
-    FLock.Leave;
-  end;
 end;
 
 initialization

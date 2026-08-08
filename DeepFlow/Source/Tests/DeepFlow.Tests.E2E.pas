@@ -2,10 +2,10 @@
 (*
   DeepFlow End-to-End Integration Tests
   =====================================
-  TASK-2001: 端到端集成测�?
+  TASK-2001: 端到端集成测试
   
   测试覆盖:
-  - 完整工作流执�?(从定义加载到执行完成)
+  - 完整工作流执行(从定义加载到执行完成)
   - LLM Action 集成测试 (Mock Provider)
   - Skill 调用集成测试
   - 会话管理集成测试 (多轮对话)
@@ -309,8 +309,8 @@ var
   LOutput: TJSONObject;
 begin
   // Build prompt from action config
-  if Assigned(AAction.Config) and (AAction.Config.GetValue('prompt') <> nil) then
-    LPrompt := AAction.Config.GetValue<string>('prompt')
+  if Assigned(AAction.Params) and (AAction.Params.GetValue('prompt') <> nil) then
+    LPrompt := AAction.Params.GetValue<string>('prompt')
   else
     LPrompt := AContext.ResolveString('{{ vars.input }}');
   
@@ -460,7 +460,6 @@ end;
 function TWorkflowE2ETests.CreateQAWorkflow: TWorkflowDefinition;
 var
   LStep: TWorkflowStep;
-  LAction: TActionDefinition;
 begin
   Result := TWorkflowDefinition.Create;
   Result.Id := 'qa-workflow';
@@ -472,11 +471,9 @@ begin
   LStep.Id := 'validate';
   LStep.Name := 'Validate Input';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atGuard;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('expression', '{{ vars.question | length > 0 }}');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atGuard;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('expression', '{{ vars.question | length > 0 }}');
   Result.Steps.Add(LStep);
   
   // Step 2: Call LLM
@@ -484,11 +481,9 @@ begin
   LStep.Id := 'ask-llm';
   LStep.Name := 'Ask LLM';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atLLM;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('prompt', '{{ vars.question }}');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atLLM;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('prompt', '{{ vars.question }}');
   Result.Steps.Add(LStep);
   
   // Step 3: Log response
@@ -496,18 +491,15 @@ begin
   LStep.Id := 'log-response';
   LStep.Name := 'Log Response';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atLog;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('message', 'Response: {{ steps.ask-llm.response }}');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atLog;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('message', 'Response: {{ steps.ask-llm.response }}');
   Result.Steps.Add(LStep);
 end;
 
 function TWorkflowE2ETests.CreateApprovalWorkflow: TWorkflowDefinition;
 var
   LStep: TWorkflowStep;
-  LAction: TActionDefinition;
   LBranch: TConditionBranch;
 begin
   Result := TWorkflowDefinition.Create;
@@ -520,18 +512,17 @@ begin
   LStep.Id := 'check-amount';
   LStep.Name := 'Check Amount';
   LStep.StepType := stCondition;
-  LStep.Condition := TConditionExpression.Create;
-  LStep.Condition.Expression := '{{ vars.amount }}';
+  LStep.Expression := '{{ vars.amount }}';
   
   // Branch: amount > 1000 -> manager approval
   LBranch := TConditionBranch.Create;
-  LBranch.Operator := coGt;
-  LBranch.Value := '1000';
-  LBranch.NextStep := 'manager-approval';
-  LStep.Condition.Branches.Add(LBranch);
+  LBranch.MatchExpr := '> 1000';
+  LStep.Branches.Add(LBranch);
   
   // Default: auto approve
-  LStep.Condition.DefaultStep := 'auto-approve';
+  LBranch := TConditionBranch.Create;
+  LBranch.IsDefault := True;
+  LStep.Branches.Add(LBranch);
   Result.Steps.Add(LStep);
   
   // Step 2a: Manager approval
@@ -539,11 +530,9 @@ begin
   LStep.Id := 'manager-approval';
   LStep.Name := 'Manager Approval';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atLog;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('message', 'Requires manager approval for amount: {{ vars.amount }}');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atLog;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('message', 'Requires manager approval for amount: {{ vars.amount }}');
   Result.Steps.Add(LStep);
   
   // Step 2b: Auto approve
@@ -551,19 +540,16 @@ begin
   LStep.Id := 'auto-approve';
   LStep.Name := 'Auto Approve';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atAssign;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('variable', 'approved');
-  LAction.Config.AddPair('value', 'true');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atAssign;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('variable', 'approved');
+  LStep.Action.Params.AddPair('value', 'true');
   Result.Steps.Add(LStep);
 end;
 
 function TWorkflowE2ETests.CreateDataSyncWorkflow: TWorkflowDefinition;
 var
   LStep: TWorkflowStep;
-  LAction: TActionDefinition;
 begin
   Result := TWorkflowDefinition.Create;
   Result.Id := 'data-sync-workflow';
@@ -575,10 +561,8 @@ begin
   LStep.Id := 'fetch-data';
   LStep.Name := 'Fetch Data';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atSkill;
-  LAction.SkillId := 'data_fetcher';
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atSkill;
+  LStep.Action.SkillId := 'data_fetcher';
   Result.Steps.Add(LStep);
   
   // Step 2: Process with LLM
@@ -586,11 +570,9 @@ begin
   LStep.Id := 'process-data';
   LStep.Name := 'Process Data';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atLLM;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('prompt', 'Summarize: {{ steps.fetch-data.data }}');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atLLM;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('prompt', 'Summarize: {{ steps.fetch-data.data }}');
   Result.Steps.Add(LStep);
   
   // Step 3: Validate result
@@ -598,10 +580,8 @@ begin
   LStep.Id := 'validate-result';
   LStep.Name := 'Validate Result';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atSkill;
-  LAction.SkillId := 'validator';
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atSkill;
+  LStep.Action.SkillId := 'validator';
   Result.Steps.Add(LStep);
 end;
 
@@ -609,15 +589,15 @@ function TWorkflowE2ETests.ExecuteWorkflow(AWorkflow: TWorkflowDefinition; AInpu
 var
   LContext: TWorkflowContext;
   LExecutor: TWorkflowExecutor;
-  LKey: string;
+  LPair: TJSONPair;
 begin
-  LContext := TWorkflowContext.Create;
+  LContext := TWorkflowContext.Create('e2e', TGUID.NewGuid.ToString);
   try
     // Set input variables
     if Assigned(AInput) then
     begin
-      for LKey in AInput.EnumerateNames do
-        LContext.SetVariable(LKey, AInput.GetValue(LKey).Clone as TJSONValue);
+      for LPair in AInput do
+        LContext.SetVariable(LPair.JsonString.Value, LPair.JsonValue.Clone as TJSONValue);
     end;
     
     LExecutor := TWorkflowExecutor.Create(AWorkflow, LContext);

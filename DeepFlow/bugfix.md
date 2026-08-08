@@ -2,7 +2,7 @@
 
 > 记录开发过程中发现和修复的 Bug
 >
-> 最后更新: 2026-08-07
+> 最后更新: 2026-08-08
 
 ---
 
@@ -791,4 +791,274 @@ Inc(LRecord.Count) �?
   - 先统计所有 39 个文件的损坏点，再按上下文逐字修复
   - 预计需要大量手工工作（参考简单 QA 的 23 处修复）
 - **关联任务**: 这是 TASK-0102 的一部分，但现在已明确是工作区未 committed 状态的问题
-- **状态**: 已修复 (git checkout HEAD 恢复 39 个文件, commit ea96fdc6, 2026-08-07)
+- **状态**: 已修复 (git checkout HEAD 恢复 39 个文件，commit ea96fdc6, 2026-08-07)
+
+---
+
+## 2026-08-07: Delphi 编译完整修复期间发现的问题
+
+> **背景**: Source\Tests 三文件 (Benchmark/E2E/Executor) 编译错误集中在 API 误用
+
+### BUG-2026-009: TWorkflowStep.Action 只读属性误用 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: High
+- **影响范围**: Benchmark.pas (L659/685/711), E2E.pas (L479/491/503/546/559/581/593/604), 共 11 处
+- **问题描述**: 
+  - 测试代码创建 LAction: TActionDefinition 变量并赋值 `LStep.Action := LAction`
+  - 但 TWorkflowStep.Action 为 read only，构造函数已自动创建 FAction 实例
+- **修复方案**: 
+  - 删除 LAction 变量声明和赋值语句
+  - 直接操作 LStep.Action 的子对象 (`LStep.Action.ActionType := ...; LStep.Action.Params := TJSONObject.Create; ...`)
+- **验证**: 编译通过，零 Error
+- **经验**: 只读属性只能访问，不能赋值；子对象由构造函数初始化
+
+### BUG-2026-010: TConditionExpression/TConditionBranch API 不匹配 (P0)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: Critical
+- **影响范围**: Benchmark.pas (L694-700), 共 6 处
+- **问题描述**: 
+  - 测试代码使用不存在的 API:`TConditionExpression.Expression/Branches/DefaultStep`
+  - `TConditionBranch.Operator/Value/NextStep`
+  - 实际 API:TConditionExpression.Operator/LeftExpr/RightExpr/SubConditions; TConditionBranch.Id/WhenValue/MatchExpr/IsDefault/Condition/Steps
+- **修复方案**: 
+  - `LStep.Condition.Expression := '...'` → `LStep.Expression := '{{ vars.var_1 }}'`
+  - `LStep.Condition.Branches/DefaultStep` → `LStep.Branches.Add(LBranch)` + 第二个 IsDefault 分支
+  - `LBranch.Operator := coEquals` → `LBranch.MatchExpr := '> 5'`
+  - `LBranch.Value` / `LBranch.NextStep` 删除
+- **验证**: 编译通过，E2003 全部消除
+- **经验**: 
+  - 条件步骤 API: `LStep.Expression` (文本表达式) + `LStep.Branches` + `LBranch.MatchExpr`
+  - TConditionBranch.Steps 是嵌入步骤列表，不是 NextStep 字符串引用
+
+### BUG-2026-011: TWorkflowContext.Create 参数不足 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: High
+- **影响范围**: Benchmark.pas (10 处), E2E.pas (1 处), Executor.pas (多处), 共 12+ 处
+- **问题描述**: 
+  - `TWorkflowContext.Create`需要 `(AWorkflowId, AInstanceId: string)` 两个参数
+  - 测试代码仅使用单参或无参构造
+- **修复方案**: 
+  - `TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString)`
+  - `TWorkflowContext.Create('e2e', TGUID.NewGuid.ToString)`
+- **验证**: E2035 Not enough actual parameters 消除
+- **经验**: Context 必须提供 WorkflowId 和 InstanceId，前者标识工作流类型，后者唯一实例 ID
+
+### BUG-2026-012: TJSONObject.EnumerateNames 不存在 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: Medium
+- **影响范围**: E2E.pas (L619)
+- **问题描述**: 
+  - TJSONObject 没有 EnumerateNames 方法
+  - 尝试遍历 JSON 输入参数失败
+- **修复方案**: 
+  - `for LKey in AInput.EnumerateNames do` → `for LPair in AInput do`
+  - `AInput[LKey]` → `LPair.JsonValue`
+  - `LKey` → `LPair.JsonString.Value`
+- **验证**: E2003 Undeclared identifier 消除
+- **经验**: TJSONObject迭代使用`for LPair in AInput`(返回 TJSONPair)+LPair.JsonString.Value/LPair.JsonValue.Clone
+
+### BUG-2026-013: Assert.WillRaise DUnitX 重载问题 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: Medium
+- **影响范围**: Executor.pas (L1021/1066/1083), 共 3 处
+- **问题描述**: 
+  - `Assert.WillRaise<Exception>(proc)`泛型版报 E2250 No matching overload
+  - `Assert.WillRaise(proc, Exception, msg)`非泛型三参版也报 E2250
+  - 只有 `Assert.WillRaise(LProc)`单参版成功
+- **修复方案**: 
+  - 局部 TProc 变量承接匿名过程:`var LProc: TProc; LProc := procedure ... end;`
+  - 传入 `Assert.WillRaise(LProc)`
+- **验证**: E2250 All eliminated
+- **经验**: DUnitX 的 WillRaise 在 Delphi 37 下，局部 TProc 变量是唯一可靠方式
+
+### BUG-2026-014: TTask.Create vs TTask.Run 模式错误 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: Medium
+- **影响范围**: Executor.pas (Test_Parallel_RaceCondition_Safe, Test_MultipleExecutors_Concurrent, Test_ContextClone_ThreadSafe, Test_SharedResource_NoDeadlock), 共 4 处
+- **问题描述**: 
+  - `Tasks[I] := TTask.Create(TProc(...))`语法在 Delphi 37 下解析冲突
+  - E2029 ')' expected but ';' found, E2070 Syntax error, E2382 Method or procedure expected
+  - TTask.Create 构造函数返回 TTask 对象，不是 ITask 接口
+- **修复方案**: 
+  - `Tasks[I] := TTask.Run(procedure ... end)`
+  - TTask.Run 静态方法返回 ITask，可直接赋给接口数组元素
+  - 删除多余的 `Task.Start` (TTask.Run 已自动启动)
+- **验证**: E2029/E2070/E2382 消除
+- **经验**: TTask.Run()优于 TTask.Create(), 返回 ITask 接口且自动启动
+
+### BUG-2026-015: System.SyncObjs/System.Threading uses 缺失 (P0)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: High
+- **影响范围**: Executor.pas (L1-L30)
+- **问题描述**: 
+  - TCriticalSection 未声明 → 来自 System.SyncObjs
+  - ITask/TTask 未声明 → 来自 System.Threading
+- **修复方案**: 
+  - uses 增加 `System.SyncObjs, System.Threading,`
+- **验证**: E2003 Undeclared identifier 消除
+- **经验**: 并发相关类型必须显式引入对应系统单元
+
+### BUG-2026-016: dcu 目录未加入-U 搜索路径 (P0)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: Critical (阻止编译继续)
+- **影响范围**: dcc32.exe 编译配置
+- **问题描述**: 
+  - `dcu\DeepBase.Exceptions.dcu` 存在但编译时报 F2613 Unit not found
+  - `-NU"dcu"`只指定输出目录，不自动加入搜索路径
+- **修复方案**: 
+  - `-U"Source;...;dcu"`末尾显式添加`;dcu`
+- **验证**: F2613消除，编译继续进入后续错误列表
+- **经验**: DCU 不在-source 路径时，必须在-U 中显式包含其位置
+
+### BUG-2026-017: TWorkflowDefinition.Validate 参数不足 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: Medium
+- **影响范围**: Executor.pas (Test_Validate_ValidWorkflow_ReturnsTrue, Test_Validate_InvalidWorkflow_ReturnsFalse), 2 处
+- **问题描述**: 
+  - `FDefinition.Validate`无参数调用
+  - 实际签名：`function Validate(out AErrors: TArray<string>): Boolean;`
+  - 缺少 out 参数，且未声明 AErrors 变量
+- **修复方案**: 
+  - 添加`var AErrors: TArray<string>;`
+  - `FDefinition.Validate` → `FDefinition.Validate(AErrors)`
+- **验证**: E2035 Not enough actual parameters 和 E2003 AErrors undeclared 消除
+- **经验**: Validate 方法必须有 out 参数接收错误列表
+
+---
+
+## 2026-08-07~08: DUnitX 测试驱动功能修复 (44→104 全绿)
+
+> **背景**: DUnitX 测试运行器 (DeepFlow.Tests.Runner.dpr) 建立后，55 个 Executor 测试 44 过 11 失败；
+> 逐项修复后全部套件 **104/104 通过**（Executor 55 + WorkflowE2E 19 + SessionE2E 6 + FullIntegration 4 + Benchmark 20），0 失败/0 泄漏/0 错误。
+
+### BUG-2026-018: SetVariable 作用域重定向缺失 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: High
+- **影响范围**: DeepFlow.Workflow.Context.pas (SetVariable)
+- **问题描述**: 无前缀变量写入栈顶 vsInput（只读输入区），与文档契约不符——SetVariable('user_name', ...) 后应可用 `{{ vars.user_name }}` 读取（quick-start.md L111）
+- **修复方案**: 栈顶为 vsInput 且栈深 >= 2 时，重定向到倒数第二层（vsWorkflow）
+- **验证**: Test_SetVariable_PrefersWorkflowScope 通过
+
+### BUG-2026-019: 执行器正序遍历致内置执行器抢注册 (P1)
+- **发现/修复日期**: 2026-08-07
+- **严重程度**: High
+- **影响范围**: DeepFlow.Workflow.Executor.pas (ExecuteAction)
+- **问题描述**: ExecuteAction 正序遍历 FActionExecutors，内置 TSkillActionExecutor 总是先命中 atSkill，用户注册的同类型执行器永不生效
+- **修复方案**: 改倒序遍历（后注册优先，允许覆盖内置）
+- **验证**: Test_ExecuteAction_UserExecutorOverridesBuiltIn 通过
+
+### BUG-2026-020: AsString 对 JSON 标量返回带引号文本 (P1)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: High
+- **影响范围**: DeepFlow.Workflow.Context.pas (TVariableValue.AsString 'j' 分支)
+- **问题描述**: `Expected [deep] but got ["deep"]` / `Expected [42] but got ["42"]` —— TJSONString.ToJSON 带引号
+- **修复方案**: 按 JSON 标量类型返回：TJSONString→.Value、TJSONNumber→ToJSON、TJSONBool→BoolToStr、其他→ToJSON
+- **验证**: Test_DeepNesting_Expression / Test_ResolveString_NestedPath 通过
+
+### BUG-2026-021: EvaluateValue 对已含 `{{ }}` 的表达式嵌套包裹 (P1)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: High
+- **影响范围**: DeepFlow.Workflow.Context.pas (EvaluateValue else 分支)
+- **问题描述**: AExpr 已含 `{{ }}` 时被再包一层变成 `{{ {{ vars.flag }} }}`，正则非贪婪匹配把 `{{ vars.flag` 当路径，解析失败（Boolean/Comparison 表达式全挂）
+- **修复方案**: 已含 `{{` 直接 ResolveString，否则才包裹
+- **验证**: Test_Expression_Evaluate_Boolean/Comparison 通过
+
+### BUG-2026-022: Loop 工作流 Start 结果丢失 Output (P0)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Critical
+- **影响范围**: DeepFlow.Workflow.Executor.pas (Start/Resume)
+- **问题描述**: Test_Loop_CollectsResults Success=True 但 Output=nil —— 循环内每步 StepResult 被 Free，最终返回 TStepResult.OK 不带输出
+- **修复方案**: Start/Resume 保留最后一步结果（FreeAndNil(Result); Result := StepResult; StepResult := nil;）；NeedsWait/Error 分支 Exit 前 FreeAndNil(Result) 防泄漏
+- **验证**: Test_Loop_CollectsResults 通过
+- **经验**: 工作流最终 Result 携带最后一步结果（含 Output）；失败/取消/等待分支单独返回
+
+### BUG-2026-023: Parallel 分支闭包共享捕获 + 执行器顺序 (P0)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Critical
+- **影响范围**: DeepFlow.Workflow.Executor.pas (ExecuteParallel)
+- **问题描述**: 双根因——(1) `var BranchIdx := I` 在 Delphi 匿名方法中共享捕获，所有闭包看到同一索引；(2) 正序遍历 FActionExecutors 内置执行器抢 atSkill
+- **修复方案**: 抽 MakeParallelTask 私有方法，按值传参（AIndex/TArray/PBoolean），匿名方法内声明局部变量；内部倒序遍历执行器
+- **验证**: Test_Parallel_AllBranches / Test_Parallel_WaitAll 通过
+- **经验**: Delphi 匿名方法循环体内 `var X := I` 被所有闭包共享；E1019 for 控制变量须为被捕获作用域内简单局部变量；E2081 嵌套 for 不可复用控制变量；解法=抽方法+按值参数+局部变量声明在匿名方法 var 块
+
+### BUG-2026-024: Guard 忽略 expression 守卫 (P1)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: High
+- **影响范围**: DeepFlow.Workflow.Executor.pas (TGuardActionExecutor.Execute) + Errors.pas + Context.pas
+- **问题描述**: Test_E2E_SimpleQA_WithValidation 的 `{{ vars.question | length > 0 }}` 守卫被忽略（GuardType 空走 else→OK）
+- **修复方案**: 加 expression 分支（TExpressionEvaluator.Evaluate，false 时 Fail(ERR_GUARD_EXPRESSION)）+ 新增错误码 + ResolveString 加 length 过滤器
+- **验证**: Test_E2E_SimpleQA_WithValidation 通过
+
+### BUG-2026-025: TSessionManager 清理定时器死锁 (P0)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Critical
+- **影响范围**: DeepFlow.Session.Manager.pas (StartCleanupTimer)
+- **问题描述**: 匿名线程 `Sleep(CleanupIntervalMinutes * 60 * 1000)`（默认 5 分钟），Destroy 时 WaitFor 长时间阻塞 → TSessionE2ETests 卡死
+- **修复方案**: 改 100ms 小步等待循环（及时响应 Terminate）
+- **验证**: TSessionE2ETests 6/6 通过
+
+### BUG-2026-026: Runner 编译路径缺 Source\Session (P0)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Critical
+- **影响范围**: 构建配置
+- **问题描述**: Runner 的 -U 缺 Source\Session，链接 dcu 目录旧单元，Session 修复不生效（诊断程序显式加路径才通过）
+- **修复方案**: 编译命令统一加 Source\Session
+- **经验**: 编译命令必须含全部源目录；缺路径时 dcc32 静默链接旧 dcu，修复无效且难排查
+
+### BUG-2026-027: TMockActionExecutor 无锁并发写日志 (P2)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Medium
+- **影响范围**: DeepFlow.Tests.Executor.pas
+- **问题描述**: 并行分支并发 FExecutionLog.Add，可能交错损坏
+- **修复方案**: 加 FLock (TCriticalSection) 保护
+
+### BUG-2026-028: TMemoryMonitor 匿名线程悬垂句柄 (P0)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Critical
+- **影响范围**: DeepFlow.Tests.Benchmark.pas (TMemoryMonitor)
+- **问题描述**: `Thread Error: 无效句柄 (6)` —— TThread.CreateAnonymousThread 默认 FreeOnTerminate=True，线程结束后自我释放，Stop 的 WaitFor 访问悬垂对象
+- **修复方案**: 创建后 `FThread.FreeOnTerminate := False;`，Stop 中 WaitFor 后 `FThread.Free; FThread := nil;`
+- **验证**: Benchmark_Memory_WorkflowExecution 通过
+- **经验**: 对匿名线程做 WaitFor 前必须先置 FreeOnTerminate := False，否则 WaitFor/句柄操作存在竞态
+
+### BUG-2026-029: LargeContext 基准测试 TJSONString 泄漏 (P1)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: High
+- **影响范围**: DeepFlow.Tests.Benchmark.pas (Benchmark_Memory_LargeContext)
+- **问题描述**: `SetVariable('var_'+I, TJSONString.Create(...))` 每轮创建 100 个对象从不释放（TVariableValue.Create(TJSONValue) 内部 Clone 存值、不接管所有权）→ 1000 轮 ≈ 110MB 泄漏 → 断言 < 200MB 失败
+- **修复方案**: 局部变量 + try/finally 释放原对象
+- **验证**: Benchmark_Memory_LargeContext 通过
+- **经验**: SetVariable(TJSONValue) 是 Clone 语义，调用方保留所有权，必须自行释放
+
+### BUG-2026-030: LeakDetection 测试同样泄漏 (P2)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Medium
+- **影响范围**: DeepFlow.Tests.Benchmark.pas (Benchmark_Memory_LeakDetection)
+- **问题描述**: `SetVariable('test', TJSONString.Create('value'))` 同模式泄漏
+- **修复方案**: 改用 string 重载（直接存值，无 clone 开销）
+
+---
+
+## 2026-08-08: Python Skill 服务真实联调 (Delphi ↔ FastAPI 打通)
+
+背景：首次真实启动 Python Skill Service（Skills/，FastAPI + LiteLLM）并与 Delphi TSkillClient 联调，发现 2 个仅真实联调才能暴露的接口契约 bug（mock 测试全绿掩盖）。
+
+### BUG-2026-031: DoRequest 强转 TJSONObject 导致 /skills 数组响应崩溃 (P0)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: High
+- **影响范围**: DeepFlow.Skill.Client.pas (DoRequest/DoRequestAsync 及全部调用方)
+- **问题描述**: `DoRequest` 用 `TJSONObject.ParseJSONValue(ResponseStr) as TJSONObject` 强转，但 Python 服务 `/skills` 返回裸 JSON 数组 → `Invalid class typecast` 异常（Demo 2 ListSkills 崩溃）
+- **修复方案**: DoRequest 返回类型 TJSONObject → TJSONValue（保留原始类型）；ListSkills 优先处理 TJSONArray，兼容旧格式 `{"skills":[...]}`；其余调用方 `as TJSONObject`；异步回调签名同步 TProc<TJSONValue>
+- **验证**: DeepFlowSkillE2E Demo 2 通过；全量回归 104/104 仍全绿
+- **经验**: 客户端解析不能假设响应恒为 JSON 对象；真实联调能暴露 mock 测不到的类型契约问题
+
+### BUG-2026-032: TSkillInfo.FromJSON 不兼容 JSON Schema 格式 parameters (P1)
+- **发现/修复日期**: 2026-08-08
+- **严重程度**: Medium
+- **影响范围**: DeepFlow.Skill.Types.pas (TSkillInfo.FromJSON)
+- **问题描述**: Python 服务 `/skills` 返回 parameters 为 JSON Schema 对象 `{type, properties, required}`，Delphi 期待数组 `[{name,type,description,required},...]` → 参数列表解析为空
+- **修复方案**: 兼容两种格式——数组走原逻辑；对象则解析 properties 子对象（type/description），required 数组决定必填标记
+- **验证**: DeepFlowSkillE2E Demo 2 正确列出 code_executor 参数；全量回归 104/104 仍全绿
+- **经验**: 跨语言接口契约须实测验证，Schema 对象 vs 数组是最常见的格式漂移点
+
+---

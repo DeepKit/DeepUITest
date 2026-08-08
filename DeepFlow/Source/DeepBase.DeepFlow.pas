@@ -3,7 +3,7 @@ unit DeepBase.DeepFlow;
   DeepBase.DeepFlow - Facade Unit for DeepFlow Integration
   =====================================================
   
-  统一导出 DeepFlow 所有功能的外观单元，简化集成�?
+  统一导出 DeepFlow 所有功能的外观单元，简化集成�?
   
   使用示例:
   
@@ -17,7 +17,7 @@ unit DeepBase.DeepFlow;
   begin
     Engine := TDeepFlowEngine.Create;
     try
-      // 加载工作流定�?
+      // 加载工作流定�?
       Engine.LoadWorkflow('Config/workflows/simple_qa.workflow.json');
       
       // 处理用户请求
@@ -32,23 +32,23 @@ unit DeepBase.DeepFlow;
   Architecture:
   
   ```
-  ┌─────────────────────────────────────────────────────────────�?
-  �?                   TDeepFlowEngine (Facade)                  �?
-  ├─────────────────────────────────────────────────────────────�?
-  �? ProcessRequest()   Execute()   LoadWorkflow()              �?
-  └─────────────────────────────────────────────────────────────�?
-              �?             �?             �?
-              �?             �?             �?
-  ┌───────────────�?┌───────────────�?┌───────────────�?
-  �? TCommander   �?�? TExecutor    �?�? TDefinition  �?
-  �? (意图识别)    �?�? (步骤执行)    �?�? (工作流定�?  �?
-  └───────────────�?└───────────────�?└───────────────�?
-              �?             �?             �?
-              �?             �?             �?
-  ┌───────────────�?┌───────────────�?┌───────────────�?
-  �? TSession     �?�? LLM/Skill    �?�? Context      �?
-  �? (会话管理)    �?�? (AI调用)      �?�? (变量上下�?  �?
-  └───────────────�?└───────────────�?└───────────────�?
+  ┌─────────────────────────────────────────────────────────────�?
+  �?                   TDeepFlowEngine (Facade)                  �?
+  ├─────────────────────────────────────────────────────────────�?
+  �? ProcessRequest()   Execute()   LoadWorkflow()              �?
+  └─────────────────────────────────────────────────────────────�?
+              �?             �?             �?
+              �?             �?             �?
+  ┌───────────────�?┌───────────────�?┌───────────────�?
+  �? TCommander   �?�? TExecutor    �?�? TDefinition  �?
+  �? (意图识别)    �?�? (步骤执行)    �?�? (工作流定�?  �?
+  └───────────────�?└───────────────�?└───────────────�?
+              �?             �?             �?
+              �?             �?             �?
+  ┌───────────────�?┌───────────────�?┌───────────────�?
+  �? TSession     �?�? LLM/Skill    �?�? Context      �?
+  �? (会话管理)    �?�? (AI调用)      �?�? (变量上下�?  �?
+  └───────────────�?└───────────────�?└───────────────�?
   ```
 *)
 
@@ -61,6 +61,7 @@ uses
   System.Generics.Collections,
   System.IOUtils,
   System.SyncObjs,
+  DeepBase.Exceptions,
   // Workflow
   DeepFlow.Workflow.Definition,
   DeepFlow.Workflow.Context,
@@ -147,9 +148,9 @@ type
   public
     constructor Create;
     
-    /// <summary>工作流定义目�?/summary>
+    /// <summary>工作流定义目�?/summary>
     property WorkflowDir: string read FWorkflowDir write FWorkflowDir;
-    /// <summary>会话超时(�?</summary>
+    /// <summary>会话超时(�?</summary>
     property SessionTimeout: Integer read FSessionTimeout write FSessionTimeout;
     /// <summary>每用户最大会话数</summary>
     property MaxSessionsPerUser: Integer read FMaxSessionsPerUser write FMaxSessionsPerUser;
@@ -208,29 +209,29 @@ type
     constructor Create(AConfig: TDeepFlowEngineConfig); overload;
     destructor Destroy; override;
     
-    /// <summary>初始化引�?/summary>
+    /// <summary>初始化引�?/summary>
     procedure Initialize;
     
     /// <summary>关闭引擎</summary>
     procedure Shutdown;
     
     // ========================================================================
-    // 工作流管�?
+    // 工作流管�?
     // ========================================================================
     
-    /// <summary>�?JSON 文件加载工作流定�?/summary>
+    /// <summary>�?JSON 文件加载工作流定�?/summary>
     function LoadWorkflow(const AFilePath: string): string;
     
-    /// <summary>�?JSON 字符串加载工作流定义</summary>
+    /// <summary>�?JSON 字符串加载工作流定义</summary>
     function LoadWorkflowFromJSON(const AJSON: string): string;
     
-    /// <summary>获取已注册的工作流定�?/summary>
+    /// <summary>获取已注册的工作流定�?/summary>
     function GetWorkflow(const AWorkflowId: string): TWorkflowDefinition;
     
     /// <summary>获取所有工作流 ID</summary>
     function GetWorkflowIds: TArray<string>;
     
-    /// <summary>注册意图到工作流的路�?/summary>
+    /// <summary>注册意图到工作流的路�?/summary>
     procedure RegisterRoute(const AIntentName, AWorkflowId: string);
     
     /// <summary>注册意图识别模式</summary>
@@ -242,23 +243,23 @@ type
     // 请求处理
     // ========================================================================
     
-    /// <summary>处理用户请求（主入口�?/summary>
+    /// <summary>处理用户请求（主入口�?/summary>
     function ProcessRequest(const ASessionId, AMessage: string;
       const AUserId: string = ''): TCommanderResponse;
     
     /// <summary>处理用户请求（使用请求对象）</summary>
     function ProcessRequestObj(ARequest: TUserRequest): TCommanderResponse;
     
-    /// <summary>直接执行指定工作�?/summary>
+    /// <summary>直接执行指定工作�?/summary>
     function ExecuteWorkflow(const AWorkflowId, ASessionId: string;
       AInput: TJSONObject = nil): TStepResult;
     
-    /// <summary>获取或创建会�?/summary>
+    /// <summary>获取或创建会�?/summary>
     function GetOrCreateSession(const ASessionId: string;
       const AUserId: string = ''): TSession;
     
     // ========================================================================
-    // 诊断与调�?
+    // 诊断与调�?
     // ========================================================================
     
     /// <summary>获取诊断实例</summary>
@@ -271,7 +272,7 @@ type
     function ExportTrace(const ACorrelationId: string): string;
     
     // ========================================================================
-    // 属�?
+    // 属�?
     // ========================================================================
     
     property Config: TDeepFlowEngineConfig read FConfig;
@@ -400,29 +401,29 @@ begin
       Exit;
     
     // 初始化会话管理器
-    SessionConfig.ExpirySeconds := FConfig.SessionTimeout;
+    SessionConfig.DefaultTimeoutMinutes := FConfig.SessionTimeout div 60;
     SessionConfig.MaxSessionsPerUser := FConfig.MaxSessionsPerUser;
-    SessionConfig.CleanupIntervalSeconds := 300;
+    SessionConfig.CleanupIntervalMinutes := 5;
     
     FSessionManager := TSessionManager.Create(TMemorySessionStore.Create);
     FSessionManager.Config := SessionConfig;
     
-    // 初始化工作流注册�?
+    // 初始化工作流注册�?
     FWorkflowRegistry := TSimpleWorkflowRegistry.Create;
     
-    // 初始�?Commander
+    // 初始�?Commander
     FCommander := TCommander.Create(FSessionManager, FWorkflowRegistry);
     RegisterBuiltinIntents;
     
-    // 初始�?Skill 客户�?
+    // 初始�?Skill 客户�?
     if FConfig.SkillServiceURL <> '' then
       FSkillClient := TSkillClient.Create(FConfig.SkillServiceURL);
     
-    // 初始化诊�?
+    // 初始化诊�?
     if FConfig.EnableDiagnostics then
       FDiagnostics := Diagnostics();  // 使用全局实例
     
-    // 初始化审�?
+    // 初始化审�?
     if FConfig.EnableAudit then
       InitializeAuditManager(TMemoryAuditStore.Create);
     
@@ -464,13 +465,13 @@ procedure TDeepFlowEngine.RegisterBuiltinIntents;
 begin
   // 默认意图
   FCommander.IntentRecognizer.RegisterIntent('greeting',
-    ['^(hi|hello|hey|你好|�?'],
-    ['hello', 'hi', 'hey', '你好', '�?, '早上�?, '下午�?],
+    ['^(hi|hello|hey|你好|嗨'],
+    ['hello', 'hi', 'hey', '你好', '嗨', '早上好', '下午好'],
     10);
     
   FCommander.IntentRecognizer.RegisterIntent('help',
-    ['^(help|帮助|怎么�?'],
-    ['help', '帮助', '怎么�?, '如何使用'],
+    ['^(help|帮助|怎么停止'],
+    ['help', '帮助', '怎么停止', '如何使用'],
     10);
     
   FCommander.IntentRecognizer.RegisterIntent('bye',
@@ -508,7 +509,7 @@ begin
     try
       Workflow.LoadFromJSON(JSONObj);
       
-      // 注册到内部字�?
+      // 注册到内部字�?
       FLock.Enter;
       try
         if FWorkflows.ContainsKey(Workflow.Id) then
@@ -518,8 +519,8 @@ begin
         FLock.Leave;
       end;
       
-      // 注册�?Commander 工作流注册表
-      FWorkflowRegistry.RegisterWorkflow(Workflow.Id, Workflow);
+      // 注册�?Commander 工作流注册表
+      FWorkflowRegistry.RegisterWorkflow(Workflow);
       
       Result := Workflow.Id;
     except
@@ -591,7 +592,7 @@ begin
   
   // 记录审计
   if FConfig.EnableAudit then
-    AuditManager.LogSession(aaSessionAccess, ARequest.SessionId,
+    AuditManager.LogSession(aaSessionCreated, ARequest.SessionId, ARequest.UserId,
       Format('Processing request: %s', [Copy(ARequest.Message, 1, 100)]));
   
   try
@@ -599,14 +600,14 @@ begin
     
     // 记录成功
     if FConfig.EnableAudit and (Result.Status = rsSuccess) then
-      AuditManager.LogWorkflow(aaWorkflowComplete, '', 'Request processed successfully');
+      AuditManager.LogWorkflow(aaWorkflowCompleted, '', '', 'Request processed successfully');
   except
     on E: Exception do
     begin
       DoError('PROCESS_ERROR', E.Message);
       
       if FConfig.EnableAudit then
-        AuditManager.LogError(E, 'ProcessRequest failed');
+        AuditManager.LogError(Format('ProcessRequest failed: %s', [E.Message]));
       
       Result := TCommanderResponse.Error('PROCESS_ERROR', E.Message);
     end;
@@ -623,26 +624,27 @@ begin
   if Workflow = nil then
     raise EOperationException.CreateFmt('Workflow not found: %s', [AWorkflowId]);
     
-  Context := TWorkflowContext.Create;
+  Context := TWorkflowContext.Create(AWorkflowId, TGUID.NewGuid.ToString);
   
-  // 从会话复制变�?
+  // 从会话复制变量
   if ASession <> nil then
   begin
-    var Vars := ASession.GetAllVariables;
-    for var Key in Vars.Keys do
+    var Vars := ASession.Variables;
+    for var Key in Vars.Keys.ToArray do
       Context.SetVariable(Key, Vars[Key]);
   end;
   
   Result := TWorkflowExecutor.Create(Workflow, Context);
   
-  // 注册内置执行�?
+  // 注册内置执行�?
   Result.RegisterActionExecutor(TLogActionExecutor.Create);
   Result.RegisterActionExecutor(TAssignActionExecutor.Create);
   Result.RegisterActionExecutor(TGuardActionExecutor.Create);
   
-  // 注册 Skill 执行�?
+  // 注册 Skill 执行器
   if FSkillClient <> nil then
-    Result.RegisterActionExecutor(TSkillActionExecutor.Create(FSkillClient));
+    Result.RegisterActionExecutor(
+      DeepFlow.Workflow.Executor.TSkillActionExecutor.Create(FSkillClient.Config.BaseURL));
 end;
 
 function TDeepFlowEngine.ExecuteWorkflow(const AWorkflowId, ASessionId: string;
@@ -669,7 +671,7 @@ begin
     // 执行
     Result := Executor.Start;
     
-    // 保存输出到会�?
+    // 保存输出到会�?
     if Result.Success and (Result.Output <> nil) then
       Session.SetVariable('last_output', Result.Output.ToJSON);
     
@@ -708,7 +710,7 @@ begin
   Session := GetOrCreateSession(ASessionId);
   Executor := CreateExecutor(AWorkflowId, Session);
   
-  Result := TWorkflowDebugger.Create(Executor, FDiagnostics);
+  Result := TWorkflowDebugger.Create(TDebuggerConfig.Default);
 end;
 
 function TDeepFlowEngine.ExportTrace(const ACorrelationId: string): string;
@@ -718,9 +720,9 @@ begin
   if FDiagnostics = nil then
     Exit('Diagnostics not enabled');
     
-  Exporter := TTraceExporter.Create(FDiagnostics);
+  Exporter := CreateTraceExporter;
   try
-    Result := Exporter.ExportToJSON(ACorrelationId);
+    Result := Exporter.GenerateTimelineReport(FDiagnostics.TraceEntries);
   finally
     Exporter.Free;
   end;

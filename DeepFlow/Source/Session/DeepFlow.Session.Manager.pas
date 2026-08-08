@@ -402,10 +402,18 @@ procedure TSessionManager.StartCleanupTimer;
 begin
   FCleanupTimer := TThread.CreateAnonymousThread(
     procedure
+    var
+      Remaining: Integer;
     begin
       while not TThread.Current.CheckTerminated do
       begin
-        Sleep(FConfig.CleanupIntervalMinutes * 60 * 1000);
+        // 小步等待：及时响应 Terminate，避免 Destroy 时 WaitFor 长时间阻塞
+        Remaining := FConfig.CleanupIntervalMinutes * 60 * 1000;
+        while (Remaining > 0) and not TThread.Current.CheckTerminated do
+        begin
+          Sleep(100);
+          Dec(Remaining, 100);
+        end;
         if not TThread.Current.CheckTerminated then
           DoCleanup;
       end;

@@ -338,41 +338,41 @@ begin
   SB := TStringBuilder.Create;
   try
     SB.AppendLine('╔══════════════════════════════════════════════════════════════╗');
-    SB.AppendLine('�?                     ERROR REPORT                            �?);
+    SB.AppendLine('║                     ERROR REPORT                            ║');
     SB.AppendLine('╠══════════════════════════════════════════════════════════════╣');
-    SB.AppendFormat('�?ID:            %s', [Id]).AppendLine;
-    SB.AppendFormat('�?Time:          %s', [FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz', Timestamp)]).AppendLine;
-    SB.AppendFormat('�?Severity:      %s', [ErrorSeverityToString(Severity)]).AppendLine;
-    SB.AppendFormat('�?Category:      %s', [ErrorCategoryToString(Category)]).AppendLine;
+    SB.AppendFormat('║ID:            %s', [Id]).AppendLine;
+    SB.AppendFormat('║Time:          %s', [FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz', Timestamp)]).AppendLine;
+    SB.AppendFormat('║Severity:      %s', [ErrorSeverityToString(Severity)]).AppendLine;
+    SB.AppendFormat('║Category:      %s', [ErrorCategoryToString(Category)]).AppendLine;
     SB.AppendLine('╠══════════════════════════════════════════════════════════════╣');
-    SB.AppendFormat('�?Correlation:   %s', [CorrelationId]).AppendLine;
-    SB.AppendFormat('�?Workflow:      %s (%s)', [WorkflowName, WorkflowId]).AppendLine;
-    SB.AppendFormat('�?Step:          %s [%s] (#%d)', [StepId, StepType, StepIndex]).AppendLine;
+    SB.AppendFormat('║Correlation:   %s', [CorrelationId]).AppendLine;
+    SB.AppendFormat('║Workflow:      %s (%s)', [WorkflowName, WorkflowId]).AppendLine;
+    SB.AppendFormat('║Step:          %s [%s] (#%d)', [StepId, StepType, StepIndex]).AppendLine;
     SB.AppendLine('╠══════════════════════════════════════════════════════════════╣');
-    SB.AppendFormat('�?Error:         %s', [ErrorMessage]).AppendLine;
-    SB.AppendFormat('�?Exception:     %s', [ErrorClass]).AppendLine;
+    SB.AppendFormat('║Error:         %s', [ErrorMessage]).AppendLine;
+    SB.AppendFormat('║Exception:     %s', [ErrorClass]).AppendLine;
     
     if InnerError <> '' then
-      SB.AppendFormat('�?Inner:         %s', [InnerError]).AppendLine;
+      SB.AppendFormat('║Inner:         %s', [InnerError]).AppendLine;
     
     if Length(ExecutedSteps) > 0 then
     begin
       SB.AppendLine('╠══════════════════════════════════════════════════════════════╣');
-      SB.AppendLine('�?Execution Path:');
+      SB.AppendLine('║Execution Path:');
       for I := 0 to High(ExecutedSteps) do
-        SB.AppendFormat('�?  %d. %s', [I + 1, ExecutedSteps[I]]).AppendLine;
+        SB.AppendFormat('║  %d. %s', [I + 1, ExecutedSteps[I]]).AppendLine;
     end;
     
     if Suggestion <> '' then
     begin
       SB.AppendLine('╠══════════════════════════════════════════════════════════════╣');
-      SB.AppendFormat('�?Suggestion:    %s', [Suggestion]).AppendLine;
+      SB.AppendFormat('║Suggestion:    %s', [Suggestion]).AppendLine;
     end;
     
     if StackTrace <> '' then
     begin
       SB.AppendLine('╠══════════════════════════════════════════════════════════════╣');
-      SB.AppendLine('�?Stack Trace:');
+      SB.AppendLine('║Stack Trace:');
       SB.AppendLine(StackTrace);
     end;
     
@@ -579,13 +579,14 @@ function TErrorCollector.GenerateSuggestion(Category: TErrorCategory; const Erro
 begin
   case Category of
     ecTimeout:
-      Result := '检查网络连接，考虑增加超时时间或添加重试策�?;
+      Result := '检查LLM API 配置和配额，确认模型名称正确';
+
     ecNetwork:
       Result := '检查网络连接和目标服务是否可用';
     ecAuthentication:
       Result := '检查认证凭据是否正确和有效';
     ecAuthorization:
-      Result := '检查用户权限配�?;
+      Result := '检查用户权限配置';
     ecRateLimit:
       Result := '等待一段时间后重试，考虑减少请求频率';
     ecValidation:
@@ -595,13 +596,13 @@ begin
     ecLLM:
       Result := '检�?LLM API 配置和配额，确认模型名称正确';
     ecSkill:
-      Result := '检�?Skill 服务是否运行，确认技能名称正�?;
+      Result := '检查Skill 服务是否运行，确认技能名称正确';
     ecScript:
       Result := '检查脚本语法和依赖';
     ecData:
       Result := '检查数据格式，确认 JSON 结构正确';
   else
-    Result := '查看详细错误信息和堆栈跟�?;
+    Result := '查看详细错误信息和堆栈跟踪';
   end;
 end;
 

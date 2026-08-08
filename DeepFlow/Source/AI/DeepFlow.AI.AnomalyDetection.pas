@@ -1,16 +1,16 @@
 unit DeepFlow.AI.AnomalyDetection;
 
 {*******************************************************************************
-  DeepFlow AI 异常检测引�?
+  DeepFlow AI 异常检测引�?
   
   功能:
-  - 工作流执行异常检�?
+  - 工作流执行异常检�?
   - 时序异常分析
-  - 多维度指标监�?
-  - 自适应阈值学�?
+  - 多维度指标监�?
+  - 自适应阈值学�?
   - 异常根因分析
   
-  作�? DeepFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -18,7 +18,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
-  System.JSON, System.Math, System.DateUtils, System.SyncObjs;
+  System.Generics.Defaults, System.JSON, System.Math, System.DateUtils, System.SyncObjs;
 
 type
   {$REGION '基础类型'}
@@ -28,11 +28,11 @@ type
     atLatencySpike,       // 延迟尖峰
     atErrorBurst,         // 错误爆发
     atResourceExhaustion, // 资源耗尽
-    atThroughputDrop,     // 吞吐量下�?
+    atThroughputDrop,     // 吞吐量下�?
     atPatternDeviation,   // 模式偏离
-    atCyclicAnomaly,      // 周期性异�?
+    atCyclicAnomaly,      // 周期性异�?
     atTrendAnomaly,       // 趋势异常
-    atContextualAnomaly,  // 上下文异�?
+    atContextualAnomaly,  // 上下文异�?
     atCollectiveAnomaly,  // 集体异常
     atUnknown             // 未知
   );
@@ -42,10 +42,10 @@ type
     asInfo,       // 信息
     asWarning,    // 警告
     asCritical,   // 严重
-    asEmergency   // 紧�?
+    asEmergency   // 紧�?
   );
   
-  /// <summary>检测到的异�?/summary>
+  /// <summary>检测到的异�?/summary>
   TDetectedAnomaly = record
     Id: string;
     AnomalyType: TAnomalyType;
@@ -64,7 +64,7 @@ type
     Recommendations: TArray<string>;
   end;
   
-  /// <summary>时序数据�?/summary>
+  /// <summary>时序数据�?/summary>
   TTimeSeriesPoint = record
     Timestamp: TDateTime;
     Value: Double;
@@ -87,7 +87,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '统计分析�?}
+  {$REGION '统计分析�?}
   
   /// <summary>滑动窗口统计</summary>
   TSlidingWindowStats = class
@@ -114,6 +114,7 @@ type
     function GetMedian: Double;
     function GetP95: Double;
     function GetP99: Double;
+    function GetSum: Double;
     function GetZScore(AValue: Double): Double;
     function GetSummary: TStatisticsSummary;
     
@@ -133,19 +134,19 @@ type
     procedure Update(AValue: Double);
     procedure Reset;
     
-    property Value: Double read FValue;
-    property Variance: Double read FVariance;
-    property StdDev: Double read GetStdDev;
-    
     function GetStdDev: Double;
     function GetUpperBound(ASigma: Double = 3): Double;
     function GetLowerBound(ASigma: Double = 3): Double;
     function IsAnomaly(AValue: Double; ASigma: Double = 3): Boolean;
+
+    property Value: Double read FValue;
+    property Variance: Double read FVariance;
+    property StdDev: Double read GetStdDev;
   end;
   
   {$ENDREGION}
   
-  {$REGION '异常检测算�?}
+  {$REGION '异常检测算�?}
   
   /// <summary>基础检测器接口</summary>
   IAnomalyDetector = interface
@@ -216,7 +217,7 @@ type
   /// <summary>Isolation Forest 检测器 (简化版)</summary>
   TIsolationForestDetector = class(TInterfacedObject, IAnomalyDetector)
   private
-    FTrees: TList<TObject>;  // 简化的树结�?
+    FTrees: TList<TObject>;  // 简化的树结�?
     FNumTrees: Integer;
     FSampleSize: Integer;
     FContaminationRate: Double;
@@ -267,7 +268,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '多维度异常检�?}
+  {$REGION '多维度异常检�?}
   
   /// <summary>多指标数据点</summary>
   TMultiMetricPoint = record
@@ -277,7 +278,7 @@ type
     StepId: string;
   end;
   
-  /// <summary>相关性矩�?/summary>
+  /// <summary>相关性矩�?/summary>
   TCorrelationMatrix = class
   private
     FMetricNames: TStringList;
@@ -325,7 +326,7 @@ type
     Lag: Integer;
   end;
   
-  /// <summary>根因候�?/summary>
+  /// <summary>根因候�?/summary>
   TRootCauseCandidate = record
     Metric: string;
     Probability: Double;
@@ -333,12 +334,12 @@ type
     RelatedAnomalies: TArray<TDetectedAnomaly>;
   end;
   
-  /// <summary>根因分析�?/summary>
+  /// <summary>根因分析�?/summary>
   TRootCauseAnalyzer = class
   private
     FCausalGraph: TDictionary<string, TList<TCausalRelation>>;
     FRecentAnomalies: TList<TDetectedAnomaly>;
-    FTimeWindow: Integer;  // �?
+    FTimeWindow: Integer;  // �?
     
     function FindUpstreamCauses(const AMetric: string): TArray<string>;
     function ComputeCauseProbability(const ASource, ATarget: string;
@@ -355,13 +356,13 @@ type
   
   {$ENDREGION}
   
-  {$REGION '自适应阈�?}
+  {$REGION '自适应阈�?}
   
-  /// <summary>阈值调整策�?/summary>
+  /// <summary>阈值调整策�?/summary>
   TThresholdStrategy = (
-    tsFixed,              // 固定阈�?
-    tsPercentile,         // 百分�?
-    tsMAD,                // 中位数绝对偏�?
+    tsFixed,              // 固定阈�?
+    tsPercentile,         // 百分�?
+    tsMAD,                // 中位数绝对偏�?
     tsAdaptive            // 自适应
   );
   
@@ -392,9 +393,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '异常检测服�?}
+  {$REGION '异常检测服�?}
   
-  /// <summary>异常检测配�?/summary>
+  /// <summary>异常检测配�?/summary>
   TAnomalyDetectionConfig = record
     EnableLatencyDetection: Boolean;
     EnableErrorDetection: Boolean;
@@ -417,10 +418,10 @@ type
     Notes: string;
   end;
   
-  /// <summary>告警处理�?/summary>
+  /// <summary>告警处理�?/summary>
   TAnomalyAlertHandler = reference to procedure(const AAlert: TAnomalyAlert);
   
-  /// <summary>异常检测服�?/summary>
+  /// <summary>异常检测服�?/summary>
   TAnomalyDetectionService = class
   private
     FConfig: TAnomalyDetectionConfig;
@@ -450,7 +451,7 @@ type
     procedure RecordMultiMetrics(const AWorkflowId, AStepId: string;
       const AMetrics: TDictionary<string, Double>; ATimestamp: TDateTime);
     
-    // 检测控�?
+    // 检测控�?
     function DetectNow(const AWorkflowId: string): TArray<TDetectedAnomaly>;
     procedure TrainModels(const AHistoricalData: TArray<TMultiMetricPoint>);
     
@@ -485,15 +486,15 @@ type
     Timestamp: TDateTime;
   end;
   
-  /// <summary>工作流健康状�?/summary>
+  /// <summary>工作流健康状�?/summary>
   TWorkflowHealthStatus = (
     whsHealthy,      // 健康
     whsDegraded,     // 性能下降
-    whsUnhealthy,    // 不健�?
+    whsUnhealthy,    // 不健�?
     whsCritical      // 严重
   );
   
-  /// <summary>工作流健康报�?/summary>
+  /// <summary>工作流健康报�?/summary>
   TWorkflowHealthReport = record
     WorkflowId: string;
     Status: TWorkflowHealthStatus;
@@ -663,6 +664,15 @@ begin
   Result := GetPercentile(0.99);
 end;
 
+function TSlidingWindowStats.GetSum: Double;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to FWindow.Count - 1 do
+    Result := Result + FWindow[I];
+end;
+
 function TSlidingWindowStats.GetZScore(AValue: Double): Double;
 var
   Mean, StdDev: Double;
@@ -807,7 +817,7 @@ begin
     Anomaly.Deviation := AValue - FStats.GetMean;
     Anomaly.ZScore := ZScore;
     Anomaly.Confidence := 1 - (1 / (1 + Abs(ZScore)));
-    Anomaly.Description := Format('指标 %s 异常: 观测�?%.2f, 期望�?%.2f (Z-Score: %.2f)',
+    Anomaly.Description := Format('指标 %s 异常: 观测�?%.2f, 期望�?%.2f (Z-Score: %.2f)',
       [FMetricName, AValue, FStats.GetMean, ZScore]);
     
     SetLength(Anomaly.PossibleCauses, 2);
@@ -815,7 +825,8 @@ begin
     Anomaly.PossibleCauses[1] := '资源竞争';
     
     SetLength(Anomaly.Recommendations, 1);
-    Anomaly.Recommendations[0] := '检查系统资源使用情�?;
+    Anomaly.Recommendations[0] := '检查系统资源使用情况';
+
     
     Result[0] := Anomaly;
   end;
@@ -1023,14 +1034,14 @@ var
   N: Integer;
   C: Double;
 begin
-  // 简化实�? 基于训练数据的分布估计异常分�?
+  // 简化实�? 基于训练数据的分布估计异常分�?
   N := FTrainingData.Count;
   if N < 2 then Exit(0);
   
-  // 计算平均路径长度的期望�?
+  // 计算平均路径长度的期望�?
   C := 2 * (Ln(N - 1) + 0.5772156649) - (2 * (N - 1) / N);
   
-  // 简�? 基于与均值的距离估计
+  // 简�? 基于与均值的距离估计
   var Mean: Double := 0;
   for var I := 0 to FTrainingData.Count - 1 do
     Mean := Mean + FTrainingData[I];
@@ -1053,7 +1064,7 @@ end;
 function TIsolationForestDetector.PathLength(const AValue: Double;
   ATree: TObject): Double;
 begin
-  // 简化实�?
+  // 简化实�?
   Result := 5;
 end;
 
@@ -1125,7 +1136,7 @@ end;
 
 procedure TIsolationForestDetector.BuildForest;
 begin
-  // 简化实�? 实际应该构建隔离�?
+  // 简化实�? 实际应该构建隔离�?
 end;
 
 {$ENDREGION}
@@ -1160,7 +1171,7 @@ var
 begin
   if FDataPoints.Count < FSeasonalPeriod * 2 then Exit;
   
-  // 计算季节性模�?
+  // 计算季节性模�?
   SetLength(SeasonalSums, FSeasonalPeriod);
   SetLength(SeasonalCounts, FSeasonalPeriod);
   
@@ -1179,7 +1190,7 @@ begin
       FSeasonalPattern[I] := 0;
   end;
   
-  // 计算趋势 (简单移动平�?
+  // 计算趋势 (简单移动平�?
   SetLength(FTrend, FDataPoints.Count);
   for I := 0 to FDataPoints.Count - 1 do
   begin
@@ -1228,7 +1239,7 @@ var
 begin
   SetLength(Result, 0);
   
-  // 添加数据�?
+  // 添加数据�?
   Point.Timestamp := ATimestamp;
   Point.Value := AValue;
   FDataPoints.Add(Point);
@@ -1274,7 +1285,8 @@ begin
       [AValue, Expected, ZScore]);
     
     SetLength(Anomaly.PossibleCauses, 1);
-    Anomaly.PossibleCauses[0] := '偏离正常季节性模�?;
+    Anomaly.PossibleCauses[0] := '偏离正常季节性模式';
+
     
     Result[0] := Anomaly;
   end;
@@ -1331,7 +1343,7 @@ begin
   // 扩展矩阵
   SetLength(FMatrix, FMetricNames.Count, FMetricNames.Count);
   
-  // 初始化新�?�?
+  // 初始化新�?�?
   for I := 0 to FMetricNames.Count - 1 do
   begin
     FMatrix[OldSize, I] := 0;
@@ -1343,7 +1355,7 @@ end;
 procedure TCorrelationMatrix.Update(const AMetrics: TDictionary<string, Double>);
 begin
   Inc(FDataCount);
-  // 简化实�? 实际应该计算增量相关�?
+  // 简化实�? 实际应该计算增量相关�?
 end;
 
 function TCorrelationMatrix.GetCorrelation(const AMetric1, AMetric2: string): Double;
@@ -1448,11 +1460,11 @@ begin
         Detector := GetOrCreateDetector(MetricName);
         
         Anomalies := Detector.Detect(Value, APoint.Timestamp);
-        for Anomaly in Anomalies do
+        for var I := 0 to High(Anomalies) do
         begin
-          Anomaly.WorkflowId := APoint.WorkflowId;
-          Anomaly.StepId := APoint.StepId;
-          Results.Add(Anomaly);
+          Anomalies[I].WorkflowId := APoint.WorkflowId;
+          Anomalies[I].StepId := APoint.StepId;
+          Results.Add(Anomalies[I]);
         end;
       end;
     finally
@@ -1475,7 +1487,7 @@ var
 begin
   MetricData := TDictionary<string, TList<TTimeSeriesPoint>>.Create;
   try
-    // 按指标分组数�?
+    // 按指标分组数�?
     for Point in AData do
     begin
       FCorrelationMatrix.Update(Point.Metrics);
@@ -1619,7 +1631,7 @@ procedure TRootCauseAnalyzer.RecordAnomaly(const AAnomaly: TDetectedAnomaly);
 begin
   FRecentAnomalies.Add(AAnomaly);
   
-  // 清理旧记�?
+  // 清理旧记�?
   while FRecentAnomalies.Count > 0 do
   begin
     if SecondsBetween(Now, FRecentAnomalies[0].DetectedAt) > FTimeWindow * 2 then
@@ -1651,12 +1663,12 @@ begin
       if Candidate.Probability > 0.3 then
       begin
         SetLength(Candidate.Evidence, 1);
-        Candidate.Evidence[0] := Format('历史数据显示 %.0f%% 的相关�?, [Candidate.Probability * 100]);
+        Candidate.Evidence[0] := Format('历史数据显示 %.0f%% 的相关性', [Candidate.Probability * 100]);
         Candidates.Add(Candidate);
       end;
     end;
     
-    // 按概率排�?
+    // 按概率排�?
     Candidates.Sort(TComparer<TRootCauseCandidate>.Construct(
       function(const L, R: TRootCauseCandidate): Integer
       begin
@@ -1674,7 +1686,7 @@ end;
 
 procedure TRootCauseAnalyzer.LearnCausalRelations(const AData: TArray<TMultiMetricPoint>);
 begin
-  // 简化实�? 基于时间滞后相关性学习因果关�?
+  // 简化实�? 基于时间滞后相关性学习因果关�?
 end;
 
 {$ENDREGION}
@@ -1707,7 +1719,7 @@ var
   Stats: TSlidingWindowStats;
 begin
   if not FStats.TryGetValue(AMetric, Stats) then
-    Exit(3.0);  // 默认阈�?
+    Exit(3.0);  // 默认阈�?
   
   case FStrategy of
     tsFixed:
@@ -1717,7 +1729,7 @@ begin
     tsMAD:
       begin
         var Median := Stats.GetMedian;
-        var MAD := Stats.GetPercentile(0.5);  // 简�?
+        var MAD := Stats.GetPercentile(0.5);  // 简�?
         Result := Median + 3 * MAD;
       end;
     tsAdaptive:
@@ -1830,7 +1842,7 @@ var
 begin
   Result := True;
   
-  // 检查冷却时�?
+  // 检查冷却时�?
   Key := AAnomaly.WorkflowId + '.' + AAnomaly.MetricName;
   
   FLock.Enter;
@@ -1879,7 +1891,7 @@ begin
       try
         Handler(AAlert);
       except
-        // 忽略处理器错�?
+        // 忽略处理器错�?
       end;
     end;
   finally
@@ -2093,7 +2105,7 @@ begin
     
     if FWorkflowStats.TryGetValue(AWorkflowId + '.errors', Stats) then
     begin
-      // 错误率分�?
+      // 错误率分�?
       ErrorRate := Stats.GetMean;
       Result := Result * (1 - Min(1, ErrorRate));
     end;
@@ -2128,11 +2140,13 @@ begin
     begin
       case Anomaly.AnomalyType of
         atLatencySpike:
-          Recommendations.Add('考虑增加并发处理能力或优化慢速步�?);
+          Recommendations.Add('考虑增加并发处理能力或优化慢速步骤');
+
         atErrorBurst:
           Recommendations.Add('检查错误日志，确认错误根因');
         atResourceExhaustion:
-          Recommendations.Add('增加资源配额或优化资源使�?);
+          Recommendations.Add('增加资源配额或优化资源使用');
+
         atThroughputDrop:
           Recommendations.Add('检查上游服务状态和网络连接');
       end;

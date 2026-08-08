@@ -1873,3 +1873,161 @@ ADR-002 正名后，68 个 .pas 的 unit/program/uses 已改 DeepFlow.*，但类
 - **TASK-0103**: 外部 DeepBase.*依赖配置
 
 ---
+
+## 2026-08-07: Delphi 编译完整修复里程碑
+
+> **执行任务**: TASK-0104 (Source 目录全量编译) + 9 个子任务
+> **提交 commit**: 本次会话完成所有修复
+
+### 背景与挑战
+
+**初始状态**: Source 目录 128 个 .pas 文件，编译错误集中在 Tests 三文件 (Benchmark/E2E/Executor)，共 38+ 处 API 误用。
+
+**核心问题**: 
+- TWorkflowStep.Action/Branches/Expression 只读属性误写赋值
+- TConditionExpression/TConditionBranch API 不匹配 (使用不存在的 Expression/Branches/DefaultStep/Operator/Value/NextStep)
+- TWorkflowContext.Create 参数不足 (缺 WorkflowId/InstanceId)
+- TJSONObject.EnumerateNames 不存在 (应为 TJSONPair 迭代)
+- Assert.WillRaise DUnitX 重载匹配失败
+- TTask.Create→TTask.Run 模式转换
+- System.SyncObjs/System.Threading uses 缺失
+- dcu 目录未加入 -U 搜索路径导致 F2613
+
+### 修复记录
+
+#### ✅ TASK-0104: Source 目录全量编译通过
+**最终状态**: `dcc32.exe` 编译 `Source\DeepBase.DeepFlow.pas`,零 Error,仅 Warnings/Hints(W1057/H2077/H2164)
+
+#### 子任务完成情况
+
+| 子任务 | 主要修复内容 | 结果 |
+|--------|-------------|------|
+| fix-nlwf | NLWorkflowGen.pas implicit forward + trailing comma | 已修复 |
+| fix-utf8 | 128 处代码字符串 UTF-8 损坏批量修复 | 已修复 |
+| fix-reco | Recommendation.pas TComparer/API mismatch 修复 | 已修复 |
+| fix-rabbitmq | RabbitMQ.pas 接口声明顺序修复 | 已修复 |
+| fix-kafka | Kafka.pas cross-unit reference + E2251 cascade 修复 | 已修复 |
+| fix-benchmark | Benchmark.pas Tests API 不匹配修复 (13 处 E2129/E2003/E2035) | 已修复 |
+| fix-e2e | E2E.pas Tests API 不匹配修复 (15 处) | 已修复 |
+| fix-executor | Executor.pas Uses/WillRaise/TTask.Run 修复 (多轮迭代) | 已修复 |
+| dcu-search-path | 添加 dcu 到 -U 搜索路径 | 已修复 |
+
+#### 关键技术决策
+
+1. **dcu 目录搜索路径**: `-U"...;dcu"` 显式包含 dcu 目录，解决 F2613 Unit not found
+2. **只读属性处理**: TWorkflowStep.Action/Branches/Expression由构造函数自动创建，直接访问子对象而非赋值整个属性
+3. **条件步骤 API**: `LStep.Expression := '...'` + `LStep.Branches.Add(LBranch)` + `LBranch.MatchExpr/IsDefault`
+4. **TTask.Run vs Create**: `TTask.Run(...)` 返回 ITask 可直接赋给接口变量，避免 TTask.Create 的构造/接口转换问题
+5. **Assert.WillRaise**: 局部 TProc 变量承接匿名过程再传入 `WillRaise(LProc)` (单参版唯一可行)
+6. **DUnitX 类型系统**: WillRaise 泛型版和非泛型三参版均报 E2250,仅单参版成功
+
+#### 发现的 API 知识 (可用于后续开发)
+
+- TWorkflowStep.Action/Branches/ParallelConfig/LoopConfig/Expression 均为只读，子对象由 Constructor 创建
+- TConditionBranch.Steps 是嵌入步骤 (TObjectList<TWorkflowStep>),不是 NextStep 字符串引用
+- TWorkflowDefinition.Validate 必须有 out TArray<string>参数
+- TExpressionEvaluator 需独立创建，非 TWorkflowContext 属性
+- TJSONObject迭代使用`for LPair in AInput`(TJSONPair)+LPair.JsonString.Value/LPair.JsonValue.Clone
+
+### 经验总结
+
+**Delphi 37 ( dcc32.exe ) 注意事项**:
+- DCU 输出目录 (-NU) 与搜索目录 (-U) 必须区分，DCU 不在-source 路径时需在-U 中显式添加
+- 只读属性不能赋值，应直接操作构造函数的初始化对象
+- TTask.Run 优于 TTask.Create(后者返回对象，前者返回接口)
+- Assert.WillRaise 优先使用局部过程变量传递匿名函数
+
+**TConditionExpression/Bran ches API 记忆**:
+- Expression: string (条件表达式文本)
+- Branches: TObjectList<TConditionBranch>
+- MatchExpr: string (如"> 5"或"== True")
+- IsDefault: Boolean (默认分支标记)
+- 无 SubConditions/Operator/Value/NextStep 属性
+
+
+---
+
+## 2026-08-07~08: DUnitX 测试驱动修复里程碑 (44 → 104 全绿)
+> **执行任务**: TASK-0105~0108 (测试运行器 + 测试驱动功能修复)
+> **提交 commit**: 工作区修改（未提交）
+> **最终状态**: 全部套件 104/104 通过，0 失败 / 0 泄漏 / 0 错误
+
+### 背景与挑战
+**初始状态**: 上会话建立 DUnitX 运行器后 55 个 Executor 测试 44 过 11 失败；随后 E2E（3 个 fixture）和 Benchmark（6 个 fixture）也暴露真实功能缺陷。
+**核心问题**（12 个 bug，详见 bugfix.md BUG-2026-018~030）:
+- SetVariable 无前缀写入 vsInput 而非 vsWorkflow（文档契约不符）
+- 执行器正序遍历导致内置执行器抢占用户注册
+- TVariableValue.AsString 对 JSON 标量返回带引号文本
+- EvaluateValue 对已含 `{{ }}` 的表达式嵌套包裹导致正则解析失败
+- Loop 工作流 Start 结果丢失 Output（StepResult 每步被 Free）
+- Parallel 分支闭包共享捕获（`var BranchIdx := I`）+ 执行器顺序双根因
+- Guard 忽略 expression 守卫；ResolveString 缺 length 过滤器
+- TSessionManager 清理定时器长 Sleep 死锁
+- Runner 编译路径缺 Source\Session（静默链接旧 dcu）
+- TMemoryMonitor 匿名线程 FreeOnTerminate=True 悬垂（无效句柄）
+- LargeContext/LeakDetection 测试 TJSONString 泄漏（SetVariable 是 Clone 语义）
+
+### 修复记录
+| 套件 | 结果 | 关键修复 |
+|------|------|----------|
+| TWorkflowExecutorTests | 44 → 55/55 | SetVariable 重定向、AsString 标量、EvaluateValue 防嵌套、Start/Resume 保留最后一步结果、MakeParallelTask 按值参数+倒序遍历、Mock 加锁 |
+| TWorkflowE2ETests | → 19/19 | Guard expression 守卫 + ERR_GUARD_EXPRESSION + length 过滤器 |
+| TSessionE2ETests | → 6/6 | 清理定时器 100ms 小步等待（修 Destroy 死锁） |
+| TFullIntegrationTests | → 4/4 | — |
+| TMemoryBenchmarkTests 等 | → 20/20 | TMemoryMonitor FreeOnTerminate := False + WaitFor 后 Free；JSON 泄漏 try/finally |
+
+### 关键技术决策
+1. **Start/Resume 输出语义**: 工作流最终 Result 携带最后一步结果（含 Output）；失败/取消/等待分支单独返回；分支 Exit 前 FreeAndNil(Result) 防泄漏
+2. **并行实现**: 匿名方法循环体内 `var X := I` 共享捕获 → 抽私有方法 MakeParallelTask，按值传参（TArray 引用语义共享数组、PBoolean 共享取消标志），局部变量声明在匿名方法 var 块内
+3. **执行器注册语义**: 后注册优先（倒序遍历），允许用户覆盖内置执行器
+4. **SetVariable(TJSONValue) 契约**: Clone 语义，调用方保留所有权（测试曾因此泄漏 110MB）
+5. **匿名线程 WaitFor**: CreateAnonymousThread 默认 FreeOnTerminate=True，WaitFor 前必须置 False 并手动 Free
+
+### 经验总结（Delphi 37 匿名方法坑族）
+- E2555: 匿名方法不能捕获 var/out 参数、局部函数参数
+- 循环体内内联 `var Idx := I` 被所有闭包共享（经典坑）
+- E1019: for 控制变量必须是被捕获作用域内的简单局部变量（匿名方法内联 `for var J` 也触发）
+- E2081: 嵌套 for 循环不能复用同一控制变量
+- 解法统一: 抽普通方法 + 按值参数 + 局部变量声明在匿名方法 var 块 + 索引循环替代 for-in
+
+### 测试运行方法（可复用）
+- 编译: `dcc32 -B -Q -CC -U"Source;Source\Core;Source\Session;Source\Workflow;Source\Tests;dcu;D:\Program Files (x86)\Embarcadero\Studio\37.0\lib\win32\release" -NU"dcu" -E"bin" Source\Tests\DeepFlow.Tests.Runner.dpr`（必须含 Source\Session）
+- 运行: `.\bin\DeepFlow.Tests.Runner.exe -b --exit:continue`（全套）或 `--run:<fixture 前缀>`（单个）
+- 全套运行后若 XML 被占用：`Get-Process -Name 'DeepFlow.Tests.Runner' | Stop-Process -Force`
+- 基准报告写入仓库根（benchmark_*.json，相对路径随 cwd）
+
+
+---
+
+## 2026-08-08: Python Skill Service 真实联调里程碑 (Delphi ↔ FastAPI 打通)
+
+### 背景
+MVP 端到端闭环关键一步：首次真实启动 Python Skill Service 并与 Delphi TSkillClient 联调。
+此前所有 Skill 相关测试均使用 mock，接口契约问题被全绿测试掩盖。
+
+### 执行过程
+1. 环境检查：Python 3.13 + fastapi/uvicorn/pydantic 已装；补装 litellm/structlog/RestrictedPython
+2. 发现 Skills/src/llm/ 目录缺失（main.py import 崩溃）→ 创建 llm/client.py（LiteLLM 异步客户端）
+3. 启动服务：/health healthy、/skills 列出 code_executor、/skills/execute 沙箱执行 5050、import os 安全拦截
+4. 修复损坏 packaging 安装（packaging.version 模块缺失）
+5. 创建 Delphi E2E 演示（DeepFlowSkillE2E.pas）四连验证全部通过
+6. 修复 2 个真实契约 bug（BUG-2026-031/032）
+7. 全量回归 104/104 仍全绿
+
+### 关键技术决策
+1. **DoRequest 返回 TJSONValue**：客户端不能假设响应恒为 JSON 对象；/skills 返回裸数组是常见跨语言契约漂移
+2. **FromJSON 双格式兼容**：JSON Schema 对象 {type,properties,required} 与旧数组格式并存
+3. **LLM 客户端用 LiteLLM acompletion**：异步 + 多模型统一接口 + num_retries 重试
+
+### 联调验证结果
+| 端点 | 结果 |
+|------|------|
+| GET /health | healthy, 1 skill loaded |
+| GET /skills | code_executor 参数 Schema 正确解析 |
+| POST /skills/execute (求和) | success, value=5050 |
+| POST /skills/execute (import os) | blocked: Import of 'os' is not allowed |
+| POST /llm/chat | 代码路径就绪；需有效 OPENAI_API_KEY（当前环境网络受限） |
+
+### 待办
+- /llm/chat 真实调用需有效 OPENAI_API_KEY（代码已就绪）
+- 下一步：Workflow 引擎 + Skill Executor 全链路编排验证（insight_decision_gold.json）

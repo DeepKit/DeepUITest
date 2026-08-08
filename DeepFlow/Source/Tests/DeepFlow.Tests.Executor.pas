@@ -10,19 +10,20 @@ unit DeepFlow.Tests.Executor;
   - 循环执行
   - 并行执行
   - 错误处理
-  - 上下文隔�?
+  - 上下文隔�?
 *)
 
 interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
+  System.SyncObjs, System.Threading,
   DUnitX.TestFramework,
   DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Executor;
 
 type
   // ============================================================================
-  // 测试�?Mock Action 执行�?
+  // 测试�?Mock Action 执行�?
   // ============================================================================
   
   TMockActionExecutor = class(TInterfacedObject, IActionExecutor)
@@ -30,6 +31,7 @@ type
     FResults: TDictionary<string, TStepResult>;
     FExecutionLog: TStringList;
     FDelay: Integer;  // 模拟延迟 (ms)
+    FLock: TCriticalSection;  // 并行分支同时写日志时的保护
   public
     constructor Create;
     destructor Destroy; override;
@@ -124,7 +126,7 @@ type
     [Test]
     procedure Test_Error_Fallback_Executed;
     
-    // 上下文测�?
+    // 上下文测�?
     [Test]
     procedure Test_Context_VariableScope_Isolated;
     
@@ -225,11 +227,18 @@ type
   // QA-003: 并发测试
   // ============================================================================
   
+  PWorkflowContext = ^TWorkflowContext;
+  
   [TestFixture]
   TConcurrencyTests = class
   private
     FWorkflow: TWorkflowDefinition;
     FMockExecutor: TMockActionExecutor;
+    // NOTE: 用类方法参数传值（而非捕获循环变量），保证每个任务独立索引；
+    // 输出用指针（匿名方法不能捕获 var 参数）
+    function MakeStartTask(AExec: TWorkflowExecutor; AResult: PBoolean): ITask;
+    function MakeCloneTask(AOriginal: TWorkflowContext; AClone: PWorkflowContext;
+      AIdx: Integer): ITask;
   public
     [Setup]
     procedure Setup;
@@ -331,10 +340,12 @@ begin
   FResults := TDictionary<string, TStepResult>.Create;
   FExecutionLog := TStringList.Create;
   FDelay := 0;
+  FLock := TCriticalSection.Create;
 end;
 
 destructor TMockActionExecutor.Destroy;
 begin
+  FLock.Free;
   FResults.Free;
   FExecutionLog.Free;
   inherited;
@@ -352,7 +363,12 @@ end;
 
 function TMockActionExecutor.Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
 begin
-  FExecutionLog.Add(Format('%s: %s', [FormatDateTime('hh:nn:ss.zzz', Now), AAction.SkillId]));
+  FLock.Enter;
+  try
+    FExecutionLog.Add(Format('%s: %s', [FormatDateTime('hh:nn:ss.zzz', Now), AAction.SkillId]));
+  finally
+    FLock.Leave;
+  end;
   
   if FDelay > 0 then
     Sleep(FDelay);
@@ -383,7 +399,7 @@ begin
   FExecutor.Free;
   FContext.Free;
   FWorkflow.Free;
-  // FMockExecutor 由接口引用计数管�?
+  // FMockExecutor 由接口引用计数管�?
 end;
 
 function TWorkflowExecutorTests.CreateSimpleWorkflow: TWorkflowDefinition;
@@ -399,7 +415,7 @@ begin
   Step.Id := 'step1';
   Step.Name := 'Step 1';
   Step.StepType := stAction;
-  Step.Action := TActionDefinition.Create;
+
   Step.Action.ActionType := atSkill;
   Step.Action.SkillId := 'test-skill';
   Result.Steps.Add(Step);
@@ -417,7 +433,7 @@ begin
   Step := TWorkflowStep.Create;
   Step.Id := 'condition1';
   Step.StepType := stCondition;
-  Step.Expression := '${vars.testValue}';
+    Step.Expression := '{{ vars.testValue }}';
   
   // True 分支
   TrueBranch := TConditionBranch.Create;
@@ -426,7 +442,7 @@ begin
   SubStep := TWorkflowStep.Create;
   SubStep.Id := 'true-step';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'true-skill';
   TrueBranch.Steps.Add(SubStep);
@@ -439,7 +455,7 @@ begin
   SubStep := TWorkflowStep.Create;
   SubStep.Id := 'false-step';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'false-skill';
   FalseBranch.Steps.Add(SubStep);
@@ -458,7 +474,7 @@ begin
   Step := TWorkflowStep.Create;
   Step.Id := 'loop1';
   Step.StepType := stLoop;
-  Step.LoopConfig := TLoopConfig.Create;
+
   Step.LoopConfig.Mode := lmRepeat;
   Step.LoopConfig.MaxIterations := ACount;
   Step.LoopConfig.IndexVariable := 'i';
@@ -467,7 +483,7 @@ begin
   SubStep := TWorkflowStep.Create;
   SubStep.Id := 'loop-body';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'loop-skill';
   Step.LoopSteps.Add(SubStep);
@@ -487,8 +503,8 @@ begin
   Step := TWorkflowStep.Create;
   Step.Id := 'parallel1';
   Step.StepType := stParallel;
-  Step.ParallelConfig := TParallelConfig.Create;
-  Step.ParallelConfig.FailureStrategy := fsWaitAll;
+
+  Step.ParallelConfig.FailureStrategy := fsContinue;
   
   // Branch A
   Branch := TConditionBranch.Create;
@@ -496,7 +512,7 @@ begin
   SubStep := TWorkflowStep.Create;
   SubStep.Id := 'step-a';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'skill-a';
   Branch.Steps.Add(SubStep);
@@ -508,7 +524,7 @@ begin
   SubStep := TWorkflowStep.Create;
   SubStep.Id := 'step-b';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'skill-b';
   Branch.Steps.Add(SubStep);
@@ -573,11 +589,11 @@ var
 begin
   FWorkflow := CreateSimpleWorkflow;
   
-  // 添加第二个步�?
+  // 添加第二个步�?
   Step := TWorkflowStep.Create;
   Step.Id := 'step2';
   Step.StepType := stAction;
-  Step.Action := TActionDefinition.Create;
+
   Step.Action.ActionType := atSkill;
   Step.Action.SkillId := 'skill-2';
   FWorkflow.Steps.Add(Step);
@@ -649,14 +665,14 @@ begin
   SubStep := TWorkflowStep.Create;
   SubStep.Id := 'default-step';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'default-skill';
   DefaultBranch.Steps.Add(SubStep);
   Step.Branches.Add(DefaultBranch);
   
   FContext := TWorkflowContext.Create(FWorkflow.Id, 'test-run');
-  FContext.SetVariable('testValue', 'other');  // 不匹�?true/false
+  FContext.SetVariable('testValue', 'other');  // 不匹�?true/false
   FExecutor := TWorkflowExecutor.Create(FWorkflow, FContext);
   FExecutor.RegisterActionExecutor(FMockExecutor);
   
@@ -705,9 +721,9 @@ begin
   Step := TWorkflowStep.Create;
   Step.Id := 'loop1';
   Step.StepType := stLoop;
-  Step.LoopConfig := TLoopConfig.Create;
+
   Step.LoopConfig.Mode := lmForEach;
-  Step.LoopConfig.Collection := '${vars.items}';
+    Step.LoopConfig.Collection := '{{ vars.items }}';
   Step.LoopConfig.ItemVariable := 'item';
   Step.LoopConfig.IndexVariable := 'i';
   Step.LoopConfig.MaxIterations := 100;
@@ -715,7 +731,7 @@ begin
   var SubStep := TWorkflowStep.Create;
   SubStep.Id := 'loop-body';
   SubStep.StepType := stAction;
-  SubStep.Action := TActionDefinition.Create;
+
   SubStep.Action.ActionType := atSkill;
   SubStep.Action.SkillId := 'loop-skill';
   Step.LoopSteps.Add(SubStep);
@@ -738,7 +754,7 @@ end;
 
 procedure TWorkflowExecutorTests.Test_Loop_While_StopsOnCondition;
 begin
-  // 简化测�?- While 需要条件表达式支持
+  // 简化测�?- While 需要条件表达式支持
   Assert.Pass('While loop test - requires condition evaluator');
 end;
 
@@ -816,7 +832,7 @@ end;
 procedure TWorkflowExecutorTests.Test_Parallel_WaitAll_ContinuesOnError;
 begin
   FWorkflow := CreateParallelWorkflow;
-  FWorkflow.Steps[0].ParallelConfig.FailureStrategy := fsWaitAll;
+  FWorkflow.Steps[0].ParallelConfig.FailureStrategy := fsContinue;
   FMockExecutor.SetResult('skill-a', TStepResult.Fail('ERROR', 'First fails'));
   
   FContext := TWorkflowContext.Create(FWorkflow.Id, 'test-run');
@@ -825,7 +841,7 @@ begin
   
   var Result := FExecutor.Start;
   try
-    // WaitAll 模式下，即使失败也会执行所有分�?
+    // WaitAll 模式下，即使失败也会执行所有分�?
     Assert.AreEqual(2, FMockExecutor.ExecutionLog.Count, 'Both branches should execute');
   finally
     Result.Free;
@@ -836,7 +852,7 @@ end;
 
 procedure TWorkflowExecutorTests.Test_Error_Retry_Success;
 begin
-  // 需要设置重试策�?
+  // 需要设置重试策�?
   Assert.Pass('Retry test - requires error handler setup');
 end;
 
@@ -850,7 +866,7 @@ begin
   Assert.Pass('Fallback test - requires error handler setup');
 end;
 
-// === 上下文测�?===
+// === 上下文测�?===
 
 procedure TWorkflowExecutorTests.Test_Context_VariableScope_Isolated;
 begin
@@ -864,7 +880,7 @@ begin
   FContext.PopScope;
   
   Assert.AreEqual('value1', FContext.GetVariable('outer').AsString);
-  // inner 变量应该不再可访�?
+  // inner 变量应该不再可访�?
 end;
 
 procedure TWorkflowExecutorTests.Test_Context_StepOutput_Saved;
@@ -877,7 +893,7 @@ begin
   var Result := FExecutor.Start;
   try
     Assert.IsTrue(Result.Success);
-    // 步骤输出应该保存�?steps.step1.output
+    // 步骤输出应该保存�?steps.step1.output
     var StepOutput := FContext.GetVariable('steps.step1.output');
     Assert.IsNotNull(StepOutput, 'Step output should be saved');
   finally
@@ -894,7 +910,7 @@ end;
 
 procedure TWorkflowExecutorTests.Test_Cancel_StopsExecution;
 begin
-  FWorkflow := CreateLoopWorkflow(100);  // 长循�?
+  FWorkflow := CreateLoopWorkflow(100);  // 长循�?
   FContext := TWorkflowContext.Create(FWorkflow.Id, 'test-run');
   FExecutor := TWorkflowExecutor.Create(FWorkflow, FContext);
   FMockExecutor.SetDelay(10);  // 每步延迟 10ms
@@ -911,7 +927,7 @@ begin
   
   var Result := FExecutor.Start;
   try
-    // 应该在完成所�?100 次迭代之前被取消
+    // 应该在完成所�?100 次迭代之前被取消
     Assert.IsTrue(FMockExecutor.ExecutionLog.Count < 100, 
       'Should be cancelled before completion');
   finally
@@ -940,7 +956,7 @@ end;
 procedure TWorkflowContextTests.Test_ResolveString_SimpleVariable;
 begin
   FContext.SetVariable('name', 'World');
-  Assert.AreEqual('Hello, World!', FContext.ResolveString('Hello, ${vars.name}!'));
+    Assert.AreEqual('Hello, World!', FContext.ResolveString('Hello, {{ vars.name }}!'));
 end;
 
 procedure TWorkflowContextTests.Test_ResolveString_NestedPath;
@@ -952,12 +968,12 @@ begin
   Obj.AddPair('nested', TJSONObject.Create.AddPair('value', '42'));
   FContext.SetVariable('data', TVariableValue.Create(Obj));
   
-  Assert.AreEqual('42', FContext.ResolveString('${vars.data.nested.value}'));
+    Assert.AreEqual('42', FContext.ResolveString('{{ vars.data.nested.value }}'));
 end;
 
 procedure TWorkflowContextTests.Test_ResolveString_MissingVariable_ReturnsEmpty;
 begin
-  Assert.AreEqual('', FContext.ResolveString('${vars.missing}'));
+    Assert.AreEqual('', FContext.ResolveString('{{ vars.missing }}'));
 end;
 
 procedure TWorkflowContextTests.Test_PushScope_PopScope_IsolatesVariables;
@@ -969,38 +985,65 @@ begin
   Assert.AreEqual('inner-value', FContext.GetVariable('inner').AsString);
   FContext.PopScope;
   
-  // 内部变量应该不再可访�?(或返回空)
+  // 内部变量应该不再可访�?(或返回空)
   var InnerVal := FContext.GetVariable('inner');
   Assert.IsTrue((InnerVal = nil) or (InnerVal.AsString = ''), 'Inner should not be accessible');
 end;
 
 procedure TWorkflowContextTests.Test_Expression_Evaluate_Boolean;
+var
+  LEvaluator: TExpressionEvaluator;
+  LCond: TConditionExpression;
 begin
   FContext.SetVariable('flag', True);
-  Assert.IsTrue(FContext.Evaluator.Evaluate(
-    TConditionDefinition.Create('${vars.flag}', coEquals, True)));
+  LEvaluator := TExpressionEvaluator.Create(FContext);
+  try
+    LCond := TConditionExpression.Create;
+        LCond.LeftExpr := '{{ vars.flag }}';
+    LCond.Operator := coEq;
+    LCond.RightExpr := 'True';
+    Assert.IsTrue(LEvaluator.Evaluate(LCond));
+  finally
+    LEvaluator.Free;
+  end;
 end;
 
 procedure TWorkflowContextTests.Test_Expression_Evaluate_Comparison;
+var
+  LEvaluator: TExpressionEvaluator;
+  LCond: TConditionExpression;
 begin
   FContext.SetVariable('count', 10);
-  Assert.IsTrue(FContext.Evaluator.Evaluate(
-    TConditionDefinition.Create('${vars.count}', coGreaterThan, 5)));
+  LEvaluator := TExpressionEvaluator.Create(FContext);
+  try
+    LCond := TConditionExpression.Create;
+        LCond.LeftExpr := '{{ vars.count }}';
+    LCond.Operator := coGt;
+    LCond.RightExpr := '5';
+    Assert.IsTrue(LEvaluator.Evaluate(LCond));
+  finally
+    LEvaluator.Free;
+  end;
 end;
 
 procedure TWorkflowContextTests.Test_Expression_SafeMode_BlocksDangerous;
+var
+  LEvaluator: TExpressionEvaluator;
 begin
-  FContext.Evaluator.SafeMode := True;
-  
-  // 危险表达式应该被阻止
-  Assert.WillRaise(
-    procedure
-    begin
-      FContext.ResolveString('${system.exec("rm -rf")}');
-    end,
-    Exception,
-    'Dangerous expression should be blocked in SafeMode'
-  );
+  LEvaluator := TExpressionEvaluator.Create(FContext);
+  try
+    LEvaluator.SafeMode := True;
+    var LProc: TProc;
+    LProc :=
+      procedure
+      begin
+        // SEC-001: 表达式验证在变量解析之前执行，危险模式直接抛异常
+        LEvaluator.Evaluate('{{ system.exec("rm -rf") }}');
+      end;
+    Assert.WillRaise(LProc);
+  finally
+    LEvaluator.Free;
+  end;
 end;
 
 { TWorkflowDefinitionTests }
@@ -1095,22 +1138,26 @@ begin
 end;
 
 procedure TWorkflowDefinitionTests.Test_Validate_ValidWorkflow_ReturnsTrue;
+var
+  AErrors: TArray<string>;
 begin
   FDefinition := TWorkflowDefinition.Create;
   FDefinition.Id := 'valid';
   FDefinition.Name := 'Valid';
   FDefinition.Version := '1.0.0';
   
-  Assert.IsTrue(FDefinition.Validate, 'Valid workflow should pass validation');
+  Assert.IsTrue(FDefinition.Validate(AErrors), 'Valid workflow should pass validation');
 end;
 
 procedure TWorkflowDefinitionTests.Test_Validate_InvalidWorkflow_ReturnsFalse;
+var
+  AErrors: TArray<string>;
 begin
   FDefinition := TWorkflowDefinition.Create;
   // 缺少必需字段
   FDefinition.Id := '';
   
-  Assert.IsFalse(FDefinition.Validate, 'Invalid workflow should fail validation');
+  Assert.IsFalse(FDefinition.Validate(AErrors), 'Invalid workflow should fail validation');
 end;
 
 { TBoundaryConditionTests - QA-002 }
@@ -1129,7 +1176,7 @@ procedure TBoundaryConditionTests.Test_EmptyString_Variable;
 begin
   FContext.SetVariable('empty', '');
   Assert.AreEqual('', FContext.GetVariable('empty').AsString);
-  Assert.AreEqual('Value: ', FContext.ResolveString('Value: ${vars.empty}'));
+    Assert.AreEqual('Value: ', FContext.ResolveString('Value: {{ vars.empty }}'));
 end;
 
 procedure TBoundaryConditionTests.Test_NullJSON_Handling;
@@ -1144,7 +1191,7 @@ end;
 
 procedure TBoundaryConditionTests.Test_MaxInt_LoopCount;
 begin
-  // 测试大数字不会溢�?
+  // 测试大数字不会溢�?
   FContext.SetVariable('bigNum', Int64(MaxInt));
   var V := FContext.GetVariable('bigNum');
   Assert.AreEqual(Int64(MaxInt), V.AsInteger);
@@ -1154,7 +1201,7 @@ procedure TBoundaryConditionTests.Test_DeepNesting_Expression;
 var
   Deep: TJSONObject;
 begin
-  // 创建 10 层嵌�?
+  // 创建 10 层嵌�?
   Deep := TJSONObject.Create;
   var Current := Deep;
   for var I := 1 to 9 do
@@ -1167,7 +1214,7 @@ begin
   
   FContext.SetVariable('nested', TVariableValue.Create(Deep));
   // 测试深层访问
-  var Path := '${vars.nested.level1.level2.level3.level4.level5.level6.level7.level8.level9.value}';
+    var Path := '{{ vars.nested.level1.level2.level3.level4.level5.level6.level7.level8.level9.value }}';
   Assert.AreEqual('deep', FContext.ResolveString(Path));
 end;
 
@@ -1202,7 +1249,7 @@ end;
 
 procedure TBoundaryConditionTests.Test_ZeroTimeout_Handling;
 begin
-  // 测试零超时不会崩�?
+  // 测试零超时不会崩�?
   FContext.SetVariable('timeout', 0);
   Assert.AreEqual(Int64(0), FContext.GetVariable('timeout').AsInteger);
 end;
@@ -1220,11 +1267,42 @@ begin
   FWorkflow.Free;
 end;
 
+function TConcurrencyTests.MakeStartTask(AExec: TWorkflowExecutor; AResult: PBoolean): ITask;
+var
+  R: TStepResult;
+begin
+  // 类方法值参数每次调用独立实例，可被匿名方法安全捕获
+  Result := TTask.Run(
+    procedure
+    begin
+      R := AExec.Start;
+      try
+        AResult^ := R.Success;
+      finally
+        R.Free;
+      end;
+    end
+  );
+end;
+
+function TConcurrencyTests.MakeCloneTask(AOriginal: TWorkflowContext;
+  AClone: PWorkflowContext; AIdx: Integer): ITask;
+begin
+  Result := TTask.Run(
+    procedure
+    begin
+      AClone^ := AOriginal.Clone;
+      AClone^.SetVariable('local', 'clone-' + IntToStr(AIdx));
+    end
+  );
+end;
+
 procedure TConcurrencyTests.Test_Parallel_RaceCondition_Safe;
 var
   Counter: Integer;
   Lock: TCriticalSection;
   Tasks: array[0..9] of ITask;
+  LProc: TProc;
 begin
   Counter := 0;
   Lock := TCriticalSection.Create;
@@ -1232,7 +1310,7 @@ begin
     // 创建 10 个并行任务同时操作计数器
     for var I := 0 to 9 do
     begin
-      Tasks[I] := TTask.Create(
+      LProc :=
         procedure
         begin
           for var J := 0 to 99 do
@@ -1244,9 +1322,8 @@ begin
               Lock.Leave;
             end;
           end;
-        end
-      );
-      Tasks[I].Start;
+        end;
+      Tasks[I] := TTask.Run(LProc);
     end;
     
     TTask.WaitForAll(Tasks);
@@ -1264,31 +1341,16 @@ var
   Tasks: array[0..4] of ITask;
   Results: array[0..4] of Boolean;
 begin
-  // 创建 5 个独立的执行器并行运�?
+  // 创建 5 个独立的执行器并行运�?
   for var I := 0 to 4 do
   begin
     Workflows[I] := TWorkflowDefinition.Create;
     Workflows[I].Id := 'concurrent-' + IntToStr(I);
     Contexts[I] := TWorkflowContext.Create(Workflows[I].Id, 'run-' + IntToStr(I));
     Executors[I] := TWorkflowExecutor.Create(Workflows[I], Contexts[I]);
-    Executors[I].RegisterActionExecutor(FMockExecutor);
     Results[I] := False;
     
-    var Idx := I;
-    Tasks[I] := TTask.Create(
-      procedure
-      var
-        R: TStepResult;
-      begin
-        R := Executors[Idx].Start;
-        try
-          Results[Idx] := R.Success;
-        finally
-          R.Free;
-        end;
-      end
-    );
-    Tasks[I].Start;
+    Tasks[I] := MakeStartTask(Executors[I], @Results[I]);
   end;
   
   TTask.WaitForAll(Tasks);
@@ -1315,17 +1377,9 @@ begin
   try
     for var I := 0 to 9 do
     begin
-      var Idx := I;
-      Tasks[I] := TTask.Create(
-        procedure
-        begin
-          Clones[Idx] := Original.Clone;
-          Clones[Idx].SetVariable('local', 'clone-' + IntToStr(Idx));
-        end
-      );
-      Tasks[I].Start;
+      Tasks[I] := MakeCloneTask(Original, @Clones[I], I);
     end;
-    
+      
     TTask.WaitForAll(Tasks);
     
     // 验证每个克隆独立
@@ -1357,7 +1411,7 @@ begin
   
   try
     // 测试不会发生死锁
-    var Task := TTask.Create(
+    var Task: ITask := TTask.Run(
       procedure
       begin
         Lock1.Enter;
@@ -1374,8 +1428,7 @@ begin
         end;
       end
     );
-    Task.Start;
-    Task.Wait(1000);  // 1 秒超�?
+    Task.Wait(1000);  // 1 秒超�?
     Assert.IsTrue(Completed, 'Should complete without deadlock');
   finally
     Lock1.Free;
@@ -1403,19 +1456,19 @@ end;
 
 procedure TErrorRecoveryTests.Test_Retry_SuccessOnSecondAttempt;
 begin
-  // 第一次失败，第二次成�?
+  // 第一次失败，第二次成�?
   Assert.Pass('Retry success on second attempt - requires stateful mock');
 end;
 
 procedure TErrorRecoveryTests.Test_Retry_ExponentialBackoff;
 begin
-  // 验证指数退避延�?
+  // 验证指数退避延�?
   Assert.Pass('Exponential backoff - implemented in TSkillClient');
 end;
 
 procedure TErrorRecoveryTests.Test_Fallback_OnError;
 begin
-  // 错误时执�?fallback
+  // 错误时执�?fallback
   Assert.Pass('Fallback on error - requires error handler configuration');
 end;
 

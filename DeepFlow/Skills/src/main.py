@@ -26,6 +26,14 @@ import structlog
 
 from .skills.base import SkillRegistry, SkillResult, SkillStatus
 from .skills.code_executor import CodeExecutorSkill
+from .skills.insight import (
+    DecisionCoachSkill,
+    DecisionCriticSkill,
+    DecisionMirrorSkill,
+    DecisionObserverSkill,
+    DecisionAggregatorSkill,
+    FilmGeneratorSkill,
+)
 from .llm.client import LLMClient, LLMConfig
 
 # -----------------------------------------------------------------------------
@@ -65,7 +73,7 @@ class SkillRequest(BaseModel):
     skill_name: str = Field(..., description="Name of the Skill to execute")
     params: Dict[str, Any] = Field(default_factory=dict, description="Skill parameters")
     context: Dict[str, Any] = Field(default_factory=dict, description="Execution context")
-    timeout_ms: int = Field(default=30000, ge=100, le=300000, description="Timeout in milliseconds")
+    timeout_ms: int = Field(default=120000, ge=100, le=300000, description="Timeout in milliseconds")
     
 class SkillResponse(BaseModel):
     """Response model for Skill execution."""
@@ -121,12 +129,13 @@ class AppState:
         """Initialize application components."""
         logger.info("Initializing application state")
         
-        # Initialize LLM client
+        # Initialize LLM client (WiseGateway 127.0.0.1:8000)
         llm_config = LLMConfig(
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-            default_model=os.getenv("DEFAULT_LLM_MODEL", "gpt-4o-mini"),
-            timeout=30.0,
-            max_retries=3
+            api_key=os.getenv("KIRO_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+            default_model=os.getenv("DEFAULT_LLM_MODEL", "claude-qoder-glm-5-2"),
+            base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1"),
+            timeout=float(os.getenv("LLM_TIMEOUT", "40")),
+            max_retries=int(os.getenv("LLM_MAX_RETRIES", "2"))
         )
         self.llm_client = LLMClient(llm_config)
         
@@ -145,6 +154,19 @@ class AppState:
         self.skill_registry.register(code_executor)
         
         logger.info(f"Registered built-in skill: {code_executor.name}")
+        
+        # DeepInsight decision skills (洞察金路径六角色)
+        insight_skills = [
+            DecisionCoachSkill(llm_client=self.llm_client),
+            DecisionCriticSkill(llm_client=self.llm_client),
+            DecisionMirrorSkill(llm_client=self.llm_client),
+            DecisionObserverSkill(llm_client=self.llm_client),
+            DecisionAggregatorSkill(llm_client=self.llm_client),
+            FilmGeneratorSkill(llm_client=self.llm_client),
+        ]
+        for skill in insight_skills:
+            self.skill_registry.register(skill)
+            logger.info(f"Registered insight skill: {skill.name}")
         
     async def shutdown(self):
         """Cleanup on shutdown."""

@@ -3,18 +3,18 @@ unit DeepFlow.Tenant;
   DeepFlow Multi-Tenant Support
   ============================
 
-  多租�?项目隔离支持�?
+  多租�?项目隔离支持�?
 
   功能:
   - 租户管理 (创建/查找/删除)
-  - 租户隔离�?EventStore 包装
+  - 租户隔离�?EventStore 包装
   - 租户配额管理
-  - 租户级别的指标收�?
+  - 租户级别的指标收�?
 
   设计原则:
   - 租户之间完全隔离
-  - 透明�?API (对业务代码无侵入)
-  - 灵活的配额策�?
+  - 透明�?API (对业务代码无侵入)
+  - 灵活的配额策�?
 *)
 
 interface
@@ -31,20 +31,20 @@ type
   // 租户状态和计划
   // ============================================================================
 
-  /// <summary>租户状�?/summary>
+  /// <summary>租户状�?/summary>
   TTenantStatus = (
     tsActive,       // 活跃
     tsSuspended,    // 暂停
     tsArchived,     // 归档
-    tsDeleted       // 已删�?
+    tsDeleted       // 已删�?
   );
 
   /// <summary>租户计划</summary>
   TTenantPlan = (
-    tpFree,         // 免费�?
-    tpBasic,        // 基础�?
-    tpProfessional, // 专业�?
-    tpEnterprise    // 企业�?
+    tpFree,         // 免费�?
+    tpBasic,        // 基础�?
+    tpProfessional, // 专业�?
+    tpEnterprise    // 企业�?
   );
 
   // ============================================================================
@@ -59,7 +59,7 @@ type
     MaxEventsPerFlow: Integer;    // 每流程最大事件数
 
     // 存储配额
-    MaxStorageMB: Integer;        // 最大存�?MB
+    MaxStorageMB: Integer;        // 最大存�?MB
     MaxSnapshotsPerFlow: Integer; // 每流程最大快照数
 
     // API 配额
@@ -67,10 +67,10 @@ type
     MaxRequestsPerDay: Integer;    // 每日最大请求数
 
     // LLM 配额
-    MaxLLMRequestsPerDay: Integer; // 每日最�?LLM 请求�?
-    MaxTokensPerDay: Int64;        // 每日最�?Token �?
+    MaxLLMRequestsPerDay: Integer; // 每日最�?LLM 请求�?
+    MaxTokensPerDay: Int64;        // 每日最�?Token �?
 
-    // 功能开�?
+    // 功能开�?
     AllowParallelExecution: Boolean;
     AllowSubworkflows: Boolean;
     AllowCustomSkills: Boolean;
@@ -105,7 +105,7 @@ type
     LLMRequestsToday: Integer;
     TokensToday: Int64;
 
-    // 时间�?
+    // 时间�?
     LastUpdated: TDateTime;
     DayStart: TDateTime;
 
@@ -134,7 +134,7 @@ type
     FOwnerUserId: string;
     FContactEmail: string;
     FSettings: TJSONObject;
-    FLock: TCriticalSection;  // SEC-005: 配额操作互斥�?
+    FLock: TCriticalSection;  // SEC-005: 配额操作互斥�?
     FHMACSecret: string;      // SEC-003: HMAC 密钥
   public
     constructor Create;
@@ -143,10 +143,10 @@ type
     /// <summary>生成租户 ID</summary>
     class function GenerateTenantId: string;
 
-    /// <summary>检查配额是否超�?(SEC-005: 线程安全)</summary>
+    /// <summary>检查配额是否超�?(SEC-005: 线程安全)</summary>
     function CheckQuota(const AQuotaType: string): Boolean;
 
-    /// <summary>增加使用�?(SEC-005: 线程安全)</summary>
+    /// <summary>增加使用�?(SEC-005: 线程安全)</summary>
     procedure IncrementUsage(const AUsageType: string; AAmount: Integer = 1);
     
     /// <summary>原子检查并增加配额 (SEC-005: 原子操作)</summary>
@@ -161,7 +161,7 @@ type
     /// <summary>是否活跃</summary>
     function IsActive: Boolean;
 
-    /// <summary>序列�?/summary>
+    /// <summary>序列�?/summary>
     function ToJSON: TJSONObject;
     procedure LoadFromJSON(AJson: TJSONObject);
 
@@ -181,7 +181,7 @@ type
   end;
 
   // ============================================================================
-  // TTenantEventStore - 租户隔离的事件存�?
+  // TTenantEventStore - 租户隔离的事件存�?
   // ============================================================================
 
   /// <summary>租户隔离的事件存储包装器</summary>
@@ -199,12 +199,12 @@ type
 
     // IEventStore 实现
     function Append(AEvent: TDeepFlowEvent): TAppendResult;
-    function AppendBatch(AEvents: TArray<TDeepFlowEvent>): TAppendResult;
-    function ReadEvents(AQuery: TEventQuery): TArray<TDeepFlowEvent>;
+    function AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
+    function ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
     function GetLastEvent(const AFlowId: string): TDeepFlowEvent;
     function GetEventCount(const AFlowId: string): Int64;
     function SaveSnapshot(ASnapshot: TDeepFlowSnapshot): Boolean;  // ARCH-002: 返回 Boolean 对齐 IEventStore
-    function GetSnapshot(AQuery: TSnapshotQuery): TDeepFlowSnapshot;
+    function GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
     function GetAllFlowIds: TArray<string>;
     function FlowExists(const AFlowId: string): Boolean;
 
@@ -247,7 +247,7 @@ type
   end;
 
   // ============================================================================
-  // TTenantManager - 租户管理�?
+  // TTenantManager - 租户管理�?
   // ============================================================================
 
   TTenantCreatedEvent = procedure(Sender: TObject; ATenant: TTenant) of object;
@@ -256,7 +256,7 @@ type
   TQuotaExceededEvent = procedure(Sender: TObject; ATenant: TTenant;
     const AQuotaType: string) of object;
 
-  /// <summary>租户管理�?/summary>
+  /// <summary>租户管理�?/summary>
   TTenantManager = class
   private
     FStore: ITenantStore;
@@ -292,23 +292,23 @@ type
     procedure DeleteTenant(const ATenantId: string);
     function ListTenants(AStatus: TTenantStatus = tsActive): TArray<TTenant>;
 
-    // 租户状态管�?
+    // 租户状态管�?
     procedure SuspendTenant(const ATenantId: string);
     procedure ActivateTenant(const ATenantId: string);
     procedure ArchiveTenant(const ATenantId: string);
 
-    // 计划和配额管�?
+    // 计划和配额管�?
     procedure ChangePlan(const ATenantId: string; ANewPlan: TTenantPlan);
     procedure SetCustomQuota(const ATenantId: string; AQuota: TTenantQuota);
 
-    // 获取租户隔离的事件存�?
+    // 获取租户隔离的事件存�?
     function GetEventStore(const ATenantId: string): IEventStore;
 
-    // 配额检�?
+    // 配额检�?
     function CheckQuota(const ATenantId, AQuotaType: string): Boolean;
     procedure IncrementUsage(const ATenantId, AUsageType: string; AAmount: Integer = 1);
 
-    // 使用量报�?
+    // 使用量报�?
     function GetUsageReport(const ATenantId: string): TJSONObject;
     function GetAllTenantsUsage: TJSONArray;
 
@@ -332,10 +332,10 @@ type
   end;
 
   // ============================================================================
-  // TTenantContext - 租户上下�?(线程局�?
+  // TTenantContext - 租户上下�?(线程局�?
   // ============================================================================
 
-  /// <summary>租户上下�?- 用于在请求处理链中传递租户信�?/summary>
+  /// <summary>租户上下�?- 用于在请求处理链中传递租户信�?/summary>
   TTenantContext = class
   private
     class threadvar FCurrentTenantId: string;
@@ -585,7 +585,7 @@ destructor TTenant.Destroy;
 begin
   FMetadata.Free;
   FSettings.Free;
-  FLock.Free;  // SEC-005: 释放互斥�?
+  FLock.Free;  // SEC-005: 释放互斥�?
   inherited;
 end;
 
@@ -599,10 +599,10 @@ end;
 
 function TTenant.CheckQuota(const AQuotaType: string): Boolean;
 begin
-  // SEC-005: 线程安全的配额检�?
+  // SEC-005: 线程安全的配额检�?
   FLock.Enter;
   try
-    // 检查日期，必要时重�?
+    // 检查日期，必要时重�?
     if Trunc(Now) > Trunc(FUsage.DayStart) then
       FUsage.ResetDaily;
 
@@ -632,7 +632,7 @@ begin
   // SEC-005: 线程安全的使用量增加
   FLock.Enter;
   try
-    // 检查日期，必要时重�?
+    // 检查日期，必要时重�?
     if Trunc(Now) > Trunc(FUsage.DayStart) then
       FUsage.ResetDaily;
 
@@ -666,14 +666,14 @@ end;
 
 function TTenant.CheckAndIncrementQuota(const AQuotaType, AUsageType: string; AAmount: Integer): Boolean;
 begin
-  // SEC-005: 原子检查并增加配额，避免竞态条�?
+  // SEC-005: 原子检查并增加配额，避免竞态条�?
   FLock.Enter;
   try
-    // 检查日期，必要时重�?
+    // 检查日期，必要时重�?
     if Trunc(Now) > Trunc(FUsage.DayStart) then
       FUsage.ResetDaily;
 
-    // 先检查配�?
+    // 先检查配�?
     Result := True;
     if SameText(AQuotaType, 'active_flows') then
       Result := (FQuota.MaxActiveFlows = 0) or (FUsage.ActiveFlows < FQuota.MaxActiveFlows)
@@ -708,7 +708,7 @@ var
   Hash: Cardinal;
   Data: string;
 begin
-  // SEC-003: 使用简单哈希签�?FlowId (生产环境应使用真正的 HMAC-SHA256)
+  // SEC-003: 使用简单哈希签�?FlowId (生产环境应使用真正的 HMAC-SHA256)
   Data := FId + ':' + AFlowId + ':' + FHMACSecret;
   Hash := 0;
   for var I := 1 to Length(Data) do
@@ -721,12 +721,12 @@ var
   Parts: TArray<string>;
   ExpectedSig: string;
 begin
-  // SEC-003: 验证签名�?FlowId
+  // SEC-003: 验证签名�?FlowId
   Result := False;
   Parts := ASignedFlowId.Split([':']);
   if Length(Parts) < 3 then Exit;
   
-  // 检查租�?ID 匹配
+  // 检查租�?ID 匹配
   if Parts[0] <> FId then Exit;
   
   // 重新计算签名验证
@@ -816,7 +816,7 @@ end;
 
 function TTenantEventStore.PrefixFlowId(const AFlowId: string): string;
 begin
-  // SEC-003: 使用签名�?FlowId
+  // SEC-003: 使用签名�?FlowId
   Result := TENANT_PREFIX + FTenant.SignFlowId(AFlowId);
 end;
 
@@ -833,19 +833,19 @@ end;
 
 function TTenantEventStore.IsTenantFlow(const AFlowId: string): Boolean;
 begin
-  // SEC-003: 使用签名验证而非简单前缀检�?
+  // SEC-003: 使用签名验证而非简单前缀检�?
   // 首先检查基本前缀
   if not AFlowId.StartsWith(TENANT_PREFIX + FTenantId + ':') then
     Exit(False);
   
-  // 提取实际�?FlowId 部分并验证签�?
+  // 提取实际�?FlowId 部分并验证签�?
   var InnerFlowId := Copy(AFlowId, Length(TENANT_PREFIX) + 1, MaxInt);
   Result := FTenant.VerifyFlowId(InnerFlowId);
 end;
 
 function TTenantEventStore.Append(AEvent: TDeepFlowEvent): TAppendResult;
 begin
-  // 配额检�?
+  // 配额检�?
   if not FTenant.CheckQuota('events_per_flow') then
   begin
     Result.Success := False;
@@ -860,21 +860,30 @@ begin
     FTenant.IncrementUsage('event', 1);
 end;
 
-function TTenantEventStore.AppendBatch(AEvents: TArray<TDeepFlowEvent>): TAppendResult;
+function TTenantEventStore.AppendBatch(AEvents: TArray<TDeepFlowEvent>): TArray<TAppendResult>;
+var
+  LResult: TAppendResult;
 begin
   for var Event in AEvents do
     Event.FlowId := PrefixFlowId(Event.FlowId);
 
   Result := FInnerStore.AppendBatch(AEvents);
 
-  if Result.Success then
-    FTenant.IncrementUsage('event', Length(AEvents));
+  for LResult in Result do
+    if LResult.Success then
+    begin
+      FTenant.IncrementUsage('event', Length(AEvents));
+      Break;
+    end;
 end;
 
-function TTenantEventStore.ReadEvents(AQuery: TEventQuery): TArray<TDeepFlowEvent>;
+function TTenantEventStore.ReadEvents(const AQuery: TEventQuery): TArray<TDeepFlowEvent>;
+var
+  LPrefixedQuery: TEventQuery;
 begin
-  AQuery.FlowId := PrefixFlowId(AQuery.FlowId);
-  Result := FInnerStore.ReadEvents(AQuery);
+  LPrefixedQuery := AQuery;
+  LPrefixedQuery.FlowId := PrefixFlowId(AQuery.FlowId);
+  Result := FInnerStore.ReadEvents(LPrefixedQuery);
 
   // 还原 FlowId
   for var Event in Result do
@@ -902,10 +911,13 @@ begin
     FTenant.IncrementUsage('snapshot', 1);
 end;
 
-function TTenantEventStore.GetSnapshot(AQuery: TSnapshotQuery): TDeepFlowSnapshot;
+function TTenantEventStore.GetSnapshot(const AQuery: TSnapshotQuery): TDeepFlowSnapshot;
+var
+  LPrefixedQuery: TSnapshotQuery;
 begin
-  AQuery.FlowId := PrefixFlowId(AQuery.FlowId);
-  Result := FInnerStore.GetSnapshot(AQuery);
+  LPrefixedQuery := AQuery;
+  LPrefixedQuery.FlowId := PrefixFlowId(AQuery.FlowId);
+  Result := FInnerStore.GetSnapshot(LPrefixedQuery);
   if Result <> nil then
     Result.FlowId := UnprefixFlowId(Result.FlowId);
 end;
@@ -1144,7 +1156,7 @@ end;
 function TTenantManager.CreateTenant(const AName, ADisplayName: string;
   APlan: TTenantPlan): TTenant;
 begin
-  // 检查名称唯一�?
+  // 检查名称唯一�?
   if GetTenantByName(AName) <> nil then
     raise EOperationException.CreateFmt('Tenant with name "%s" already exists', [AName]);
 
@@ -1343,7 +1355,7 @@ begin
   Result.AddPair('quota', Tenant.Quota.ToJSON);
   Result.AddPair('usage', Tenant.Usage.ToJSON);
 
-  // 计算使用�?
+  // 计算使用�?
   var UsagePercent := TJSONObject.Create;
   if Tenant.Quota.MaxActiveFlows > 0 then
     UsagePercent.AddPair('activeFlows', TJSONNumber.Create(

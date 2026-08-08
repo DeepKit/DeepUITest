@@ -5,12 +5,12 @@
   
   功能:
   - 自然语言意图解析
-  - 工作流结构生�?
+  - 工作流结构生成
   - Skill 自动匹配
   - 参数推断
-  - 工作流优化建�?
+  - 工作流优化建议
   
-  作�? DeepFlow Team
+  作者: DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -18,7 +18,8 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
-  System.JSON, System.RegularExpressions, System.StrUtils;
+  System.Generics.Defaults, System.JSON, System.Math,
+  System.RegularExpressions, System.StrUtils;
 
 type
   {$REGION '意图解析类型'}
@@ -27,9 +28,9 @@ type
   TIntentType = (
     itDataProcessing,     // 数据处理
     itAPIIntegration,     // API 集成
-    itNotification,       // 通知发�?
+    itNotification,       // 通知发送
     itFileOperation,      // 文件操作
-    itDatabaseQuery,      // 数据库查�?
+    itDatabaseQuery,      // 数据库查询
     itScheduledTask,      // 定时任务
     itConditionalLogic,   // 条件逻辑
     itDataTransform,      // 数据转换
@@ -42,7 +43,7 @@ type
   
   /// <summary>实体类型</summary>
   TEntityType = (
-    etDataSource,         // 数据�?
+    etDataSource,         // 数据源
     etDataTarget,         // 数据目标
     etCondition,          // 条件
     etAction,             // 动作
@@ -53,7 +54,7 @@ type
     etChannel             // 渠道
   );
   
-  /// <summary>识别的实�?/summary>
+  /// <summary>识别的实体</summary>
   TEntity = record
     EntityType: TEntityType;
     Value: string;
@@ -62,7 +63,7 @@ type
     Confidence: Double;
   end;
   
-  /// <summary>解析的意�?/summary>
+  /// <summary>解析的意图</summary>
   TParsedIntent = record
     IntentType: TIntentType;
     Confidence: Double;
@@ -83,9 +84,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '工作流生成类�?}
+  {$REGION '工作流生成类型'}
   
-  /// <summary>生成的步�?/summary>
+  /// <summary>生成的步骤</summary>
   TGeneratedStep = record
     StepId: string;
     StepName: string;
@@ -122,9 +123,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '意图解析�?}
+  {$REGION '意图解析器'}
   
-  /// <summary>意图解析�?/summary>
+  /// <summary>意图解析器</summary>
   TIntentParser = class
   private
     FPatterns: TDictionary<TIntentType, TArray<string>>;
@@ -146,7 +147,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION 'Skill 匹配�?}
+  {$REGION 'Skill 匹配器'}
   
   /// <summary>Skill 定义</summary>
   TSkillDefinition = record
@@ -161,7 +162,7 @@ type
     Category: string;
   end;
   
-  /// <summary>Skill 匹配�?/summary>
+  /// <summary>Skill 匹配器</summary>
   TSkillMatcher = class
   private
     FSkills: TDictionary<string, TSkillDefinition>;
@@ -221,7 +222,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION 'LLM 增强生成�?}
+  {$REGION 'LLM 增强生成器'}
   
   /// <summary>LLM 生成请求</summary>
   TLLMGenerationRequest = record
@@ -242,7 +243,7 @@ type
     Warnings: TArray<string>;
   end;
   
-  /// <summary>LLM 增强生成�?/summary>
+  /// <summary>LLM 增强生成器</summary>
   TLLMWorkflowGenerator = class
   private
     FBaseGenerator: TWorkflowGenerator;
@@ -268,9 +269,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '对话式工作流构建�?}
+  {$REGION '对话式工作流构建器'}
   
-  /// <summary>对话状�?/summary>
+  /// <summary>对话状态</summary>
   TConversationState = (
     csInitial,
     csGatheringRequirements,
@@ -317,7 +318,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '工作流模�?}
+  {$REGION '工作流模板'}
   
   /// <summary>模板变量</summary>
   TTemplateVariable = record
@@ -328,7 +329,7 @@ type
     ValidationType: string;
   end;
   
-  /// <summary>工作流模�?/summary>
+  /// <summary>工作流模板</summary>
   TWorkflowTemplate = record
     TemplateId: string;
     Name: string;
@@ -339,7 +340,7 @@ type
     Examples: TArray<string>;
   end;
   
-  /// <summary>模板管理�?/summary>
+  /// <summary>模板管理器</summary>
   TTemplateManager = class
   private
     FTemplates: TDictionary<string, TWorkflowTemplate>;
@@ -356,6 +357,9 @@ type
   end;
   
   {$ENDREGION}
+
+/// <summary>注册内置 Skills（供 TWorkflowGenerator 使用）</summary>
+procedure RegisterBuiltinSkills;
 
 implementation
 
@@ -389,21 +393,21 @@ begin
   FPatterns.Add(itDataProcessing, [
     '处理.*数据', '转换.*格式', '解析.*文件', '提取.*信息',
     'process.*data', 'transform.*format', 'parse.*file', 'extract.*info',
-    '清洗数据', '数据清理', '格式�?, '标准�?
+    '清洗数据', '数据清理', '格式化', '标准化'
   ]);
   
   // API 集成模式
   FPatterns.Add(itAPIIntegration, [
-    '调用.*API', '请求.*接口', '获取.*数据', '发�?*请求',
+    '调用.*API', '请求.*接口', '获取.*数据', '发送.*请求',
     'call.*api', 'request.*endpoint', 'fetch.*data', 'send.*request',
     'HTTP', 'REST', 'GraphQL', 'webhook'
   ]);
   
-  // 通知发送模�?
+  // 通知发送模式
   FPatterns.Add(itNotification, [
-    '发�?*通知', '发�?*邮件', '发�?*消息', '通知.*用户',
+    '发送.*通知', '发送.*邮件', '发送.*消息', '通知.*用户',
     'send.*notification', 'send.*email', 'send.*message', 'notify.*user',
-    '短信', 'SMS', '推�?, 'push', '钉钉', '微信', 'Slack'
+    '短信', 'SMS', '推送', 'push', '钉钉', '微信', 'Slack'
   ]);
   
   // 文件操作模式
@@ -413,44 +417,44 @@ begin
     '保存', '存储', '导出', '导入', 'CSV', 'Excel', 'JSON'
   ]);
   
-  // 数据库查询模�?
+  // 数据库查询模式
   FPatterns.Add(itDatabaseQuery, [
-    '查询.*数据�?, '查询.*�?, '插入.*记录', '更新.*数据',
+    '查询.*数据库', '查询.*表', '插入.*记录', '更新.*数据',
     'query.*database', 'select.*from', 'insert.*into', 'update.*table',
     'SQL', 'MySQL', 'PostgreSQL', 'MongoDB'
   ]);
   
   // 定时任务模式
   FPatterns.Add(itScheduledTask, [
-    '定时.*执行', '�?*运行', '计划.*任务', '周期.*执行',
+    '定时.*执行', '每.*运行', '计划.*任务', '周期.*执行',
     'schedule.*task', 'run.*every', 'cron', 'periodic',
-    '每天', '每小�?, '每周', 'daily', 'hourly', 'weekly'
+    '每天', '每小时', '每周', 'daily', 'hourly', 'weekly'
   ]);
   
   // 条件逻辑模式
   FPatterns.Add(itConditionalLogic, [
-    '如果.*�?, '�?*�?, '条件.*判断', '根据.*决定',
+    '如果.*就', '当.*时', '条件.*判断', '根据.*决定',
     'if.*then', 'when.*do', 'condition', 'switch',
     '判断', '分支', '选择'
   ]);
   
   // 数据转换模式
   FPatterns.Add(itDataTransform, [
-    '转换.*�?, '映射.*�?, '格式�?*�?, '编码.*解码',
+    '转换.*为', '映射.*到', '格式改.*为', '编码.*解码',
     'convert.*to', 'map.*to', 'format.*as', 'encode.*decode',
     'JSON', 'XML', 'CSV', 'Base64'
   ]);
   
   // 数据验证模式
   FPatterns.Add(itValidation, [
-    '验证.*数据', '校验.*格式', '检�?*有效', '确认.*正确',
+    '验证.*数据', '校验.*格式', '检查.*有效', '确认.*正确',
     'validate.*data', 'verify.*format', 'check.*valid', 'confirm.*correct',
-    '校验', '验证', '检�?
+    '校验', '验证', '检查'
   ]);
   
   // 数据聚合模式
   FPatterns.Add(itAggregation, [
-    '汇�?*数据', '统计.*结果', '聚合.*信息', '合并.*数据',
+    '汇总.*数据', '统计.*结果', '聚合.*信息', '合并.*数据',
     'aggregate.*data', 'summarize.*result', 'combine.*info', 'merge.*data',
     '求和', '平均', '计数', 'sum', 'avg', 'count'
   ]);
@@ -465,13 +469,13 @@ begin
   FPatterns.Add(itLLMChat, [
     '使用.*AI', '调用.*LLM', '生成.*文本', '智能.*处理',
     'use.*ai', 'call.*llm', 'generate.*text', 'intelligent.*process',
-    'GPT', 'Claude', 'Gemini', '大模�?, '智能助手'
+    'GPT', 'Claude', 'Gemini', '大模型', '智能助手'
   ]);
 end;
 
 procedure TIntentParser.InitializeEntityPatterns;
 begin
-  // 数据源实�?
+  // 数据源实例
   FEntityPatterns.Add(etDataSource, 
     '(从|from)\s*([^\s,，]+)');
   
@@ -501,9 +505,9 @@ begin
   Result := LowerCase(Trim(AText));
   // 移除多余空格
   Result := TRegEx.Replace(Result, '\s+', ' ');
-  // 标准化标�?
-  Result := StringReplace(Result, '�?, ',', [rfReplaceAll]);
-  Result := StringReplace(Result, '�?, '.', [rfReplaceAll]);
+  // 标准化标记
+  Result := StringReplace(Result, '，', ',', [rfReplaceAll]);
+  Result := StringReplace(Result, '。', '.', [rfReplaceAll]);
 end;
 
 function TIntentParser.ExtractEntities(const AText: string): TArray<TEntity>;
@@ -573,7 +577,7 @@ begin
     end;
   end;
   
-  // 调整置信�?
+  // 调整置信度
   if BestScore > 0 then
     BestScore := Min(0.95, BestScore * 1.5);
   
@@ -602,8 +606,8 @@ var
   IntentList: TList<TParsedIntent>;
   Intent: TParsedIntent;
 begin
-  // 按句子分�?
-  Sentences := TRegEx.Split(AText, '[�?;；]');
+  // 按句子分割
+  Sentences := TRegEx.Split(AText, '[。;；]');
   
   IntentList := TList<TParsedIntent>.Create;
   try
@@ -661,7 +665,7 @@ var
   Keyword: string;
   SkillList: TList<string>;
 begin
-  // 清空旧索�?
+  // 清空旧索引
   for SkillList in FKeywordIndex.Values do
     SkillList.Free;
   FKeywordIndex.Clear;
@@ -692,7 +696,7 @@ begin
   Score := 0;
   MatchedKeywords := 0;
   
-  // 关键词匹�?
+  // 关键词匹配
   for Keyword in ASkill.Keywords do
   begin
     if Pos(LowerCase(Keyword), AIntent.NormalizedText) > 0 then
@@ -795,7 +799,7 @@ begin
       end;
     end;
     
-    // 按分数排�?
+    // 按分数排序
     MatchList.Sort(TComparer<TSkillMatch>.Construct(
       function(const L, R: TSkillMatch): Integer
       begin
@@ -868,7 +872,7 @@ begin
   Skill.SkillId := 'http_request';
   Skill.SkillType := 'http_request';
   Skill.Name := 'HTTP 请求';
-  Skill.Description := '发�?HTTP 请求到指�?URL';
+  Skill.Description := '发送 HTTP 请求到指定 URL';
   Skill.Keywords := ['http', 'api', '请求', '调用', 'get', 'post', 'request', 'fetch'];
   Skill.RequiredInputs := ['url', 'method'];
   Skill.OptionalInputs := ['headers', 'body', 'timeout'];
@@ -895,7 +899,7 @@ begin
   Result.SkillMatch := ASkillMatch;
   Result.Inputs := TDictionary<string, string>.Create;
   
-  // 复制推断的参�?
+  // 复制推断的参数
   for Key in ASkillMatch.InferredParams.Keys do
     Result.Inputs.Add(Key, ASkillMatch.InferredParams[Key]);
   
@@ -907,7 +911,7 @@ end;
 function TWorkflowGenerator.DetermineStepOrder(
   const ASteps: TArray<TGeneratedStep>): TArray<TGeneratedStep>;
 begin
-  // 简单实现：保持原顺�?
+  // 简单实现：保持原顺序
   Result := ASteps;
 end;
 
@@ -918,7 +922,7 @@ var
 begin
   Result := ASteps;
   
-  // 简单实现：线性依�?
+  // 简单实现：线性依赖
   for I := 1 to High(Result) do
   begin
     SetLength(Result[I].Dependencies, 1);
@@ -939,8 +943,10 @@ begin
     begin
       NewSteps.Add(ASteps[I]);
       
-      // 为关键步骤添加错误处�?
-      if ASteps[I].SkillMatch.SkillType in ['http_request', 'database', 'file'] then
+      // 为关键步骤添加错误处理
+      if (ASteps[I].SkillMatch.SkillType = 'http_request') or
+         (ASteps[I].SkillMatch.SkillType = 'database') or
+         (ASteps[I].SkillMatch.SkillType = 'file') then
       begin
         ErrorStep.StepId := ASteps[I].StepId + '_error_handler';
         ErrorStep.StepName := '错误处理: ' + ASteps[I].StepName;
@@ -973,7 +979,7 @@ begin
         itAPIIntegration: Parts.Add('API集成');
         itNotification: Parts.Add('通知');
         itFileOperation: Parts.Add('文件操作');
-        itDatabaseQuery: Parts.Add('数据库查�?);
+        itDatabaseQuery: Parts.Add('数据库查询');
         itScheduledTask: Parts.Add('定时任务');
         itDataTransform: Parts.Add('数据转换');
         itLLMChat: Parts.Add('AI处理');
@@ -981,9 +987,9 @@ begin
     end;
     
     if Parts.Count > 0 then
-      Result := Parts[0] + '工作�?
+      Result := Parts[0] + '工作流'
     else
-      Result := '自动生成工作�?;
+      Result := '自动生成工作流';
   finally
     Parts.Free;
   end;
@@ -1021,7 +1027,7 @@ begin
       Exit;
     end;
     
-    // 为每个意图匹�?Skill 并创建步�?
+    // 为每个意图匹配 Skill 并创建步骤
     for Intent in Intents do
     begin
       SkillMatches := FSkillMatcher.FindMatches(Intent, 1);
@@ -1038,12 +1044,12 @@ begin
         Break;
     end;
     
-    // 确定步骤顺序和依�?
+    // 确定步骤顺序和依赖
     StepsArray := Steps.ToArray;
     StepsArray := DetermineStepOrder(StepsArray);
     StepsArray := InferDependencies(StepsArray);
     
-    // 添加错误处理�?
+    // 添加错误处理器
     if AOptions.AddErrorHandlers then
       StepsArray := AddErrorHandlers(StepsArray);
     
@@ -1056,7 +1062,7 @@ begin
     SetLength(Result.Triggers, 0);
     Result.Warnings := Warnings.ToArray;
     
-    // 计算整体置信�?
+    // 计算整体置信度
     Result.Confidence := 0;
     for Intent in Intents do
       Result.Confidence := Result.Confidence + Intent.Confidence;
@@ -1068,7 +1074,7 @@ begin
     if Result.Confidence < 0.7 then
     begin
       SetLength(Result.Suggestions, 1);
-      Result.Suggestions[0] := '建议添加更详细的描述以提高准确�?;
+      Result.Suggestions[0] := '建议添加更详细的描述以提高准确性';
     end;
   finally
     Warnings.Free;
@@ -1081,7 +1087,7 @@ function TWorkflowGenerator.GenerateFromTemplate(const ATemplate: string;
 begin
   // 模板生成实现
   Result.WorkflowId := TGUID.NewGuid.ToString;
-  Result.Name := '模板工作�?;
+  Result.Name := '模板工作流';
   Result.Confidence := 1.0;
 end;
 
@@ -1160,9 +1166,9 @@ begin
   try
     // 检查是否有步骤
     if Length(AWorkflow.Steps) = 0 then
-      Errors.Add('工作流没有任何步�?);
+      Errors.Add('工作流没有任何步骤');
     
-    // 检查每个步�?
+    // 检查每个步骤
     for Step in AWorkflow.Steps do
     begin
       // 检查必需参数
@@ -1192,12 +1198,12 @@ begin
   FModel := AModel;
   
   FSystemPrompt := 
-    '你是一个工作流生成专家。根据用户的自然语言描述，生成结构化的工作流定义�? + #13#10 +
+    '你是一个工作流生成专家。根据用户的自然语言描述，生成结构化的工作流定义。' + #13#10 +
     '输出必须是有效的 JSON 格式，包含以下字段：' + #13#10 +
-    '- name: 工作流名�? + #13#10 +
-    '- description: 工作流描�? + #13#10 +
-    '- steps: 步骤数组，每个步骤包�?id, name, skillType, inputs, outputs, dependencies' + #13#10 +
-    '只输�?JSON，不要有其他说明�?;
+    '- name: 工作流名称' + #13#10 +
+    '- description: 工作流描述' + #13#10 +
+    '- steps: 步骤数组，每个步骤包含 id, name, skillType, inputs, outputs, dependencies' + #13#10 +
+    '只输出 JSON，不要有其他说明。';
 end;
 
 destructor TLLMWorkflowGenerator.Destroy;
@@ -1217,9 +1223,9 @@ begin
       [Skill.Name, Skill.SkillType, Skill.Description]);
   
   Result := Format(
-    '可用�?Skill 类型�?#13#10'%s'#13#10 +
+    '可用的 Skill 类型：'#13#10'%s'#13#10 +
     '用户需求：%s'#13#10 +
-    '请生成工作流 JSON�?,
+    '请生成工作流 JSON。',
     [SkillsDesc, ARequest.UserPrompt]
   );
 end;
@@ -1255,7 +1261,7 @@ begin
   else
   begin
     SetLength(Result.Warnings, 1);
-    Result.Warnings[0] := 'LLM 响应中未找到有效�?JSON';
+    Result.Warnings[0] := 'LLM 响应中未找到有效的 JSON';
   end;
 end;
 
@@ -1321,13 +1327,13 @@ var
   LLMResponse: string;
   ParsedResponse: TLLMGenerationResponse;
 begin
-  // 首先尝试基础生成�?
+  // 首先尝试基础生成器
   var Options: TGenerationOptions;
   Options.MaxSteps := 10;
   Options.AddErrorHandlers := True;
   Result := FBaseGenerator.Generate(ANaturalLanguage, Options);
   
-  // 如果置信度低，使�?LLM 增强
+  // 如果置信度低，使用 LLM 增强
   if (Result.Confidence < 0.6) and (FLLMEndpoint <> '') then
   begin
     Request.UserPrompt := ANaturalLanguage;
@@ -1343,7 +1349,7 @@ begin
       ParsedResponse := ParseLLMResponse(LLMResponse);
       if ParsedResponse.Success then
       begin
-        // �?LLM 响应重建工作�?
+        // 用 LLM 响应重建工作流
         Result.WorkflowId := TGUID.NewGuid.ToString;
         Result.Name := ParsedResponse.WorkflowJSON.GetValue<string>('name', Result.Name);
         Result.Description := ParsedResponse.WorkflowJSON.GetValue<string>('description', Result.Description);
@@ -1366,8 +1372,8 @@ begin
   
   Prompt := Format(
     '当前工作流：'#13#10'%s'#13#10#13#10 +
-    '用户反馈�?s'#13#10#13#10 +
-    '请根据反馈优化工作流，输出新�?JSON�?,
+    '用户反馈：%s'#13#10#13#10 +
+    '请根据反馈优化工作流，输出新的 JSON。',
     [FBaseGenerator.ToJSON(AWorkflow).ToJSON, AFeedback]
   );
   
@@ -1389,13 +1395,13 @@ var
 begin
   if FLLMEndpoint = '' then
   begin
-    Result := '工作�?"' + AWorkflow.Name + '" 包含 ' + 
-      IntToStr(Length(AWorkflow.Steps)) + ' 个步骤�?;
+    Result := '工作流"' + AWorkflow.Name + '" 包含 ' + 
+      IntToStr(Length(AWorkflow.Steps)) + ' 个步骤。';
     Exit;
   end;
   
   Prompt := Format(
-    '请用简洁的中文解释以下工作流的功能�?#13#10'%s',
+    '请用简洁的中文解释以下工作流的功能：'#13#10'%s',
     [FBaseGenerator.ToJSON(AWorkflow).ToJSON]
   );
   
@@ -1437,9 +1443,9 @@ begin
     csConfirmingParameters:
       Result := '请确认以下参数是否正确？';
     csReviewing:
-      Result := '工作流已生成，是否需要调整？输入 "完成" 结束�?;
+      Result := '工作流已生成，是否需要调整？输入 "完成" 结束。';
   else
-    Result := '请继续描述您的需求�?;
+    Result := '请继续描述您的需求。';
   end;
 end;
 
@@ -1456,12 +1462,12 @@ begin
   case FState of
     csInitial, csGatheringRequirements:
       begin
-        // 生成工作�?
+        // 生成工作流
         FCurrentWorkflow := FGenerator.Generate(AInput);
         if FCurrentWorkflow.Confidence > 0.5 then
         begin
           FState := csConfirmingSteps;
-          Result := Format('我理解您想要�?s'#13#10#13#10'生成�?%d 个步骤。是否确认？',
+          Result := Format('我理解您想要：%s'#13#10#13#10'生成了 %d 个步骤。是否确认？',
             [FCurrentWorkflow.Description, Length(FCurrentWorkflow.Steps)]);
         end
         else
@@ -1472,17 +1478,17 @@ begin
     
     csConfirmingSteps:
       begin
-        if (Pos('确认', AInput) > 0) or (Pos('�?, AInput) > 0) or 
+        if (Pos('确认', AInput) > 0) or (Pos('好', AInput) > 0) or 
            (Pos('yes', LowerCase(AInput)) > 0) then
         begin
           FState := csReviewing;
-          Result := '很好！工作流已准备就绪。输�?"完成" 确认，或描述需要修改的地方�?;
+          Result := '很好！工作流已准备就绪。输入 "完成" 确认，或描述需要修改的地方。';
         end
         else
         begin
           // 根据反馈优化
           FCurrentWorkflow := FGenerator.Refine(FCurrentWorkflow, AInput);
-          Result := '已根据您的反馈调整。请再次确认�?;
+          Result := '已根据您的反馈调整。请再次确认。';
         end;
       end;
     
@@ -1497,11 +1503,11 @@ begin
         else
         begin
           FCurrentWorkflow := FGenerator.Refine(FCurrentWorkflow, AInput);
-          Result := '已更新。还需要其他修改吗�?;
+          Result := '已更新。还需要其他修改吗？';
         end;
       end;
   else
-    Result := '对话已结束�?;
+    Result := '对话已结束。';
   end;
   
   // 记录助手响应
@@ -1529,7 +1535,7 @@ begin
   if AInitialPrompt <> '' then
     Result := ProcessUserInput(AInitialPrompt)
   else
-    Result := '您好！我可以帮您创建工作流。请描述您想要自动化的任务�?;
+    Result := '您好！我可以帮您创建工作流。请描述您想要自动化的任务。';
 end;
 
 function TConversationalBuilder.Continue(const AUserInput: string): string;

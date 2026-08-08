@@ -18,6 +18,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
+  System.Generics.Defaults,
   DeepFlow.Workflow.Version, DeepFlow.Workflow.Definition;
 
 type
@@ -545,7 +546,8 @@ begin
       Exit;
     end;
     
-    LDefinition := TWorkflowDefinition.FromJSON(ARequest.Definition);
+    LDefinition := TWorkflowDefinition.Create;
+    LDefinition.LoadFromJSON(ARequest.Definition);
     try
       if ARequest.IsDraft then
         LVersion := FVersionManager.CreateDraft(ARequest.WorkflowId, LDefinition)

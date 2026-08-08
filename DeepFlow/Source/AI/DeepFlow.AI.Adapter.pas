@@ -113,7 +113,7 @@ type
     constructor Create(AAdapter: TDeepFlowLLMAdapter; AOwnsAdapter: Boolean = False);
     destructor Destroy; override;
 
-    function Execute(const Action: TActionDefinition; Context: TWorkflowContext): TStepResult;
+    function Execute(AAction: TActionDefinition; AContext: TWorkflowContext): TStepResult;
     function CanHandle(AActionType: TActionType): Boolean;
   end;
 
@@ -207,7 +207,7 @@ function TDeepFlowLLMAdapter.ResolveTemplate(const Template: string;
   Context: TWorkflowContext): string;
 begin
   // Use workflow context's expression evaluator to resolve {{ vars.xxx }}
-  Result := Context.EvaluateExpression(Template);
+  Result := Context.ResolveString(Template);
 end;
 
 function TDeepFlowLLMAdapter.ExtractJsonValue(const JSON: TJSONObject;
@@ -281,7 +281,7 @@ begin
 
   // Execute LLM call via DeepBase.LLM
   try
-    Response := FLLM.Chat(Messages, Options.ConfigName);
+    FLLM.ChatWithMessages(Messages, Response, Options.ConfigName);
 
     Result.Success := Response.Success;
     Result.Content := Response.Content;
@@ -393,7 +393,7 @@ begin
   SetLength(Messages, Length(Messages) + 1);
   Messages[High(Messages)] := TLLMMessage.User(UserPrompt);
 
-  Response := FLLM.Chat(Messages, ConfigName);
+  FLLM.ChatWithMessages(Messages, Response, ConfigName);
 
   if Response.Success then
     Result := Response.Content
@@ -417,8 +417,8 @@ begin
   inherited;
 end;
 
-function TLLMActionExecutor.Execute(const Action: TActionDefinition;
-  Context: TWorkflowContext): TStepResult;
+function TLLMActionExecutor.Execute(AAction: TActionDefinition;
+  AContext: TWorkflowContext): TStepResult;
 var
   LLMResult: TLLMExecutionResult;
   OutputObj: TJSONObject;
@@ -426,7 +426,7 @@ begin
   if not Assigned(FAdapter) then
     Exit(TStepResult.Fail(ERR_LLM_CALL_FAILED, 'LLM adapter not configured'));
 
-  LLMResult := FAdapter.ExecuteFromAction(Action, Context);
+  LLMResult := FAdapter.ExecuteFromAction(AAction, AContext);
 
   if LLMResult.Success then
   begin

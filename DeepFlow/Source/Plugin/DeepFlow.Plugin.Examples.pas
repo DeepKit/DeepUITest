@@ -447,7 +447,7 @@ begin
       Output := TJSONObject.Create;
       Output.AddPair('status_code', TJSONNumber.Create(Response.StatusCode));
       Output.AddPair('status_text', Response.StatusText);
-      Output.AddPair('content_type', Response.ContentType);
+      Output.AddPair('content_type', Response.MimeType);
       Output.AddPair('body', Response.ContentAsString);
       
       if Response.StatusCode >= 400 then

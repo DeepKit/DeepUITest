@@ -10,7 +10,7 @@ unit DeepFlow.Cloud.Telemetry.SDK;
   - 批处理导出器
   - OTLP HTTP/gRPC 导出
   
-  作�? DeepFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -29,14 +29,14 @@ type
   /// <summary>采样决策</summary>
   TSamplingDecision = (sdDrop, sdRecordOnly, sdRecordAndSample);
   
-  /// <summary>采样器接�?/summary>
+  /// <summary>采样器接�?/summary>
   ISampler = interface
     ['{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}']
     function ShouldSample(AContext: TTraceContext; const AName: string;
       AKind: TSpanKind): TSamplingDecision;
   end;
   
-  /// <summary>Span 处理器接�?/summary>
+  /// <summary>Span 处理器接�?/summary>
   ISpanProcessor = interface
     ['{B2C3D4E5-F678-90AB-CDEF-123456789012}']
     procedure OnStart(ASpan: TSpan);
@@ -123,7 +123,7 @@ type
     property Version: string read FVersion;
   end;
   
-  /// <summary>指标读取器接�?/summary>
+  /// <summary>指标读取器接�?/summary>
   IMetricReader = interface
     ['{C3D4E5F6-7890-ABCD-EF12-345678901234}']
     procedure Collect(AMetrics: TArray<TMetric>);
@@ -137,7 +137,6 @@ type
     FMeters: TObjectDictionary<string, TMeter>;
     FResource: TResource;
     FReaders: TList<IMetricReader>;
-    FCollectTimer: TTimer;
     FCollectIntervalMS: Integer;
     FLock: TCriticalSection;
     procedure DoCollect;
@@ -157,7 +156,7 @@ type
   
   {$REGION 'Logger Provider'}
   
-  /// <summary>日志处理器接�?/summary>
+  /// <summary>日志处理器接�?/summary>
   ILogProcessor = interface
     ['{D4E5F678-90AB-CDEF-1234-567890123456}']
     procedure Process(ARecord: TLogRecord);
@@ -215,7 +214,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '采样器实�?}
+  {$REGION '采样器实�?}
   
   /// <summary>始终采样</summary>
   TAlwaysOnSampler = class(TInterfacedObject, ISampler)
@@ -224,7 +223,7 @@ type
       AKind: TSpanKind): TSamplingDecision;
   end;
   
-  /// <summary>始终不采�?/summary>
+  /// <summary>始终不采�?/summary>
   TAlwaysOffSampler = class(TInterfacedObject, ISampler)
   public
     function ShouldSample(AContext: TTraceContext; const AName: string;
@@ -255,7 +254,7 @@ type
   
   {$REGION '批处理导出器'}
   
-  /// <summary>批处�?Span 处理�?/summary>
+  /// <summary>批处�?Span 处理�?/summary>
   TBatchSpanProcessor = class(TInterfacedObject, ISpanProcessor)
   private
     FQueue: TThreadedQueue<TSpan>;
@@ -278,7 +277,7 @@ type
     procedure ForceFlush;
   end;
   
-  /// <summary>简�?Span 处理�?/summary>
+  /// <summary>简�?Span 处理�?/summary>
   TSimpleSpanProcessor = class(TInterfacedObject, ISpanProcessor)
   private
     FExporter: ISpanProcessor;
@@ -292,9 +291,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION 'OTLP 导出�?}
+  {$REGION 'OTLP 导出�?}
   
-  /// <summary>OTLP HTTP Span 导出�?/summary>
+  /// <summary>OTLP HTTP Span 导出�?/summary>
   TOTLPHttpSpanExporter = class(TInterfacedObject, ISpanProcessor)
   private
     FEndpoint: string;
@@ -320,7 +319,7 @@ type
     procedure ForceFlush;
   end;
   
-  /// <summary>OTLP HTTP 指标导出�?/summary>
+  /// <summary>OTLP HTTP 指标导出�?/summary>
   TOTLPHttpMetricExporter = class(TInterfacedObject, IMetricReader)
   private
     FEndpoint: string;
@@ -344,7 +343,7 @@ type
     procedure ForceFlush;
   end;
   
-  /// <summary>OTLP HTTP 日志导出�?/summary>
+  /// <summary>OTLP HTTP 日志导出�?/summary>
   TOTLPHttpLogExporter = class(TInterfacedObject, ILogProcessor)
   private
     FEndpoint: string;
@@ -388,6 +387,7 @@ type
     class var FInstance: TOpenTelemetry;
     class var FLock: TCriticalSection;
     
+    var
     FTracerProvider: TTracerProvider;
     FMeterProvider: TMeterProvider;
     FLoggerProvider: TLoggerProvider;
@@ -452,7 +452,7 @@ var
   Decision: TSamplingDecision;
   Processor: ISpanProcessor;
 begin
-  // 创建上下�?
+  // 创建上下�?
   if Assigned(AParentContext) then
     Context := AParentContext.CreateChildContext
   else
@@ -474,7 +474,7 @@ begin
   // 创建 Span
   Result := TSpan.Create(AName, AKind, Context);
   
-  // 通知处理�?
+  // 通知处理�?
   FLock.Enter;
   try
     for Processor in FProcessors do
@@ -1007,7 +1007,7 @@ end;
 
 {$ENDREGION}
 
-{$REGION '采样器实�?}
+{$REGION '采样器实�?}
 
 function TAlwaysOnSampler.ShouldSample(AContext: TTraceContext;
   const AName: string; AKind: TSpanKind): TSamplingDecision;
@@ -1105,7 +1105,7 @@ end;
 
 procedure TBatchSpanProcessor.OnStart(ASpan: TSpan);
 begin
-  // 批处理器不处�?OnStart
+  // 批处理器不处�?OnStart
 end;
 
 procedure TBatchSpanProcessor.OnEnd(ASpan: TSpan);
@@ -1170,7 +1170,7 @@ end;
 
 {$ENDREGION}
 
-{$REGION 'OTLP 导出�?}
+{$REGION 'OTLP 导出�?}
 
 constructor TOTLPHttpSpanExporter.Create(const AEndpoint: string;
   AResource: TResource; AHeaders: TDictionary<string, string>;
@@ -1263,7 +1263,7 @@ var
 begin
   Request := BuildExportRequest;
   try
-    // 构建请求�?
+    // 构建请求�?
     SetLength(Headers, 1);
     Headers[0] := TNameValuePair.Create('Content-Type', 'application/json');
     
@@ -1402,12 +1402,12 @@ end;
 
 procedure TOTLPHttpMetricExporter.Shutdown;
 begin
-  // 无操�?
+  // 无操�?
 end;
 
 procedure TOTLPHttpMetricExporter.ForceFlush;
 begin
-  // 无操�?
+  // 无操�?
 end;
 
 // TOTLPHttpLogExporter
@@ -1550,12 +1550,12 @@ end;
 
 procedure TConsoleSpanExporter.Shutdown;
 begin
-  // 无操�?
+  // 无操�?
 end;
 
 procedure TConsoleSpanExporter.ForceFlush;
 begin
-  // 无操�?
+  // 无操�?
 end;
 
 {$ENDREGION}
@@ -1612,7 +1612,7 @@ begin
     Resource := TResource.Default;
     Resource.SetServiceInfo(AConfig.ServiceName, AConfig.ServiceVersion, '');
     
-    // 创建采样�?
+    // 创建采样�?
     case AConfig.Sampler.SamplerType of
       stAlwaysOn: Sampler := TAlwaysOnSampler.Create;
       stAlwaysOff: Sampler := TAlwaysOffSampler.Create;
@@ -1628,7 +1628,7 @@ begin
     FMeterProvider := TMeterProvider.Create(TResource.Default, 60000);
     FLoggerProvider := TLoggerProvider.Create(TResource.Default);
     
-    // 配置导出�?
+    // 配置导出�?
     case AConfig.TracesExporter.ExporterType of
       etOTLP:
         SpanExporter := TOTLPHttpSpanExporter.Create(

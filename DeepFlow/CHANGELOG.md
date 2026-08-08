@@ -2,6 +2,36 @@
 
 All notable changes to DeepFlow Workflow Engine are documented in this file.
 
+## [1.1.0] - 2026-08-08
+
+### Added - Insight Gold Path MVP P0
+- **Decision Coaching** - Six-role multi-view analysis for decision support (coach/critic/mirror/observer)
+- **Aggregation Engine** - Intelligent synthesis of multi-perspective insights with LLM-powered summarization
+- **Film Generator** - Decision思维胶片 output emphasizing process over conclusions (philosophy-compliant)
+- **Parallel Role Fork** - Concurrent four-view reasoning workflow compatible with workflow engine forks
+
+### Fixed - Green Path Authenticity (防假绿机制)
+- **LLM Output Parsing** - Enhanced JSON extraction with code fence support (` ```json ... ````)
+- **Decay Detection** - Automatic fallback to templates when LLM returns non-JSON (prevents "fake green" outputs)
+- **Aggregator Expansion** - Increased `max_tokens` to 8192, added input compression to prevent truncation errors
+- **Decoy Prevention** - All six roles now verified as real LLM calls (degraded=False), no template fallback in normal scenarios
+
+### Improved - Performance & Reliability
+- **Timeout Configuration** - Default timeout increased to 120s for LLM skill execution
+- **Concurrent Execution** - Thread pool for parallel role inference (4 workers max)
+- **API Contract** - Changed `skill` field to `skill_name` in `/skills/execute` endpoint
+
+### Testing & Demo
+- **End-to-End Demo** - Python demo script (`Examples/Integration/goldpath_demo.py`) validates complete gold path
+- **Degradation Test** - Unit tests verify all six roles work normally with degraded=False
+- **Delphi Tests** - All 104 tests passing successfully
+
+### Statistics
+- **Verifcation Result**: ✅ Six roles 100% true LLM calls, 0% template degradation
+- **Performance**: ~20-35s per role, total pipeline ~90s with concurrent execution
+
+---
+
 ## [1.0.0] - 2025-12-08
 
 ### Added - Core Engine
@@ -74,7 +104,7 @@ All notable changes to DeepFlow Workflow Engine are documented in this file.
 
 ### Documentation
 - English docs: Quick Start, Workflow Format, Skills Development, Deployment
-- Chinese docs: 快速入�? 工作流格�? Skill开�? 部署指南
+- Chinese docs: 快速入门，工作流格式，Skill 开发，部署指南
 - API Reference
 - Architecture Design docs (30+ documents)
 
@@ -114,9 +144,10 @@ These are optimization tasks and do not affect core functionality.
 ### API Changes
 - Use `DeepBase.LLM` instead of `UniFlow.AI.LLMClient`
 - Error codes follow `{Source}/{Category}/{Specific}` format
+- Skill request field changed from `skill` to `skill_name`
 
 ---
 
-**DeepFlow Version**: 1.0.0
+**DeepFlow Version**: 1.1.0
 **Minimum DeepBase Version**: 1.0.0
-**Generated**: 2025-12-08
+**Generated**: 2026-08-08
