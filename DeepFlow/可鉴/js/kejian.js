@@ -280,12 +280,13 @@ async function startGovernance() {
     const filmT0 = Date.now();
     let filmText = "";
     let filmDegraded = false;
+    let film = {}; // T11: 提到 try 外，避免异常时 L318 引用未定义变量
     try {
       const filmResp = await callSkill("film_generator", {
         problem,
         aggregated: aggregated || {},
       });
-      const film = extractResult(filmResp) || {};
+      film = extractResult(filmResp) || {};
       filmText = renderFilmText(film);
       filmDegraded = !!film.degraded;
       setRoleMeta("film", "耗时 " + ((filmResp.execution_time_ms || (Date.now() - filmT0)) / 1000).toFixed(1) + "s");
@@ -333,6 +334,21 @@ async function startGovernance() {
 }
 
 // ---------- 聚合渲染 ----------
+// T11: 数组元素安全转文本 — 对象取常见文本字段，避免 [object Object]
+function itemText(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    const keys = ["risk", "description", "point", "text", "summary", "content", "insight", "question", "assumption", "blind_spot", "challenge", "divergence", "consensus"];
+    for (const k of keys) {
+      if (typeof v[k] === "string" && v[k]) return v[k];
+    }
+    try { return JSON.stringify(v); } catch (e) { return String(v); }
+  }
+  return String(v);
+}
+
 function renderAggregate(agg) {
   if (!agg || typeof agg !== "object") {
     aggregateBody.innerHTML = "<div class='degrade-note'>聚合结果不可用。</div>";
@@ -349,7 +365,7 @@ function renderAggregate(agg) {
   sections.forEach(({ key, title }) => {
     const val = agg[key];
     if (Array.isArray(val) && val.length) {
-      html += `<h4>${title}</h4><ul>` + val.map((v) => `<li>${escapeHtml(String(v))}</li>`).join("") + "</ul>";
+      html += `<h4>${title}</h4><ul>` + val.map((v) => `<li>${escapeHtml(itemText(v))}</li>`).join("") + "</ul>";
     } else if (typeof val === "string" && val) {
       html += `<h4>${title}</h4><p>${escapeHtml(val)}</p>`;
     }
@@ -416,7 +432,7 @@ function renderFilmText(film) {
       html += `<h2>${escapeHtml(sec.name)}</h2>`;
       if (sec.description) html += `<p style='color:var(--text-dim)'>${escapeHtml(sec.description)}</p>`;
       if (Array.isArray(sec.content) && sec.content.length) {
-        html += `<ul>` + sec.content.map((c) => `<li>${escapeHtml(typeof c === "object" ? JSON.stringify(c) : String(c))}</li>`).join("") + `</ul>`;
+        html += `<ul>` + sec.content.map((c) => `<li>${escapeHtml(itemText(c))}</li>`).join("") + `</ul>`;
       } else if (typeof sec.content === "string" && sec.content) {
         html += `<p>${escapeHtml(sec.content)}</p>`;
       } else if (sec.content && typeof sec.content === "object") {
