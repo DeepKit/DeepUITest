@@ -1085,4 +1085,13 @@ Inc(LRecord.Count) �?
 - **验证**: 移除后 `git status` 恢复正常
 - **经验**: 仓库曾有 submodule 后手动移除 .gitmodules 会留下孤儿 gitlink，git status 直接崩溃；此类残留用 `git rm --cached <path>` 清理
 
+### BUG-2026-035: Skills/src/llm/ 整个目录从未入库 + T9 提交遗漏 client.py (P1)
+- **发现/修复日期**: 2026-08-09
+- **严重程度**: High（若他人拉取仓库，Skills 服务无法启动：缺 LLM 客户端模块）
+- **影响范围**: 02Business 仓库根索引（DeepFlow/Skills/src/llm/ 下 client.py、__init__.py）
+- **问题描述**: 根 .gitignore 第 3 行 `skills/` 无锚定规则匹配任意层级 `skills` 目录，导致 `src/llm/` 整个子目录从未被跟踪；T9 修改 client.py 后提交只含已跟踪文件，stat 核对时才发现 client.py 缺席
+- **修复方案**: `git add -f DeepFlow/Skills/src/llm/__init__.py DeepFlow/Skills/src/llm/client.py` 强加后 `git commit --amend --no-edit` 补入 T9 提交
+- **验证**: `git show --stat be147eb3` 12 文件齐全；`git ls-files DeepFlow/Skills/src/llm` 两文件在册；`git status --ignored --short DeepFlow/Skills` 仅剩日志/临时脚本（符合预期）
+- **经验**: gitignore 无锚定规则会整目录吞掉新代码，**提交后必须用 `git show --stat HEAD` 核对文件数，且用 `git ls-files <dir>` 全量对比工作区**；修复此类用 `git add -f` + amend
+
 ---
