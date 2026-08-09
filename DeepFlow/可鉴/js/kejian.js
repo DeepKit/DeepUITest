@@ -314,8 +314,8 @@ async function startGovernance() {
       note.textContent = "⚠ 本次治理存在降级（可见性承诺：我们不隐藏失败）。部分内容来自内置模板。";
       filmBody.parentNode.insertBefore(note, filmBody.nextSibling);
     }
-    // 渲染分享卡片数据
-    renderShareCard(problem, views, aggregated);
+    // T10: 分享卡片携带胶片对象（含视觉字段）
+    renderShareCard(problem, views, aggregated, film);
     // 激活追问区：携带本次治理上下文
     followupContext = { problem, filmSummary: extractPlainText(filmText) };
     chatHistory = [{ role: "system", content: buildFollowupSystemPrompt(problem) }];
@@ -377,20 +377,29 @@ function renderAggregate(agg) {
 }
 
 // ---------- 分享卡片 ----------
-function renderShareCard(problem, views, aggregated) {
+// T10: 卡片填充核心洞察（前 2 条）+ 角色徽章 + 品牌水印
+function renderShareCard(problem, views, aggregated, film) {
   $("share-card-problem").textContent = problem;
   const rolesHtml = Object.values(views)
     .filter((v) => v && v.role)
     .map((v) => `<span class="share-card-role">${escapeHtml(String(v.role))}</span>`)
     .join("");
   $("share-card-roles").innerHTML = rolesHtml || "";
-  const insights = (aggregated && aggregated.key_DeepInsights) || [];
+  const insights = (film && Array.isArray(film.key_insights) && film.key_insights.length)
+    ? film.key_insights
+    : ((aggregated && Array.isArray(aggregated.key_DeepInsights)) ? aggregated.key_DeepInsights : []);
+  const topInsights = insights.filter(Boolean).slice(0, 2);
+  $("share-card-insights").innerHTML = topInsights.length
+    ? `<div class="share-card-insight-label">核心洞察</div>` + topInsights.map((i) => `<div class="share-card-insight">${escapeHtml(String(i).slice(0, 60))}</div>`).join("")
+    : "";
   const highlight = insights[0] ? String(insights[0]).slice(0, 60) : "六角色并行推演，产出可鉴的思维胶片";
   $("share-card-title").textContent = "决策思维胶片 · " + highlight;
 }
 
 // ---------- 胶片文本渲染 ----------
-// 契约: {title, subtitle, sections: [{name, description, content}], self_questions, closing_note, disclaimer, metadata}
+// 契约: {title, subtitle, key_insights, tradeoffs, emotional_spectrum, decision_readiness,
+//         sections, self_questions, closing_note, disclaimer, metadata}
+// T10: 视觉化渲染 — 洞察卡 / 权衡对比 / 情绪谱 / 成熟度仪表 + 文本章节
 function renderFilmText(film) {
   if (!film || typeof film !== "object") return "";
   // 兼容旧式纯文本返回
@@ -399,6 +408,8 @@ function renderFilmText(film) {
   let html = "";
   if (film.title) html += `<h1>${escapeHtml(film.title)}</h1>`;
   if (film.subtitle) html += `<p style='color:var(--text-dim)'>${escapeHtml(film.subtitle)}</p>`;
+  // T10: 视觉区（胶片显影）
+  html += renderFilmVisual(film);
   if (Array.isArray(film.sections) && film.sections.length) {
     film.sections.forEach((sec) => {
       if (!sec || !sec.name) return;
@@ -419,6 +430,55 @@ function renderFilmText(film) {
   if (film.closing_note) html += `<p><strong>${escapeHtml(film.closing_note)}</strong></p>`;
   if (film.disclaimer) html += `<p style='color:var(--text-dim);font-size:12px'>${escapeHtml(film.disclaimer)}</p>`;
   if (!html) html = escapeHtml(JSON.stringify(film, null, 2));
+  return html;
+}
+
+// T10: 胶片视觉区 — 洞察卡 / 权衡对比 / 情绪谱 / 成熟度仪表
+function renderFilmVisual(film) {
+  let html = "";
+  // 核心洞察卡片
+  const insights = Array.isArray(film.key_insights) ? film.key_insights.filter(Boolean) : [];
+  if (insights.length) {
+    html += `<div class="film-visual-block"><h3 class="visual-title">核心洞察</h3><div class="film-insight-grid">`;
+    insights.forEach((ins, i) => {
+      html += `<div class="film-insight-card"><span class="film-insight-num">${i + 1}</span><span class="film-insight-text">${escapeHtml(String(ins))}</span></div>`;
+    });
+    html += `</div></div>`;
+  }
+  // 关键权衡对比
+  const tradeoffs = Array.isArray(film.tradeoffs) ? film.tradeoffs.filter((t) => t && t.choice) : [];
+  if (tradeoffs.length) {
+    html += `<div class="film-visual-block"><h3 class="visual-title">关键权衡</h3>`;
+    tradeoffs.forEach((t) => {
+      html += `<div class="film-tradeoff"><div class="tradeoff-choice">${escapeHtml(String(t.choice))}</div><div class="tradeoff-cols">`;
+      const pros = Array.isArray(t.pros) ? t.pros : [];
+      const cons = Array.isArray(t.cons) ? t.cons : [];
+      html += `<div class="tradeoff-col pros"><h5>支持</h5><ul>` + (pros.length ? pros.map((p) => `<li>${escapeHtml(String(p))}</li>`).join("") : `<li style='color:var(--text-dim)'>—</li>`) + `</ul></div>`;
+      html += `<div class="tradeoff-col cons"><h5>代价</h5><ul>` + (cons.length ? cons.map((c) => `<li>${escapeHtml(String(c))}</li>`).join("") : `<li style='color:var(--text-dim)'>—</li>`) + `</ul></div>`;
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+  }
+  // 情绪谱
+  const spectrum = Array.isArray(film.emotional_spectrum) ? film.emotional_spectrum.filter((s) => s && s.emotion) : [];
+  if (spectrum.length) {
+    html += `<div class="film-visual-block"><h3 class="visual-title">情绪光谱</h3><div class="film-spectrum">`;
+    spectrum.forEach((s) => {
+      const val = (typeof s.intensity === "number" && s.intensity >= 0 && s.intensity <= 100) ? s.intensity : null;
+      const bar = val === null
+        ? `<span class="spectrum-bar"><span class="spectrum-fill spectrum-unknown" style="width:100%"></span></span><span class="spectrum-val">待显影</span>`
+        : `<span class="spectrum-bar"><span class="spectrum-fill" style="width:${val}%"></span></span><span class="spectrum-val">${val}</span>`;
+      html += `<div class="spectrum-item"><span class="spectrum-emotion">${escapeHtml(String(s.emotion))}</span>${bar}</div>`;
+    });
+    html += `</div></div>`;
+  }
+  // 决策成熟度仪表
+  const readiness = film.decision_readiness;
+  if (typeof readiness === "number" && readiness >= 0 && readiness <= 100) {
+    html += `<div class="film-visual-block"><h3 class="visual-title">决策成熟度</h3>`;
+    html += `<div class="film-readiness"><span class="readiness-bar"><span class="readiness-fill" style="width:${readiness}%"></span></span><span class="readiness-val">${readiness} / 100</span></div>`;
+    html += `<p class="readiness-note" style='color:var(--text-dim)'>成熟度越高，代表决策条件越充分；它不替你做决定。</p></div>`;
+  }
   return html;
 }
 
@@ -551,6 +611,21 @@ $("download-share").addEventListener("click", () => {
     ctx.fillText("决策思维胶片", 28, 110);
     ctx.fillStyle = "#8fa0c0"; ctx.font = "15px sans-serif";
     wrapText(ctx, $("share-card-problem").textContent || "", 28, 150, card.offsetWidth - 56, 24, 15);
+    // T10: 绘制核心洞察（取自分享卡片 DOM）
+    ctx.fillStyle = "#d4af6a"; ctx.font = "bold 15px sans-serif";
+    ctx.fillText("核心洞察", 28, 240);
+    ctx.fillStyle = "#e8edf7"; ctx.font = "14px sans-serif";
+    const insights = Array.from(document.querySelectorAll("#share-card-insights .share-card-insight"))
+      .map((el) => el.textContent.trim())
+      .filter(Boolean);
+    let iy = 272;
+    insights.slice(0, 3).forEach((ins) => {
+      ctx.fillStyle = "#d4af6a";
+      ctx.fillText("◆", 28, iy);
+      ctx.fillStyle = "#e8edf7";
+      wrapText(ctx, ins, 50, iy, card.offsetWidth - 78, 24, 14);
+      iy += 24;
+    });
     ctx.fillStyle = "#d4af6a";
     ctx.fillText("每个决策，可见，可鉴。", 28, card.offsetHeight - 40);
     ctx.fillStyle = "#8fa0c0"; ctx.font = "13px sans-serif";

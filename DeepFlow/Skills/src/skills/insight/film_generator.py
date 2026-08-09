@@ -27,6 +27,10 @@ FILM_SYSTEM_PROMPT = """你是一位决策思维胶片创作师。你的角色�
 输出 JSON 对象：
 - title: 胶片标题
 - subtitle: 副标题
+- key_insights: 核心洞察列表（3-5 条，每条 40 字以内的短句）
+- tradeoffs: 关键权衡列表 [{choice: 候选方案, pros: [优点], cons: [缺点]}]（1-3 项）
+- emotional_spectrum: 情绪谱列表 [{emotion: 情绪名, intensity: 0-100 整数}]（2-4 项）
+- decision_readiness: 决策成熟度（0-100 整数，数值越高代表条件越充分；信息不足时为 null）
 - sections: 章节列表 (name, description, content)
 - self_questions: 自我提问列表
 - closing_note: 结语
@@ -113,10 +117,12 @@ class FilmGeneratorSkill(BaseSkill):
                         film.setdefault("self_questions", [])
                         film.setdefault("closing_note", self._generate_closing_note())
                         film.setdefault("metadata", {
-                            "generated_at": "2026-08-08",
+                            "generated_at": "2026-08-09",
                             "version": "1.1",
                             "philosophy_compliant": True
                         })
+                        # T10: 视觉字段缺失时从聚合结果兑底，保证胶片可视觉化
+                        film = self._ensure_visual_fields(film, problem, aggregated)
                         film["degraded"] = False
                 except Exception as e:
                     logger.warning("film_generator.llm_fallback", error=str(e))
@@ -168,13 +174,13 @@ class FilmGeneratorSkill(BaseSkill):
         }
     
     def _generate_film(self, problem: str, aggregated: Dict) -> Dict[str, Any]:
-        """生成胶片结构"""
+        """生成胶片结构（含 T10 视觉字段）"""
         views = aggregated.get("views", [])
         DeepInsights = aggregated.get("key_DeepInsights", [])
         questions = aggregated.get("self_questions", [])
         emotional = aggregated.get("emotional_summary", {})
         
-        return {
+        film = {
             "title": "你的决策思维胶片",
             "subtitle": f"关于：{problem[:50]}..." if len(problem) > 50 else f"关于：{problem}",
             "sections": [
@@ -197,11 +203,40 @@ class FilmGeneratorSkill(BaseSkill):
             "self_questions": questions,
             "closing_note": self._generate_closing_note(),
             "metadata": {
-                "generated_at": "2025-12-07",
-                "version": "1.0",
+                "generated_at": "2026-08-09",
+                "version": "1.1",
                 "philosophy_compliant": True
             }
         }
+        return self._ensure_visual_fields(film, problem, aggregated)
+    
+    def _ensure_visual_fields(self, film: Dict, problem: str, aggregated: Dict) -> Dict[str, Any]:
+        """T10: 保证视觉字段存在（LLM 漏输出时从聚合结果兑底，不伪造）"""
+        # 核心洞察：LLM 未给时取聚合洞察前 4 条
+        if not isinstance(film.get("key_insights"), list) or not film["key_insights"]:
+            insights = aggregated.get("key_DeepInsights", [])
+            film["key_insights"] = [str(i)[:60] for i in insights[:4]]
+        # 关键权衡：LLM 未给时为空列表（聚合层通常不提供该结构，不伪造）
+        if not isinstance(film.get("tradeoffs"), list):
+            film["tradeoffs"] = []
+        # 情绪谱：LLM 未给时从聚合情绪摘要映射（不编造数值）
+        if not isinstance(film.get("emotional_spectrum"), list) or not film["emotional_spectrum"]:
+            emo = aggregated.get("emotional_summary", {}) or {}
+            spectrum = []
+            if emo.get("primary_emotion"):
+                spectrum.append({"emotion": emo["primary_emotion"], "intensity": None})
+            for e in (emo.get("secondary_emotions") or []):
+                spectrum.append({"emotion": e, "intensity": None})
+            film["emotional_spectrum"] = spectrum
+        # 决策成熟度：LLM 未给时为 None（不造假）
+        if "decision_readiness" not in film:
+            film["decision_readiness"] = None
+        # 规范化：intensity 必须是 0-100 数字或 None
+        for item in film.get("emotional_spectrum", []):
+            if isinstance(item, dict) and "intensity" in item:
+                v = item["intensity"]
+                item["intensity"] = v if isinstance(v, (int, float)) and 0 <= v <= 100 else None
+        return film
     
     def _validate_philosophy(self, film: Dict) -> Dict[str, Any]:
         """验证产品哲学合规性"""

@@ -225,6 +225,112 @@ body {
 .film-body h1, .film-body h2, .film-body h3 { color: var(--gold-light); margin: 14px 0 6px; }
 .film-body strong { color: var(--text-main); }
 
+/* T10 胶片视觉组件 */
+.film-visual-block { margin: 18px 0 6px; }
+.visual-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.visual-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(212, 175, 106, 0.5), transparent);
+}
+/* 核心洞察卡片 */
+.film-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+.film-insight-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(212, 175, 106, 0.06);
+  border: 1px solid rgba(212, 175, 106, 0.25);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.film-insight-num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #b8914a);
+  color: #1a1406;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.film-insight-text { font-size: 13px; line-height: 1.7; color: var(--text-main); }
+/* 关键权衡对比 */
+.film-tradeoff {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.tradeoff-choice { font-size: 14px; font-weight: 700; color: var(--gold-light); margin-bottom: 10px; }
+.tradeoff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tradeoff-col { border-radius: 8px; padding: 10px 12px; }
+.tradeoff-col h5 { font-size: 12px; margin-bottom: 6px; letter-spacing: 1px; }
+.tradeoff-col ul { padding-left: 16px; font-size: 12.5px; line-height: 1.7; }
+.tradeoff-col.pros { background: rgba(74, 222, 128, 0.06); border: 1px solid rgba(74, 222, 128, 0.25); }
+.tradeoff-col.pros h5 { color: var(--green); }
+.tradeoff-col.cons { background: rgba(248, 113, 113, 0.06); border: 1px solid rgba(248, 113, 113, 0.25); }
+.tradeoff-col.cons h5 { color: var(--red); }
+/* 情绪光谱 */
+.film-spectrum { display: flex; flex-direction: column; gap: 8px; }
+.spectrum-item { display: flex; align-items: center; gap: 10px; }
+.spectrum-emotion { width: 72px; flex: none; font-size: 13px; color: var(--text-main); }
+.spectrum-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  position: relative;
+}
+.spectrum-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fbbf24, #f87171);
+  transition: width 0.6s ease;
+}
+.spectrum-fill.spectrum-unknown {
+  background: repeating-linear-gradient(45deg, rgba(143, 160, 192, 0.35), rgba(143, 160, 192, 0.35) 6px, rgba(143, 160, 192, 0.12) 6px, rgba(143, 160, 192, 0.12) 12px);
+}
+.spectrum-val { width: 52px; flex: none; text-align: right; font-size: 12px; color: var(--text-dim); }
+/* 决策成熟度仪表 */
+.film-readiness { display: flex; align-items: center; gap: 12px; }
+.readiness-bar {
+  flex: 1;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.readiness-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #4ade80);
+}
+.readiness-val { font-size: 13px; font-weight: 700; color: var(--gold-light); }
+.readiness-note { font-size: 11px; margin-top: 6px; }
+
 /* 品牌水印 */
 .watermark {
   margin-top: 16px;
@@ -356,6 +462,21 @@ body {
   line-height: 1.6;
 }
 .share-card-roles { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.share-card-insights { margin-bottom: 14px; }
+.share-card-insight-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+.share-card-insight {
+  font-size: 12.5px;
+  color: var(--text-main);
+  line-height: 1.6;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(212, 175, 106, 0.2);
+}
+.share-card-insight:last-child { border-bottom: none; }
 .share-card-role {
   font-size: 11px;
   padding: 3px 10px;
