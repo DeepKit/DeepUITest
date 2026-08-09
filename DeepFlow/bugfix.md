@@ -1062,3 +1062,27 @@ Inc(LRecord.Count) �?
 - **经验**: 跨语言接口契约须实测验证，Schema 对象 vs 数组是最常见的格式漂移点
 
 ---
+
+## 2026-08-09: 可鉴 MVP 追问功能开发与收尾
+
+背景：可鉴 MVP 由单轮治理升级为对话式治理（胶片后可继续追问），开发中暴露 2 个环境/仓库问题：
+
+### BUG-2026-033: PowerShell 控制台中文乱码误判为服务编码问题 (P3)
+- **发现/修复日期**: 2026-08-09
+- **严重程度**: Low
+- **影响范围**: 开发调试链路（PowerShell 调 /llm/chat 观察输出）
+- **问题描述**: PowerShell 直接调 `/llm/chat` 返回中文乱码，一度误判为 LLM 服务或网关编码问题，实际是 PowerShell 控制台默认编码（GBK）与 UTF-8 输出不匹配
+- **修复方案**: 调试脚本统一用 `python -X utf8 -c` 或先设置 `[Console]::OutputEncoding`；服务端链路本身无问题（Python 直调返回正常中文）
+- **验证**: Python 直调 /llm/chat 中文往返正常，追问功能多轮上下文测试通过
+- **经验**: Windows PowerShell 中文输出乱码先查控制台编码，再怀疑服务端；乱码不等于服务故障
+
+### BUG-2026-034: Git 索引残留 DeepStory gitlink 导致 status 崩溃 (P3)
+- **发现/修复日期**: 2026-08-09
+- **严重程度**: Medium（阻塞 git 日常操作）
+- **影响范围**: 02Business 仓库根索引
+- **问题描述**: `git status` 报 `fatal: 'DeepStory/.git' not recognized as a git repository`——索引中存在 `160000` 类型 gitlink 条目，但 `.gitmodules` 与 submodule 配置均已不存在，形成孤儿引用
+- **修复方案**: `git rm --cached DeepStory` 移除残留索引条目，不删除工作区文件
+- **验证**: 移除后 `git status` 恢复正常
+- **经验**: 仓库曾有 submodule 后手动移除 .gitmodules 会留下孤儿 gitlink，git status 直接崩溃；此类残留用 `git rm --cached <path>` 清理
+
+---

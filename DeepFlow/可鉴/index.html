@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>可鉴 · 决策操作系统</title>
+<link rel="stylesheet" href="css/kejian.css">
+</head>
+<body>
+
+<!-- 品牌栏 -->
+<header class="brand-bar">
+  <div class="brand-left">
+    <span class="brand-logo">可鉴</span>
+    <span class="brand-slogan">每个决策，可见，可鉴。</span>
+  </div>
+  <div class="brand-right">
+    <span class="brand-en">AUDITA</span>
+    <span class="brand-badge">决策操作系统</span>
+  </div>
+</header>
+
+<!-- 主区 -->
+<main class="container">
+
+  <!-- 输入区 -->
+  <section id="input-section" class="panel">
+    <h2 class="panel-title">开始一次治理</h2>
+    <p class="panel-sub">输入您正在面对的决策，六位 AI 角色将并行推演，产出可鉴的思维胶片。</p>
+
+    <textarea id="problem-input" rows="3" placeholder="例如：直营门店要不要从 50 家扩到 80 家？预算 8000 万，周期两年。"></textarea>
+
+    <div class="template-row">
+      <span class="template-label">治理模板</span>
+      <div id="template-list" class="template-list">
+        <button class="template-chip active" data-template="strategic">战略决策</button>
+        <button class="template-chip" data-template="investment">投资决策</button>
+        <button class="template-chip" data-template="personnel">人事决策</button>
+        <button class="template-chip" data-template="procurement">采购决策</button>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button id="start-btn" class="btn-primary">开始治理</button>
+      <span id="status-hint" class="status-hint"></span>
+    </div>
+  </section>
+
+  <!-- 六角色状态面板 -->
+  <section id="roles-section" class="panel hidden">
+    <h2 class="panel-title">六角色推演 <span class="panel-tag" id="roles-tag">可见 · 实时</span></h2>
+    <div id="role-grid" class="role-grid">
+      <!-- 角色卡片由 JS 渲染 -->
+    </div>
+  </section>
+
+  <!-- 聚合区 -->
+  <section id="aggregate-section" class="panel hidden">
+    <h2 class="panel-title">聚合共识 <span class="panel-tag" id="aggregate-tag"></span></h2>
+    <div id="aggregate-body" class="aggregate-body"></div>
+  </section>
+
+  <!-- 胶片区 -->
+  <section id="film-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">决策思维胶片</h2>
+      <div class="film-actions">
+        <button id="share-btn" class="btn-secondary">生成分享卡片</button>
+        <button id="copy-btn" class="btn-secondary">复制胶片</button>
+      </div>
+    </div>
+    <div id="film-body" class="film-body"></div>
+    <!-- 品牌水印 -->
+    <div class="watermark">
+      <span class="watermark-name">由可鉴生成</span>
+      <span class="watermark-slogan">每个决策，可见，可鉴。</span>
+      <span class="watermark-link">kejian.app 邀请你体验决策操作系统</span>
+    </div>
+  </section>
+
+  <!-- 继续追问区 -->
+  <section id="followup-section" class="panel hidden">
+    <h2 class="panel-title">继续追问 <span class="panel-tag">对话式 · 即时</span></h2>
+    <p class="panel-sub">对胶片有疑问？直接追问，可鉴会结合本次治理上下文继续回答。</p>
+    <div id="chat-log" class="chat-log"></div>
+    <div class="chat-input-row">
+      <textarea id="followup-input" rows="2" placeholder="例如：如果扩店，最大的三个风险是什么？"></textarea>
+      <button id="followup-btn" class="btn-primary">追问</button>
+    </div>
+  </section>
+
+  <!-- 分享卡片弹层 -->
+  <div id="share-overlay" class="overlay hidden">
+    <div class="share-card" id="share-card">
+      <div class="share-card-head">
+        <span class="share-card-logo">可鉴</span>
+        <span class="share-card-tag">决策操作系统</span>
+      </div>
+      <div class="share-card-title" id="share-card-title">决策思维胶片</div>
+      <div class="share-card-problem" id="share-card-problem"></div>
+      <div class="share-card-roles" id="share-card-roles"></div>
+      <div class="share-card-foot">
+        <span>每个决策，可见，可鉴。</span>
+        <span class="share-card-cta">点击体验 →</span>
+      </div>
+    </div>
+    <div class="overlay-actions">
+      <button id="close-share" class="btn-secondary">关闭</button>
+      <button id="download-share" class="btn-primary">下载卡片</button>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  <span>黑盒决策的时代结束了。从今天起，每一个决定——可见、可鉴、可复盘。</span>
+</footer>
+
+<script src="js/kejian.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # DeepFlow 开发任务清单
 
-> 更新日期：2026-08-08
+> 更新日期：2026-08-09
 >
 > 当前状态：**DeepFlow v1.1 发布就绪 + 金路径闭环达成 + 六角色 LLM 真绿验证 + 104/104 测试全绿**
 
@@ -13,6 +13,21 @@
 ---
 
 ## 已完成里程碑
+
+### 可鉴决策操作系统 MVP (2026-08-09)
+
+| 模块 | 内容 | 状态 |
+|------|------|------|
+| Brand Archive | 产品定位文档（OCGS+DeepFlow+DeepInsight 三体架构） | Completed |
+| Web MVP | 单页应用 + 品牌样式 + 六角色推演逻辑 | Completed |
+| Skills Integration | 参数契约修正 + 字段映射 + 胶片渲染 | Completed |
+| Virus Loop | 品牌水印 + 分享卡片 + 邀请链接 | Completed |
+| E2E Tests | Python 端到端测试套件（kejian_e2e_test.py） | Completed |
+| Load Test | 批量压力测试工具（stress_test.py） | Completed |
+| Samples | 决策样本库生成器（100+ scenarios） | Completed |
+| Documentation | README + API 文档 | Completed |
+| Follow-up Chat | 胶片后继续追问（对话式治理，/llm/chat 多轮） | Completed |
+
 
 ### 核心开发里程碑 (2024-12 ~ 2025-12)
 

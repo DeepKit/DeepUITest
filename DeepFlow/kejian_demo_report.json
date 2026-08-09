@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-08-09T03:11:05.696582",
+  "problem": "直营门店要不要从 50 家扩到 80 家？预算 8000 万，周期两年。",
+  "context": {
+    "decision_type": "strategic",
+    "scope": "expansion/new-market/product"
+  },
+  "stages": {
+    "perspectives": 4,
+    "aggregated": true,
+    "film_generated": true
+  },
+  "results": {
+    "views": {
+      "coach": {
+        "key_insights_count": 5,
+        "questions_count": 5,
+        "degraded": false
+      },
+      "critic": {
+        "degraded": false
+      },
+      "mirror": {
+        "degraded": false
+      },
+      "observer": {
+        "degraded": false
+      }
+    },
+    "aggregated": {
+      "key_insights_count": 5,
+      "questions_count": 5,
+      "degraded": false,
+      "emotional_summary": "雄心主导下的矛盾状态：既有突破边界证明能力的强烈欲望，又有对组织承载力不足的真实担忧。两种情绪并行不悖且同等真实——一边是看到更大版图的兴奋，一边是对未知失败的恐惧。这种张力本身不是弱点，而是决策需要整合的核心能量",
+      "views_count": 4
+    },
+    "film": {
+      "questions_count": 6,
+      "degraded": false
+    }
+  },
+  "statistics": {
+    "total_calls": 6,
+    "successful": 6,
+    "degraded": 0,
+    "errors": 0,
+    "total_time_ms": 237104.413
+  },
+  "total_elapsed_seconds": 237.107563
+}
