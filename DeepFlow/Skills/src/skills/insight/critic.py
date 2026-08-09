@@ -9,6 +9,7 @@ import json
 import re
 from typing import Dict, Any
 from ..base import BaseSkill, SkillCategory, SkillParameter, SkillResult
+from .scenarios import get_scenario_focus
 
 logger = structlog.get_logger(__name__)
 
@@ -61,11 +62,12 @@ class DecisionCriticSkill(BaseSkill):
         logger.info("decision_critic.execute", problem_length=len(problem))
         
         try:
-            # 构建提示词
+            # 构建提示词（T8: 按场景模板注入差异化聚焦）
+            scene_focus = get_scenario_focus(input_context, "critic")
             prompt = f"""问题：{problem}
 
 背景信息：{input_context.get('background', '无')}
-
+{scene_focus}
 请以批评者视角分析这个决策问题。"""
             
             # 调用 LLM (如果可用)，失败时降级到模板

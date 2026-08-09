@@ -27,6 +27,7 @@
 | Samples | 决策样本库生成器（100+ scenarios） | Completed |
 | Documentation | README + API 文档 | Completed |
 | Follow-up Chat | 胶片后继续追问（对话式治理，/llm/chat 多轮） | Completed |
+| Scenario Templates | 行业决策场景模板：战略/投资/人事/采购四场景知识库，四角色 prompt 差异化注入（T8） | Completed |
 
 
 ### 核心开发里程碑 (2024-12 ~ 2025-12)

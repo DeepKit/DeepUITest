@@ -24,10 +24,10 @@ const ROLES = [
 ];
 
 const TEMPLATES = {
-  strategic:   { name: "战略决策",   context: { decision_type: "strategic",   scope: "expansion/new-market/product" } },
-  investment:  { name: "投资决策",   context: { decision_type: "investment",  scope: "capital-allocation/risk" } },
-  personnel:   { name: "人事决策",   context: { decision_type: "personnel",   scope: "promotion/hiring/restructure" } },
-  procurement: { name: "采购决策",   context: { decision_type: "procurement", scope: "vendor-selection/budget" } },
+  strategic:   { name: "战略决策",   hint: "扩张/新市场/产品线 — 聚焦机会成本、执行能力与可逆性", context: { decision_type: "strategic",   scope: "expansion/new-market/product" } },
+  investment:  { name: "投资决策",   hint: "资本配置/风险敞口 — 聚焦回报、回本周期、最大可承受损失与退出路径", context: { decision_type: "investment",  scope: "capital-allocation/risk" } },
+  personnel:   { name: "人事决策",   hint: "晋升/招聘/调整 — 聚焦公平性、示范效应与沟通成本", context: { decision_type: "personnel",   scope: "promotion/hiring/restructure" } },
+  procurement: { name: "采购决策",   hint: "供应商选择/预算 — 聚焦总拥有成本、锁定风险与交付记录", context: { decision_type: "procurement", scope: "vendor-selection/budget" } },
 };
 
 // ---------- 状态 ----------
@@ -63,6 +63,10 @@ document.querySelectorAll(".template-chip").forEach((chip) => {
     document.querySelectorAll(".template-chip").forEach((c) => c.classList.remove("active"));
     chip.classList.add("active");
     activeTemplate = chip.dataset.template;
+    const hintEl = $("template-hint");
+    if (hintEl && TEMPLATES[activeTemplate]) {
+      hintEl.textContent = TEMPLATES[activeTemplate].hint;
+    }
   });
 });
 

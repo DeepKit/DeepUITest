@@ -16,6 +16,7 @@
 - Skills 服务契约修正完成（params/context/timeout_ms）
 - 结构化胶片产出验证通过
 - 追问功能多轮上下文链路验证通过（/llm/chat）
+- T8 行业决策场景模板落地：scenarios.py 知识库 + 四角色按 decision_type 差异化注入（修复模板选择形同虚设问题），真实链路验证投资场景输出聚焦回报/退出路径/止损线
 
 ### 下一步
 详见 tasks.md 中的 Kejian-MVP-Release 任务组
