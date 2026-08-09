@@ -29,6 +29,7 @@
 | Follow-up Chat | 胶片后继续追问（对话式治理，/llm/chat 多轮） | Completed |
 | Scenario Templates | 行业决策场景模板：战略/投资/人事/采购四场景知识库，四角色 prompt 差异化注入（T8） | Completed |
 | LLM Stability | T9：LLM_TIMEOUT 40s→90s（消除随机超时降级）+ 截断降级诊断（finish_reason=length → llm_response_truncated，六 skill 全覆盖） | Completed |
+| Film Visual | T10：胶片视觉化升级，visual fields 契约 + 前端视觉组件 + 分享卡片洞察内容（e9a47ec9） | Completed |
 
 
 ### 核心开发里程碑 (2024-12 ~ 2025-12)

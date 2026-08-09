@@ -18,6 +18,7 @@
 - 追问功能多轮上下文链路验证通过（/llm/chat）
 - T8 行业决策场景模板落地：scenarios.py 知识库 + 四角色按 decision_type 差异化注入（修复模板选择形同虚设问题），真实链路验证投资场景输出聚焦回报/退出路径/止损线
 - T9 LLM 稳定性：超时默认 40s→90s（实测单角色 48-54s，旧配置随机超时）；ChatResult 增加 truncated 截断检测，六 skill 降级原因区分 llm_response_truncated/not_json，单元 5/5 + 真实链路冒烟通过
+- T10 胶片视觉化升级：film_generator 增加 visual fields（key_insights/tradeoffs/emotional_spectrum/decision_readiness），LLM 漏输出时从聚合结果兑底不伪造；前端胶片视觉组件（洞察卡/权衡对比/情绪谱条/成熟度仪表）+分享卡片洞察内容；单测 5/5 + 真实链路验证（LLM 成功输出 3 组权衡/4 种情绪强度/decision_readiness=58）+ 浏览器端到端确认（commit e9a47ec9）
 
 ### 下一步
 详见 tasks.md 中的 Kejian-MVP-Release 任务组
