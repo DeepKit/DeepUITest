@@ -134,7 +134,7 @@ class AppState:
             api_key=os.getenv("KIRO_API_KEY", os.getenv("OPENAI_API_KEY", "")),
             default_model=os.getenv("DEFAULT_LLM_MODEL", "claude-qoder-glm-5-2"),
             base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1"),
-            timeout=float(os.getenv("LLM_TIMEOUT", "40")),
+            timeout=float(os.getenv("LLM_TIMEOUT", "90")),  # T9: 实测单角色调用可达 50-60s，40s 会随机超时降级
             max_retries=int(os.getenv("LLM_MAX_RETRIES", "2"))
         )
         self.llm_client = LLMClient(llm_config)

@@ -97,11 +97,15 @@ class FilmGeneratorSkill(BaseSkill):
                     film = self._parse_response(response.content)
                     if "raw_analysis" in film:
                         # LLM 输出无法解析为 JSON → 降级到模板（防假绿）
+                        truncated = getattr(response, "truncated", False)
                         logger.warning("film_generator.llm_not_json",
-                                      response_preview=response.content[:200])
+                                      response_preview=response.content[:200],
+                                      truncated=truncated)
                         film = self._generate_film(problem, aggregated)
                         film["degraded"] = True
-                        film["degrade_reason"] = "llm_response_not_json"
+                        film["degrade_reason"] = (
+                            "llm_response_truncated" if truncated else "llm_response_not_json"
+                        )
                     else:
                         film.setdefault("title", "你的决策思维胶片")
                         film.setdefault("subtitle", f"关于：{problem[:50]}..." if len(problem) > 50 else f"关于：{problem}")

@@ -79,11 +79,16 @@ class DecisionCoachSkill(BaseSkill):
                     result = self._parse_response(response.content)
                     if "raw_analysis" in result:
                         # LLM 输出无法解析为 JSON → 降级到模板（防假绿）
+                        truncated = getattr(response, "truncated", False)
                         logger.warning("decision_coach.llm_not_json",
-                                      response_preview=response.content[:200])
+                                      response_preview=response.content[:200],
+                                      truncated=truncated)
                         result = self._generate_template_result(problem)
                         result["degraded"] = True
-                        result["degrade_reason"] = "llm_response_not_json"
+                        # T9: 截断是 JSON 解析失败的常见根因，区分以便降级诊断
+                        result["degrade_reason"] = (
+                            "llm_response_truncated" if truncated else "llm_response_not_json"
+                        )
                     else:
                         result["degraded"] = False
                 except Exception as e:
