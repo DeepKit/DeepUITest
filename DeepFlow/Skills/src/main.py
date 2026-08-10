@@ -39,6 +39,7 @@ from .skills.insight import (
     MindXraySkill,
 )
 from .llm.client import LLMClient, LLMConfig
+from .llm.multi_llm import call_by_name, build_llm_pool, list_families, close_all as close_multi_llm
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -178,6 +179,7 @@ class AppState:
         logger.info("Shutting down application")
         if self.llm_client:
             await self.llm_client.close()
+        await close_multi_llm()
 
 app_state = AppState()
 
@@ -384,6 +386,36 @@ async def llm_chat(request: LLMRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM call failed: {str(e)}"
+        )
+
+
+@app.get("/llm/families", tags=["LLM"])
+async def llm_families():
+    """T20: 返回多家族 LLM 映射表（call_by_name 可用名称）。"""
+    return {"families": list_families(), "count": len(list_families())}
+
+
+@app.post("/llm/chat/by-name", response_model=LLMResponse, tags=["LLM"])
+async def llm_chat_by_name(request: LLMRequest):
+    """T20: 按名称调用指定家族 LLM（支持家族短名/完整别名/model id）。"""
+    try:
+        client = call_by_name(request.model)
+        response = await client.chat(
+            messages=request.messages,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+        return LLMResponse(
+            content=response.content,
+            model=response.model,
+            usage=response.usage,
+            finish_reason=response.finish_reason,
+        )
+    except Exception as e:
+        logger.error("llm_chat_by_name error", model=request.model, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"call_by_name({request.model}) failed: {str(e)}",
         )
 
 
