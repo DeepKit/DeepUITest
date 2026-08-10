@@ -38,6 +38,8 @@ def test_focus_basics():
     assert list_scenarios() == {
         'strategic': '战略决策', 'investment': '投资决策',
         'personnel': '人事决策', 'procurement': '采购决策',
+        'medical': '医疗健康', 'legal': '法律纠纷',
+        'education': '教育升学', 'family': '家庭重大',
     }
     f1 = get_scenario_focus({'decision_type': 'investment', 'scope': 'capital-allocation'}, 'coach')
     assert '投资决策' in f1 and '回本周期' in f1
@@ -46,6 +48,20 @@ def test_focus_basics():
     assert get_scenario_focus({'decision_type': 'strategic'}, 'film') == ''  # 非四角色
     assert get_scenario_focus(None, 'coach') == ''  # 非法输入
     print('[PASS] get_scenario_focus 基础验证')
+
+
+def test_new_templates_focus():
+    # T12: 新增 4 模板（医疗/法律/教育/家庭）× 四角色聚焦均应非空且含模板名
+    for dtype, cname in [('medical', '医疗健康'), ('legal', '法律纠纷'), ('education', '教育升学'), ('family', '家庭重大')]:
+        for role in ('coach', 'critic', 'mirror', 'observer'):
+            f = get_scenario_focus({'decision_type': dtype}, role)
+            assert f and cname in f, f'{dtype}/{role} 聚焦缺失'
+    # 抽验具体内容（哲学中立：只提供焦点）
+    assert '第二诊疗意见' in get_scenario_focus({'decision_type': 'medical'}, 'coach')
+    assert '证据链' in get_scenario_focus({'decision_type': 'legal'}, 'critic')
+    assert '焦虑贩卖' in get_scenario_focus({'decision_type': 'education'}, 'critic')
+    assert '收入中断' in get_scenario_focus({'decision_type': 'family'}, 'critic')
+    print('[PASS] T12 新增 4 模板四角色聚焦验证')
 
 
 async def test_role_injection():
@@ -80,8 +96,19 @@ async def test_role_injection():
     assert '场景模板' not in captured['user']
     print('[PASS] 无模板向后兼容')
 
+    # T12: 新模板真实注入验证（observer + medical，coach + family）
+    await DecisionObserverSkill(llm_client=MockLLM()).execute(
+        {'problem': '测试问题', 'context': {'decision_type': 'medical'}}, {})
+    assert '诊断报告' in captured['user']
+    print('[PASS] observer 注入 (medical 聚焦)')
+    await DecisionCoachSkill(llm_client=MockLLM()).execute(
+        {'problem': '测试问题', 'context': {'decision_type': 'family'}}, {})
+    assert '财务上是否可持续' in captured['user']
+    print('[PASS] coach 注入 (family 聚焦)')
+
 
 if __name__ == '__main__':
     test_focus_basics()
+    test_new_templates_focus()
     asyncio.run(test_role_injection())
     print('ALL SCENARIO TESTS PASSED')

@@ -28,6 +28,10 @@ const TEMPLATES = {
   investment:  { name: "投资决策",   hint: "资本配置/风险敞口 — 聚焦回报、回本周期、最大可承受损失与退出路径", context: { decision_type: "investment",  scope: "capital-allocation/risk" } },
   personnel:   { name: "人事决策",   hint: "晋升/招聘/调整 — 聚焦公平性、示范效应与沟通成本", context: { decision_type: "personnel",   scope: "promotion/hiring/restructure" } },
   procurement: { name: "采购决策",   hint: "供应商选择/预算 — 聚焦总拥有成本、锁定风险与交付记录", context: { decision_type: "procurement", scope: "vendor-selection/budget" } },
+  medical:     { name: "医疗健康",   hint: "治疗方案/手术/用药 — 聚焦诊断依据、疗效风险对比与第二诊疗意见", context: { decision_type: "medical",     scope: "treatment/surgery/medication" } },
+  legal:       { name: "法律纠纷",   hint: "诉讼/和解/维权 — 聚焦证据链、成本时间线与可接受结果", context: { decision_type: "legal",       scope: "litigation/settlement" } },
+  education:   { name: "教育升学",   hint: "择校/专业/留学/培训 — 聚焦长期目标、适配度与退出成本", context: { decision_type: "education",   scope: "schooling/major/study-abroad" } },
+  family:      { name: "家庭重大",   hint: "买房/搬家/生育/婚姻 — 聚焦财务可持续、可逆性与成员共识", context: { decision_type: "family",      scope: "housing/relocation/family" } },
 };
 
 // ---------- 状态 ----------
