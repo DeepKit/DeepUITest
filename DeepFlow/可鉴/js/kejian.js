@@ -57,6 +57,10 @@ const followupSection = $("followup-section");
 const chatLog = $("chat-log");
 const followupInput = $("followup-input");
 const followupBtn = $("followup-btn");
+// T14: 决策历史
+const historySection = $("history-section");
+const historyList = $("history-list");
+const historyClearBtn = $("history-clear");
 
 // 追问上下文（本次治理的原问题与胶片摘要）
 let followupContext = { problem: "", filmSummary: "" };
@@ -322,6 +326,11 @@ async function startGovernance() {
     }
     // T10: 分享卡片携带胶片对象（含视觉字段）
     renderShareCard(problem, views, aggregated, film);
+    // T14: 持久化本次治理（可复盘）
+    recordGovernance({
+      problem, template: activeTemplate, aggregated,
+      film, filmHtml: filmText, degraded: filmDegraded, totalSec,
+    });
     // 激活追问区：携带本次治理上下文
     followupContext = { problem, filmSummary: extractPlainText(filmText) };
     chatHistory = [{ role: "system", content: buildFollowupSystemPrompt(problem) }];
@@ -723,6 +732,124 @@ $("download-share").addEventListener("click", () => {
   }
 });
 
+// ---------- T14: 决策历史与复盘 ----------
+const HISTORY_KEY = "kejian_history_v1";
+const HISTORY_MAX = 30;
+
+function loadHistoryList() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+
+function saveHistoryList(arr) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+    return true;
+  } catch (e) { return false; } // 配额超限时返回 false，由调用方降级瘦身
+}
+
+function recordGovernance(rec) {
+  const arr = loadHistoryList();
+  const ts = rec.ts || Date.now();
+  // 复盘回放触发的重新展示不重复入库
+  if (arr.length && arr[0].problem === rec.problem && (ts - arr[0].ts) < 15000) return;
+  arr.unshift({
+    id: "h" + ts,
+    ts: ts,
+    problem: rec.problem,
+    template: rec.template,
+    degraded: !!rec.degraded,
+    totalSec: rec.totalSec,
+    aggregated: rec.aggregated || {},
+    film: rec.film || {},
+    filmHtml: rec.filmHtml || "",
+  });
+  while (arr.length > HISTORY_MAX) arr.pop();
+  if (!saveHistoryList(arr)) {
+    // 配额超限降级：丢弃大体积字段，保留可复盘的最小集（防假绿：不静默丢失记录）
+    arr.forEach((r) => { delete r.aggregated; delete r.film; });
+    saveHistoryList(arr);
+  }
+  renderHistoryList();
+}
+
+function renderHistoryList() {
+  const arr = loadHistoryList();
+  if (!arr.length) {
+    historyList.innerHTML = ""; // 同步清空 DOM，避免陈旧条目残留
+    historySection.classList.add("hidden");
+    return;
+  }
+  historySection.classList.remove("hidden");
+  historyList.innerHTML = arr.map((r) => `
+    <div class="history-item" data-id="${r.id}">
+      <div class="history-main">
+        <div class="history-problem">${escapeHtml(r.problem || "")}</div>
+        <div class="history-meta">${formatTs(r.ts)} · ${escapeHtml((TEMPLATES[r.template] || {}).name || r.template || "")}${r.degraded ? " · ⚠ 含降级" : ""}${r.totalSec ? " · 耗时 " + r.totalSec + "s" : ""}</div>
+      </div>
+      <div class="history-actions">
+        <button class="btn-secondary history-replay">复盘</button>
+        <button class="btn-secondary history-del" title="删除">×</button>
+      </div>
+    </div>`).join("");
+}
+
+function formatTs(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+function replayHistory(id) {
+  const rec = loadHistoryList().find((r) => r.id === id);
+  if (!rec) return;
+  problemInput.value = rec.problem || "";
+  // 同步模板选中态
+  document.querySelectorAll(".template-chip").forEach((c) => {
+    c.classList.toggle("active", c.dataset.template === rec.template);
+  });
+  if (rec.template && TEMPLATES[rec.template]) {
+    activeTemplate = rec.template;
+    const hintEl = $("template-hint");
+    if (hintEl) hintEl.textContent = TEMPLATES[rec.template].hint;
+  }
+  // 回放聚合与胶片
+  rolesSection.classList.add("hidden");
+  aggregateSection.classList.remove("hidden");
+  aggregateTag.textContent = "复盘";
+  renderAggregate(rec.aggregated || {});
+  filmSection.classList.remove("hidden");
+  // renderFilmText 对空对象会回退展示 JSON 原文（不假绿），无需额外 fallback
+  filmBody.innerHTML = rec.filmHtml || renderFilmText(rec.film || {});
+  // 复盘同样可继续追问
+  followupContext = { problem: rec.problem || "", filmSummary: extractPlainText(rec.filmHtml || "") };
+  chatHistory = [{ role: "system", content: buildFollowupSystemPrompt(rec.problem || "") }];
+  followupSection.classList.remove("hidden");
+  chatLog.innerHTML = "";
+  filmSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  statusHint.textContent = "已加载历史复盘（未重新调用模型）";
+}
+
+historyList.addEventListener("click", (e) => {
+  const item = e.target.closest(".history-item");
+  if (!item) return;
+  const id = item.dataset.id;
+  if (e.target.classList.contains("history-del")) {
+    saveHistoryList(loadHistoryList().filter((r) => r.id !== id));
+    renderHistoryList();
+  } else if (e.target.classList.contains("history-replay")) {
+    replayHistory(id);
+  }
+});
+
+historyClearBtn.addEventListener("click", () => {
+  if (!confirm("确定清空全部决策历史？此操作不可恢复。")) return;
+  saveHistoryList([]);
+  renderHistoryList();
+});
+
 // ---------- 工具 ----------
 function wrapText(ctx, text, x, y, maxWidth, lineHeight, fontSize) {
   ctx.font = fontSize + "px sans-serif";
@@ -751,3 +878,4 @@ function escapeHtml(s) {
 
 // ---------- 初始化 ----------
 renderRoleCards();
+renderHistoryList(); // T14: 页面加载时恢复历史面板
