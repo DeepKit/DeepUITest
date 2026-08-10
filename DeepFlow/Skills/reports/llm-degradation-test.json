@@ -1,0 +1,74 @@
+{
+  "timestamp": "2026-08-08T18:36:30",
+  "llm_ok": true,
+  "results": {
+    "decision_coach": {
+      "success": true,
+      "degraded": false,
+      "time": 19.620887279510498,
+      "keys": [
+        "key_DeepInsights",
+        "guiding_questions",
+        "values_detected",
+        "emotional_tone",
+        "role",
+        "degraded"
+      ],
+      "error": null
+    },
+    "decision_critic": {
+      "success": true,
+      "degraded": false,
+      "time": 21.563822031021118,
+      "keys": [
+        "assumptions_challenged",
+        "blind_spots",
+        "risks",
+        "devil_advocate_questions",
+        "role",
+        "degraded"
+      ],
+      "error": null
+    },
+    "decision_mirror": {
+      "success": true,
+      "degraded": false,
+      "time": 22.45451784133911,
+      "keys": [
+        "emotional_landscape",
+        "value_conflicts",
+        "identity_aspects",
+        "reflection_prompts",
+        "role",
+        "degraded"
+      ],
+      "error": null
+    },
+    "decision_observer": {
+      "success": true,
+      "degraded": false,
+      "time": 22.040578365325928,
+      "keys": [
+        "decision_patterns",
+        "external_factors",
+        "similar_cases",
+        "objective_observations",
+        "role",
+        "degraded"
+      ],
+      "error": null
+    },
+    "decision_aggregator": {
+      "success": true,
+      "degraded": false,
+      "time": 21.542019605636597,
+      "error": null
+    },
+    "film_generator": {
+      "success": true,
+      "degraded": false,
+      "time": 20.77060556411743,
+      "error": null
+    }
+  }
+}

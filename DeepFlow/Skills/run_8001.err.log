@@ -1,0 +1,5 @@
+INFO:     Started server process [37556]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+{"violations": ["\u7f3a\u5c11\u81ea\u6211\u63d0\u95ee\u6e05\u5355"], "event": "film_generator.philosophy_violation", "logger": "src.skills.insight.film_generator", "level": "warning", "timestamp": "2026-08-08T07:44:44.324041Z"}

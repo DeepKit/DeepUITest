@@ -36,6 +36,7 @@ from .skills.insight import (
     DecisionObserverSkill,
     DecisionAggregatorSkill,
     FilmGeneratorSkill,
+    MindXraySkill,
 )
 from .llm.client import LLMClient, LLMConfig
 
@@ -166,6 +167,7 @@ class AppState:
             DecisionObserverSkill(llm_client=self.llm_client),
             DecisionAggregatorSkill(llm_client=self.llm_client),
             FilmGeneratorSkill(llm_client=self.llm_client),
+            MindXraySkill(llm_client=self.llm_client),
         ]
         for skill in insight_skills:
             self.skill_registry.register(skill)
@@ -436,6 +438,38 @@ async def llm_chat_stream(request: LLMRequest):
             "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲，保证逐块推送
         },
     )
+
+# -----------------------------------------------------------------------------
+# Mind X-Ray (T19b/T19d: 脑内 X 光片 + 跨会话成长对比)
+# -----------------------------------------------------------------------------
+
+class XrayRequest(BaseModel):
+    """X 光片请求：决策后照见或树洞倾诉后分析。"""
+    problem: str = Field(..., description="本次问题或倾诉主题")
+    material: str = Field(default="", description="素材：胶片摘要（decision）或倾诉对话内容（treehole）")
+    history_summary: str = Field(default="", description="历史会话摘要（跨会话成长对比用），可空")
+    mode: str = Field(default="decision", description="decision 或 treehole")
+
+
+@app.post("/llm/xray", tags=["LLM"])
+async def generate_xray(request: XrayRequest):
+    """生成脑内 X 光片（第三人称自我觉察，含跨会话成长对比）。"""
+    skill = app_state.skill_registry.get("mind_xray")
+    if skill is None:
+        raise HTTPException(status_code=500, detail="mind_xray skill not registered")
+    result = await skill.execute(
+        {
+            "problem": request.problem,
+            "material": request.material,
+            "history_summary": request.history_summary,
+            "mode": request.mode,
+        },
+        {},
+    )
+    if result.status != SkillStatus.SUCCESS:
+        raise HTTPException(status_code=502, detail=result.error or "xray generation failed")
+    return result.data
+
 
 # -----------------------------------------------------------------------------
 # Governance History (T19a: 个人决策数据持久化，SQLite 存储)

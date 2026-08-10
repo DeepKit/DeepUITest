@@ -10,6 +10,7 @@ Skills:
 - decision_observer: 观察者视角 - 客观分析，识别模式
 - decision_aggregator: 聚合器 - 综合多视角结果
 - film_generator: 胶片生成器 - 生成决策思维胶片
+- mind_xray: X 光片 - 第三人称自我觉察 + 跨会话成长对比（T19b/T19d）
 """
 
 from .coach import DecisionCoachSkill
@@ -18,6 +19,7 @@ from .mirror import DecisionMirrorSkill
 from .observer import DecisionObserverSkill
 from .aggregator import DecisionAggregatorSkill
 from .film_generator import FilmGeneratorSkill
+from .xray import MindXraySkill
 
 __all__ = [
     'DecisionCoachSkill',
@@ -26,4 +28,5 @@ __all__ = [
     'DecisionObserverSkill',
     'DecisionAggregatorSkill',
     'FilmGeneratorSkill',
+    'MindXraySkill',
 ]

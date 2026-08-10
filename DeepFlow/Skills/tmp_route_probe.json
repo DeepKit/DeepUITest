@@ -1,0 +1,103 @@
+{
+  "checked_at": "2026-08-08",
+  "results": [
+    {
+      "route": "qoder",
+      "model": "claude-qoder-glm-5-2",
+      "status": "error",
+      "latency_s": 40.23,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "qoder",
+      "model": "claude-qoder-kimi-k3",
+      "status": "error",
+      "latency_s": 40.23,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "qoder",
+      "model": "claude-qoder-deepseek-v4-pro",
+      "status": "error",
+      "latency_s": 40.23,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "qoder",
+      "model": "claude-qoder-minimax-m3",
+      "status": "error",
+      "latency_s": 40.22,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "qoder",
+      "model": "claude-qoder-qwen3-7-max",
+      "status": "error",
+      "latency_s": 40.22,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "cloudflare",
+      "model": "claude-cloudflare-kimi-k2-6",
+      "status": "error",
+      "latency_s": 40.17,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "huggingface",
+      "model": "claude-huggingface-deepseek-v4-flash",
+      "status": "error",
+      "latency_s": 40.09,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "ms",
+      "model": "claude-ms-deepseek-v4-flash",
+      "status": "error",
+      "latency_s": 14.94,
+      "error": "<HTTPError 400: 'Bad Request'>"
+    },
+    {
+      "route": "ms",
+      "model": "claude-ms-minimax-m3",
+      "status": "error",
+      "latency_s": 14.89,
+      "error": "<HTTPError 400: 'Bad Request'>"
+    },
+    {
+      "route": "nim",
+      "model": "claude-nim-glm-5-2",
+      "status": "error",
+      "latency_s": 40.02,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "nim",
+      "model": "claude-nim-deepseek-v4-pro",
+      "status": "error",
+      "latency_s": 40.02,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "gemini",
+      "model": "claude-gemini-3-5-flash",
+      "status": "error",
+      "latency_s": 40.02,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "duojie",
+      "model": "claude-duojie-claude-sonnet-4-6",
+      "status": "error",
+      "latency_s": 40.02,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "route": "sensenova",
+      "model": "claude-sensenova-deepseek-v4-flash",
+      "status": "ok",
+      "latency_s": 16.01,
+      "reply": "OK"
+    }
+  ]
+}

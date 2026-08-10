@@ -1,0 +1,55 @@
+{
+  "checked_at": "2026-08-08",
+  "gateway": "http://127.0.0.1:8000",
+  "results": [
+    {
+      "family": "GPT",
+      "model": "claude-fccy-gpt-5-6-sol",
+      "status": "error",
+      "latency_s": 37.77,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "family": "GLM",
+      "model": "claude-jiyuanlvdong-glm-5-2",
+      "status": "error",
+      "latency_s": 67.79,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "family": "DeepSeek",
+      "model": "claude-stepfun-step-router-v1",
+      "status": "error",
+      "latency_s": 37.77,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "family": "Kimi",
+      "model": "claude-opencodego-kimi-k3",
+      "status": "error",
+      "latency_s": 37.77,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "family": "Qwen",
+      "model": "claude-qoder-qwen3-8-max",
+      "status": "ok",
+      "latency_s": 25.06,
+      "reply": "OK"
+    },
+    {
+      "family": "MiniMax",
+      "model": "claude-opencodego-minimax-m3",
+      "status": "error",
+      "latency_s": 37.67,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "family": "StepFun",
+      "model": "claude-stepfun-step-3-7-flash",
+      "status": "error",
+      "latency_s": 37.64,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    }
+  ]
+}
