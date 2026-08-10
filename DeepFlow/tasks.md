@@ -1,14 +1,22 @@
 # DeepFlow 开发任务清单
 
-> 更新日期：2026-08-09
+> 更新日期：2026-08-10
 >
-> 当前状态：**DeepFlow v1.1 发布就绪 + 金路径闭环达成 + 六角色 LLM 真绿验证 + 104/104 测试全绿**
+> 当前状态：**DeepFlow v1.1 发布就绪 + 金路径闭环达成 + 六角色 LLM 真绿验证 + 104/104 测试全绿 + 可鉴 Web MVP 治理闭环（T10～T14）**
 
 ---
 
 ## 待办
 
-无待办任务。所有 TASK-01xx 系列工单（TASK-0101 ~ TASK-0104）已全部完成。
+| 编号 | 任务 | 优先级 |
+|------|------|--------|
+| T15 | 分享卡片导出质量优化：wrapText 4 行硬限截断、insight 行高重叠、canvas 固定高度内容溢出 | P2 |
+| T16 | 真流式体验优化：上游讯飞 GLM 非增量流式（deltas=1，已知限制非代码 bug），候选方案为前端分片逐字渲染或切换流式模型 | P3 |
+| T17 | WiseGateway 治理决策：计划任务 WiseGateway_Supervisor 已禁用（与手动启动争端口），需正式化启动方式（恢复 supervisor 或固化手动） | P2 |
+| T18 | 可鉴 tests/ 补 T13/T14 自动化用例（流式 SSE + 历史持久化/复盘/删除/清空） | P3 |
+| T19 | DeepInsight（洞见·思维显影室）× DeepFlow 集成：核心能力（五段显影流程/NPC/胶片/X光片/跨会话记忆）经 DeepFlow workflow + Skills 实现，FMX 壳降级为薄客户端调 Skills HTTP API；不重复实现，方案详见下方评估结论 | P1（待启动） |
+
+已完成项已移入 history.md / 下方"已完成里程碑"速览。
 
 ---
 
@@ -32,6 +40,28 @@
 | Film Visual | T10：胶片视觉化升级，visual fields 契约 + 前端视觉组件 + 分享卡片洞察内容（e9a47ec9） | Completed |
 | UI Fix | T11：聚合区 [object Object] 渲染修复（itemText 智能提取）+ film 变量作用域缺陷（881ff0fc） | Completed |
 | Scenario Expansion | T12：行业场景模板扩展——新增医疗/法律/教育/家庭四场景四角色聚焦（34dfa198） | Completed |
+| Streaming Follow-up | T13：追问流式输出 SSE（client.py stream + /llm/chat/stream + 前端逐字显影 + 降级兜底），网关停摆根因定位并恢复（8460b9e0） | Completed |
+| Decision History | T14：决策历史与复盘（localStorage 持久化 + 历史面板 + 一键回放 + 删除/清空），3 缺陷修复见 bugfix.md BUG-2026-036~038（5b31c355） | Completed |
+
+
+### DeepInsight × DeepFlow 集成评估结论 (2026-08-10)
+
+> 问题：D:\_Progs\02Business\DeepInsight（洞见·思维显影室）软件功能可否通过 DeepFlow 实现？
+
+**结论：可以，且已有可鉴 MVP 实证。** DeepInsight 基础版核心承诺（每周一决策/思维显影/可回看胶片）与可鉴已验证能力高度同构，DeepFlow 作为 workflow 运行时 + Skills 服务可承接全部核心能力，FMX 桌面壳保留为薄客户端或转 Web 形态。
+
+| DeepInsight 功能 | DeepFlow 承接方式 | 实证状态 |
+|------------------|--------------------|----------|
+| 六 NPC（主持人/决策教练/架构师/诘问者/心理镜子/旁观者） | 可鉴六角色推演（coach/critic/mirror/observer/aggregator/film_generator）一一对应 | ✅ 已验证 |
+| 决策胶片 | film_generator + 胶片视觉化（T10） | ✅ 已验证 |
+| 脑内 X 光片（第三人称自我觉察） | 新增 X-ray skill（第三人称洞察生成），prompt 复用可鉴六角色模式 | 🔧 待实现 |
+| 五段显影流程（问题→方案→风险→觉察→决策，可提前结束/跳过） | DeepFlow workflow JSON 编排（分支/条件/提前终止为核心能力） | 🔧 待实现 |
+| 树洞模式（轻量陪伴 + 按需分析） | /llm/chat 轻量对话 workflow + 按钮触发 X 光片 | 🔧 待实现 |
+| 跨会话记忆/旁观者成长对比 | DeepFlow Memory 系统（03.15 设计）+ Session 模块；一期可先 localStorage（T14 已验证） | 🔧 待实现 |
+| @角色名点名发言 | 多轮对话 role 参数指定角色 | 🔧 待实现 |
+| 桌面 FMX UI | 不重复实现：DeepInsight 降级为薄客户端调 Skills HTTP API，或迁入可鉴 Web 形态 | 方案已定 |
+
+与三体架构（OCGS 定框架 + DeepFlow 执行 + DeepInsight 良知）一致：DeepInsight 定位"良知/觉察层"，其显影执行能力由 DeepFlow 承接，避免两套并行实现。
 
 
 ### 核心开发里程碑 (2024-12 ~ 2025-12)
@@ -155,5 +185,3 @@
 - **P1**: MVP 必需
 - **P2**: 完整功能
 - **P3**: 维护优化
-
-| T14 | 决策历史与复盘：localStorage 持久化 + 历史面板 + 一键回放 + 删除/清空（兑现可复盘承诺） | 已完成 (2026-08-10) |

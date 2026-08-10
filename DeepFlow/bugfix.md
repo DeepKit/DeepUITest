@@ -1095,3 +1095,34 @@ Inc(LRecord.Count) �?
 - **经验**: gitignore 无锚定规则会整目录吞掉新代码，**提交后必须用 `git show --stat HEAD` 核对文件数，且用 `git ls-files <dir>` 全量对比工作区**；修复此类用 `git add -f` + amend
 
 ---
+
+## 2026-08-10: 可鉴 T14 决策历史与复盘开发期
+
+背景：T14（localStorage 持久化 + 历史面板 + 一键回放）开发中暴露 2 个前端缺陷 + 1 个治理文档登记缺陷，浏览器全回归验证后修复。
+
+### BUG-2026-036: renderHistoryList 空数组不清 DOM 致陈旧条目残留 (P2)
+- **发现/修复日期**: 2026-08-10
+- **严重程度**: Medium（清空历史后界面仍显示旧条目，误导用户）
+- **影响范围**: 可鉴/js/kejian.js (renderHistoryList)
+- **问题描述**: 清空/删空历史后仅 `historySection.classList.add("hidden")`，未清 `historyList.innerHTML`；重新出现记录时旧 DOM 残留与新数据叠加（回归断言 afterClearDom=1 捕获）
+- **修复方案**: 空数组分支先 `historyList.innerHTML = ""` 再隐藏面板
+- **验证**: 浏览器回归——清空后 DOM 归零，新增记录后无残留
+
+### BUG-2026-037: recordGovernance 调用缺 ts 致历史条目 id/ts 为 undefined (P2)
+- **发现/修复日期**: 2026-08-10
+- **严重程度**: Medium（历史条目时间显示 NaN、id 冲突、去重失效）
+- **影响范围**: 可鉴/js/kejian.js (recordGovernance)
+- **问题描述**: 治理完成处调用 `recordGovernance({...})` 未传 `ts`，函数内直接 `rec.ts` 使用 → undefined
+- **修复方案**: 函数内 `const ts = rec.ts || Date.now();` 兜底，复盘回放触发重录时也能正确取当前时间
+- **验证**: 浏览器回归——历史条目时间正确显示、id 唯一
+
+### BUG-2026-038: 治理登记脚本锚点不匹配静默失败仍报成功（假绿） (P3)
+- **发现/修复日期**: 2026-08-10
+- **严重程度**: Medium（T13 里程碑登记实际丢失，后由文档对齐检查发现）
+- **影响范围**: DeepFlow/history.md 登记流程（临时脚本）
+- **问题描述**: 向 history.md 插入登记时用 `str.replace(anchor, ...)`，锚点字符串与文件实际格式不符时 replace 静默无操作，但脚本仍打印"成功"——T13 登记因此丢失
+- **修复方案**: 所有插入脚本先 `if marker in text:` 判断再写入，不匹配即报错退出；改用稳定锚点（`\n\n### 下一步`）补登 T13/T14
+- **验证**: 补登后 git diff 确认两行登记落盘
+- **经验**: Python `str.replace` 锚点插入不匹配时静默无操作，**写入前必须显式断言锚点存在**；登记完成后用 `git diff` 核对实际变更
+
+---
