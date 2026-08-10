@@ -11,6 +11,7 @@
 const SKILLS_API = "http://127.0.0.1:8001";
 const EXECUTE_URL = SKILLS_API + "/skills/execute";
 const LLM_CHAT_URL = SKILLS_API + "/llm/chat";
+const LLM_CHAT_STREAM_URL = SKILLS_API + "/llm/chat/stream";
 const REQUEST_TIMEOUT_MS = 300000; // 5 分钟（LLM 调用可达 2-3 分钟）
 
 // ---------- 六角色定义 ----------
@@ -544,29 +545,16 @@ async function sendFollowup() {
   // 上下文注入：胶片摘要放在最近一轮 user 消息后，保持模型注意力
   const contextMsg = { role: "user", content: "本次治理胶片摘要（供追问参考）：\n" + followupContext.filmSummary };
   const messages = chatHistory.slice(0, -1).concat([contextMsg, chatHistory[chatHistory.length - 1]]);
+  const body = JSON.stringify({
+    model: "claude-qoder-glm-5-2",
+    messages,
+    temperature: 0.7,
+    max_tokens: 4096,
+  });
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    let resp;
-    try {
-      resp = await fetch(LLM_CHAT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-qoder-glm-5-2",
-          messages,
-          temperature: 0.7,
-          max_tokens: 4096,
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    const data = await resp.json();
-    const answer = (data.content || "").trim();
+    // T13: 优先流式逐字显影，失败自动降级非流式
+    const answer = await streamFollowupAnswer(body, thinkingEl);
     if (!answer) throw new Error("空回复");
     thinkingEl.classList.remove("thinking");
     thinkingEl.textContent = answer;
@@ -578,6 +566,81 @@ async function sendFollowup() {
     followupBtn.disabled = false;
     followupInput.focus();
   }
+}
+
+// T13: 流式输出 —— SSE 增量渲染；流式端点不可用或无产出时降级非流式
+async function streamFollowupAnswer(body, el) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let resp;
+  try {
+    resp = await fetch(LLM_CHAT_STREAM_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  // 流式端点不可用（404/5xx）→ 降级非流式
+  if (!resp.ok) return await nonStreamFallback(body);
+
+  let full = "";
+  let started = false;
+  let streamError = null;
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n"); // SSE 事件分隔
+    buffer = events.pop(); // 保留尾部不完整片段
+    for (const evt of events) {
+      const line = evt.trim();
+      if (!line.startsWith("data:")) continue;
+      let obj;
+      try { obj = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+      if (obj.type === "delta" && obj.content) {
+        if (!started) { // 首个增量：清除思考占位，开始显影
+          el.classList.remove("thinking");
+          el.textContent = "";
+          started = true;
+        }
+        full += obj.content;
+        el.textContent = full;
+        chatLog.scrollTop = chatLog.scrollHeight;
+      } else if (obj.type === "error") {
+        streamError = obj.message || "stream error";
+      }
+    }
+  }
+  // 流式无产出：降级非流式；已有部分内容则保留
+  if (!full && streamError) return await nonStreamFallback(body);
+  if (!full) throw new Error(streamError || "空回复");
+  return full;
+}
+
+// T13: 非流式兑底（原 /llm/chat 一次性响应）
+async function nonStreamFallback(body) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let resp;
+  try {
+    resp = await fetch(LLM_CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  const data = await resp.json();
+  return (data.content || "").trim();
 }
 
 // ---------- 事件绑定 ----------

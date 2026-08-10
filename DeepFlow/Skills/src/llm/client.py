@@ -42,6 +42,14 @@ class ChatResult:
     truncated: bool = False  # T9: 输出被 max_tokens 截断（JSON 解析失败的常见根因，供降级诊断）
 
 
+@dataclass
+class StreamChunk:
+    """T13: 流式输出块（逐 token/片段）。"""
+
+    delta: str = ""
+    finish_reason: Optional[str] = None
+
+
 class LLMClient:
     """LiteLLM-based chat completion client."""
 
@@ -143,6 +151,80 @@ class LLMClient:
             finish_reason=finish_reason,
             truncated=truncated,
         )
+
+    async def stream(
+        self,
+        messages: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        system: Optional[str] = None,
+        user: Optional[str] = None,
+    ):
+        """
+        T13: 流式聊天完成（逐片段 yield StreamChunk）。
+
+        与 chat() 共享参数语义；litellm stream=True 返回异步生成器。
+        若网关不支持流式会抛异常，由调用方降级到非流式。
+
+        Yields:
+            StreamChunk(delta=增量文本)；最后一块带 finish_reason
+        """
+        if self._closed:
+            raise RuntimeError("LLM client is closed")
+        if not self._config.api_key:
+            raise RuntimeError(
+                "LLM API key is not configured (set OPENAI_API_KEY environment variable)"
+            )
+        if messages is None:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            if user:
+                messages.append({"role": "user", "content": user})
+
+        import litellm
+
+        model_name = model or self._config.default_model
+        if self._config.base_url and "/" not in model_name:
+            model_name = f"openai/{model_name}"
+
+        llm_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "api_key": self._config.api_key,
+            "timeout": self._config.timeout,
+            "num_retries": self._config.max_retries,
+            "stream": True,
+        }
+        if self._config.base_url:
+            llm_kwargs["api_base"] = self._config.base_url
+
+        logger.info(
+            "LLM stream completion",
+            model=model_name,
+            base_url=self._config.base_url or "openai-default",
+            messages_count=len(messages),
+        )
+
+        response = await litellm.acompletion(**llm_kwargs)
+        finish_reason: Optional[str] = None
+        async for chunk in response:
+            delta = ""
+            try:
+                choice = chunk.choices[0]
+                delta_piece = getattr(choice, "delta", None)
+                if delta_piece is not None and getattr(delta_piece, "content", None):
+                    delta = delta_piece.content
+                fr = getattr(choice, "finish_reason", None)
+                if fr:
+                    finish_reason = fr
+            except Exception:
+                pass
+            if delta or finish_reason:
+                yield StreamChunk(delta=delta, finish_reason=finish_reason)
 
     async def close(self) -> None:
         """Close the client and release resources."""

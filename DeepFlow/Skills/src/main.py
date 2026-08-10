@@ -12,6 +12,7 @@ Features:
 """
 
 import asyncio
+import json
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -20,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import structlog
 
@@ -380,6 +381,59 @@ async def llm_chat(request: LLMRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM call failed: {str(e)}"
         )
+
+
+@app.post("/llm/chat/stream", tags=["LLM"])
+async def llm_chat_stream(request: LLMRequest):
+    """T13: SSE 流式聊天完成（追问区逐字显影）。
+
+    事件格式（每行 data: JSON）：
+      {"type":"delta","content":"增量文本"}
+      {"type":"done","finish_reason":"stop"}
+      {"type":"error","message":"..."}  流式失败（前端可据此降级到非流式）
+    """
+    if not app_state.llm_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LLM client not initialized"
+        )
+
+    logger.info(
+        "LLM stream chat request",
+        model=request.model,
+        messages_count=len(request.messages)
+    )
+
+    async def event_generator():
+        sent_any = False
+        try:
+            async for chunk in app_state.llm_client.stream(
+                messages=request.messages,
+                model=request.model,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            ):
+                if chunk.delta:
+                    sent_any = True
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk.delta}, ensure_ascii=False)}\n\n"
+                if chunk.finish_reason:
+                    yield f"data: {json.dumps({'type': 'done', 'finish_reason': chunk.finish_reason})}\n\n"
+            if not sent_any:
+                # 流式未产出任何内容：显式告知前端，便于降级或提示
+                yield f"data: {json.dumps({'type': 'error', 'message': 'stream produced no content'})}\n\n"
+        except Exception as e:
+            logger.error("LLM stream error", error=str(e))
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲，保证逐块推送
+        },
+    )
 
 @app.get("/metrics", tags=["System"])
 async def get_metrics():
