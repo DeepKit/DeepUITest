@@ -318,6 +318,9 @@ async function startGovernance() {
     rolesTag.textContent = "总耗时 " + totalSec + "s";
     filmSection.classList.remove("hidden");
     filmBody.innerHTML = filmText;
+    // T19b: 显示生成 X 光片按钮（可选，非强制步骤）
+    const xrayBtn = document.getElementById("generate-xray-btn");
+    if (xrayBtn) xrayBtn.style.display = "inline-block";
     if (filmDegraded) {
       const note = document.createElement("div");
       note.className = "degrade-note";
@@ -330,12 +333,19 @@ async function startGovernance() {
     recordGovernance({
       problem, template: activeTemplate, aggregated,
       film, filmHtml: filmText, degraded: filmDegraded, totalSec,
+      kind: "decision", // T19c
     });
     // 激活追问区：携带本次治理上下文
     followupContext = { problem, filmSummary: extractPlainText(filmText) };
     chatHistory = [{ role: "system", content: buildFollowupSystemPrompt(problem) }];
     followupSection.classList.remove("hidden");
     chatLog.innerHTML = "";
+    // T19b: 绑定生成 X 光片点击
+    const genXrayBtn = document.getElementById("generate-xray-btn");
+    if (genXrayBtn && !genXrayBtn.__bound) {
+      genXrayBtn.__bound = true;
+      genXrayBtn.addEventListener("click", () => generateXray(problem, film, filmText));
+    }
     filmSection.scrollIntoView({ behavior: "smooth", block: "start" });
     statusHint.textContent = "治理完成，总耗时 " + totalSec + "s（可见，可鉴）";
   } catch (err) {
@@ -653,12 +663,16 @@ async function nonStreamFallback(body) {
 }
 
 // ---------- 事件绑定 ----------
-startBtn.addEventListener("click", startGovernance);
+startBtn.addEventListener("click", () => {
+  if (treeholeMode) sendTreehole();
+  else startGovernance();
+});
 followupBtn.addEventListener("click", sendFollowup);
-followupInput.addEventListener("keydown", (e) => {
+  followupInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    sendFollowup();
+    if (treeholeMode) sendTreehole();
+    else sendFollowup();
   }
 });
 
@@ -760,6 +774,7 @@ function recordGovernance(rec) {
     ts: ts,
     problem: rec.problem,
     template: rec.template,
+    kind: rec.kind || "decision", // T19c: decision | treehole
     degraded: !!rec.degraded,
     totalSec: rec.totalSec,
     aggregated: rec.aggregated || {},
@@ -788,7 +803,7 @@ function renderHistoryList() {
     <div class="history-item" data-id="${r.id}">
       <div class="history-main">
         <div class="history-problem">${escapeHtml(r.problem || "")}</div>
-        <div class="history-meta">${formatTs(r.ts)} · ${escapeHtml((TEMPLATES[r.template] || {}).name || r.template || "")}${r.degraded ? " · ⚠ 含降级" : ""}${r.totalSec ? " · 耗时 " + r.totalSec + "s" : ""}</div>
+        <div class="history-meta">${formatTs(r.ts)} · ${escapeHtml((TEMPLATES[r.template] || {}).name || r.template || "")}${r.kind === "treehole" ? " · 🎋 树洞" : ""}${r.degraded ? " · ⚠ 含降级" : ""}${r.totalSec ? " · 耗时 " + r.totalSec + "s" : ""}</div>
       </div>
       <div class="history-actions">
         <button class="btn-secondary history-replay">复盘</button>
@@ -1032,7 +1047,142 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// T19b/c: 通用 fetch JSON 辅助（含超时）
+async function fetchJson(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS || 120000);
+  let resp;
+  try {
+    resp = await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!resp.ok) throw new Error("HTTP " + resp.status + ": " + (await resp.text()).slice(0, 200));
+  return await resp.json();
+}
+
+// ---------- T19b: 脑内 X 光片 ----------
+async function generateXray(problem, film, filmText) {
+  const xrayBtn = document.getElementById("generate-xray-btn");
+  if (xrayBtn) { xrayBtn.disabled = true; xrayBtn.textContent = "生成中…"; }
+  const xraySection = document.getElementById("xray-section");
+  const xrayContent = document.getElementById("xray-content");
+  const xrayNarrative = document.getElementById("xray-narrative");
+  try {
+    // 构建历史摘要（跨会话成长对比用）
+    const hist = loadHistoryList();
+    const histSummary = hist.slice(0, 5).map(r => `${formatTs(r.ts)} ${r.problem.slice(0, 30)}`).join("；");
+    const material = filmText || "";
+    const resp = await fetchJson(LLM_CHAT_URL.replace("/llm/chat", "/llm/xray"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        problem,
+        material,
+        history_summary: histSummary,
+        mode: "decision",
+      }),
+    });
+    const xray = resp;
+    xraySection.classList.remove("hidden");
+    xrayContent.innerHTML = `
+      <div class="xray-item"><strong>核心执着：</strong>${escapeHtml(xray.core_obsession || "无")}</div>
+      <div class="xray-item"><strong>重复旧模式：</strong>${(xray.old_patterns || []).map(p => escapeHtml(p)).join("<br>") || "无"}</div>
+      <div class="xray-item"><strong>新差异与成长：</strong>${(xray.growth || []).map(g => escapeHtml(g)).join("<br>") || "无"}</div>
+    `;
+    xrayNarrative.textContent = xray.narrative || "";
+    xraySection.scrollIntoView({ behavior: "smooth", block: "start" });
+    statusHint.textContent = "X 光片已生成";
+  } catch (err) {
+    xrayContent.innerHTML = `<div class="degrade-note">⚠ 生成 X 光片失败：${escapeHtml(err.message)}</div>`;
+    statusHint.textContent = "生成 X 光片失败";
+  } finally {
+    if (xrayBtn) { xrayBtn.disabled = false; xrayBtn.textContent = "生成脑内 X 光片"; }
+  }
+}
+
+// ---------- T19c: 树洞模式 ----------
+let treeholeMode = false;
+let treeholeChat = [];
+let treeholeProblem = "";
+
+function toggleTreehole() {
+  treeholeMode = !treeholeMode;
+  const toggleBtn = document.getElementById("treehole-toggle");
+  const templateRow = document.querySelector(".template-row");
+  if (treeholeMode) {
+    toggleBtn.textContent = "📋 治理模式";
+    toggleBtn.title = "切换回六角色决策治理";
+    toggleBtn.classList.add("active");
+    if (templateRow) templateRow.style.display = "none";
+    startBtn.textContent = "开始倾诉";
+    followupSection.classList.remove("hidden");
+    chatLog.innerHTML = "";
+    treeholeChat = [];
+    treeholeProblem = "";
+  } else {
+    toggleBtn.textContent = "🎋 树洞模式";
+    toggleBtn.title = "轻量陪伴倾诉，可随时生成 X 光片自我觉察";
+    toggleBtn.classList.remove("active");
+    if (templateRow) templateRow.style.display = "";
+    startBtn.textContent = "开始治理";
+    followupSection.classList.add("hidden");
+    treeholeChat = [];
+  }
+}
+
+async function sendTreehole() {
+  const text = problemInput.value.trim();
+  if (!text || !treeholeMode) return;
+  treeholeProblem = text;
+  problemInput.value = "";
+  followupSection.classList.remove("hidden");
+  appendChat("user", text);
+  treeholeChat.push({ role: "user", content: text });
+  const sendBtn = document.querySelector("#followup-send");
+  if (sendBtn) sendBtn.disabled = true;
+  statusHint.textContent = "AI 正在倾听…";
+  try {
+    const system = { role: "system", content: "你是一个温暖的树洞。用户会向你倾诉内心的想法、困扰、情绪。请以真诚、不评判、不居高临下的态度回应，像一位懂他多年的朋友。不要给建议，除非用户明确要求。回复简短，不超过 150 字。" };
+    const resp = await fetchJson(LLM_CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-qoder-glm-5-2",
+        messages: [system, ...treeholeChat],
+      }),
+    });
+    const reply = resp.content || "我在这里，继续说。";
+    appendChat("ai", reply);
+    treeholeChat.push({ role: "assistant", content: reply });
+    // T19c: 记录树洞对话（可复盘）
+    recordGovernance({
+      problem: treeholeProblem,
+      kind: "treehole",
+      degraded: false,
+      filmHtml: treeholeChat.map(m => `${m.role === "user" ? "我" : "树洞"}: ${m.content}`).join("\n"),
+    });
+    statusHint.textContent = "";
+  } catch (err) {
+    appendChat("ai", "抱歉，服务暂时不可用。稍后再试。");
+    statusHint.textContent = "树洞服务异常";
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+function appendChat(role, text) {
+  const div = document.createElement("div");
+  div.className = "chat-msg " + (role === "user" ? "user" : "ai");
+  div.innerHTML = `<div class="chat-role">${role === "user" ? "我" : "AI"}</div><div class="chat-text">${escapeHtml(text)}</div>`;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
 // ---------- 初始化 ----------
 renderRoleCards();
 renderHistoryList(); // T14: 页面加载时恢复历史面板
 resolveSkillsApi().then(syncHistoryFromServer); // T19a: 探测可用端口后拉取服务端历史
+// T19c: 树洞模式切换
+const treeholeToggleBtn = document.getElementById("treehole-toggle");
+if (treeholeToggleBtn) treeholeToggleBtn.addEventListener("click", toggleTreehole);
