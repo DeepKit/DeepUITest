@@ -21,6 +21,9 @@
 - T10 胶片视觉化升级：film_generator 增加 visual fields（key_insights/tradeoffs/emotional_spectrum/decision_readiness），LLM 漏输出时从聚合结果兑底不伪造；前端胶片视觉组件（洞察卡/权衡对比/情绪谱条/成熟度仪表）+分享卡片洞察内容；单测 5/5 + 真实链路验证（LLM 成功输出 3 组权衡/4 种情绪强度/decision_readiness=58）+ 浏览器端到端确认（commit e9a47ec9）
 - T11 修复 T10 遗留 UI 缺陷：聚合区对象数组渲染 [object Object]（新增 itemText 智能提取文本字段）+ film 变量作用域缺陷（const 提到 try 外避免异常时未定义），浏览器控制台验证无报错（commit 881ff0fc）
 - T12 行业场景模板扩展：新增医疗/法律/教育/家庭四大场景（填补个人生活与专业领域空白），后端 scenarios 四角色聚焦提示 + 前端选择器联动；单测 8 模板全绿 + 前端 8 按钮验证 + medical 真实链路无降级注入生效（commit 34dfa198）
+- T13 追问流式输出：client.py stream()（litellm stream=True 异步生成器）+ main.py /llm/chat/stream SSE 端点 + kejian.js fetch ReadableStream 逐字显影 + nonStreamFallback 降级兜底；真实链路 Connection error 根因为 WiseGateway 进程停摆，恢复后流式 28s/35char/deltas=1（commit 8460b9e0）
+- T14 决策历史与复盘：localStorage 持久化（kejian_history_v1，上限 30 条，配额超限自动瘦身不静默丢失）+ 历史面板（问题/时间/模板/降级标记/耗时）+ 一键复盘（回放聚合与胶片、同步模板、可继续追问，不调模型）+ 单删/清空；浏览器全回归通过 + 截图留证 ui/T14-history-panel.png（commit 5b31c355）
+
 
 ### 下一步
 详见 tasks.md 中的 Kejian-MVP-Release 任务组
