@@ -54,9 +54,12 @@
   <!-- T14: 决策历史（可复盘） -->
   <section id="history-section" class="panel hidden">
     <div class="film-header">
-      <h2 class="panel-title">决策历史 <span class="panel-tag">可复盘 · 本机存储</span></h2>
+      <h2 class="panel-title">决策历史 <span class="panel-tag">可复盘 · 服务端存储 · 本机缓存</span></h2>
       <div class="film-actions">
+        <button id="history-export" class="btn-secondary" title="导出 JSON 备份">导出</button>
+        <button id="history-import" class="btn-secondary" title="从 JSON 备份导入">导入</button>
         <button id="history-clear" class="btn-secondary">清空</button>
+        <input type="file" id="history-import-file" accept=".json,application/json" hidden>
       </div>
     </div>
     <div id="history-list" class="history-list"></div>

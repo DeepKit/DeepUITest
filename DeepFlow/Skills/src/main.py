@@ -14,9 +14,11 @@ Features:
 import asyncio
 import json
 import os
+import sqlite3
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -434,6 +436,105 @@ async def llm_chat_stream(request: LLMRequest):
             "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲，保证逐块推送
         },
     )
+
+# -----------------------------------------------------------------------------
+# Governance History (T19a: 个人决策数据持久化，SQLite 存储)
+# -----------------------------------------------------------------------------
+
+HISTORY_DB_PATH = Path(os.getenv(
+    "KEJIAN_HISTORY_DB",
+    str(Path(__file__).resolve().parent.parent / "data" / "kejian_history.db"),
+))
+
+
+def _history_conn() -> sqlite3.Connection:
+    """短连接 + WAL，每次请求独立连接避免跨线程问题。"""
+    HISTORY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(HISTORY_DB_PATH), timeout=5)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS governance_history (
+            id TEXT PRIMARY KEY,
+            ts INTEGER NOT NULL,
+            problem TEXT NOT NULL DEFAULT '',
+            template TEXT NOT NULL DEFAULT '',
+            payload TEXT NOT NULL DEFAULT '{}'
+        )"""
+    )
+    return conn
+
+
+class GovernanceRecord(BaseModel):
+    """单条治理记录（前端 localStorage 结构的服务端镜像）。"""
+    id: str = Field(..., description="客户端生成的唯一 id（h<ts>）")
+    ts: int = Field(..., description="毫秒时间戳")
+    problem: str = Field(default="")
+    template: str = Field(default="")
+    # 其余字段（degraded/totalSec/aggregated/film/filmHtml）整体存 payload
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+@app.get("/governance/history", tags=["Governance"])
+async def list_governance_history(limit: int = 200):
+    """按时间倒序返回治理历史，供前端跨浏览器/设备查阅。"""
+    try:
+        with _history_conn() as conn:
+            rows = conn.execute(
+                "SELECT id, ts, problem, template, payload FROM governance_history "
+                "ORDER BY ts DESC LIMIT ?",
+                (max(1, min(limit, 1000)),),
+            ).fetchall()
+        items = []
+        for rid, ts, problem, template, payload in rows:
+            rec = json.loads(payload or "{}")
+            rec.update({"id": rid, "ts": ts, "problem": problem, "template": template})
+            items.append(rec)
+        return {"items": items, "count": len(items)}
+    except Exception as e:  # 防假绿：存储故障不伪装成功
+        logger.error("governance_history_list_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/governance/history", tags=["Governance"])
+async def save_governance_record(record: GovernanceRecord):
+    """写入/覆盖单条记录（同 id 幂等，支持前端重试与合并同步）。"""
+    try:
+        payload = record.payload
+        with _history_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO governance_history (id, ts, problem, template, payload) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    record.id,
+                    record.ts,
+                    record.problem,
+                    record.template,
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+        return {"status": "saved", "id": record.id}
+    except Exception as e:
+        logger.error("governance_history_save_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/governance/history/{record_id}", tags=["Governance"])
+async def delete_governance_record(record_id: str):
+    """删除单条记录。"""
+    with _history_conn() as conn:
+        cur = conn.execute("DELETE FROM governance_history WHERE id = ?", (record_id,))
+        deleted = cur.rowcount
+    return {"status": "deleted", "id": record_id, "deleted": deleted}
+
+
+@app.delete("/governance/history", tags=["Governance"])
+async def clear_governance_history():
+    """清空全部记录（前端清空确认后调用）。"""
+    with _history_conn() as conn:
+        cur = conn.execute("DELETE FROM governance_history")
+        deleted = cur.rowcount
+    return {"status": "cleared", "deleted": deleted}
+
 
 @app.get("/metrics", tags=["System"])
 async def get_metrics():

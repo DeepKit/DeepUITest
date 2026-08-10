@@ -8,10 +8,10 @@
 
 "use strict";
 
-const SKILLS_API = "http://127.0.0.1:8001";
-const EXECUTE_URL = SKILLS_API + "/skills/execute";
-const LLM_CHAT_URL = SKILLS_API + "/llm/chat";
-const LLM_CHAT_STREAM_URL = SKILLS_API + "/llm/chat/stream";
+let SKILLS_API = "http://127.0.0.1:8001"; // T19a: 端口探测可改指 8002
+let EXECUTE_URL = SKILLS_API + "/skills/execute";
+let LLM_CHAT_URL = SKILLS_API + "/llm/chat";
+let LLM_CHAT_STREAM_URL = SKILLS_API + "/llm/chat/stream";
 const REQUEST_TIMEOUT_MS = 300000; // 5 分钟（LLM 调用可达 2-3 分钟）
 
 // ---------- 六角色定义 ----------
@@ -734,7 +734,7 @@ $("download-share").addEventListener("click", () => {
 
 // ---------- T14: 决策历史与复盘 ----------
 const HISTORY_KEY = "kejian_history_v1";
-const HISTORY_MAX = 30;
+const HISTORY_PORT_CAP = 100; // localStorage 离线缓存容量；权威数据在服务端 SQLite（T19a）
 
 function loadHistoryList() {
   try {
@@ -766,13 +766,14 @@ function recordGovernance(rec) {
     film: rec.film || {},
     filmHtml: rec.filmHtml || "",
   });
-  while (arr.length > HISTORY_MAX) arr.pop();
+  while (arr.length > HISTORY_PORT_CAP) arr.pop();
   if (!saveHistoryList(arr)) {
     // 配额超限降级：丢弃大体积字段，保留可复盘的最小集（防假绿：不静默丢失记录）
     arr.forEach((r) => { delete r.aggregated; delete r.film; });
     saveHistoryList(arr);
   }
   renderHistoryList();
+  pushRecordToServer({ id: "h" + ts, ts, problem: rec.problem, template: rec.template, degraded: !!rec.degraded, totalSec: rec.totalSec, aggregated: rec.aggregated || {}, film: rec.film || {}, filmHtml: rec.filmHtml || "" }); // T19a: 异步推服务端，失败保留本地缓存
 }
 
 function renderHistoryList() {
@@ -839,6 +840,7 @@ historyList.addEventListener("click", (e) => {
   if (e.target.classList.contains("history-del")) {
     saveHistoryList(loadHistoryList().filter((r) => r.id !== id));
     renderHistoryList();
+    deleteServerRecord(id); // T19a: 同步删除服务端（失败不阻塞本地操作）
   } else if (e.target.classList.contains("history-replay")) {
     replayHistory(id);
   }
@@ -848,6 +850,160 @@ historyClearBtn.addEventListener("click", () => {
   if (!confirm("确定清空全部决策历史？此操作不可恢复。")) return;
   saveHistoryList([]);
   renderHistoryList();
+  clearServerHistory(); // T19a: 同步清空服务端（失败不阻塞，下次拉取合并时可见残留）
+});
+
+// ---------- T19a: 个人数据服务端持久化（Skills SQLite） ----------
+// 端口探测：8001 幽灵进程占用时自动回落 8002 新实例
+const SKILLS_PORT_CANDIDATES = [8001, 8002];
+const HISTORY_API = () => SKILLS_API + "/governance/history";
+
+async function resolveSkillsApi() {
+  const apply = (port) => {
+    if (port !== 8001) {
+      SKILLS_API = `http://127.0.0.1:${port}`;
+      EXECUTE_URL = SKILLS_API + "/skills/execute";
+      LLM_CHAT_URL = SKILLS_API + "/llm/chat";
+      LLM_CHAT_STREAM_URL = SKILLS_API + "/llm/chat/stream";
+    }
+  };
+  // 第一轮：探测持久化路由（新实例才有 /governance/history），旧实例 health 存活但无新路由时自动绕过
+  for (const port of SKILLS_PORT_CANDIDATES) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/governance/history`, { signal: AbortSignal.timeout(1500) });
+      if (r.ok) { apply(port); return true; }
+    } catch (e) { /* 试下一个端口 */ }
+  }
+  // 第二轮：退回 health 探测，保证推演/追问链路可用
+  for (const port of SKILLS_PORT_CANDIDATES) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1500) });
+      if (r.ok) { apply(port); return false; }
+    } catch (e) { /* 试下一个端口 */ }
+  }
+  return false; // 全部不可达：保持 8001 默认，错误提示由调用方降级处理
+}
+
+async function fetchServerHistory() {
+  try {
+    const r = await fetch(HISTORY_API(), { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return Array.isArray(data.items) ? data.items : null;
+  } catch (e) { return null; } // 服务不可达 → 纯本地模式（防假绿：返回 null 而非空数组）
+}
+
+async function pushRecordToServer(rec) {
+  try {
+    const payload = {};
+    for (const k of Object.keys(rec)) {
+      if (!["id", "ts", "problem", "template"].includes(k)) payload[k] = rec[k];
+    }
+    const r = await fetch(HISTORY_API(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: rec.id, ts: rec.ts, problem: rec.problem || "", template: rec.template || "", payload }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+async function deleteServerRecord(id) {
+  try {
+    const r = await fetch(HISTORY_API() + "/" + encodeURIComponent(id), { method: "DELETE", signal: AbortSignal.timeout(5000) });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+async function clearServerHistory() {
+  try {
+    const r = await fetch(HISTORY_API(), { method: "DELETE", signal: AbortSignal.timeout(5000) });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+function toRecord(obj) {
+  const ts = Number(obj.ts);
+  return {
+    id: String(obj.id || "h" + ts),
+    ts: ts,
+    problem: obj.problem || "",
+    template: obj.template || "",
+    degraded: !!obj.degraded,
+    totalSec: obj.totalSec,
+    aggregated: obj.aggregated || {},
+    film: obj.film || {},
+    filmHtml: obj.filmHtml || "",
+  };
+}
+
+// 页面加载：服务端为权威源，与本地缓存按 id 合并（本地优先保留未同步新记录）
+async function syncHistoryFromServer() {
+  const server = await fetchServerHistory();
+  if (server === null) {
+    statusHint.textContent = "历史服务不可达，使用本机缓存（查阅历史将受限）";
+    return;
+  }
+  const local = loadHistoryList();
+  const map = new Map();
+  for (const r of server) { const rec = toRecord(r); map.set(rec.id, rec); }
+  const unpushed = []; // 本地独有记录：回填服务端，保证换浏览器后不丢
+  for (const r of local) {
+    const rec = toRecord(r);
+    if (!map.has(rec.id)) unpushed.push(rec);
+    if (!map.has(rec.id) || (rec.ts > (map.get(rec.id).ts || 0))) map.set(rec.id, rec);
+  }
+  for (const rec of unpushed) pushRecordToServer(rec);
+  const merged = [...map.values()].sort((a, b) => b.ts - a.ts);
+  const slim = merged.slice(0, HISTORY_PORT_CAP);
+  if (!saveHistoryList(slim)) {
+    slim.forEach((r) => { delete r.aggregated; delete r.film; });
+    saveHistoryList(slim);
+  }
+  renderHistoryList();
+  statusHint.textContent = `决策历史已同步（共 ${merged.length} 条，服务端存储）`;
+}
+
+// 导出/导入：跨浏览器迁移与离线备份
+function exportHistory() {
+  const arr = loadHistoryList();
+  if (!arr.length) { alert("暂无历史可导出"); return; }
+  const blob = new Blob([JSON.stringify(arr, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  a.href = URL.createObjectURL(blob);
+  a.download = `kejian-history-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function importHistoryFile(file) {
+  let arr;
+  try { arr = JSON.parse(await file.text()); } catch (e) { alert("导入失败：文件不是合法 JSON"); return; }
+  if (!Array.isArray(arr) || !arr.length) { alert("导入失败：未找到有效历史记录"); return; }
+  const valid = arr.filter((r) => r && r.ts).map(toRecord);
+  if (!valid.length) { alert("导入失败：记录缺少必要字段"); return; }
+  const existing = loadHistoryList();
+  const ids = new Set(existing.map((r) => r.id));
+  const fresh = valid.filter((r) => !ids.has(r.id));
+  if (!fresh.length) { alert("没有新增记录（全部已存在）"); return; }
+  saveHistoryList([...fresh, ...existing].sort((a, b) => b.ts - a.ts));
+  renderHistoryList();
+  let synced = 0;
+  for (const r of fresh) { if (await pushRecordToServer(r)) synced++; }
+  alert(`导入完成：新增 ${fresh.length} 条（服务端同步 ${synced} 条${synced < fresh.length ? "，其余待服务恢复后手动导出导入" : ""}）`);
+}
+
+const historyExportBtn = $("history-export");
+const historyImportBtn = $("history-import");
+const historyImportFile = $("history-import-file");
+if (historyExportBtn) historyExportBtn.addEventListener("click", exportHistory);
+if (historyImportBtn) historyImportBtn.addEventListener("click", () => historyImportFile.click());
+if (historyImportFile) historyImportFile.addEventListener("change", (e) => {
+  if (e.target.files && e.target.files[0]) importHistoryFile(e.target.files[0]);
+  e.target.value = "";
 });
 
 // ---------- 工具 ----------
@@ -879,3 +1035,4 @@ function escapeHtml(s) {
 // ---------- 初始化 ----------
 renderRoleCards();
 renderHistoryList(); // T14: 页面加载时恢复历史面板
+resolveSkillsApi().then(syncHistoryFromServer); // T19a: 探测可用端口后拉取服务端历史
