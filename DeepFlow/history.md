@@ -23,6 +23,7 @@
 - T12 行业场景模板扩展：新增医疗/法律/教育/家庭四大场景（填补个人生活与专业领域空白），后端 scenarios 四角色聚焦提示 + 前端选择器联动；单测 8 模板全绿 + 前端 8 按钮验证 + medical 真实链路无降级注入生效（commit 34dfa198）
 - T13 追问流式输出：client.py stream()（litellm stream=True 异步生成器）+ main.py /llm/chat/stream SSE 端点 + kejian.js fetch ReadableStream 逐字显影 + nonStreamFallback 降级兜底；真实链路 Connection error 根因为 WiseGateway 进程停摆，恢复后流式 28s/35char/deltas=1（commit 8460b9e0）
 - T14 决策历史与复盘：localStorage 持久化（kejian_history_v1，上限 30 条，配额超限自动瘦身不静默丢失）+ 历史面板（问题/时间/模板/降级标记/耗时）+ 一键复盘（回放聚合与胶片、同步模板、可继续追问，不调模型）+ 单删/清空；浏览器全回归通过 + 截图留证 ui/T14-history-panel.png（commit 5b31c355）
+- T19a 个人决策数据服务端持久化（T19 启动首步）：Skills /governance/history CRUD（SQLite WAL，Skills/data/kejian_history.db）+ 前端端口探测（8001 幽灵进程自动绕行 8002）+ 服务端同步（合并去重/本地回填/删除清空联动）+ JSON 导出导入 + start_skills.bat 端口自适应启动；换浏览器场景全回归通过（commit 4a2bb003）
 
 
 ### 下一步

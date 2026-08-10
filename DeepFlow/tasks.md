@@ -14,7 +14,7 @@
 | T16 | 真流式体验优化：上游讯飞 GLM 非增量流式（deltas=1，已知限制非代码 bug），候选方案为前端分片逐字渲染或切换流式模型 | P3 |
 | T17 | WiseGateway 治理决策：计划任务 WiseGateway_Supervisor 已禁用（与手动启动争端口），需正式化启动方式（恢复 supervisor 或固化手动） | P2 |
 | T18 | 可鉴 tests/ 补 T13/T14 自动化用例（流式 SSE + 历史持久化/复盘/删除/清空） | P3 |
-| T19 | DeepInsight（洞见·思维显影室）× DeepFlow 集成：核心能力（五段显影流程/NPC/胶片/X光片/跨会话记忆）经 DeepFlow workflow + Skills 实现，FMX 壳降级为薄客户端调 Skills HTTP API；不重复实现，方案详见下方评估结论 | P1（待启动） |
+| T19 | DeepInsight（洞见·思维显影室）× DeepFlow 集成：T19a 数据层已完成（个人决策数据服务端持久化 4a2bb003）；余项：五段显影 workflow / X 光片 skill / 树洞模式 / 跨会话记忆成长对比 | P1（进行中） |
 
 已完成项已移入 history.md / 下方"已完成里程碑"速览。
 
@@ -42,6 +42,7 @@
 | Scenario Expansion | T12：行业场景模板扩展——新增医疗/法律/教育/家庭四场景四角色聚焦（34dfa198） | Completed |
 | Streaming Follow-up | T13：追问流式输出 SSE（client.py stream + /llm/chat/stream + 前端逐字显影 + 降级兜底），网关停摆根因定位并恢复（8460b9e0） | Completed |
 | Decision History | T14：决策历史与复盘（localStorage 持久化 + 历史面板 + 一键回放 + 删除/清空），3 缺陷修复见 bugfix.md BUG-2026-036~038（5b31c355） | Completed |
+| Data Persistence | T19a：个人决策数据服务端持久化（Skills SQLite CRUD + 前端同步/导出导入 + 端口探测），为 DeepInsight 集成奠基（4a2bb003） | Completed |
 
 
 ### DeepInsight × DeepFlow 集成评估结论 (2026-08-10)
