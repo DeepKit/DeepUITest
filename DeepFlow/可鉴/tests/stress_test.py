@@ -17,7 +17,7 @@ import aiohttp
 
 
 # Configuration
-SKILLS_API = "http://127.0.0.1:8001"
+SKILLS_API = "http://127.0.0.1:8002"  # 封版审计: 8001 为旧实例, 统一指向 8002 完整版
 
 
 class StressTester:

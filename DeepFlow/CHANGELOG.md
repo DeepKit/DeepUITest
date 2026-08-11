@@ -1,6 +1,47 @@
 ﻿# DeepFlow Changelog
 
 All notable changes to DeepFlow Workflow Engine are documented in this file.
+## [可鉴 v1.0.0] - 2026-08-11
+
+### Added - 六角色决策治理闭环
+- **六角色并行推演**：coach/critic/mirror/observer 四视角 + aggregator 聚合共识，LLM 驱动的真实认知增强
+- **胶片生成**：决策思维胶片输出，强调过程而非结论（哲学合规）
+- **视觉化呈现**：洞察卡、权衡对比、情绪谱、决策成熟度可视化
+- **行业场景模板**：战略/投资/人事/采购四场景知识库，差异化 Prompt 注入
+
+### Added - T13/T14 追问流式与历史持久化
+- **流式追问**：胶片后继续对话，SSE 实时推送新推演结果
+- **服务端持久化**：治理历史记录 SQLite WAL 存储，支持 CRUD、导出/导入、跨浏览器同步
+- **端口自适应**：Skills 服务 8001/8002 双实例探测绕行，自动选择可用路由（封版审计：8001 幽灵进程问题解决）
+
+### Added - T19 DeepInsight×DeepFlow 集成
+- **脑内 X 光片**（decision/treehole 双模式）：第三人称自我觉察分析，识别核心执着/旧模式/成长点
+- **跨会话成长对比**：结合历史会话摘要，指出与以往相比的差异或成长
+- **树洞模式**：轻量倾诉陪伴，随时生成温和诚实的 X 光片反馈
+- **服务端持久化**：个人决策数据统一由 Skills /governance/history CRUD 管理
+
+### Added - T20 WiseGateway 多家族 LLM 治理
+- **call_by_name 统一网关**：通过 WiseGateway 8000 调用不同模型家族（GPT/GLM/Kimi/Qwen/等）
+- **llm/families 映射表**：返回 8 个家族 LLM 可用名称，供前端动态选择
+- **多模型会诊能力**：支持按名调用特定家族 LLM，不强制绑定 GPT 链
+
+### Fixed - 降级容错机制
+- **真实绿验证**：所有 LLM skill 非模板降级，degraded=False 保证真实推理
+- **截断降级诊断**：finish_reason=length → llm_response_truncated，明确记录降级原因
+- **四角色并发超时优化**：timeout 90s+ 线程池并发，整体链路 ~90s
+
+### Testing & Quality
+- **E2E 测试**：Python aiohttp 端到端测试套件（kejian_e2e_test.py）
+- **压力测试**：批量并发调用工具（stress_test.py）
+- **v2 冒烟测试**：T13-T20 新功能覆盖（kejian_v2_smoke_test.py），10/10 全绿
+- **样本生成器**：100+ 真实决策场景库（generate_samples.py）
+
+### Operations
+- **start_skills.bat**：端口自适应启动（8001 优先绑定，失败自动尝试 8002）
+- **前端健康探测**：两轮探测（持久化路由→health），自动选择可用技能服务实例
+- **SQLite WAL**：治理历史数据库写入日志模式，避免跨请求阻塞
+
+
 
 ## [1.1.0] - 2026-08-08
 
