@@ -40,6 +40,23 @@ The shared graph is a code-intelligence layer only. It does not replace Git,
 tests, source review, BCW/PG governance, or architecture decisions.
 <!-- END MANAGED: CODEBASE_QUERY -->
 
+<!-- BEGIN MANAGED: SPW -->
+## SPW anti-bypass gate
+
+All AI-authored production code must follow the `$spw` skill and A0031 H1-H5.
+Before declaring a software change complete:
+
+1. Configure and run deterministic H1-H3 project gates.
+2. Run the built-in H4 bypass-pattern scan.
+3. For non-trivial changes, run H5 with verified, different model families.
+4. Do not treat a model call, router alias, or prose review as valid evidence.
+5. Release requires `release_ready=true` in a verified SPW evidence bundle.
+
+SPW reviewers are read-only scouts. They may return PASS/FAIL evidence but may
+not write code, patches, commands, or suggestions. Findings must be converted
+into deterministic H2/H3/H4 assets and the gates rerun.
+<!-- END MANAGED: SPW -->
+
 ## Web-to-md — 网页转 Markdown
 
 把文章/回答/帖子 URL 转成 `.md` 或结构化源笔记。用常驻 headed patchright

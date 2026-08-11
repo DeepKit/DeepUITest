@@ -4,7 +4,8 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.Generics.Collections, System.DateUtils,
-  DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Pipeline.Boundary;
+  DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.SendModes,
+  DeepAxis.Pipeline.Boundary;
 
 type
   /// <summary>
@@ -26,6 +27,13 @@ type
     SentAt: TDateTime;
     RetryCount: Integer;
     ErrorMessage: string;
+    // ── 发送双模式 (docs/03 §4.4) ──
+    /// <summary>该条目的发送模式。默认 smAssist (向后兼容)。</summary>
+    SendMode: TSendMode;
+    /// <summary>用户是否已确认 (黄灯/最终模式前置确认)。</summary>
+    UserConfirmed: Boolean;
+    /// <summary>该条目关联的发送证据 (粘贴/发送完成后填充)。</summary>
+    Evidence: TSendEvidence;
   end;
 
   /// <summary>
@@ -41,9 +49,14 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    /// <summary>添加一条发送任务</summary>
+    /// <summary>添加一条发送任务 (向后兼容: 默认 smAssist, 未确认)</summary>
     function Enqueue(const AContactId, AContactName, AScript: string;
-      ABoundaryClass: TBoundaryClass): string;
+      ABoundaryClass: TBoundaryClass): string; overload;
+
+    /// <summary>添加一条发送任务 (带模式 + 确认标记, docs/03 §4.4)</summary>
+    function Enqueue(const AContactId, AContactName, AScript: string;
+      ABoundaryClass: TBoundaryClass; ASendMode: TSendMode;
+      AUserConfirmed: Boolean): string; overload;
 
     /// <summary>获取下一条待处理的任务</summary>
     function Dequeue: TSendQueueItem;
@@ -51,6 +64,9 @@ type
     /// <summary>标记任务状态</summary>
     procedure UpdateStatus(const AItemId: string; AStatus: TSendStatus;
       const AError: string = '');
+
+    /// <summary>更新任务证据 (粘贴/发送完成后调用)</summary>
+    procedure UpdateEvidence(const AItemId: string; const AEvidence: TSendEvidence);
 
     /// <summary>获取所有任务</summary>
     function GetAll: TArray<TSendQueueItem>;
@@ -92,11 +108,20 @@ end;
 
 function TSendQueue.Enqueue(const AContactId, AContactName, AScript: string;
   ABoundaryClass: TBoundaryClass): string;
+begin
+  // 向后兼容重载: 默认辅助模式, 未确认
+  Result := Enqueue(AContactId, AContactName, AScript, ABoundaryClass, smAssist, False);
+end;
+
+function TSendQueue.Enqueue(const AContactId, AContactName, AScript: string;
+  ABoundaryClass: TBoundaryClass; ASendMode: TSendMode;
+  AUserConfirmed: Boolean): string;
 var
   LItem: TSendQueueItem;
 begin
   TMonitor.Enter(FLock);
   try
+    LItem := Default(TSendQueueItem);
     LItem.ItemId := GenerateId;
     LItem.ContactId := AContactId;
     LItem.ContactName := AContactName;
@@ -107,6 +132,9 @@ begin
     LItem.SentAt := 0;
     LItem.RetryCount := 0;
     LItem.ErrorMessage := '';
+    LItem.SendMode := ASendMode;
+    LItem.UserConfirmed := AUserConfirmed;
+    LItem.Evidence := TSendEvidence.CreateBlank;
     FItems.Add(LItem);
     Result := LItem.ItemId;
   finally
@@ -158,6 +186,26 @@ begin
           if LItem.RetryCount < FMaxRetry then
             LItem.Status := ssPending;
         end;
+        FItems[I] := LItem;
+        Exit;
+      end;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+procedure TSendQueue.UpdateEvidence(const AItemId: string; const AEvidence: TSendEvidence);
+var
+  I: Integer;
+  LItem: TSendQueueItem;
+begin
+  TMonitor.Enter(FLock);
+  try
+    for I := 0 to FItems.Count - 1 do
+      if FItems[I].ItemId = AItemId then
+      begin
+        LItem := FItems[I];
+        LItem.Evidence := AEvidence;
         FItems[I] := LItem;
         Exit;
       end;

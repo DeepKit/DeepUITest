@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.MainForm
 
@@ -73,6 +74,9 @@ type
     procedure HandleScanEvent(const AEvent: TDeepShellEvent);
     procedure PopulateTreeFromSpec(ATree: TTreeView; ANodes: TList<TSpecNode>);
     procedure PopulateDocsPanel;
+    /// <summary>Tree node click: render node-detail.html and open it in the
+    ///  main view (the tree pages were dead before — clicking did nothing).</summary>
+    procedure DoSpecTreeChange(Sender: TObject; Node: TTreeNode);
   private
     procedure BuildLeftPanelUI;
     procedure PopulateMruCombo;
@@ -102,7 +106,11 @@ uses
   Winapi.Windows,
   DeepSpec.Commands,
   DeepSpec.Providers,
+  DeepSpec.Localization,
+  DeepSpec.DeepBaseServices,
+  DeepSpec.SettingsProvider,
   DeepBase.LLM,
+  DeepBase.Manager,
   DeepBase.VCL.DeepShell.Localization,
   DeepBase.VCL.DeepShell.ToolWindow,
   DeepBase.AutoFix.ErrorRecorder,
@@ -170,16 +178,28 @@ procedure TDeepSpecMainForm.RegisterServices;
 begin
   inherited;
 
-  // Register Chinese translations via framework localization
+  // DeepBase 深度集成：用 DB1(ConfigDB) 持久化实现替换 DeepShell 默认的
+  // 内存态 Recent / Settings / Layout 服务（MRU 下拉、窗口位置、布局在
+  // 重启后保留）。DeepShell 的 ResolveServicesFromRegistry 会在本方法
+  // 之后自动替换 FRecent/FSettings/FLayout。
+  Services.RegisterService(CAP_SHELL_RECENT, TDeepSpecDbRecentService.Create);
+  Services.RegisterService(CAP_SHELL_SETTINGS, TDeepSpecDbSettingsStore.Create);
+  Services.RegisterService(CAP_SHELL_LAYOUT, TDeepSpecDbLayoutService.Create);
+
+  // Detect the Windows UI language at startup and auto-switch the shell
+  // localization service to it (DeepSpec + DeepShell zh-CN/zh-TW tables).
   var LLocSvc := Localization as TShellDefaultLocalizationService;
   if LLocSvc <> nil then
-  begin
-    LLocSvc.RegisterText('zh-CN', 'deepspec.tab.dirs', #$76EE#$5F55);           // 目录
-    LLocSvc.RegisterText('zh-CN', 'deepspec.tab.func', #$529F#$80FD#$6811);     // 功能树
-    LLocSvc.RegisterText('zh-CN', 'deepspec.tab.module', #$6A21#$5757#$6811);   // 模块树
-    LLocSvc.RegisterText('zh-CN', 'deepspec.tab.view', #$754C#$9762#$6811);     // 界面树
-    LLocSvc.RegisterText('zh-CN', 'deepspec.btn.visualize', #$53EF#$89C6#$5316);// 可视化
-    LLocSvc.RegisterText('zh-CN', 'deepspec.mru.hint', #$6700#$8FD1#$9879#$76EE'...');// 最近项目...
+    DeepSpecApplyLocale(LLocSvc);
+
+  // DeepBase.Logger 落盘关键生命周期消息（深度集成：状态栏之外有持久日志）。
+  try
+    var LLang := DeepSpecDetectLocale;
+    if DeepBase.Manager.DeepBase <> nil then
+      DeepBase.Manager.DeepBase.Logger.Info(
+        'DeepSpec startup, locale=' + LLang, 'DeepSpec');
+  except
+    // Logger 不可用不阻塞启动
   end;
 
   Services.RegisterService('deepspec.project', FProjectService);
@@ -208,7 +228,12 @@ procedure TDeepSpecMainForm.RegisterProviders;
 begin
   inherited;
   DeepSpec.Providers.RegisterAllProviders(Self, FProjectService,
-    FScanService, FTreeBuilder);
+    FScanService, FTreeBuilder, FController);
+
+  // DeepBase 61 号文档 §7: 下游业务设置页（扫描配置 + LLM 配置）挂进
+  // DeepShell 设置对话框。
+  RegisterSettingsPageProvider(TDeepSpecSettingsProvider.Create(
+    TDeepBaseLLM(FLLMOwned)));
 end;
 
 procedure TDeepSpecMainForm.AfterShellShown;
@@ -255,10 +280,15 @@ begin
   TAutoFixHealthSignal.Emit;
   if TAutoFixErrorRecorder.Active then
   begin
-    TAutoFixScenarioRunner.RegisterScenario('open-project', procedure
-    begin
-      FController.OpenAndScan('D:\_Progs\02Business\DeepSpec');
-    end);
+    // Crash-recovery scenarios. The project to re-open comes from the
+    // DEEPSPEC_AUTOFIX_PROJECT env var (no machine-specific path in code);
+    // 'scan' refreshes the already-open project.
+    var LAutoFixProject := GetEnvironmentVariable('DEEPSPEC_AUTOFIX_PROJECT');
+    if LAutoFixProject <> '' then
+      TAutoFixScenarioRunner.RegisterScenario('open-project', procedure
+      begin
+        FController.OpenAndScan(LAutoFixProject);
+      end);
     TAutoFixScenarioRunner.RegisterScenario('scan', procedure
     begin
       FController.RunScan;
@@ -266,7 +296,32 @@ begin
     TAutoFixScenarioRunner.Run;
   end
   else
-    Status.Info('DeepSpec', 'DeepSpec ready. Open a project folder to begin.');
+    Status.Info('DeepSpec', ShellText('deepspec.status.ready',
+      'DeepSpec ready. Open a project folder to begin.'));
+
+  // --- 恢复上次会话（DeepBase 59 号文档 §7）：Settings 开关 → Recent
+  // 上次项目 → 校验路径存在 → OpenAndScan。任何失败不阻塞启动（§8）。---
+  try
+    var LRestore := True;
+    if SettingsStore <> nil then
+      LRestore := SettingsStore.ReadBool('deepspec.session.restore', True);
+    if LRestore and (Recent <> nil) and (not FController.IsProjectOpen) then
+    begin
+      var LItems := Recent.GetRecentProjects;
+      for var LItem in LItems do
+        if (not LItem.Invalid) and TDirectory.Exists(LItem.Path) then
+        begin
+          Status.Info('DeepSpec', 'Restoring last session: ' + LItem.Path);
+          FController.OpenAndScan(LItem.Path);
+          PopulateMruCombo;
+          Break;
+        end;
+    end;
+  except
+    on E: Exception do
+      Status.LogError('DeepSpec', 'Session restore failed: ' + E.Message,
+        E.ClassName);
+  end;
 end;
 
 procedure TDeepSpecMainForm.BuildLeftPanelUI;
@@ -436,8 +491,11 @@ procedure TDeepSpecMainForm.DoShellTreeChange(Sender: TObject; Node: TTreeNode);
 begin
   if (Node = nil) or (FShellTree = nil) then Exit;
   var LPath := FShellTree.Path;
-  FBtnVisualize.Enabled := TDirectory.Exists(LPath) and
-    not TDirectory.Exists(TPath.Combine(LPath, '.deepspec'));
+  // Enable whenever a real folder is selected — re-scanning an existing
+  // DeepSpec project is allowed (spec files are snapshotted before
+  // overwrite). Previously the button stayed disabled for folders that
+  // already had a .deepspec, which read as "clicking does nothing".
+  FBtnVisualize.Enabled := TDirectory.Exists(LPath);
 end;
 
 procedure TDeepSpecMainForm.DoBtnVisualizeClick(Sender: TObject);
@@ -490,6 +548,52 @@ begin
   PopulateTreeFromSpec(FViewTree, FTreeBuilder.ViewNodes);
   PopulateDocsPanel;
 
+  // Live scan log (was a dead "(scan log)" placeholder — never updated).
+  if FScanLogMemo <> nil then
+  begin
+    FScanLogMemo.Lines.BeginUpdate;
+    try
+      FScanLogMemo.Lines.Clear;
+      if FController.IsProjectOpen then
+      begin
+        FScanLogMemo.Lines.Add('Project: ' + FProjectService.ProjectPath);
+        FScanLogMemo.Lines.Add(Format(
+          'Scan: %d files (docs %d, code %d, ui %d, config %d, ai_rules %d)',
+          [FScanService.TotalFiles,
+           FScanService.CategoryCount(fcDocuments),
+           FScanService.CategoryCount(fcCode),
+           FScanService.CategoryCount(fcUI),
+           FScanService.CategoryCount(fcConfig),
+           FScanService.CategoryCount(fcAiRules)]));
+        FScanLogMemo.Lines.Add(Format(
+          'Trees: function %d / module %d / view %d / data %d',
+          [FTreeBuilder.FunctionNodes.Count, FTreeBuilder.ModuleNodes.Count,
+           FTreeBuilder.ViewNodes.Count, FTreeBuilder.DataNodes.Count]));
+        FScanLogMemo.Lines.Add('Type: ' + FProjectService.ProjectType);
+      end
+      else
+        FScanLogMemo.Lines.Add('(no project)');
+    finally
+      FScanLogMemo.Lines.EndUpdate;
+    end;
+  end;
+
+  // Re-enable Visualize so the project can be re-scanned (it was
+  // disabled forever after the first scan before).
+  FBtnVisualize.Enabled := True;
+
+  // 扫描完成写 DeepBase.Logger（持久日志）。
+  try
+    if DeepBase.Manager.DeepBase <> nil then
+      DeepBase.Manager.DeepBase.Logger.Info(Format(
+        'Scan complete: %d files | func %d / mod %d / view %d / data %d | %s',
+        [FScanService.TotalFiles, FTreeBuilder.FunctionNodes.Count,
+         FTreeBuilder.ModuleNodes.Count, FTreeBuilder.ViewNodes.Count,
+         FTreeBuilder.DataNodes.Count, FProjectService.ProjectType]),
+        'DeepSpec.Scan');
+  except
+  end;
+
   // Auto-open HTML index in main view
   if FController.IsProjectOpen then
   begin
@@ -501,6 +605,38 @@ begin
         LHtmlPath);
       OpenView(LRef);
     end;
+  end;
+end;
+
+procedure TDeepSpecMainForm.DoSpecTreeChange(Sender: TObject; Node: TTreeNode);
+var
+  LList: TList<TSpecNode>;
+  LIdx: Integer;
+begin
+  if (Node = nil) or (FProjectService = nil) or (not FProjectService.IsOpen) then
+    Exit;
+  LList := nil;
+  if Sender = FFuncTree then
+    LList := FTreeBuilder.FunctionNodes
+  else if Sender = FModuleTree then
+    LList := FTreeBuilder.ModuleNodes
+  else if Sender = FViewTree then
+    LList := FTreeBuilder.ViewNodes;
+  if LList = nil then Exit;
+
+  LIdx := Integer(Node.Data);
+  if (LIdx < 0) or (LIdx >= LList.Count) then Exit;
+
+  try
+    var LNode := LList[LIdx];
+    FRender.RenderNodeDetail(LNode);
+    var LRef := TShellObjectRef.Make('node-detail', 'html', LNode.Title,
+      TPath.Combine(FProjectService.DeepSpecPath, 'html\node-detail.html'));
+    OpenView(LRef);
+  except
+    on E: Exception do
+      Status.LogError('DeepSpec', 'Node detail failed: ' + E.Message,
+        E.ClassName);
   end;
 end;
 
@@ -525,6 +661,7 @@ procedure TDeepSpecMainForm.PopulateTreeFromSpec(ATree: TTreeView;
 
 begin
   if (ATree = nil) or (ANodes = nil) then Exit;
+  ATree.OnChange := DoSpecTreeChange;
   ATree.Items.BeginUpdate;
   try
     ATree.Items.Clear;

@@ -9,7 +9,7 @@ unit ArtifactOS.Desk.EvolutionConsole;
 interface
 
 uses
-  System.SysUtils, System.Classes,
+  System.SysUtils, System.Classes, System.Generics.Collections,
   Vcl.Controls, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Graphics, Vcl.Forms, Vcl.Grids,
   DeepBase.VCL.DeepShell.Types,
   DeepBase.VCL.DeepShell.Intf,
@@ -266,10 +266,11 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := DB.ExecuteScalar(
+    var Params := '{"title":"' + Copy(Title, 1, 40) + '%"}';
+    Result := DB.ExecuteScalarJson(
       'SELECT id::text FROM artifactos.artifact ' +
-      'WHERE title LIKE ''' + Copy(Title, 1, 40) + '%'' ' +
-      'ORDER BY created_at DESC LIMIT 1');
+      'WHERE title LIKE :title ' +
+      'ORDER BY created_at DESC LIMIT 1', Params);
   finally
     DB.Disconnect;
   end;

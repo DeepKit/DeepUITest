@@ -1,4 +1,4 @@
-program WxDecryptProbe;
+﻿program WxDecryptProbe;
 
 {$APPTYPE CONSOLE}
 

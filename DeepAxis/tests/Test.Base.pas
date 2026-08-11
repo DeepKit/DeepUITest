@@ -1,4 +1,4 @@
-unit Test.Base;
+﻿unit Test.Base;
 
 interface
 
@@ -18,6 +18,7 @@ type
     FContacts: TArray<TContact>;
     FMessages: TDictionary<string, TArray<TMessageMeta>>;
     FConversations: TArray<TConversation>;
+    FSessionTimes: TDictionary<string, Int64>;
     FIsOpen: Boolean;
     FAdapter: ISchemaAdapter;
     FCursors: TScanCursorArray;
@@ -29,6 +30,7 @@ type
     procedure SetContacts(const AContacts: TArray<TContact>);
     procedure SetMessages(const AContactId: string; const AMessages: TArray<TMessageMeta>);
     procedure SetConversations(const AConversations: TArray<TConversation>);
+    procedure SetSessionTime(const AContactId: string; ATime: Int64);
 
     // IWxReader
     function Open(const ADbPath: string; const AKeyBytes: TBytes): Boolean;
@@ -43,6 +45,8 @@ type
     procedure Close;
     function IsOpen: Boolean;
     function GetAdapter: ISchemaAdapter;
+    function GetSessionLastMessageTime(const AContactId: string): Int64;
+    function GetLastBodyZeroReport: TBodyZeroReport;
   end;
 
   /// <summary>
@@ -77,6 +81,7 @@ constructor TMockWxReader.Create;
 begin
   inherited Create;
   FMessages := TDictionary<string, TArray<TMessageMeta>>.Create;
+  FSessionTimes := TDictionary<string, Int64>.Create;
   FIsOpen := True;
   FAdapter := TWeChat411053Adapter.Create;
 end;
@@ -84,6 +89,7 @@ end;
 destructor TMockWxReader.Destroy;
 begin
   FMessages.Free;
+  FSessionTimes.Free;
   inherited;
 end;
 
@@ -101,6 +107,11 @@ end;
 procedure TMockWxReader.SetConversations(const AConversations: TArray<TConversation>);
 begin
   FConversations := AConversations;
+end;
+
+procedure TMockWxReader.SetSessionTime(const AContactId: string; ATime: Int64);
+begin
+  FSessionTimes.AddOrSetValue(AContactId, ATime);
 end;
 
 function TMockWxReader.Open(const ADbPath: string; const AKeyBytes: TBytes): Boolean;
@@ -163,6 +174,18 @@ begin
   Result := FAdapter;
 end;
 
+function TMockWxReader.GetSessionLastMessageTime(const AContactId: string): Int64;
+begin
+  // TryGetValue 命中则赋值 Result, 未命中返回 0 (srUnknown)
+  if not FSessionTimes.TryGetValue(AContactId, Result) then
+    Result := 0;
+end;
+
+function TMockWxReader.GetLastBodyZeroReport: TBodyZeroReport;
+begin
+  Result := TBodyZeroReport.CreateClean;
+end;
+
 { TTestFixtureFactory }
 
 class function TTestFixtureFactory.MakeContact(const AId: string;
@@ -174,7 +197,7 @@ begin
   Result.DisplayNameRedacted := ADisplayName;
   Result.Privacy := psBusiness;
   Result.PrivacySource := psHumanConfirmed;
-  Result.TagProfile := '{}';
+  Result.AdCount := 0;
 end;
 
 class function TTestFixtureFactory.MakeInboundMsg(const AContactId: string;

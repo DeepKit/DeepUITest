@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Services.Decisions
 
@@ -69,7 +70,8 @@ uses
   System.IOUtils,
   System.DateUtils,
   DeepSpec.Yaml.Writer,
-  DeepSpec.Yaml.Parser;
+  DeepSpec.Yaml.Parser,
+  DeepSpec.Services.SpecStore;
 
 constructor TDeepSpecDecisionsService.Create;
 begin
@@ -130,6 +132,19 @@ begin
         LDec.Release := LItem.GetString('release', '');
         LDec.SupersededBy := LItem.GetString('superseded_by', '');
 
+        // DecisionType + target/affected node lists were never read back
+        // (round-trip loss: after a restart, transitions had no targets and
+        // no-op'd). Read them so Save/Load round-trips fully.
+        LDec.DecisionType := TSpecEnums.DecisionTypeFromStr(
+          LItem.GetString('type', ''), dtConfirm);
+        var LTargets := LItem.GetSeq('target_nodes');
+        if LTargets <> nil then
+        begin
+          SetLength(LDec.TargetNodes, LTargets.SeqCount);
+          for var J := 0 to LTargets.SeqCount - 1 do
+            LDec.TargetNodes[J] := LTargets.SeqItem(J).AsString;
+        end;
+
         var LStatusStr := LItem.GetString('status', 'proposed');
         if LStatusStr = 'accepted' then LDec.Status := dsAccepted
         else if LStatusStr = 'rejected' then LDec.Status := dsRejected
@@ -166,8 +181,11 @@ begin
   LWriter := TYamlWriter.Create;
   try
     LWriter.WriteDecisionsFile(FDecisions);
-    TFile.WriteAllText(TPath.Combine(FBasePath, 'requirement-decisions.yaml'),
-      LWriter.ToString, TEncoding.UTF8);
+    // Atomic write (bugfix.md BUG-5 path) — never bypass the crash-safe
+    // replace with a bare TFile.WriteAllText.
+    TDeepSpecStoreService.AtomicWriteTextFile(
+      TPath.Combine(FBasePath, 'requirement-decisions.yaml'),
+      LWriter.ToString);
   finally
     LWriter.Free;
   end;
@@ -331,10 +349,12 @@ begin
     begin
       var LNode := LNodes[I];
 
-      // Find accepted/rejected decisions targeting this node
+      // Find accepted/rejected decisions targeting this node (a rejected
+      // decision must also apply its transitions — Reject All on bundles
+      // and node-reject depend on this)
       for var LDec in FDecisions do
       begin
-        if LDec.Status <> dsAccepted then Continue;
+        if (LDec.Status <> dsAccepted) and (LDec.Status <> dsRejected) then Continue;
         var LTargetsNode := False;
         for var LT in LDec.TargetNodes do
           if LT = LNode.Id then begin LTargetsNode := True; Break; end;
@@ -384,41 +404,58 @@ end;
 procedure TDeepSpecDecisionsService.ApplyNodeStatusTransitions(
   const ATreeRelPath: string; ANodes: TList<TSpecNode>);
 var
-  LChanged: Boolean;
   LError: string;
+  LIndex: TDictionary<string, TList<TSpecDecision>>;
+  LDecs: TList<TSpecDecision>;
 begin
   if ANodes = nil then Exit;
-  LChanged := False;
-  for var I := 0 to ANodes.Count - 1 do
-  begin
-    var LNode := ANodes[I];
+
+  // Index accepted/rejected decisions by target node id ONCE (O(M)) instead
+  // of rescanning every decision for every node (O(N*M)) — multi-LLM review
+  // optimization; also makes the apply pass order-independent.
+  LIndex := TDictionary<string, TList<TSpecDecision>>.Create;
+  try
     for var LDec in FDecisions do
     begin
-      if LDec.Status <> dsAccepted then Continue;
-      var LTargetsNode := False;
+      if (LDec.Status <> dsAccepted) and (LDec.Status <> dsRejected) then Continue;
       for var LT in LDec.TargetNodes do
-        if LT = LNode.Id then begin LTargetsNode := True; Break; end;
-      if not LTargetsNode then Continue;
-      case LDec.DecisionType of
-        dtConfirm:
+      begin
+        if not LIndex.TryGetValue(LT, LDecs) then
         begin
-          if TSpecEnums.TryTransitionGen(LNode.GenStatus, gsConfirmed, LError) then
-            LChanged := True;
-          if TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsAccepted, LError) then
-            LChanged := True;
-          LNode.Status := nsConfirmed;
+          LDecs := TList<TSpecDecision>.Create;
+          LIndex.Add(LT, LDecs);
         end;
-        dtReject:
-        begin
-          if TSpecEnums.TryTransitionGen(LNode.GenStatus, gsSkipped, LError) then
-            LChanged := True;
-          if TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsRejected, LError) then
-            LChanged := True;
-          LNode.Status := nsRejected;
-        end;
+        LDecs.Add(LDec);
       end;
     end;
-    ANodes[I] := LNode;
+
+    for var I := 0 to ANodes.Count - 1 do
+    begin
+      var LNode := ANodes[I];
+      if LIndex.TryGetValue(LNode.Id, LDecs) then
+        for var LDec in LDecs do
+        begin
+          case LDec.DecisionType of
+            dtConfirm:
+            begin
+              TSpecEnums.TryTransitionGen(LNode.GenStatus, gsConfirmed, LError);
+              TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsAccepted, LError);
+              LNode.Status := nsConfirmed;
+            end;
+            dtReject:
+            begin
+              TSpecEnums.TryTransitionGen(LNode.GenStatus, gsSkipped, LError);
+              TSpecEnums.TryTransitionReview(LNode.ReviewStatus, rsRejected, LError);
+              LNode.Status := nsRejected;
+            end;
+          end;
+        end;
+      ANodes[I] := LNode;
+    end;
+  finally
+    for var LList in LIndex.Values do
+      LList.Free;
+    LIndex.Free;
   end;
 end;
 

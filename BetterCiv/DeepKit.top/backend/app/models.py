@@ -25,6 +25,10 @@ class AuthLogoutRequest(BaseModel):
     refresh_token: str
 
 
+class BindPhoneRequest(BaseModel):
+    code: str  # 小程序 wx.getPhoneNumber 获取的 code
+
+
 class EnsureUserRequest(BaseModel):
     provider: str
     provider_user_id: str

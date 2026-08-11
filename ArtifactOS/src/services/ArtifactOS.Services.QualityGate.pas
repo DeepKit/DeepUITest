@@ -109,6 +109,8 @@ const
 
 implementation
 
+{$WARN IMPLICIT_STRING_CAST OFF}
+
 uses
   ArtifactOS.Services.DeepLLMProxy;
 
@@ -401,6 +403,7 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
+    var ArtParams := '{"id":"' + AArtifactId + '"}';
     Title := DB.ExecuteScalar('SELECT title FROM artifactos.artifact WHERE id=''' + AArtifactId + '''');
     Body  := DB.ExecuteScalar(
       'SELECT av.assembled_payload->>''body'' FROM artifactos.artifact_version av ' +
@@ -674,7 +677,7 @@ begin
       Combined.Passed := False;
       Combined.Score := 0.0;
       SetLength(Combined.Issues, Length(Combined.Issues) + 1);
-      Combined.Issues[High(Combined.Issues)] := 'SES-05: source fidelity violation — theory core broken';
+      Combined.Issues[High(Combined.Issues)] := string('SES-05: source fidelity violation — theory core broken');
     end;
 
     // Aggregate warnings
@@ -1008,10 +1011,11 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Title := DB.ExecuteScalar('SELECT title FROM artifactos.artifact WHERE id=''' + AArtifactId + '''');
-    Body  := DB.ExecuteScalar(
+    var ArtParams2 := '{"id":"' + AArtifactId + '"}';
+    Title := DB.ExecuteScalarJson('SELECT title FROM artifactos.artifact WHERE id=:id::uuid', ArtParams2);
+    Body  := DB.ExecuteScalarJson(
       'SELECT av.assembled_payload->>''body'' FROM artifactos.artifact_version av ' +
-      'WHERE av.artifact_id=''' + AArtifactId + ''' ORDER BY av.version_no DESC LIMIT 1');
+      'WHERE av.artifact_id=:id::uuid ORDER BY av.version_no DESC LIMIT 1', ArtParams2);
   finally
     DB.Disconnect;
   end;
@@ -1118,7 +1122,8 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.Execute('UPDATE artifactos.quality_snapshot SET sealed_at=now(), sealed_by=''system:quality_gate'' WHERE id=''' + ASnapshotId + ''' AND sealed_at IS NULL');
+    var SnapParams := '{"id":"' + ASnapshotId + '"}';
+    DB.ExecuteJson('UPDATE artifactos.quality_snapshot SET sealed_at=now(), sealed_by=''system:quality_gate'' WHERE id=:id::uuid AND sealed_at IS NULL', SnapParams);
     Result := ASnapshotId;
   finally
     DB.Disconnect;

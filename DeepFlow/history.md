@@ -4,6 +4,22 @@
 
 ---
 
+### v1.0.0 封版里程碑（2026-08-11）
+
+**交付内容**：六角色治理闭环完整达成 + DeepInsight×DeepFlow 集成 + WiseGateway 多家族 LLM 治理
+
+**质量验证**：v2 冒烟测试 kejian_v2_smoke_test.py 10/10 全绿；E2E 六角色链路降级容错正常
+
+**核心功能**：
+- 六角色并行推演（coach/critic/mirror/observer + aggregator）胶片生成与视觉化呈现
+- 追问流式输出 + 历史服务端持久化（SQLite WAL CRUD，跨浏览器同步）
+- 脑内 X 光片（decision/treehole 双模式）+ 树洞模式 + 跨会话成长对比
+- WiseGateway call_by_name 多家族 LLM 治理（GPT/GLM/Kimi/Qwen 等 8 家族）
+
+**已知限制**：GPT 国内网络访问受限导致四视角偶发降级，聚合器仍可用，选择 GLM/Kimi 替代模型即可正常运行。
+
+---
+
 ## 2026-08-09: 可鉴决策操作系统 MVP 发布
 
 ### 新增模块

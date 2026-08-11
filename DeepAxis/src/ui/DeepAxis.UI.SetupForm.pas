@@ -1,13 +1,15 @@
-unit DeepAxis.UI.SetupForm;
+﻿unit DeepAxis.UI.SetupForm;
 
 interface
 
 uses
   System.SysUtils, System.Classes, System.IOUtils, System.Win.Registry,
+  System.Generics.Collections,
   Winapi.Windows, Winapi.ShlObj,
   Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls,
   Vcl.FileCtrl, Vcl.Dialogs, Vcl.Graphics,
-  DeepAxis.Core.Base, DeepAxis.Core.Config;
+  DeepAxis.Core.Base, DeepAxis.Core.Config,
+  DeepAxis.Core.i18n;  // BUG-045: 恢复 i18n (原 syntax issue 已修复)
 
 type
   /// <summary>
@@ -49,7 +51,7 @@ begin
   Position := poMainFormCenter;
   Width := 560;
   Height := 420;
-  Caption := 'DeepAxis ' + APP_TITLE_ZH + ' — 初始设置';
+  Caption := I18nStr('SETUP_TITLE') + ' — 序枢';
   InitUI;
 end;
 
@@ -66,7 +68,7 @@ begin
   LTopLabel.Parent := Self;
   LTopLabel.Top := 12;
   LTopLabel.Left := 16;
-  LTopLabel.Caption := '请选择微信数据目录';
+  LTopLabel.Caption := I18nStr('SETUP_WELCOME');
   LTopLabel.Font.Size := 12;
   LTopLabel.Font.Style := [fsBold];
 
@@ -95,7 +97,7 @@ begin
   FBrowseBtn.Left := 400;
   FBrowseBtn.Width := 80;
   FBrowseBtn.Height := 30;
-  FBrowseBtn.Caption := '浏览...';
+  FBrowseBtn.Caption := I18nStr('SETUP_BROWSE');
   FBrowseBtn.OnClick := DoBrowse;
 
   FAutoDetectBtn := TButton.Create(LPanel);
@@ -132,7 +134,7 @@ begin
   FValidateBtn.Left := 16;
   FValidateBtn.Width := 90;
   FValidateBtn.Height := 28;
-  FValidateBtn.Caption := '验证目录';
+  FValidateBtn.Caption := I18nStr('SETUP_VALIDATE');
   FValidateBtn.OnClick := DoValidate;
 
   LDetailLabel := TLabel.Create(Self);
@@ -168,7 +170,7 @@ begin
   LCancelBtn.Left := 330;
   LCancelBtn.Width := 80;
   LCancelBtn.Height := 32;
-  LCancelBtn.Caption := '取消';
+  LCancelBtn.Caption := I18nStr('SETUP_CANCEL');
   LCancelBtn.ModalResult := mrCancel;
   LCancelBtn.OnClick := DoCancel;
 
@@ -178,7 +180,7 @@ begin
   LOkBtn.Left := 420;
   LOkBtn.Width := 80;
   LOkBtn.Height := 32;
-  LOkBtn.Caption := '确定';
+  LOkBtn.Caption := I18nStr('SETUP_OK');
   LOkBtn.Default := True;
   LOkBtn.ModalResult := mrOk;
   LOkBtn.OnClick := DoOk;
@@ -192,13 +194,61 @@ end;
 
 function TDeepAxisSetupForm.FindWeChatDataDirAuto: string;
 var
-  LBase, LDir, LMsgDir: string;
+  LBase, LDir, LMsgDir, LSearchPath: string;
   LDirs: TArray<string>;
   LReg: TRegistry;
-  LDrives: array[0..2] of string;
-  LDrive: string;
-  LSearchPath: string;
+  LDriveRoots: TArray<string>;
+  LDriveRoot: string;
   LUserInfo: string;
+
+  // 在指定根目录下查找 db_storage\message 结构，命中返回该 db_storage 路径。
+  function FindDbStorage(const ARoot: string): string;
+  var
+    LSub: string;
+    LFound: TArray<string>;
+    LChild: string;
+  begin
+    Result := '';
+    if (ARoot = '') or not TDirectory.Exists(ARoot) then Exit;
+    LFound := TDirectory.GetDirectories(ARoot, 'db_storage', TSearchOption.soAllDirectories);
+    for LChild in LFound do
+    begin
+      LSub := TPath.Combine(LChild, 'message');
+      if TDirectory.Exists(LSub) then
+        Exit(LChild);
+    end;
+  end;
+
+  // 用 GetLogicalDriveStrings 枚举所有盘符根路径（如 C:\ D:\ ...），
+  // 替代原先硬编码的 ['C','D','E','F','G']，H 盘及以上也能命中 (BUG-031)。
+  function ListLogicalDriveRoots: TArray<string>;
+  var
+    LBuf: array[0..511] of Char;
+    LLen, I, LStart: Integer;
+    LRaw: string;
+    LList: TList<string>;
+  begin
+    Result := nil;
+    LLen := GetLogicalDriveStrings(Length(LBuf), @LBuf[0]);
+    if LLen = 0 then Exit;
+    SetString(LRaw, PChar(@LBuf[0]), LLen);
+    LList := TList<string>.Create;
+    try
+      LStart := 1;
+      for I := 1 to LLen do
+      begin
+        if (LRaw[I] = #0) and (I > LStart) then
+        begin
+          LList.Add(Copy(LRaw, LStart, I - LStart));
+          LStart := I + 1;
+        end;
+      end;
+      Result := LList.ToArray;
+    finally
+      LList.Free;
+    end;
+  end;
+
 begin
   Result := '';
 
@@ -221,16 +271,8 @@ begin
             // FileSavePath might be the parent, look for db_storage inside
             if TDirectory.Exists(LBase) then
             begin
-              LDirs := TDirectory.GetDirectories(LBase, 'db_storage', TSearchOption.soAllDirectories);
-              for LDir in LDirs do
-              begin
-                LMsgDir := TPath.Combine(LDir, 'message');
-                if TDirectory.Exists(LMsgDir) then
-                begin
-                  Result := LDir;
-                  Exit;
-                end;
-              end;
+              Result := FindDbStorage(LBase);
+              if Result <> '' then Exit;
             end;
           end;
         end;
@@ -243,51 +285,22 @@ begin
     // Registry access failed, continue
   end;
 
-  // 3. Check common paths
+  // 3. Check user home paths (Documents / home root)
   LUserInfo := TPath.GetHomePath;
-  LDrives[0] := TPath.Combine(LUserInfo, 'Documents');
-  LDrives[1] := LUserInfo;
-  LDrives[2] := '';
-
-  for LDrive in LDrives do
+  for LDir in [TPath.Combine(LUserInfo, 'Documents'), LUserInfo] do
   begin
-    if LDrive = '' then
-      LSearchPath := 'D:\xwechat_files'
-    else
-      LSearchPath := TPath.Combine(LDrive, 'xwechat_files');
-
-    if TDirectory.Exists(LSearchPath) then
-    begin
-      LDirs := TDirectory.GetDirectories(LSearchPath, 'db_storage', TSearchOption.soAllDirectories);
-      for LDir in LDirs do
-      begin
-        LMsgDir := TPath.Combine(LDir, 'message');
-        if TDirectory.Exists(LMsgDir) then
-        begin
-          Result := LDir;
-          Exit;
-        end;
-      end;
-    end;
+    LSearchPath := TPath.Combine(LDir, 'xwechat_files');
+    Result := FindDbStorage(LSearchPath);
+    if Result <> '' then Exit;
   end;
 
-  // 4. Enumerate all drives
-  for LDrive in ['C', 'D', 'E', 'F', 'G'] do
+  // 4. Enumerate ALL logical drives (BUG-031: no longer hard-coded C-G)
+  LDriveRoots := ListLogicalDriveRoots;
+  for LDriveRoot in LDriveRoots do
   begin
-    LSearchPath := LDrive + ':\xwechat_files';
-    if TDirectory.Exists(LSearchPath) then
-    begin
-      LDirs := TDirectory.GetDirectories(LSearchPath, 'db_storage', TSearchOption.soAllDirectories);
-      for LDir in LDirs do
-      begin
-        LMsgDir := TPath.Combine(LDir, 'message');
-        if TDirectory.Exists(LMsgDir) then
-        begin
-          Result := LDir;
-          Exit;
-        end;
-      end;
-    end;
+    LSearchPath := TPath.Combine(LDriveRoot, 'xwechat_files');
+    Result := FindDbStorage(LSearchPath);
+    if Result <> '' then Exit;
   end;
 end;
 
@@ -345,18 +358,14 @@ begin
         LResults.Add('❌ 会话数据库: 未找到 session.db');
     end;
 
-    // Key file
-    LPath := TPath.Combine(ExtractFilePath(ParamStr(0)), 'DeCrypt\keys\all_keys.json');
-    if TFile.Exists(LPath) then
+    // Key file — query the single source of truth (BUG-030 fix).
+    // TWeChatScanner.FindSavedKeysPath now delegates here too, so the
+    // wizard's status check matches the actual connection path.
+    LPath := TDeepAxisConfig.GetKeysFilePath;
+    if LPath <> '' then
       LResults.Add('✅ 密钥文件: ' + LPath)
     else
-    begin
-      LPath := TPath.Combine(ExtractFilePath(ParamStr(0)), '..\DeCrypt\keys\all_keys.json');
-      if TFile.Exists(LPath) then
-        LResults.Add('✅ 密钥文件: ' + LPath)
-      else
-        LResults.Add('❌ 密钥文件: 未找到 all_keys.json（需先扫描密钥）');
-    end;
+      LResults.Add('❌ 密钥文件: 未找到 all_keys.json（需先扫描密钥）');
 
     Result := LResults.ToStringArray;
   finally

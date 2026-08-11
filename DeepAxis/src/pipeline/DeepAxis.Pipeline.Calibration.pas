@@ -28,6 +28,7 @@ type
   private
     FPoints: TDictionary<string, TList<TCalibrationPoint>>;
     FMinSamples: Integer;
+    FLastCalibrationResult: string;
     procedure AutoCalibrateRule(const ARuleName: string;
       const APoints: TList<TCalibrationPoint>);
   public
@@ -49,6 +50,9 @@ type
 
     /// <summary>获取所有规则的状态</summary>
     function GetAllRuleStatus: string;
+
+    /// <summary>最近一次校准结论 (BUG-051 #87: 校准结果可被调用方读取/持久化)</summary>
+    function GetLastCalibrationResult: string;
   end;
 
 implementation
@@ -127,6 +131,15 @@ begin
   // 校准动作
   if Abs(LMeanDeviation) > 0.3 then
     LStatus := LStatus + Format(' [偏差: %.1f%%, 建议调整阈值]', [LMeanDeviation * 100]);
+
+  // BUG-051 #87: 结论落盘 (不再丢弃到局部字符串)
+  FLastCalibrationResult := Format('[%s] %s (样本=%d, 准确率=%.1f%%, 平均偏差=%.2f)',
+    [DateTimeToStr(Now), ARuleName, APoints.Count, LAccuracy * 100, LMeanDeviation]);
+end;
+
+function TCalibrationEngine.GetLastCalibrationResult: string;
+begin
+  Result := FLastCalibrationResult;
 end;
 
 procedure TCalibrationEngine.TriggerCalibration;

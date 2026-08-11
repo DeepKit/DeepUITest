@@ -15,6 +15,7 @@ type
   private
     FBodyColumnsSeen: Boolean;
     FBodyColumnsQueried: Boolean;
+    FBodyQueriedCount: Integer;
     FWriteAttempts: Integer;
     FUiaCalls: Integer;
     FAuditChain: string; // SHA-256 hash chain for tamper evidence
@@ -22,7 +23,7 @@ type
     constructor Create;
     /// <summary>Record that a body column was present in the schema (ok, not accessed)</summary>
     procedure RecordBodyColumnSeen;
-    /// <summary>BLOCKING: Record that a body column was queried — this is a P0 violation</summary>
+    /// <summary>BLOCKING: Record that a body column was queried — M1 授权读取时调用, 真实计数</summary>
     procedure RecordBodyColumnQueried(const AColumnName: string);
     /// <summary>Record a write attempt to WeChat DB</summary>
     procedure RecordWriteAttempt(const ATableName: string);
@@ -48,6 +49,7 @@ begin
   inherited Create;
   FBodyColumnsSeen := False;
   FBodyColumnsQueried := False;
+  FBodyQueriedCount := 0;
   FWriteAttempts := 0;
   FUiaCalls := 0;
   FAuditChain := '';
@@ -61,6 +63,7 @@ end;
 procedure TBodyZeroAuditor.RecordBodyColumnQueried(const AColumnName: string);
 begin
   FBodyColumnsQueried := True;
+  Inc(FBodyQueriedCount);
   // Build hash chain
   FAuditChain := THashSHA2.GetHashString(
     FAuditChain + '|QUERY_BODY:' + AColumnName + '|' + DateTimeToStr(Now),
@@ -88,6 +91,7 @@ begin
   Result := TBodyZeroReport.CreateClean;
   Result.BodyColumnsSeen := FBodyColumnsSeen;
   Result.BodyColumnsQueried := FBodyColumnsQueried;
+  Result.BodyQueriedCount := FBodyQueriedCount;
   Result.WriteAttempts := FWriteAttempts;
   Result.UiaCalls := FUiaCalls;
   Result.GeneratedAt := Now;

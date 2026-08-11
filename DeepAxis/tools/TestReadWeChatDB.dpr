@@ -1,4 +1,4 @@
-program TestReadWeChatDB;
+﻿program TestReadWeChatDB;
 
 {$APPTYPE CONSOLE}
 

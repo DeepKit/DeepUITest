@@ -1,4 +1,4 @@
-program TestWCDBCompression;
+﻿program TestWCDBCompression;
 
 {$APPTYPE CONSOLE}
 

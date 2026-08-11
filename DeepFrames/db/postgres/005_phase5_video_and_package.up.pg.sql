@@ -28,11 +28,11 @@ CREATE TABLE IF NOT EXISTS deepframes_platform_spec (
 CREATE INDEX IF NOT EXISTS idx_platform_spec_platform ON deepframes_platform_spec(platform);
 CREATE INDEX IF NOT EXISTS idx_platform_spec_delivery ON deepframes_platform_spec(delivery_type);
 
--- Insert default bilibili platform spec
+-- Insert default bilibili platform spec (stable UUID for deterministic FK references)
 INSERT INTO deepframes_platform_spec (platform_spec_id, platform, delivery_type, aspect_ratio, width, height, fps, video_codec, audio_codec, schema_version, status,
   bitrate_policy_json, ai_label_policy_json, safe_zone_json, subtitle_policy_json)
 VALUES (
-  gen_random_uuid(), 'bilibili', 'video', '16:9', 1920, 1080, 30.00, 'h264', 'aac', '1.0.0', 'active',
+  'b11b11b1-1111-1111-1111-b11111111111'::uuid, 'bilibili', 'video', '16:9', 1920, 1080, 30.00, 'h264', 'aac', '1.0.0', 'active',
   '{"video_bitrate_kbps": 8000, "audio_bitrate_kbps": 192, "max_bitrate_kbps": 12000}'::jsonb,
   '{"require_ai_label": true, "label_position": "top_right"}'::jsonb,
   '{"top_pct": 5, "bottom_pct": 10, "left_pct": 5, "right_pct": 5}'::jsonb,

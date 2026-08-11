@@ -12,6 +12,7 @@ const
   STATUS_RUNNING = 'running';
   STATUS_BLOCKED_REVIEW = 'blocked_review';
   STATUS_DONE = 'done';
+  STATUS_COMPLETED = 'completed';
   STATUS_SKIPPED = 'skipped';
   STATUS_FAILED = 'failed';
   STATUS_CANCELLED = 'cancelled';
@@ -21,6 +22,7 @@ const
   JOB_TYPE_AUDIO = 'audio';
   JOB_TYPE_VIDEO = 'video';
   JOB_TYPE_PACKAGE = 'package';
+  JOB_TYPE_IMPORT = 'import';
   STEP_TYPE_PREPROCESS_MAIN = 'preprocess.main';
   STEP_TYPE_BUILD_SCRIPT = 'agent.build_script';
   STEP_TYPE_ACCURACY_CHECK = 'agent.accuracy_check';
@@ -41,7 +43,10 @@ const
   STEP_TYPE_VIDEO_RENDER = 'video.render';
   STEP_TYPE_VIDEO_MUX = 'video.mux';
   STEP_TYPE_PACKAGE_ASSEMBLE = 'package.assemble';
+  STEP_TYPE_IMPORT_DOWNLOAD = 'import.download';
+  STEP_TYPE_IMPORT_TRANSCRIBE = 'import.transcribe';
   QUEUE_DEEPFRAMES_PREPROCESS = 'deepframes.preprocess';
+  QUEUE_DEEPFRAMES_IMPORT = 'deepframes.import';
 
   // Agent roles
   AGENT_ROLE_SPLITTER = 'splitter';
@@ -56,6 +61,7 @@ const
   CAPABILITY_ASR = 'asr';
   CAPABILITY_IMAGE_GEN = 'image_gen';
   CAPABILITY_IMAGE_EDIT = 'image_edit';
+  CAPABILITY_VIDEO_GEN = 'video_gen';
 
   // Eval types
   EVAL_TYPE_QA = 'qa';
@@ -76,6 +82,20 @@ const
   DOCUMENT_KIND_VARIANT = 'variant';
   DOCUMENT_KIND_SHOT = 'shot';
 
+  // Content unit source types (provenance for external_video_import adapter)
+  SOURCE_TYPE_ORIGINAL_ARTICLE = 'original_article';
+  SOURCE_TYPE_EXTERNAL_VIDEO = 'external_video';
+  SOURCE_TYPE_EXTERNAL_AUDIO = 'external_audio';
+  SOURCE_TYPE_LOCAL_FILE = 'local_file';
+
+  // License hints for external sources (advisory only, not a hard gate)
+  LICENSE_HINT_SELF = 'self';
+  LICENSE_HINT_AUTHORIZED = 'authorized';
+  LICENSE_HINT_UNKNOWN = 'unknown';
+
+  // Content type for the external_video_import adapter
+  CONTENT_TYPE_EXTERNAL_VIDEO_IMPORT = 'external_video_import';
+
   // Quality gate results
   GATE_RESULT_PASS = 'pass';
   GATE_RESULT_WARN = 'warn';
@@ -85,10 +105,14 @@ const
   GATE_3A = 'gate3a';
   GATE_3B = 'gate3b';
   GATE_4 = 'gate4';
+  // external_video_import 来源元数据合规性黄灯子检查
+  // NOTE: column gate is varchar(8), keep ≤8 chars
+  GATE_SOURCE = 'gsource';
 
   // Render backends
   RENDER_BACKEND_HYPERFRAMES = 'hyperframes';
   RENDER_BACKEND_REMOTION = 'remotion';
+  RENDER_BACKEND_AGNES = 'agnes';  // AI text/image-to-video generation (Agnes provider)
 
   // Video run modes
   VIDEO_MODE_VISUAL_PREVIEW = 'visual-preview';
@@ -188,6 +212,15 @@ const
   DB2_SSL_MODE = 'DB2.SSLMode';
   DB2_VENDOR_LIB = 'DB2.VendorLib';
 
+  DB3_TYPE = 'DB3.Type';
+  DB3_HOST = 'DB3.Host';
+  DB3_PORT = 'DB3.Port';
+  DB3_DATABASE = 'DB3.Database';
+  DB3_USER = 'DB3.User';
+  DB3_PASSWORD_SECRET_REF = 'DB3.PasswordSecretRef';
+  DB3_SSL_MODE = 'DB3.SSLMode';
+  DB3_VENDOR_LIB = 'DB3.VendorLib';
+
   DEFAULT_DB2_TYPE = 'PostgreSQL';
   DEFAULT_DB2_HOST = '127.0.0.1';
   DEFAULT_DB2_PORT = 5432;
@@ -195,14 +228,141 @@ const
   DEFAULT_DB2_USER = 'fuyi01';
   DEFAULT_DB2_PASSWORD_SECRET_REF = 'secret://deepframes/db2';
 
+  DEFAULT_DB3_TYPE = 'PostgreSQL';
+  DEFAULT_DB3_HOST = '127.0.0.1';
+  DEFAULT_DB3_PORT = 5432;
+  DEFAULT_DB3_DATABASE = 'DeepFramesCollab';
+  DEFAULT_DB3_USER = 'fuyi01';
+  DEFAULT_DB3_PASSWORD_SECRET_REF = 'secret://deepframes/db3';
+
   CONFIG_ROOT_PATH = 'RootPath';
   CONFIG_OUTPUT_DIR = 'OutputDir';
   CONFIG_WORKER_DIR = 'WorkerDir';
   CONFIG_LOG_DIR = 'LogDir';
 
+  // P0-G budget guard: per-job hard ceilings. A job that blows past these
+  // raises EBudgetExceeded instead of silently burning provider budget.
+  CONFIG_BUDGET_MAX_TOKENS_PER_JOB = 'Budget.MaxTokensPerJob';
+  CONFIG_BUDGET_MAX_CALLS_PER_JOB = 'Budget.MaxCallsPerJob';
+  BUDGET_DEFAULT_MAX_TOKENS_PER_JOB = 200000;  // ~ a few long LLM+image runs
+  BUDGET_DEFAULT_MAX_CALLS_PER_JOB = 60;       // LLM + TTS + ASR + image calls
+
+  // Provider selection (per-capability, independent). Values reference
+  // PROVIDER_FAKE/STEPFUN/AGNES/BAIDU constants from DeepFrames.Provider.Intf.
+  CONFIG_PROVIDER_LLM = 'Provider.LLM';
+  CONFIG_PROVIDER_ASR = 'Provider.ASR';
+  CONFIG_PROVIDER_IMAGE = 'Provider.Image';
+  CONFIG_PROVIDER_VIDEO = 'Provider.Video';
+
+  // Agnes AI provider (apihub.agnes-ai.com, OpenAI-compatible)
+  CONFIG_AGNES_BASE_URL = 'Agnes.BaseUrl';
+  CONFIG_AGNES_LLM_BASE_URL = 'Agnes.LLMBaseUrl';
+  CONFIG_AGNES_LLM_MODEL = 'Agnes.LLMModel';
+  CONFIG_AGNES_IMAGE_MODEL = 'Agnes.ImageModel';
+  CONFIG_AGNES_VIDEO_MODEL = 'Agnes.VideoModel';
+  CONFIG_AGNES_KEY_SECRET_REF = 'Agnes.KeySecretRef';
+  DEFAULT_AGNES_BASE_URL = 'https://apihub.agnes-ai.com/v1';
+  DEFAULT_AGNES_LLM_MODEL = 'agnes-2.0-flash';
+  DEFAULT_AGNES_IMAGE_MODEL = 'agnes-image-2.1-flash';
+  DEFAULT_AGNES_VIDEO_MODEL = 'agnes-video-v2.0';
+  // NOTE: secret names must be IsValidSecretName-compliant (a-z A-Z 0-9 _ - .),
+  // no slashes — DeepBase.Security.SaveSecret rejects '/' (anti path-traversal),
+  // and the CLI --set-secret path hangs on slashed names. Use the flat name.
+  SECRET_AGNES_API_KEY = 'agnes_api_key';
+  // LLM-specific key (e.g. when Agnes.LLMBaseUrl points at a fccy/relay host
+  // that needs its own Bearer, distinct from the Agnes image/video host key).
+  SECRET_AGNES_LLM_API_KEY = 'agnes_llm_api_key';
+
+  // Baidu ASR provider (vop.baidu.com, access_token auth)
+  CONFIG_BAIDU_ASR_APP_ID = 'Baidu.ASR.AppId';
+  CONFIG_BAIDU_ASR_API_KEY = 'Baidu.ASR.ApiKey';
+  CONFIG_BAIDU_ASR_SECRET_KEY = 'Baidu.ASR.SecretKey';
+  CONFIG_BAIDU_ASR_TOKEN_CACHE = 'Baidu.ASR.TokenCache';
+  CONFIG_BAIDU_ASR_TOKEN_EXPIRES = 'Baidu.ASR.TokenExpires';
+  // NOTE: secret names must be IsValidSecretName-compliant (a-z A-Z 0-9 _ - .),
+  // no slashes. DeepBase.Security.SaveSecret rejects names containing '/' (anti
+  // path-traversal), so the CLI --set-secret path silently fails for slashed
+  // names. Use the flat name and store the value as "APIKey;SecretKey" (single
+  // line) — the provider splits on ';' (and, for back-compat, CR/LF).
+  SECRET_BAIDU_ASR_KEY = 'baidu_asr_key';
+  DEFAULT_BAIDU_ASR_APP_ID = '7698708';
+
+  // Google Gemini provider (generativelanguage.googleapis.com, native API).
+  // Covers LLM / TTS / ASR as a failover backup behind Agnes / Baidu.
+  // NOTE: requires an HTTP proxy in CN environments — see DEFAULT_GEMINI_PROXY.
+  CONFIG_GEMINI_BASE_URL = 'Gemini.BaseUrl';
+  CONFIG_GEMINI_LLM_MODEL = 'Gemini.LLMModel';
+  CONFIG_GEMINI_TTS_MODEL = 'Gemini.TTSModel';
+  CONFIG_GEMINI_ASR_MODEL = 'Gemini.ASRModel';
+  CONFIG_GEMINI_PROXY = 'Gemini.Proxy';
+  DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+  DEFAULT_GEMINI_LLM_MODEL = 'gemini-2.5-flash';
+  DEFAULT_GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+  DEFAULT_GEMINI_ASR_MODEL = 'gemini-2.5-flash';
+  DEFAULT_GEMINI_PROXY = 'http://127.0.0.1:10808';
+  SECRET_GEMINI_API_KEY = 'gemini_api_key';
+
+  // yt-dlp / download settings for external_video_import adapter
+  CONFIG_DOWNLOAD_DIR = 'Download.Dir';
+  CONFIG_DOWNLOAD_PROXY = 'Download.Proxy';
+  CONFIG_DOWNLOAD_THREADS = 'Download.Threads';
+  CONFIG_DOWNLOAD_THROTTLED_RATE = 'Download.ThrottledRate';
+  DEFAULT_DOWNLOAD_DIR = 'downloads';
+
+  // Video transcode / encoder settings (docs/07.video §2)
+  CONFIG_VIDEO_ENCODER = 'Video.Encoder';            // cpu/auto/nvidia/intel/amd
+  CONFIG_FFMPEG_AUTO_DOWNLOAD = 'Video.FfmpegAutoDownload';
+  CONFIG_FFMPEG_DIR = 'Video.FfmpegDir';
+  DEFAULT_VIDEO_ENCODER = 'auto';
+  DEFAULT_FFMPEG_DIR = 'ffmpeg';
+
+  // Full-capability CLI overrides (tasks.md D1, 2026-07-13).
+  // --voice: TTS voice id (Baidu 106/4118/4119, StepFun cixingnansheng/...).
+  CONFIG_TTS_VOICE = 'TTS.VoiceId';
+  DEFAULT_TTS_VOICE = 'cixingnansheng';
+  // --subtitle-lang: subtitle file language tag, e.g. zh.srt / en.srt.
+  CONFIG_SUBTITLE_LANG = 'Subtitle.Lang';
+  DEFAULT_SUBTITLE_LANG = 'zh';
+  // --duration-strategy: audio/video alignment strategy for mux.
+  //   audio-base = trim/loop video to audio length (audio is the timing truth)
+  //   video-base = pad/trim audio to video length
+  //   shortest   = legacy -shortest (keeps current behaviour)
+  CONFIG_DURATION_STRATEGY = 'Video.DurationStrategy';
+  DEFAULT_DURATION_STRATEGY = 'audio-base';
+  // --keep-intermediates: '1' retains TTS wav / ASR timestamps / extracted
+  //   frames for debugging instead of deleting them between phases.
+  CONFIG_KEEP_INTERMEDIATES = 'Debug.KeepIntermediates';
+  DEFAULT_KEEP_INTERMEDIATES = '0';
+  // --output-dir: overrides the output root for generated artifacts.
+  //   Empty = use DeepBase.RootPath/output (default).
+  //   NOTE: reuses the pre-existing CONFIG_OUTPUT_DIR ('OutputDir') declared
+  //   above with CONFIG_ROOT_PATH — same key, same semantics, no new symbol.
+
+  // Notification channels (docs/09.notification §1)
+  CONFIG_NOTIFY_WECOM_WEBHOOK = 'Notify.WecomWebhook';
+  CONFIG_NOTIFY_DINGTALK_WEBHOOK = 'Notify.DingtalkWebhook';
+  CONFIG_NOTIFY_HTTP_WEBHOOK = 'Notify.HttpWebhook';
+  QUEUE_DEEPFRAMES_NOTIFY = 'deepframes.notify';
+
+  // CookieCloud sync (docs/09.cookiecloud)
+  CONFIG_COOKIECLOUD_SERVER = 'CookieCloud.Server';
+  CONFIG_COOKIECLOUD_UUID = 'CookieCloud.Uuid';
+  CONFIG_COOKIECLOUD_KEY = 'CookieCloud.Key';
+  DEFAULT_COOKIECLOUD_OUTPUT = 'cookies.txt';
+
+  // Chunked uploader (docs/09.uploader)
+  CONFIG_UPLOAD_CHUNK_SIZE = 'Upload.ChunkSizeBytes';
+  CONFIG_UPLOAD_MAX_RETRIES = 'Upload.MaxRetries';
+  DEFAULT_UPLOAD_CHUNK_SIZE = 5242880;  // 5 MiB
+  DEFAULT_UPLOAD_MAX_RETRIES = 3;
+
 function SecretNameFromRef(const SecretRef: string): string;
 function NewUuidString: string;
 function IsBusinessStatus(const Status: string): Boolean;
+/// <summary>Terminal: job/step reached a final state, no resume needed.</summary>
+function IsTerminalStatus(const Status: string): Boolean;
+/// <summary>Resumable: mid-flight (pending/running), chain should resume.</summary>
+function IsResumableStatus(const Status: string): Boolean;
 function IsAssetStatus(const Status: string): Boolean;
 function IsGateResult(const Value: string): Boolean;
 
@@ -237,6 +397,23 @@ begin
     SameText(Status, STATUS_SKIPPED) or
     SameText(Status, STATUS_FAILED) or
     SameText(Status, STATUS_CANCELLED);
+end;
+
+function IsTerminalStatus(const Status: string): Boolean;
+begin
+  // done/failed/cancelled/skipped: nothing to resume; blocked_review needs
+  // human action, not an automatic re-run.
+  Result := SameText(Status, STATUS_DONE) or
+    SameText(Status, STATUS_FAILED) or
+    SameText(Status, STATUS_CANCELLED) or
+    SameText(Status, STATUS_SKIPPED) or
+    SameText(Status, STATUS_BLOCKED_REVIEW);
+end;
+
+function IsResumableStatus(const Status: string): Boolean;
+begin
+  Result := SameText(Status, STATUS_PENDING) or
+    SameText(Status, STATUS_RUNNING);
 end;
 
 function IsAssetStatus(const Status: string): Boolean;

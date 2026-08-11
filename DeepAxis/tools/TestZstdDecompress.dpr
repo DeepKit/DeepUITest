@@ -1,4 +1,4 @@
-program TestZstdDecompress;
+﻿program TestZstdDecompress;
 
 {$APPTYPE CONSOLE}
 

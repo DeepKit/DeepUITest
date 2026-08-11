@@ -16,7 +16,12 @@ unit DeepFrames.Workflow.AudioProcessor;
 interface
 
 uses
-  System.JSON;
+  System.JSON,
+  System.IOUtils,
+  DeepBase.Config,
+  DeepFrames.Domain.Types,
+  DeepFrames.Shared.Consts,
+  DeepFrames.Shared.Tools;
 
 type
   /// <summary>Result of audio concatenation.</summary>
@@ -72,6 +77,9 @@ type
   public
     /// <summary>Find ffmpeg executable. Searches PATH and common install locations.</summary>
     class function FindFFmpeg: string; static;
+
+    /// <summary>Find ffprobe executable. Searches PATH and common install locations.</summary>
+    class function FindFFprobe: string; static;
 
     /// <summary>
     /// Concatenate multiple WAV audio files into a single WAV.
@@ -129,10 +137,44 @@ type
       out ASampleRate: Integer; out AChannels: Integer;
       out ADurationSec: Double): Boolean; static;
 
+    /// <summary>
+    /// Extract audio track from a video/container file to 16kHz mono WAV.
+    /// Used by external_video_import adapter to prepare audio for ASR.
+    /// Output path must be writable; parent dir is created if missing.
+    /// </summary>
+    class function ExtractAudio(const AInputVideo, AOutputWav: string;
+      out AErrorMessage: string): Boolean; static;
+
+    /// <summary>
+    /// Split a long audio file into &lt;60s segments for chunked ASR.
+    /// Simplified VAD: equal-length segmentation at AChunkSec (default 60s)
+    /// rather than true silence detection — sufficient for whole-text ASR
+    /// where word-level timestamps are not needed. Segment paths land in
+    /// the same directory as the input, named &lt;stem&gt;_NNN.wav.
+    /// </summary>
+    class function VadSplit(const AWavFile: string;
+      out ASegments: TArray<TAudioSegment>;
+      AChunkSec: Double = 60.0): Boolean; static;
+
+    /// <summary>True VAD via ffmpeg silencedetect — parse silence_start/end
+    /// from stderr to derive speech segments, then slice each speech region
+    /// to its own wav (same naming as VadSplit). Falls back to VadSplit
+    /// (equal-length) when detection yields no usable speech region, and to
+    /// a single whole-file segment when slicing also fails. Interface mirrors
+    /// Y2A vad_processor: input audio -> output region list.
+    /// </summary>
+    class function VadScan(const AWavFile: string;
+      out ASegments: TArray<TAudioSegment>;
+      AChunkSec: Double = 60.0): Boolean; static;
+
     /// <summary>Execute an arbitrary ffmpeg command and get exit code + stdout.
     /// Used by VideoChain for video+audio mux and other non-audio FFmpeg tasks.
+    /// ATimeoutMs caps how long we wait before force-killing a hung ffmpeg;
+    /// default 300000 (5 min) suits short clips. For mux on long source video,
+    /// pass a value scaled to the input duration (see VideoChain mux).
     /// </summary>
-    class function Execute(const AArgs: string; out AStdOut: string): Integer; static;
+    class function Execute(const AArgs: string; out AStdOut: string;
+      ATimeoutMs: Cardinal = 300000): Integer; static;
   end;
 
 implementation
@@ -140,11 +182,10 @@ implementation
 uses
   System.SysUtils,
   System.Classes,
-  System.IOUtils,
-  Winapi.Windows,
-  DeepFrames.Shared.Consts;
+  Winapi.Windows;
 
-function RunFFmpeg(const AArgs: string; out AStdOut, AStdErr: string): Integer;
+function RunFFmpeg(const AArgs: string; out AStdOut, AStdErr: string;
+  const AExe: string = ''; ATimeoutMs: Cardinal = 300000): Integer;
 var
   Security: TSecurityAttributes;
   ReadPipe, WritePipe: THandle;
@@ -153,7 +194,7 @@ var
   Buffer: array[0..4095] of Byte;
   BytesRead: DWORD;
   TmpBytes: TBytes;
-  CmdLine: string;
+  CmdLine, ExePath: string;
   OutStr: TStringBuilder;
   WaitRes: DWORD;
 begin
@@ -181,7 +222,11 @@ begin
       StartInfo.dwFlags := STARTF_USESTDHANDLES or STARTF_USESHOWWINDOW;
       StartInfo.wShowWindow := SW_HIDE;
 
-      CmdLine := '"' + TAudioProcessor.FindFFmpeg + '" ' + AArgs;
+      if AExe <> '' then
+        ExePath := AExe
+      else
+        ExePath := TAudioProcessor.FindFFmpeg;
+      CmdLine := '"' + ExePath + '" ' + AArgs;
 
       if CreateProcess(nil, PChar(CmdLine), nil, nil, True,
         CREATE_NO_WINDOW or NORMAL_PRIORITY_CLASS, nil, nil, StartInfo, ProcInfo) then
@@ -191,14 +236,26 @@ begin
           CloseHandle(WritePipe);
           WritePipe := 0;
 
-          // Read stdout
+          // Read stdout/stderr in a tight loop. We MUST drain the pipe on
+          // every iteration: ffmpeg writes verbose progress to stderr, the
+          // pipe's 4KB kernel buffer fills, and then ffmpeg blocks on its
+          // next write — while we sit in WaitForSingleObject waiting for the
+          // process to exit. Classic pipe deadlock. Poll the pipe with a
+          // short wait so we keep draining while ffmpeg runs. Hard cap 300s.
+          var TotalWaitMs: DWORD := 0;
           repeat
-            WaitRes := WaitForSingleObject(ProcInfo.hProcess, 60000);
+            WaitRes := WaitForSingleObject(ProcInfo.hProcess, 100);
+            Inc(TotalWaitMs, 100);
             if WaitRes = WAIT_TIMEOUT then
             begin
-              TerminateProcess(ProcInfo.hProcess, 1);
-              Exit;
-            end;
+              if TotalWaitMs >= ATimeoutMs then
+              begin
+                TerminateProcess(ProcInfo.hProcess, 1);
+                Exit;
+              end;
+            end
+            else if WaitRes = WAIT_OBJECT_0 then
+              Break;
 
             if PeekNamedPipe(ReadPipe, nil, 0, nil, @BytesRead, nil) and (BytesRead > 0) then
             begin
@@ -208,7 +265,7 @@ begin
               Move(Buffer[0], TmpBytes[0], BytesRead);
               OutStr.Append(TEncoding.UTF8.GetString(TmpBytes));
             end;
-          until WaitRes = WAIT_OBJECT_0;
+          until False;
 
           // Drain remaining
           while PeekNamedPipe(ReadPipe, nil, 0, nil, @BytesRead, nil) and (BytesRead > 0) do
@@ -240,21 +297,18 @@ end;
 { TAudioProcessor }
 
 class function TAudioProcessor.FindFFmpeg: string;
-const
-  KnownPaths: array[0..3] of string = (
-    'ffmpeg.exe',
-    'C:\tools\ffmpeg\bin\ffmpeg.exe',
-    'C:\Program Files\ffmpeg\bin\ffmpeg.exe',
-    'D:\tools\ffmpeg\bin\ffmpeg.exe'
-  );
-var
-  I: Integer;
 begin
-  for I := 0 to High(KnownPaths) do
-    if FileExists(KnownPaths[I]) then
-      Exit(KnownPaths[I]);
-  // Default: assume in PATH
-  Result := 'ffmpeg';
+  // D7: delegated to the single source of truth in Shared.Tools. This class
+  // method is kept for backward-compat with existing call sites
+  // (VideoTranscoder, AudioProcessor internals) — new code should call
+  // TFFmpegLocator.FindFFmpeg directly.
+  Result := TFFmpegLocator.FindFFmpeg;
+end;
+
+class function TAudioProcessor.FindFFprobe: string;
+begin
+  // D7: see FindFFmpeg — delegated to Shared.Tools.TFFmpegLocator.
+  Result := TFFmpegLocator.FindFFprobe;
 end;
 
 class function TAudioProcessor.Concat(const AInputFiles: TArray<string>;
@@ -333,7 +387,9 @@ begin
   Result.ToSampleRate := AToRate;
   Result.ErrorMessage := '';
 
-  ForceDirectories(TPath.GetDirectoryName(AOutputFile));
+  var DirToCreate := TPath.GetDirectoryName(AOutputFile);
+  if (DirToCreate <> '') and (AOutputFile <> '') then
+    ForceDirectories(DirToCreate);
 
   ExitCode := RunFFmpeg(
     Format('-i "%s" -ar %d -ac %d -sample_fmt s16 "%s" -y',
@@ -415,7 +471,11 @@ begin
     Result.OutputTp := Measured.InputTp;
     Result.OutputLra := Measured.InputLra;
     Result.OutputThresh := Measured.InputThresh;
-    Result.RawJson := Output;
+    // Use the extracted JSON, not the full ffmpeg output
+    if Measured.RawJson <> '' then
+      Result.RawJson := Measured.RawJson
+    else
+      Result.RawJson := '{}';
 
     if FileExists(AOutputFile) then
     begin
@@ -520,7 +580,7 @@ begin
   ExitCode := RunFFmpeg(
     Format('-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "%s"',
       [AFile]),
-    Output, Error);
+    Output, Error, TAudioProcessor.FindFFprobe);
 
   if ExitCode = 0 then
     TryStrToFloat(Trim(Output), Result);
@@ -546,7 +606,7 @@ begin
   ExitCode := RunFFmpeg(
     Format('-v error -show_entries stream=sample_rate,channels,duration -of default=noprint_wrappers=1:nokey=1 "%s"',
       [AFile]),
-    Output, Error);
+    Output, Error, TAudioProcessor.FindFFprobe);
 
   if ExitCode <> 0 then
     Exit;
@@ -567,12 +627,277 @@ begin
   Result := True;
 end;
 
+class function TAudioProcessor.ExtractAudio(const AInputVideo, AOutputWav: string;
+  out AErrorMessage: string): Boolean;
+var
+  ExitCode: Integer;
+  Output, Error: string;
+begin
+  Result := False;
+  AErrorMessage := '';
+
+  if not FileExists(AInputVideo) then
+  begin
+    AErrorMessage := 'Input video not found: ' + AInputVideo;
+    Exit;
+  end;
+
+  ForceDirectories(TPath.GetDirectoryName(AOutputWav));
+
+  // Extract audio, downmix to mono, resample to 16kHz PCM s16 WAV (ASR-ready)
+  ExitCode := RunFFmpeg(
+    Format('-i "%s" -vn -ac 1 -ar 16000 -sample_fmt s16 "%s" -y',
+      [AInputVideo, AOutputWav]),
+    Output, Error);
+
+  if ExitCode = 0 then
+  begin
+    if FileExists(AOutputWav) then
+      Result := True
+    else
+      AErrorMessage := 'ffmpeg exited 0 but output file missing: ' + AOutputWav;
+  end
+  else
+    AErrorMessage := Format('ffmpeg extract failed (exit %d): %s', [ExitCode, Output]);
+end;
+
+class function TAudioProcessor.VadSplit(const AWavFile: string;
+  out ASegments: TArray<TAudioSegment>; AChunkSec: Double): Boolean;
+var
+  TotalDur: Double;
+  ChunkCount, I: Integer;
+  SegStart: Double;
+  SegPath, Stem, Dir: string;
+  ExitCode: Integer;
+  Output, Error: string;
+  Seg: TAudioSegment;
+begin
+  Result := False;
+  SetLength(ASegments, 0);
+
+  if not FileExists(AWavFile) then
+    Exit;
+
+  TotalDur := GetDuration(AWavFile);
+  if TotalDur <= 0 then
+    Exit;
+
+  // 单文件短于一个分片 → 不切，直接返回原文件
+  if TotalDur <= AChunkSec then
+  begin
+    Seg.StartSec := 0;
+    Seg.DurationSec := TotalDur;
+    Seg.LocalPath := AWavFile;
+    SetLength(ASegments, 1);
+    ASegments[0] := Seg;
+    Result := True;
+    Exit;
+  end;
+
+  ChunkCount := Trunc(TotalDur / AChunkSec);
+  if Frac(TotalDur / AChunkSec) > 0 then
+    Inc(ChunkCount);
+
+  Stem := TPath.GetFileNameWithoutExtension(AWavFile);
+  Dir := TPath.GetDirectoryName(AWavFile);
+  if Dir = '' then
+    Dir := '.';
+
+  for I := 0 to ChunkCount - 1 do
+  begin
+    SegStart := I * AChunkSec;
+    SegPath := TPath.Combine(Dir, Format('%s_%.3d.wav', [Stem, I + 1]));
+
+    ExitCode := RunFFmpeg(
+      Format('-ss %.3f -t %.3f -i "%s" -ac 1 -ar 16000 -sample_fmt s16 "%s" -y',
+        [SegStart, AChunkSec, AWavFile, SegPath]),
+      Output, Error);
+
+    if ExitCode <> 0 then
+      Exit;  // 任一分片失败 → 整体失败
+
+    if not FileExists(SegPath) then
+      Exit;
+
+    Seg.StartSec := SegStart;
+    Seg.DurationSec := AChunkSec;
+    Seg.LocalPath := SegPath;
+    SetLength(ASegments, Length(ASegments) + 1);
+    ASegments[High(ASegments)] := Seg;
+  end;
+
+  Result := Length(ASegments) > 0;
+end;
+
+class function TAudioProcessor.VadScan(const AWavFile: string;
+  out ASegments: TArray<TAudioSegment>; AChunkSec: Double): Boolean;
+var
+  TotalDur: Double;
+  ExitCode: Integer;
+  Output, Error: string;
+  Lines: TArray<string>;
+  Line: string;
+  SilenceStarts, SilenceEnds: TArray<Double>;
+  SpeechStart, SpeechEnd: Double;
+  I: Integer;
+  SegPath, Stem, Dir: string;
+  Seg: TAudioSegment;
+
+  function TryExtractFloat(const ALine, AMarker: string; out AVal: Double): Boolean;
+  var
+    P: Integer;
+    Tmp: string;
+  begin
+    Result := False;
+    AVal := 0;
+    P := Pos(AMarker, ALine);
+    if P = 0 then
+      Exit;
+    Tmp := Copy(ALine, P + Length(AMarker), MaxInt);
+    // Trim leading non-numeric (e.g. "silence_start: 1.234")
+    while (Tmp <> '') and not CharInSet(Tmp[1], ['0'..'9', '-']) do
+      Delete(Tmp, 1, 1);
+    Result := TryStrToFloat(Tmp, AVal);
+  end;
+
+begin
+  Result := False;
+  SetLength(ASegments, 0);
+  SetLength(SilenceStarts, 0);
+  SetLength(SilenceEnds, 0);
+
+  if not FileExists(AWavFile) then
+    Exit;
+
+  TotalDur := GetDuration(AWavFile);
+  if TotalDur <= 0 then
+    Exit;
+
+  // silencedetect writes silence_start/silence_end lines to stderr;
+  // RunFFmpeg merges stdout+stderr into Output, so parse from there.
+  ExitCode := RunFFmpeg(
+    Format('-i "%s" -af silencedetect=noise=-40dB:d=0.5 -f null -', [AWavFile]),
+    Output, Error);
+
+  // Parse regardless of exit code — ffmpeg may exit non-zero yet emit detect lines
+  Lines := Output.Split([#10, #13]);
+  for Line in Lines do
+  begin
+    if Pos('silence_start', Line) > 0 then
+    begin
+      if TryExtractFloat(Line, 'silence_start', SpeechStart) then
+      begin
+        SetLength(SilenceStarts, Length(SilenceStarts) + 1);
+        SilenceStarts[High(SilenceStarts)] := SpeechStart;
+      end;
+    end
+    else if Pos('silence_end', Line) > 0 then
+    begin
+      if TryExtractFloat(Line, 'silence_end', SpeechEnd) then
+      begin
+        SetLength(SilenceEnds, Length(SilenceEnds) + 1);
+        SilenceEnds[High(SilenceEnds)] := SpeechEnd;
+      end;
+    end;
+  end;
+
+  // Derive speech regions from silence regions:
+  //   speech[0] = [0, first silence_start)
+  //   speech[i] = (silence_end[i-1], silence_start[i])
+  //   speech[last] = (last silence_end, total_dur)
+  SetLength(ASegments, 0);
+
+  Stem := TPath.GetFileNameWithoutExtension(AWavFile);
+  Dir := TPath.GetDirectoryName(AWavFile);
+  if Dir = '' then
+    Dir := '.';
+
+  // No silence detected → whole file is one speech segment
+  if (Length(SilenceStarts) = 0) and (Length(SilenceEnds) = 0) then
+  begin
+    Seg.StartSec := 0;
+    Seg.DurationSec := TotalDur;
+    Seg.LocalPath := AWavFile;
+    SetLength(ASegments, 1);
+    ASegments[0] := Seg;
+    Result := True;
+    Exit;
+  end;
+
+  // Leading speech (before first silence)
+  if (Length(SilenceStarts) > 0) and (SilenceStarts[0] > 0.05) then
+  begin
+    SegPath := TPath.Combine(Dir, Format('%s_%.3d.wav', [Stem, Length(ASegments) + 1]));
+    ExitCode := RunFFmpeg(
+      Format('-ss 0.000 -t %.3f -i "%s" -ac 1 -ar 16000 -sample_fmt s16 "%s" -y',
+        [SilenceStarts[0], AWavFile, SegPath]), Output, Error);
+    if (ExitCode = 0) and FileExists(SegPath) then
+    begin
+      Seg.StartSec := 0;
+      Seg.DurationSec := SilenceStarts[0];
+      Seg.LocalPath := SegPath;
+      SetLength(ASegments, Length(ASegments) + 1);
+      ASegments[High(ASegments)] := Seg;
+    end;
+  end;
+
+  // Middle speech regions: between silence_end[i] and silence_start[i+1]
+  for I := 0 to High(SilenceEnds) - 1 do
+  begin
+    if (I + 1) > High(SilenceStarts) then
+      Break;
+    SpeechStart := SilenceEnds[I];
+    SpeechEnd := SilenceStarts[I + 1];
+    if (SpeechEnd - SpeechStart) < 0.3 then
+      Continue; // too short to be useful speech
+    SegPath := TPath.Combine(Dir, Format('%s_%.3d.wav', [Stem, Length(ASegments) + 1]));
+    ExitCode := RunFFmpeg(
+      Format('-ss %.3f -t %.3f -i "%s" -ac 1 -ar 16000 -sample_fmt s16 "%s" -y',
+        [SpeechStart, SpeechEnd - SpeechStart, AWavFile, SegPath]), Output, Error);
+    if (ExitCode = 0) and FileExists(SegPath) then
+    begin
+      Seg.StartSec := SpeechStart;
+      Seg.DurationSec := SpeechEnd - SpeechStart;
+      Seg.LocalPath := SegPath;
+      SetLength(ASegments, Length(ASegments) + 1);
+      ASegments[High(ASegments)] := Seg;
+    end;
+  end;
+
+  // Trailing speech (after last silence_end)
+  if (Length(SilenceEnds) > 0) and (TotalDur - SilenceEnds[High(SilenceEnds)] > 0.3) then
+  begin
+    SpeechStart := SilenceEnds[High(SilenceEnds)];
+    SegPath := TPath.Combine(Dir, Format('%s_%.3d.wav', [Stem, Length(ASegments) + 1]));
+    ExitCode := RunFFmpeg(
+      Format('-ss %.3f -t %.3f -i "%s" -ac 1 -ar 16000 -sample_fmt s16 "%s" -y',
+        [SpeechStart, TotalDur - SpeechStart, AWavFile, SegPath]), Output, Error);
+    if (ExitCode = 0) and FileExists(SegPath) then
+    begin
+      Seg.StartSec := SpeechStart;
+      Seg.DurationSec := TotalDur - SpeechStart;
+      Seg.LocalPath := SegPath;
+      SetLength(ASegments, Length(ASegments) + 1);
+      ASegments[High(ASegments)] := Seg;
+    end;
+  end;
+
+  // Fallback: speech-region slicing yielded nothing → fall back to VadSplit
+  if Length(ASegments) = 0 then
+  begin
+    Result := VadSplit(AWavFile, ASegments, AChunkSec);
+    Exit;
+  end;
+
+  Result := Length(ASegments) > 0;
+end;
+
 class function TAudioProcessor.Execute(const AArgs: string;
-  out AStdOut: string): Integer;
+  out AStdOut: string; ATimeoutMs: Cardinal): Integer;
 var
   Dummy: string;
 begin
-  Result := RunFFmpeg(AArgs, AStdOut, Dummy);
+  Result := RunFFmpeg(AArgs, AStdOut, Dummy, '', ATimeoutMs);
 end;
 
 end.

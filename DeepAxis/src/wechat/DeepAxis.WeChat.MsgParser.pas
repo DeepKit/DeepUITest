@@ -1,4 +1,4 @@
-unit DeepAxis.WeChat.MsgParser;
+﻿unit DeepAxis.WeChat.MsgParser;
 
 interface
 

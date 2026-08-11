@@ -81,6 +81,39 @@ python protocol/conformance/run.py --reader "your-reader" --level 1
 
 The current repository does not yet publish `npx deepspec-*` commands. CLI commands are tracked in `tasks.md` as future work.
 
+## Desktop App (Delphi)
+
+### Prerequisites
+
+- Delphi 13.1 (BDS 37.0) — the self-hosted build scripts default to `d:\Program Files (x86)\Embarcadero\Studio\37.0` and `D:\_Progs\02Business\DeepBase` (override via `BDS` / `DEEPBASE_HOME` env vars).
+- Microsoft Edge WebView2 Runtime (for the HTML review pages in the main view).
+- `root.txt` next to the EXE with the DeepBase project root as its first line (DeepBase DB1/ConfigDB locator).
+
+### Build
+
+```bat
+_build.bat               :: main program -> bin\DeepSpec.exe
+cd tests && _build_tests.bat && DeepSpec.Tests.exe   :: 113 unit tests
+cd cli && _build_cli.bat :: headless CLI -> cli\bin\DeepSpec.CLI.exe
+```
+
+### First Run
+
+1. Launch `bin\DeepSpec.exe` — the UI follows the Windows display language (zh-CN/zh-TW/en-US).
+2. Menu **Tools → Setup LLM (ModelScope)** — enter a ModelScope API key once (stored via DeepBase).
+3. In the directory tree pick a project folder, click **Visualize** to scan.
+4. The dashboard (index.html) opens in the main view; recent projects and window layout persist across restarts (DB1-backed MRU/layout).
+
+### CLI
+
+```bat
+DeepSpec.CLI init <dir>      :: create .deepspec structure
+DeepSpec.CLI scan <dir>      :: scan + build trees + render + prompts
+DeepSpec.CLI generate <dir>  :: export the prompt pack (LLM call runs in the GUI)
+DeepSpec.CLI validate <dir>  :: validate trees/issues YAML (exit 1 on errors)
+DeepSpec.CLI render <dir>    :: re-render HTML from YAML on disk
+```
+
 ## Why It Matters
 
 Symphony-style orchestration can keep agents working. DeepSpec focuses on a different layer: making the specification an agent can work from trustworthy enough to review, repair, and hand off.

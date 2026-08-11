@@ -6,6 +6,24 @@ uses
   DeepFrames.Domain.Types;
 
 type
+  /// <summary>Per-phase progress callback for async pipeline (DBA-4). Fires on
+  /// the worker thread after each phase completes.</summary>
+  TPipelineProgressEvent = reference to procedure(const APhase: string; const AJob: TDeepFramesJob);
+
+  /// <summary>Completion callback for async pipeline (DBA-4). Fires on the
+  /// worker thread with the final (package) job. Callers touching VCL must
+  /// marshal via TThread.Queue(nil, ...).</summary>
+  TPipelineCompleteEvent = reference to procedure(const AFinalJob: TDeepFramesJob);
+
+  /// <summary>Snapshot of an async pipeline job's state (DBA-4).</summary>
+  TPipelineStatus = record
+    JobId: string;
+    Status: string;        // running | completed | failed
+    IsTerminal: Boolean;
+    FinalJob: TDeepFramesJob;
+    CurrentPhase: string;
+  end;
+
   /// <summary>
   /// Application service mediating between UI and persistence.
   /// All UI code must call this service; direct Repository access from UI
@@ -114,6 +132,42 @@ type
     /// <summary>Run the Phase 6 candidate package workflow.</summary>
     class function RunPackageChain: TDeepFramesJob; static;
 
+    /// <summary>Run the entire pipeline end-to-end: preprocess → document →
+    /// agent → audio → video → package. Each phase persists its output to
+    /// the repository and the next phase resolves it fresh from the DB, so
+    /// the pipeline is a sequential composition of the per-phase Run*
+    /// methods. Stops at the first phase whose job status is not done/
+    /// completed and returns that job (carrying STATUS_FAILED /
+    /// STATUS_BLOCKED_REVIEW), so callers can inspect which phase broke.
+    /// Returns the final (package) job on success.</summary>
+    class function RunFullPipeline(const ForceRerun: Boolean = False): TDeepFramesJob; static;
+
+    /// <summary>Synchronous pipeline core (DBA-4). Shared body of the blocking
+    /// RunFullPipeline wrapper and the worker-thread handler. AOnProgress fires
+    /// after each phase (caller thread). Internal — prefer RunFullPipeline /
+    /// RunFullPipelineAsync from outside.</summary>
+    class function RunFullPipelineSync(const ForceRerun: Boolean;
+      const AOnProgress: TPipelineProgressEvent): TDeepFramesJob; static;
+
+    /// <summary>Run the full pipeline asynchronously via DeepBase TWorkerQueue,
+    /// so the GUI main thread / CLI prompt is not blocked. Returns the internal
+    /// TJob.Id immediately (the pipeline runs on a worker thread). AOnProgress
+    /// fires after each phase completes (worker thread — callers touching VCL
+    /// must marshal via TThread.Queue). AOnComplete fires with the final job on
+    /// the worker thread. DBA-4 (tasks.md line 78: 编排走 ExecuteAsync/Scheduler).
+    /// Idempotency/断点续传 relies on the per-phase Run* FindJobByLogicalKey
+    /// short-circuit (续9/13 already verified); no DependsOn chain (excluded:
+    /// in-memory TWorkerQueue loses jobs on crash — DB state still drives resume).</summary>
+    class function RunFullPipelineAsync(
+      const ForceRerun: Boolean = False;
+      const AOnProgress: TPipelineProgressEvent = nil;
+      const AOnComplete: TPipelineCompleteEvent = nil): string; static;
+
+    /// <summary>Poll the async pipeline job started by RunFullPipelineAsync.
+    /// Returns the current TJob status + the final TDeepFramesJob once terminal.
+    /// Used by CLI --run-pipeline poll loop and GUI status display.</summary>
+    class function GetPipelineStatus(const APipelineJobId: string): TPipelineStatus; static;
+
     /// <summary>Return candidate packages for a given project.</summary>
     class function ListCandidatePackages(const AProjectId: string): TArray<TCandidatePackage>; static;
 
@@ -138,8 +192,14 @@ implementation
 
 uses
   System.SysUtils,
+  System.Classes,
+  System.SyncObjs,
+  System.Generics.Collections,
   System.IOUtils,
+  Winapi.Windows,
   DeepBase.DB.Migrations,
+  DeepBase.Logging,
+  DeepBase.WorkerQueue,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Connection,
   DeepFrames.Persistence.Migrations,
@@ -166,8 +226,21 @@ begin
 
   Repo := TDeepFramesRepository.Create;
   try
-    Repo.InsertProject(Result);
-    Repo.InsertContentUnit(UnitInfo);
+    // Pool-backed TFDConnection does NOT auto-commit implicit transactions on
+    // connection return — without an explicit commit, the inserted project/unit
+    // stay uncommitted on the pooled connection and are invisible to a fresh
+    // connection (e.g. the one ImportMarkdown opens next), causing a spurious
+    // "Selected project has no content unit" failure. Wrap both inserts in one
+    // explicit transaction and commit before the connection returns to the pool.
+    Repo.BeginTransaction;
+    try
+      Repo.InsertProject(Result);
+      Repo.InsertContentUnit(UnitInfo);
+      Repo.CommitTransaction;
+    except
+      Repo.RollbackTransaction;
+      raise;
+    end;
   finally
     Repo.Free;
   end;
@@ -189,6 +262,10 @@ begin
     if Length(Projects) = 0 then
       raise Exception.Create('Create a project before importing markdown');
     Units := Repo.ListContentUnits(Projects[0].ProjectId);
+    Logger.InfoFmt(
+      'ImportMarkdown projects=%d proj0=%s units=%d',
+      [Length(Projects), Projects[0].ProjectId, Length(Units)],
+      'DeepFrames.App');
     if Length(Units) = 0 then
       raise Exception.Create('Selected project has no content unit');
 
@@ -559,26 +636,25 @@ var
   AudioManifestId: string;
 begin
   Repo := TDeepFramesRepository.Create;
+
   try
     Projects := Repo.ListProjects;
+
     if Length(Projects) = 0 then
       raise Exception.Create('Create a project before running video chain');
     Units := Repo.ListContentUnits(Projects[0].ProjectId);
+
     if Length(Units) = 0 then
       raise Exception.Create('No content unit available');
     Shots := Repo.ListShotDocuments(Units[0].ContentUnitId);
-    // Find audio manifest for the shot
-    if (Length(Shots) > 0) and
-       Repo.FindAudioManifestByShot(Shots[0].DocumentId, Manifests[0]) then
+
+    // Skip FindAudioManifestByShot due to AV bug - use ListAudioManifests instead
+    Manifests := Repo.ListAudioManifests(Units[0].ContentUnitId);
+
+    if Length(Manifests) > 0 then
       AudioManifestId := Manifests[0].ManifestId
     else
-    begin
-      Manifests := Repo.ListAudioManifests(Units[0].ContentUnitId);
-      if Length(Manifests) > 0 then
-        AudioManifestId := Manifests[0].ManifestId
-      else
-        AudioManifestId := '';
-    end;
+      AudioManifestId := '';
   finally
     Repo.Free;
   end;
@@ -704,6 +780,256 @@ begin
   Result := TPackageChainWorkflow.RunChain(
     Projects[0].ProjectId, Units[0].ContentUnitId,
     VariantDocId, AudioManifestId, VideoIRId, PLATFORM_BILIBILI);
+end;
+
+{ Full pipeline: sequential composition of every per-phase Run* method.
+  Data flows between phases through the repository, not through the
+  returned TDeepFramesJob (which carries only JobId/Status, no artifact
+  IDs), so each Run* re-resolves its inputs from the DB. We therefore just
+  call them in order and inspect each returned job's Status. A phase that
+  ends in STATUS_DONE / STATUS_COMPLETED lets the pipeline proceed; any
+  other status (failed, blocked_review, cancelled) halts and is returned
+  so the caller knows which phase broke. The success path returns the
+  final package-chain job. }
+
+function IsPhaseComplete(const AStatus: string): Boolean;
+begin
+  Result := SameText(AStatus, STATUS_DONE) or
+            SameText(AStatus, STATUS_COMPLETED);
+end;
+
+{ DBA-4: async pipeline bookkeeping. A single DeepFrames-owned TWorkerQueue
+  runs pipeline jobs on worker threads (registered handler per JobType).
+  Per-instance caller callbacks (AOnProgress/AOnComplete) are stashed in
+  GPipelineCallbacks keyed by JobId, since TWorkerQueue's handler signature
+  only carries the TJob. Terminal results land in GPipelineResults so the
+  poll-based GetPipelineStatus can report the final TDeepFramesJob even after
+  the OnComplete callback has fired. Both maps are guarded by GPipelineLock. }
+
+type
+  TPipelineCallbacks = record
+    Progress: TPipelineProgressEvent;
+    Complete: TPipelineCompleteEvent;
+    ForceRerun: Boolean;
+  end;
+
+var
+  GPipelineQueue: TWorkerQueue = nil;
+  GPipelineHandlerRegistered: Boolean = False;
+  GPipelineCallbacks: TDictionary<string, TPipelineCallbacks> = nil;
+  GPipelineResults: TDictionary<string, TPipelineStatus> = nil;
+  GPipelineLock: TCriticalSection = nil;
+
+procedure EnsurePipelineQueue;
+const
+  PIPELINE_JOB_TYPE = 'deepframes.pipeline';
+begin
+  if GPipelineLock = nil then
+    GPipelineLock := TCriticalSection.Create;
+  GPipelineLock.Enter;
+  try
+    if GPipelineQueue = nil then
+    begin
+      GPipelineQueue := TWorkerQueue.Create('deepframes-pipeline', 2);
+      GPipelineCallbacks := TDictionary<string, TPipelineCallbacks>.Create;
+      GPipelineResults := TDictionary<string, TPipelineStatus>.Create;
+    end;
+    if not GPipelineHandlerRegistered then
+    begin
+      // One global handler per JobType. Each pipeline instance is distinguished
+      // by AJob.Id; its ForceRerun + caller callbacks are recovered from
+      // GPipelineCallbacks. Runs on the worker thread — VCL callers must marshal.
+      GPipelineQueue.RegisterHandler(PIPELINE_JOB_TYPE,
+        procedure(const AJob: TJob)
+        var
+          Cb: TPipelineCallbacks;
+          FinalJob: TDeepFramesJob;
+          St: TPipelineStatus;
+          HasCb: Boolean;
+        begin
+          HasCb := False;
+          GPipelineLock.Enter;
+          try
+            HasCb := GPipelineCallbacks.TryGetValue(AJob.Id, Cb);
+          finally GPipelineLock.Leave; end;
+          if not HasCb then
+            Exit; // orphaned job (process restart lost the in-memory callback map)
+          FinalJob := TDeepFramesAppService.RunFullPipelineSync(Cb.ForceRerun, Cb.Progress);
+          St.JobId := AJob.Id;
+          St.Status := FinalJob.Status;
+          St.IsTerminal := True;
+          St.FinalJob := FinalJob;
+          St.CurrentPhase := 'P6-done';
+          GPipelineLock.Enter;
+          try
+            GPipelineResults.AddOrSetValue(AJob.Id, St);
+            GPipelineCallbacks.Remove(AJob.Id);
+          finally GPipelineLock.Leave; end;
+          if Assigned(Cb.Complete) then
+            Cb.Complete(FinalJob);
+        end);
+      GPipelineHandlerRegistered := True;
+    end;
+    if not GPipelineQueue.IsShuttingDown then
+      GPipelineQueue.Start;
+  finally GPipelineLock.Leave; end;
+end;
+
+class function TDeepFramesAppService.RunFullPipeline(const ForceRerun: Boolean): TDeepFramesJob;
+begin
+  // Synchronous wrapper retained for callers that still want blocking behavior
+  // (e.g. tests, legacy entry points). DBA-4 async callers use RunFullPipelineAsync.
+  Result := RunFullPipelineSync(ForceRerun, nil);
+end;
+
+class function TDeepFramesAppService.RunFullPipelineAsync(
+  const ForceRerun: Boolean;
+  const AOnProgress: TPipelineProgressEvent;
+  const AOnComplete: TPipelineCompleteEvent): string;
+const
+  PIPELINE_JOB_TYPE = 'deepframes.pipeline';
+var
+  Job: TJob;
+  Cb: TPipelineCallbacks;
+begin
+  EnsurePipelineQueue;
+  Job := GPipelineQueue.CreateJob(PIPELINE_JOB_TYPE);
+  Cb.Progress := AOnProgress;
+  Cb.Complete := AOnComplete;
+  Cb.ForceRerun := ForceRerun;
+  GPipelineLock.Enter;
+  try
+    GPipelineCallbacks.AddOrSetValue(Job.Id, Cb);
+  finally GPipelineLock.Leave; end;
+  GPipelineQueue.Enqueue(Job);
+  Result := Job.Id;
+end;
+
+class function TDeepFramesAppService.GetPipelineStatus(
+  const APipelineJobId: string): TPipelineStatus;
+var
+  Job: TJob;
+  St: TPipelineStatus;
+  Found: Boolean;
+begin
+  Result := Default(TPipelineStatus);
+  Result.JobId := APipelineJobId;
+  GPipelineLock.Enter;
+  try
+    Found := GPipelineResults.TryGetValue(APipelineJobId, St);
+  finally GPipelineLock.Leave; end;
+  if Found then
+  begin
+    Result := St;
+    Exit;
+  end;
+  // Still running — reflect the live TWorkerQueue job state. FinalJob is empty
+  // until terminal; callers poll until IsTerminal.
+  if GPipelineQueue <> nil then
+  begin
+    Job := GPipelineQueue.GetJob(APipelineJobId);
+    if Job <> nil then
+    begin
+      case Job.Status of
+        jsPending:   Result.Status := 'pending';
+        jsRunning:   Result.Status := 'running';
+        jsCompleted: Result.Status := 'completed';
+        jsFailed:   Result.Status := 'failed';
+        jsCancelled: Result.Status := 'cancelled';
+      else
+        Result.Status := 'unknown';
+      end;
+      Result.IsTerminal := (Job.Status = jsCompleted) or (Job.Status = jsFailed) or
+                           (Job.Status = jsCancelled);
+    end;
+  end;
+end;
+
+class function TDeepFramesAppService.RunFullPipelineSync(const ForceRerun: Boolean;
+  const AOnProgress: TPipelineProgressEvent): TDeepFramesJob;
+  procedure Mark(const S: string);
+  begin
+    // Phase progress must use the standard logger because this service also
+    // runs inside the VCL GUI process, where bare WriteLn can raise EInOutError.
+    // The CLI pipeline keeps its own explicit TextFile log in DeepFrames.dpr.
+    Logger.Info('[phase] ' + S, 'DeepFrames.Pipeline');
+    OutputDebugString(PChar('[DeepFrames] ' + S));
+  end;
+  procedure Notify(const APhase: string; const AJob: TDeepFramesJob);
+  begin
+    // DBA-4: forward per-phase progress to the async caller. Runs on the
+    // worker thread — AOnProgress must marshal to the UI thread itself.
+    if Assigned(AOnProgress) then
+      AOnProgress(APhase, AJob);
+  end;
+begin
+  // Force-rerun: purge every existing job for the current project (cascades to
+  // job_step via FK) so each phase's FindJobByLogicalKey finds nothing and
+  // creates a fresh job, breaking the idempotent short-circuit that otherwise
+  // returns the stale completed job without running any real step.
+  if ForceRerun then
+  begin
+    Mark('P0-force-rerun: purging old jobs');
+    var PurgeRepo := TDeepFramesRepository.Create;
+    try
+      var Projs := PurgeRepo.ListProjects;
+      if Length(Projs) > 0 then
+      begin
+        var AllJobs := PurgeRepo.ListJobs;
+        for var J in AllJobs do
+          if SameText(J.ProjectId, Projs[0].ProjectId) then
+            PurgeRepo.DeleteJob(J.JobId);
+      end;
+      // JobQueue rows are never deleted by Enqueue/Dequeue (status-only), so a
+      // prior run's row with the same (queue_name, logical_key) would block
+      // Enqueue's ON CONFLICT DO NOTHING and leave Dequeue without a pending row.
+      PurgeRepo.PurgeDeepFramesJobQueue;
+      // audio_manifest rows also survive DeleteJob; without this, the next
+      // run reuses a stale manifest whose TimestampsAssetId dangles at a
+      // purged asset → empty .srt (no cues to burn).
+      if Length(Projs) > 0 then
+        PurgeRepo.PurgeAudioManifestsByProject(Projs[0].ProjectId);
+    finally PurgeRepo.Free; end;
+  end;
+
+  // Phase 1 — preprocess (produces the source document the document chain
+  // resolves via ListSourceDocuments[0]).
+  Mark('P1-preprocess');
+  Result := RunPreprocess;
+  Notify('P1-preprocess', Result);
+  if not IsPhaseComplete(Result.Status) then Exit;
+
+  // Phase 2 — document chain (produces variant_document + shot_document).
+  Mark('P2-docchain');
+  Result := RunDocumentChain;
+  Notify('P2-docchain', Result);
+  if not IsPhaseComplete(Result.Status) then Exit;
+
+  // Phase 3 — agent chain (consumes shot_document).
+  Mark('P3-agentchain');
+  Result := RunAgentChain;
+  Notify('P3-agentchain', Result);
+  if not IsPhaseComplete(Result.Status) then Exit;
+
+  // Phase 4 — audio chain (consumes shot_document, produces audio_manifest).
+  Mark('P4-audiochain');
+  Result := RunAudioChain;
+  Notify('P4-audiochain', Result);
+  if not IsPhaseComplete(Result.Status) then Exit;
+
+  // Phase 5 — video chain (consumes shot_document + audio_manifest, produces
+  // video_IR; burns subtitles via -vf subtitles=).
+  Mark('P5-videochain');
+  Result := RunVideoChain;
+  Notify('P5-videochain', Result);
+  if not IsPhaseComplete(Result.Status) then Exit;
+
+  // Phase 6 — package chain (consumes variant_document + audio_manifest +
+  // video_IR; assembles the deliverable).
+  Mark('P6-packagechain');
+  Result := RunPackageChain;
+  Notify('P6-packagechain', Result);
+  Mark('P6-done');
 end;
 
 class function TDeepFramesAppService.ListCandidatePackages(

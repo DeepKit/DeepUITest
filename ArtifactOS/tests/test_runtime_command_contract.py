@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "db" / "migrations" / "028_artifactos_runtime_command.sql"
+MIGRATION_ENVELOPE = ROOT / "db" / "migrations" / "059_runtime_command_envelope_fencing.sql"
 STACK_DOC = ROOT / "docs" / "26.[技术]-技术选型与运行时架构-Stack-Decision.md"
 DB_DOC = ROOT / "docs" / "24.[数据]-数据库模型与治理-Database.md"
 
@@ -37,6 +38,24 @@ def main() -> int:
         "create index if not exists idx_runtime_command_pending",
     ]:
         require(migration, ddl, "runtime DDL")
+
+    # TD26-004: 统一信封字段补全 (fencing_token / attempt_no / correlation_id)
+    # 法源: BCW-TD20260726-004, 对照 docs/29 §5 统一信封字段清单
+    envelope = read(MIGRATION_ENVELOPE)
+    for ddl in [
+        "add column if not exists fencing_token bigint",
+        "add column if not exists attempt_no integer not null default 0",
+        "add column if not exists correlation_id text",
+        "create or replace function artifactos.claim_next_runtime_command",
+        "fencing_token = coalesce(c.fencing_token, 0) + 1",
+        "attempt_no = coalesce(c.attempt_no, 0) + 1",
+        "create or replace function artifactos.complete_runtime_command(",
+        "fencing_token mismatch",
+        "create index if not exists idx_runtime_command_correlation",
+    ]:
+        require(envelope, ddl, "envelope DDL")
+    # claim_next 签名新增 p_correlation_id 参数
+    require(envelope, "p_correlation_id text default null", "claim_next correlation param")
 
     for status in [
         "pending",

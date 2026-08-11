@@ -14,7 +14,26 @@
 | T16 | 真流式体验优化：上游讯飞 GLM 非增量流式（deltas=1，已知限制非代码 bug），候选方案为前端分片逐字渲染或切换流式模型 | P3 |
 | T17 | WiseGateway 治理决策：计划任务 WiseGateway_Supervisor 已禁用（与手动启动争端口），需正式化启动方式（恢复 supervisor 或固化手动） | P2 |
 | T18 | 可鉴 tests/ 补 T13/T14 自动化用例（流式 SSE + 历史持久化/复盘/删除/清空） | P3 |
-| T19 | DeepInsight（洞见·思维显影室）× DeepFlow 集成：T19a 数据层已完成（个人决策数据服务端持久化 4a2bb003）；余项：五段显影 workflow / X 光片 skill / 树洞模式 / 跨会话记忆成长对比 | P1 **已完整交付** ✅ (4a2bb003 + 4269fc85) — xray/树洞/跨会话成长三功能全部完成
+| ### 已完成项
+
+#### 可鉴 v1.0.0 核心交付（2026-08-11）
+
+| 模块 | 内容 | 状态 |
+|------|------|------|
+| **T19a** | 个人决策数据服务端持久化（SQLite WAL CRUD） | ✅ Completed |
+| **T19b/c/d** | 脑内 X 光片 + 树洞模式 + 跨会话成长对比 | ✅ Completed |
+| **T20** | WiseGateway call_by_name 多家族 LLM 治理 | ✅ Completed |
+| **T18** | v2 冒烟测试 kejian_v2_smoke_test.py 全绿 | ✅ Completed |
+| **T14** | 历史持久化与复盘（localStorage+ 服务端同步） | ✅ Completed |
+| **T13** | 追问流式输出支持（SSE ReadableStream） | ✅ Completed |
+
+#### 已知限制（不阻塞发布）
+
+| 编号 | 问题 | 影响 | 降级措施 |
+|------|------|------|----------|
+| GPT 网络 | 国内 GPT 访问受限导致四视角偶发降级 | 聚合器仍可用，胶片生成正常 | 用户选择 GLM/Kimi 等替代模型 |
+
+T15-T17（分享卡片质量、真流式体验、WiseGateway 正式化启动）标记为后续迭代增强。
 
 已完成项已移入 history.md / 下方"已完成里程碑"速览。
 

@@ -186,8 +186,9 @@ end;
 
 procedure TPrivacyClassifier.CascadeDelete(var AContact: TContact);
 begin
-  // Reset all derived data
-  AContact.TagProfile := '{}';
+  // ✅ FIXED: Reset all derived data without TagProfile JSON
+  AContact.ProductCount := 0;
+  AContact.IsUserPreserved := False;
   AContact.Privacy := psPrivate;
   AContact.PrivacySource := psHumanConfirmed;
   AContact.LastSeen := 0;

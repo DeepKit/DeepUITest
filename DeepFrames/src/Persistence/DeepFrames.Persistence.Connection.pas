@@ -62,6 +62,14 @@ begin
     Password,
     GetConfigInt(DB2_PORT, DEFAULT_DB2_PORT));
   Result.ApplicationName := APP_NAME;
+  // Postgres stores TEXT/JSONB as UTF-8. Without CharacterSet=UTF8, FireDAC's
+  // PG driver uses the default client encoding and ships Delphi UTF-16 string
+  // bytes verbatim; every ASCII char is then followed by a 0x00 byte, which
+  // Postgres rejects as "invalid byte sequence for encoding UTF8: 0x00" on
+  // any write containing non-ASCII (e.g. LLM-generated Chinese script content).
+  // The pool sets Params['CharacterSet'] from this field, so it must be set
+  // here at profile load, not merely on the borrowed connection handle.
+  Result.CharacterSet := 'UTF8';
   Result.SSLMode := GetConfig(DB2_SSL_MODE, Result.SSLMode);
   Result.VendorLib := GetConfig(DB2_VENDOR_LIB, '');
   Result.Validate;
@@ -77,8 +85,34 @@ begin
   end;
   Result := FSharedPool.CreateUnopenedConnection;
   try
+    // PostgreSQL stores `uuid` columns in big-endian (RFC 4122 network byte
+    // order), e.g. 550e8400-e29b-41d4-a716-446655440000. FireDAC's PG driver
+    // reads uuid via Delphi TGUID, whose default little-endian interpretation
+    // flips the first three fields: AsString returns 00840e55-9be2-d441-...,
+    // which matches NO row, so every WHERE project_id = :pid::uuid returns 0
+    // rows (seed path fails: "no content unit"). Setting GUIDEndian=Big makes
+    // the driver byte-swap on read so AsString returns the canonical text PG
+    // stored. (A FormatOptions MapRule uuid->dtWideString is NOT used: it
+    // changes the column type but leaves size 0, raising DatS overflow.)
+    Result.FormatOptions.OwnMapRules := False;
+    Result.Params.Values['GUIDEndian'] := 'Big';
+    // Force client encoding UTF8 (see LoadProfile comment). FireDAC's PG
+    // driver reads the CharacterSet param, so this is the authoritative name.
+    // Set again here in case the pool returns a connection whose params were
+    // not rebuilt from the profile.
+    Result.Params.Values['CharacterSet'] := 'UTF8';
     if OpenConnection then
+    begin
       Result.Open;
+      // Force client encoding server-side. The CharacterSet param above is the
+      // documented FireDAC mechanism, but it had no observed effect (PG still
+      // rejected writes with "0x00 invalid byte sequence for UTF8" because
+      // the driver shipped Delphi UTF-16 string bytes verbatim). Issuing
+      // SET client_encoding = 'UTF8' immediately after Open makes libpq
+      // negotiate UTF-8 for this session, so the driver transcodes Wide ->
+      // UTF-8 before sending text parameters.
+      Result.ExecSQL('SET client_encoding = ''UTF8''');
+    end;
   except
     Result.Free;
     raise;

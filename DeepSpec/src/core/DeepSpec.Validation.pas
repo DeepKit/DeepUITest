@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Validation
 
@@ -60,7 +61,13 @@ type
       AReport: TValidationReport);
     procedure ValidateConfidence(const AConf, APath: string;
       AReport: TValidationReport);
+    procedure ValidateFogState(const AFog, APath: string;
+      AReport: TValidationReport);
     procedure ValidateSourceLayer(const ALayer, APath: string;
+      AReport: TValidationReport);
+    /// <summary>Validate a single issue entry from doc-issues.yaml against the
+    /// issues schema (BUG-11 step 1 remainder). Path root is /issues/<AIndex>.</summary>
+    procedure ValidateIssue(AItem: TYamlNode; AIndex: Integer;
       AReport: TValidationReport);
     function IsValidFunctionKind(const AKind: string): Boolean;
     function IsValidModuleKind(const AKind: string): Boolean;
@@ -72,6 +79,11 @@ type
       AMode: TValidationMode = vmLenient): TValidationReport;
     function ValidateProjectSpec(const AYaml: string): TValidationReport;
     function ValidateLLMSecurityRules(const AYaml: string): TValidationReport;
+    /// <summary>Validate an issues/doc-issues.yaml document (BUG-11 step 1
+    /// remainder). Checks each issue: id prefix, enum legality of severity/
+    /// type/status, non-empty title/affected_nodes, and requires_human
+    /// consistency with ticket types. Empty issues list is valid.</summary>
+    function ValidateIssuesFile(const AYaml: string): TValidationReport;
     function ValidateNodeHashes(const ANodes: TList<TSpecNode>;
       const ATreeName: string): TValidationReport;
   end;
@@ -258,6 +270,19 @@ begin
     'Use one of: low, medium, high');
 end;
 
+procedure TYamlValidator.ValidateFogState(const AFog, APath: string;
+  AReport: TValidationReport);
+const
+  VALID: array[0..3] of string = ('clear', 'misty', 'foggy', 'unknown_unknowns');
+begin
+  if AFog = '' then Exit; // optional, default clear applies
+  for var V in VALID do
+    if V = AFog then Exit;
+  AReport.AddError('invalid_fog_state', vsError, APath,
+    'fog_state "' + AFog + '" is not valid',
+    'Use one of: clear, misty, foggy, unknown_unknowns');
+end;
+
 procedure TYamlValidator.ValidateSourceLayer(const ALayer, APath: string;
   AReport: TValidationReport);
 const
@@ -271,6 +296,108 @@ begin
   AReport.AddError('invalid_source_layer', vsError, APath,
     'source_layer "' + ALayer + '" is not valid',
     'Use one of: parsed_from_a, human_decision, ai_inferred, generated_summary');
+end;
+
+procedure TYamlValidator.ValidateIssue(AItem: TYamlNode; AIndex: Integer;
+  AReport: TValidationReport);
+const
+  SEVERITIES: array[0..4] of string = ('critical', 'high', 'medium', 'low', 'info');
+  // 14 issue types per issues.schema.json (10 ordinary + 4 exploration tickets).
+  ISSUE_TYPES: array[0..13] of string = (
+    'missing_requirement', 'conflict', 'ambiguity', 'stale_doc',
+    'no_source', 'low_confidence', 'parse_warning', 'parse_error',
+    'orphan_node', 'coverage_gap',
+    'research_ticket', 'prototype_ticket', 'grilling_ticket', 'fog_unknown'
+  );
+  STATUSES: array[0..3] of string = ('open', 'resolved', 'wontfix', 'deferred');
+  // Types that are exploration tickets — requires_human is meaningful only for these.
+  TICKET_TYPES: array[0..3] of string = (
+    'research_ticket', 'prototype_ticket', 'grilling_ticket', 'fog_unknown'
+  );
+
+  function FoundIn(const AValue: string; const AList: array of string): Boolean;
+  begin
+    for var V in AList do
+      if V = AValue then Exit(True);
+    Result := False;
+  end;
+
+  function IsTicketType(const AType: string): Boolean;
+  begin
+    Result := FoundIn(AType, TICKET_TYPES);
+  end;
+
+var
+  LBase, LId, LType: string;
+  LNodes: TYamlNode;
+begin
+  if AItem = nil then Exit;
+  LBase := '/issues/' + AIndex.ToString;
+
+  // id: required, must start with "issue-" (issues.schema.json pattern ^issue-).
+  LId := AItem.GetString('id', '');
+  if LId = '' then
+    AReport.AddError('missing_id', vsError, LBase + '/id',
+      'Issue id is required', 'Add a unique id like "issue-fog-func-root"')
+  else if not LId.StartsWith('issue-') then
+    AReport.AddError('invalid_issue_id', vsError, LBase + '/id',
+      'Issue id "' + LId + '" must start with "issue-"',
+      'Use the "issue-" prefix');
+
+  // severity: required, must be a built-in value.
+  var LSev := AItem.GetString('severity', '');
+  if LSev = '' then
+    AReport.AddError('missing_issue_severity', vsError, LBase + '/severity',
+      'Issue severity is required', 'Use: critical, high, medium, low, or info')
+  else if not FoundIn(LSev, SEVERITIES) then
+    AReport.AddError('invalid_issue_severity', vsError, LBase + '/severity',
+      'severity "' + LSev + '" is not valid',
+      'Use one of: critical, high, medium, low, info');
+
+  // type: required, must be a built-in value (incl. 4 ticket types).
+  LType := AItem.GetString('type', '');
+  if LType = '' then
+    AReport.AddError('missing_issue_type', vsError, LBase + '/type',
+      'Issue type is required', 'Use a value from issues.schema.json')
+  else if not FoundIn(LType, ISSUE_TYPES) then
+    AReport.AddError('invalid_issue_type', vsError, LBase + '/type',
+      'type "' + LType + '" is not a valid issue type',
+      'Use a built-in type or one of research_ticket/prototype_ticket/grilling_ticket/fog_unknown');
+
+  // title: required, non-empty.
+  if AItem.GetString('title', '') = '' then
+    AReport.AddError('missing_issue_title', vsError, LBase + '/title',
+      'Issue title is required', 'Add a human-readable title');
+
+  // description: schema allows empty; warn so authors notice missing rationale.
+  if AItem.GetString('description', '') = '' then
+    AReport.AddError('missing_issue_description', vsWarning, LBase + '/description',
+      'Issue description is empty', 'Describe the issue so its rationale is traceable');
+
+  // affected_nodes: required non-empty (an issue must point at something).
+  LNodes := AItem.GetSeq('affected_nodes');
+  if (LNodes = nil) or (LNodes.SeqCount = 0) then
+    AReport.AddError('empty_affected_nodes', vsError, LBase + '/affected_nodes',
+      'affected_nodes must list at least one node id',
+      'Add the node id(s) this issue concerns');
+
+  // status: required, must be a built-in value.
+  var LStatus := AItem.GetString('status', '');
+  if LStatus = '' then
+    AReport.AddError('missing_issue_status', vsError, LBase + '/status',
+      'Issue status is required', 'Use: open, resolved, wontfix, or deferred')
+  else if not FoundIn(LStatus, STATUSES) then
+    AReport.AddError('invalid_issue_status', vsError, LBase + '/status',
+      'status "' + LStatus + '" is not valid',
+      'Use one of: open, resolved, wontfix, deferred');
+
+  // requires_human: only meaningful for exploration tickets (BUG-11). Setting it
+  // on a non-ticket issue is semantically meaningless — warn, don't error,
+  // so the field stays optional and we don't over-constrain LLM/user output.
+  if AItem.Has('requires_human') and not IsTicketType(LType) then
+    AReport.AddError('requires_human_mismatch', vsWarning, LBase + '/requires_human',
+      'requires_human is only meaningful for ticket types (research/prototype/grilling/fog_unknown)',
+      'Remove requires_human or change the issue type to a ticket type');
 end;
 
 function TYamlValidator.ValidateTreeFile(const AYaml: string;
@@ -337,6 +464,7 @@ begin
           ValidateKind(LNode.GetString('kind', ''), LNodeTree, LPath + '/kind', Result);
           ValidateNodeStatus(LNode.GetString('status', ''), LPath + '/status', Result);
           ValidateConfidence(LNode.GetString('confidence', ''), LPath + '/confidence', Result);
+          ValidateFogState(LNode.GetString('fog_state', ''), LPath + '/fog_state', Result);
           ValidateSourceLayer(LNode.GetString('source_layer', ''), LPath + '/source_layer', Result);
         end;
       end;
@@ -513,6 +641,46 @@ begin
               'must be created via DeepSpec UI write paths only.');
         end;
       end;
+    finally
+      LRoot.Free;
+    end;
+  finally
+    LParser.Free;
+  end;
+end;
+
+function TYamlValidator.ValidateIssuesFile(const AYaml: string): TValidationReport;
+var
+  LParser: TYamlParser;
+  LRoot, LSeq: TYamlNode;
+begin
+  Result := TValidationReport.Create;
+  LParser := TYamlParser.Create;
+  try
+    try
+      LRoot := LParser.Parse(AYaml);
+    except
+      on E: Exception do
+      begin
+        Result.AddError('parse_error', vsError, '',
+          'YAML parse failed: ' + E.Message, 'Check syntax and indentation');
+        Exit;
+      end;
+    end;
+
+    try
+      // version is recommended; missing is a warning (mirrors tree-file policy).
+      if LRoot.GetString('version', '') = '' then
+        Result.AddError('missing_version', vsWarning, '/version',
+          'version field missing', 'Add: version: "1.0"');
+
+      LSeq := LRoot.GetSeq('issues');
+      if LSeq = nil then
+        // No issues key at all — treat as empty (callers may write issues: []).
+        Exit;
+
+      for var I := 0 to LSeq.SeqCount - 1 do
+        ValidateIssue(LSeq.SeqItem(I), I, Result);
     finally
       LRoot.Free;
     end;

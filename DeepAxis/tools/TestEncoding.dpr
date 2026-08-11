@@ -1,4 +1,4 @@
-program TestEncoding;
+﻿program TestEncoding;
 
 {$APPTYPE CONSOLE}
 

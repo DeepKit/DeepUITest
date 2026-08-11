@@ -1,4 +1,4 @@
-program TestZstdWrapper;
+﻿program TestZstdWrapper;
 
 {$APPTYPE CONSOLE}
 

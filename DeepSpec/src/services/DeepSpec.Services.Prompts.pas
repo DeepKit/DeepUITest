@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Services.Prompts
 
@@ -112,14 +113,18 @@ begin
 
     LSb.AppendLine('## 6. Task');
     LSb.AppendLine('');
-    LSb.AppendLine('Read the project material above and generate or update the DeepSpec B at `.deepspec/`.');
+    LSb.AppendLine('Read the project material above and generate or update the DeepSpec B (specification facts).');
     LSb.AppendLine('');
-    LSb.AppendLine('Required outputs (YAML files in `.deepspec/`):');
+    LSb.AppendLine('Required outputs (as YAML documents in ONE response stream — see §8):');
     LSb.AppendLine('- `trees/function-tree.yaml` - what the software does');
     LSb.AppendLine('- `trees/module-tree.yaml` - how it is structured');
     LSb.AppendLine('- `trees/view-tree.yaml` - what users see');
     LSb.AppendLine('- `evidence/source-evidence.yaml` - traceable evidence for each node');
     LSb.AppendLine('- `issues/doc-issues.yaml` - gaps, conflicts, ambiguities');
+    LSb.AppendLine('');
+    LSb.AppendLine('The function-tree is the priority: its root node arrives as a fog stub');
+    LSb.AppendLine('(`fog_state: unknown_unknowns`) awaiting your semantic content. Replacing');
+    LSb.AppendLine('the stub summary with real capability semantics clears the fog.');
     LSb.AppendLine('');
 
     LSb.AppendLine('## 7. Constraints');
@@ -128,14 +133,53 @@ begin
     LSb.AppendLine('- Use English snake_case for enum values (e.g., `ai_inferred`, not `B:AI推断`).');
     LSb.AppendLine('- Mark all AI-generated content with `status: candidate` and `source_layer: ai_inferred`.');
     LSb.AppendLine('- Do NOT set `decided_by: human` - that is reserved for DeepSpec UI writes.');
+    LSb.AppendLine('- Do NOT set `review_status` to anything other than `unreviewed` (review is a human action).');
+    LSb.AppendLine('- Do NOT set `gen_status: confirmed` (confirmation is a human action); use `generated`.');
+    LSb.AppendLine('- Node `id` must match its tree prefix: `func-`/`mod-`/`view-`/`data-`.');
+    LSb.AppendLine('- `parent_id` must reference a node that exists in the live tree or the same response.');
     LSb.AppendLine('- Provide `source_refs` for every node tracing back to a file or doc.');
     LSb.AppendLine('- Do not modify any files outside `.deepspec/`.');
     LSb.AppendLine('');
 
     LSb.AppendLine('## 8. Output Format');
     LSb.AppendLine('');
-    LSb.AppendLine('Write valid YAML files. Do NOT wrap output in Markdown code fences.');
-    LSb.AppendLine('Each file must start with `version: "1.0"` and follow the schema.');
+    LSb.AppendLine('Return ALL outputs as a single YAML multi-document stream in your text');
+    LSb.AppendLine('response. Separate documents with a line containing only `---`. Each');
+    LSb.AppendLine('document begins with a `# file:` comment naming its target path, then');
+    LSb.AppendLine('`version: "1.0"` and the tree/evidence/issues body. Do NOT wrap output');
+    LSb.AppendLine('in Markdown code fences. Do NOT write to the filesystem yourself — the');
+    LSb.AppendLine('harness saves your full response to `llm/candidate-output.yaml` and parses it.');
+    LSb.AppendLine('');
+    LSb.AppendLine('Example skeleton (abbreviated — follow the full schema for real content):');
+    LSb.AppendLine('');
+    LSb.AppendLine('---');
+    LSb.AppendLine('# file: trees/function-tree.yaml');
+    LSb.AppendLine('version: "1.0"');
+    LSb.AppendLine('tree: function');
+    LSb.AppendLine('nodes:');
+    LSb.AppendLine('  - id: func-myservice');
+    LSb.AppendLine('    kind: capability');
+    LSb.AppendLine('    summary: Real semantic summary replacing the stub...');
+    LSb.AppendLine('    status: candidate');
+    LSb.AppendLine('    gen_status: generated');
+    LSb.AppendLine('    review_status: unreviewed');
+    LSb.AppendLine('    source_layer: ai_inferred');
+    LSb.AppendLine('    fog_state: foggy');
+    LSb.AppendLine('    source_refs:');
+    LSb.AppendLine('      - ref_id: src:cmd/main.go');
+    LSb.AppendLine('        relevance: primary');
+    LSb.AppendLine('---');
+    LSb.AppendLine('# file: trees/module-tree.yaml');
+    LSb.AppendLine('version: "1.0"');
+    LSb.AppendLine('tree: module');
+    LSb.AppendLine('nodes:');
+    LSb.AppendLine('  - id: mod-myservice');
+    LSb.AppendLine('    kind: module');
+    LSb.AppendLine('    ...');
+    LSb.AppendLine('');
+    LSb.AppendLine('Emit documents for function-tree, module-tree, view-tree (omit a tree');
+    LSb.AppendLine('only if the source material gives no information for it). evidence and');
+    LSb.AppendLine('issues documents are optional.');
 
     WritePromptFile('context-pack.md', LSb.ToString);
   finally

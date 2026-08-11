@@ -89,6 +89,7 @@ begin
   // Verify that a failed chain can be rolled back cleanly
   ArtifactOS_DB.Connect;
   try
+    // Static query — no dynamic values, safe to use ExecuteScalar
     var CountBefore := ArtifactOS_DB.ExecuteScalar(
       'SELECT COUNT(*)::text FROM artifactos.case_record WHERE title=''E2E Chain Test''');
     var Before := StrToInt(CountBefore);
@@ -103,17 +104,19 @@ begin
       ArtifactOS_DB.Connection.Rollback;
     end;
 
+    // Static query — no dynamic values
     var CountAfter := ArtifactOS_DB.ExecuteScalar(
       'SELECT COUNT(*)::text FROM artifactos.case_record WHERE title=''E2E Chain Test''');
     var After := StrToInt(CountAfter);
 
     // After rollback, the count should be unchanged
-    Assert.AreEqual(Before, After - 1 + 1, 'Rollback should not leave artifacts behind'); // E2E creates its own transaction inside RunCreateChain
+    // (E2E creates its own transaction inside RunCreateChain)
+    Assert.AreEqual(Before, After - 1 + 1, 'Rollback should not leave artifacts behind');
   finally
     ArtifactOS_DB.Disconnect;
   end;
 end;
 
 initialization
-
+  TDUnitX.RegisterTestFixture(TArtifactOSE2EChain);
 end.

@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Services.Render
 
@@ -17,27 +18,60 @@ uses
   DeepSpec.Models;
 
 type
+  /// <summary>Health metrics for the index dashboard (BUG-9 §2.2).
+  /// Pure computation over node lists (+ optional issues).</summary>
+  THealthMetrics = record
+    TotalNodes: Integer;
+    ConfirmedNodes: Integer;   // GenStatus = gsConfirmed
+    CoveragePct: Double;       // ConfirmedNodes / TotalNodes * 100 (0 if none)
+    AvgConfidence: Double;     // low=0.3 / medium=0.7 / high=1.0, mean
+    DecisionBacklog: Integer;  // issues with Status = issOpen
+    FogCount: Integer;         // nodes with HasFogState and FogState <> fsClear
+    HighRiskOpen: Integer;     // issues Status=issOpen and Severity in (isCritical,isHigh)
+  end;
+
   TDeepSpecRenderService = class(TInterfacedObject)
   private
     FBasePath: string;
+    FLocale: string;
     function HtmlEscape(const S: string): string;
     function PageHeader(const ATitle: string): string;
     function PageFooter: string;
     function StatusBadge(const AStatus: string): string;
     function ConfidenceBadge(const AConf: string): string;
     function SourceLayerBadge(const ALayer: string): string;
+    // CSS slug for a fog state: underscores -> hyphens (bugfix.md BUG-12),
+    // so badge-fog-unknown-unknowns matches the hyphen style of badge-fog-misty.
+    function FogStateCssClass(AFog: DeepSpec.Models.TFogState): string;
+    /// <summary>Locale-aware UI text: returns AZh when the review pages are
+    ///  rendered for a Chinese Windows locale, else AEn. Only used for
+    ///  human-visible chrome (titles/buttons/hints), never for YAML keys.</summary>
+    function T(const AEn, AZh: string): string;
   public
     procedure Initialize(const ADeepSpecPath: string);
     procedure RenderScanReport(AScan: TDeepSpecScanService;
       const AProjectName, AProjectType: string);
-    procedure RenderIndex(const AProjectName: string; ATotalFiles: Integer);
+    procedure RenderIndex(const AProjectName: string; ATotalFiles: Integer;
+      AFunc, AModule, AView, AData: TList<TSpecNode>;
+      AIssues: TList<TSpecIssue>; AHasDataTree: Boolean = True);
     procedure RenderTree(const ATreeName, ATreeTitle: string;
       ANodes: System.Generics.Collections.TList<DeepSpec.Models.TSpecNode>);
     procedure RenderProblemsPage(
-      AFuncNodes, AModuleNodes, AViewNodes, ADataNodes: TList<TSpecNode>);
+      AFuncNodes, AModuleNodes, AViewNodes, ADataNodes: TList<TSpecNode>;
+      AIssues: TList<TSpecIssue>);
     procedure RenderBundlesPage(
       ABundles: TList<TSemanticBundle>;
       AFuncNodes, AModuleNodes, AViewNodes, ADataNodes: TList<TSpecNode>);
+    /// <summary>Render a single-node detail page (node-detail.html) shown
+    ///  in the main view when the user clicks a tree node.</summary>
+    procedure RenderNodeDetail(const ANode: TSpecNode);
+    /// <summary>Compute health metrics over 4 trees (+ optional issues).
+    /// nil lists are treated as empty. Pure — no IO.</summary>
+    class function ComputeHealthMetrics(AFunc, AModule, AView, AData: TList<TSpecNode>;
+      AIssues: TList<TSpecIssue> = nil): THealthMetrics; static;
+    /// <summary>Count broken cross-tree references (orphan refs).
+    /// Shared by RenderIndex summary and RenderProblemsPage detail.</summary>
+    class function CountCrossTreeConflicts(AFunc, AModule, AView, AData: TList<TSpecNode>): Integer; static;
   end;
 
 implementation
@@ -45,13 +79,38 @@ implementation
 uses
   System.IOUtils,
   System.DateUtils,
-  System.StrUtils;
+  System.StrUtils,
+  System.Generics.Defaults,
+  Winapi.Windows;
 
 procedure TDeepSpecRenderService.Initialize(const ADeepSpecPath: string);
 begin
   FBasePath := TPath.Combine(ADeepSpecPath, 'html');
   if not TDirectory.Exists(FBasePath) then
     TDirectory.CreateDirectory(FBasePath);
+
+  // Detect the Windows UI language once so review pages render localized
+  // chrome (titles/buttons/hints). Same normalization as the desktop shell.
+  FLocale := 'en-US';
+  var LLocale: array[0..84] of WideChar;
+  if GetUserDefaultLocaleName(LLocale, Length(LLocale)) > 1 then
+  begin
+    var LL := string(PWideChar(@LLocale[0])).ToLower;
+    if LL.StartsWith('zh-hans') or LL.StartsWith('zh-cn')
+       or LL.StartsWith('zh-sg') or (LL = 'zh') then
+      FLocale := 'zh-CN'
+    else if LL.StartsWith('zh-hant') or LL.StartsWith('zh-tw')
+            or LL.StartsWith('zh-hk') or LL.StartsWith('zh-mo') then
+      FLocale := 'zh-TW';
+  end;
+end;
+
+function TDeepSpecRenderService.T(const AEn, AZh: string): string;
+begin
+  if FLocale = 'zh-CN' then
+    Result := AZh
+  else
+    Result := AEn;
 end;
 
 function TDeepSpecRenderService.HtmlEscape(const S: string): string;
@@ -116,7 +175,8 @@ var
     LSb.AppendLine('<h2><span class="badge ' + ABadgeClass + '">' +
       HtmlEscape(ATitle) + '</span> ' + Length(AFiles).ToString + '</h2>');
     if Length(AFiles) = 0 then
-      LSb.AppendLine('<p><em>No files in this category.</em></p>')
+      LSb.AppendLine('<p><em>' + T('No files in this category.', '此类别没有文件。') +
+        '</em></p>')
     else
     begin
       LSb.AppendLine('<div class="file-list">');
@@ -129,24 +189,37 @@ var
 begin
   LSb := TStringBuilder.Create;
   try
-    LSb.Append(PageHeader('Scan Report'));
+    LSb.Append(PageHeader(T('Scan Report', '扫描报告')));
 
-    LSb.AppendLine('<h1>Scan Report: ' + HtmlEscape(AProjectName) + '</h1>');
-    LSb.AppendLine('<p>Project type: <strong>' + HtmlEscape(AProjectType) + '</strong></p>');
+    LSb.AppendLine('<h1>' + T('Scan Report', '扫描报告') + ': ' +
+      HtmlEscape(AProjectName) + '</h1>');
+    LSb.AppendLine('<p>' + T('Project type:', '项目类型：') +
+      ' <strong>' + HtmlEscape(AProjectType) + '</strong></p>');
 
-    LSb.AppendLine('<h2>Summary</h2>');
-    LSb.AppendLine('<div class="stat"><strong>' + AScan.TotalFiles.ToString + '</strong>Total files</div>');
-    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcDocuments).ToString + '</strong>Documents</div>');
-    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcCode).ToString + '</strong>Code</div>');
-    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcUI).ToString + '</strong>UI</div>');
-    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcConfig).ToString + '</strong>Config</div>');
-    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcAiRules).ToString + '</strong>AI Rules</div>');
+    LSb.AppendLine('<h2>' + T('Summary', '汇总') + '</h2>');
+    LSb.AppendLine('<div class="stat"><strong>' + AScan.TotalFiles.ToString +
+      '</strong>' + T('Total files', '文件总数') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcDocuments).ToString +
+      '</strong>' + T('Documents', '文档') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcCode).ToString +
+      '</strong>' + T('Code', '代码') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcUI).ToString +
+      '</strong>' + T('UI', '界面') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcConfig).ToString +
+      '</strong>' + T('Config', '配置') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + AScan.CategoryCount(fcAiRules).ToString +
+      '</strong>' + T('AI Rules', 'AI 规则') + '</div>');
 
-    AppendCategory('Documents', 'badge-doc', AScan.GetFilesByCategory(fcDocuments));
-    AppendCategory('Code', 'badge-code', AScan.GetFilesByCategory(fcCode));
-    AppendCategory('UI', 'badge-ui', AScan.GetFilesByCategory(fcUI));
-    AppendCategory('Config', 'badge-config', AScan.GetFilesByCategory(fcConfig));
-    AppendCategory('AI Rules', 'badge-ai', AScan.GetFilesByCategory(fcAiRules));
+    AppendCategory(T('Documents', '文档'), 'badge-doc',
+      AScan.GetFilesByCategory(fcDocuments));
+    AppendCategory(T('Code', '代码'), 'badge-code',
+      AScan.GetFilesByCategory(fcCode));
+    AppendCategory(T('UI', '界面'), 'badge-ui',
+      AScan.GetFilesByCategory(fcUI));
+    AppendCategory(T('Config', '配置'), 'badge-config',
+      AScan.GetFilesByCategory(fcConfig));
+    AppendCategory(T('AI Rules', 'AI 规则'), 'badge-ai',
+      AScan.GetFilesByCategory(fcAiRules));
 
     LSb.Append(PageFooter);
 
@@ -158,15 +231,81 @@ begin
 end;
 
 procedure TDeepSpecRenderService.RenderIndex(const AProjectName: string;
-  ATotalFiles: Integer);
+  ATotalFiles: Integer; AFunc, AModule, AView, AData: TList<TSpecNode>;
+  AIssues: TList<TSpecIssue>; AHasDataTree: Boolean);
 var
   LSb: TStringBuilder;
+  LM: THealthMetrics;
+  LConflicts: Integer;
+  LHighShown, LIdx: Integer;
+  LI: TSpecIssue;
+  LSorted: TList<TSpecIssue>;
+  LCovStr, LConfStr: string;
 begin
   LSb := TStringBuilder.Create;
+  LSorted := nil;
   try
-    LSb.Append(PageHeader('Index'));
+    LSb.Append(PageHeader(T('Index', '索引')));
     LSb.AppendLine('<h1>DeepSpec: ' + HtmlEscape(AProjectName) + '</h1>');
-    LSb.AppendLine('<p>Welcome to your project specification.</p>');
+    LSb.AppendLine('<p>项目规格健康度看板（BUG-9）。</p>');
+
+    // --- §2.3.1 文档健康度（4 stat 卡片）---
+    LM := ComputeHealthMetrics(AFunc, AModule, AView, AData, AIssues);
+    LConflicts := CountCrossTreeConflicts(AFunc, AModule, AView, AData);
+    LCovStr := FormatFloat('0.0', LM.CoveragePct);
+    LConfStr := FormatFloat('0', LM.AvgConfidence * 100.0);
+
+    LSb.AppendLine('<h2>文档健康度</h2>');
+    LSb.AppendLine('<div class="stat"><strong>' + LCovStr + '%</strong>覆盖率' +
+      '<small style="display:block;color:#6c757d;">已确认节点占比。文档够不够 AI 开发用。</small></div>');
+    LSb.AppendLine('<div class="stat"><strong>' + LConfStr + '%</strong>平均置信度' +
+      '<small style="display:block;color:#6c757d;">low=30 / medium=70 / high=100</small></div>');
+    LSb.AppendLine('<div class="stat"><strong>' + LM.DecisionBacklog.ToString +
+      '</strong>决策积压<small style="display:block;color:#6c757d;">未决 issue 数（status=open）</small></div>');
+    LSb.AppendLine('<div class="stat"><strong>' + LM.FogCount.ToString +
+      '</strong>雾区数<small style="display:block;color:#6c757d;">处于迷雾中的节点（fog≠clear）</small></div>');
+
+    // --- §2.3.2 高风险问题（top 5）---
+    LSb.AppendLine('<h2>高风险问题</h2>');
+    LSorted := TList<TSpecIssue>.Create;
+    if AIssues <> nil then
+      for LI in AIssues do
+        if (LI.Status = issOpen) and ((LI.Severity = isCritical) or (LI.Severity = isHigh)) then
+          LSorted.Add(LI);
+    // sort by severity asc (critical=0 < high=1) so most severe first
+    LSorted.Sort(TComparer<TSpecIssue>.Construct(
+      function(const A, B: TSpecIssue): Integer
+      begin
+        Result := Ord(A.Severity) - Ord(B.Severity);
+      end));
+    LHighShown := 0;
+    LSb.AppendLine('<ul style="padding-left: 0;">');
+    for LIdx := 0 to LSorted.Count - 1 do
+    begin
+      if LHighShown >= 5 then Break;
+      LI := LSorted[LIdx];
+      Inc(LHighShown);
+      LSb.AppendLine('<li class="problem"><span class="badge badge-conf-low">' +
+        HtmlEscape(TSpecEnums.IssueSeverityToStr(LI.Severity)) + '</span> ' +
+        '<a href="problems.html">' + HtmlEscape(LI.Title) + '</a>' +
+        ' <code>' + HtmlEscape(LI.Id) + '</code></li>');
+    end;
+    LSb.AppendLine('</ul>');
+    if LHighShown = 0 then
+      LSb.AppendLine('<p><em>当前无高风险未决问题。</em></p>');
+
+    // --- §2.3.3 冲突摘要 ---
+    LSb.AppendLine('<h2>冲突摘要</h2>');
+    LSb.AppendLine('<p>跨树断引用：' + LConflicts.ToString + ' 处。' +
+      ' <a href="problems.html">查看详情</a></p>');
+
+    // --- §2.3.4 优化 Prompt 入口 ---
+    LSb.AppendLine('<h2>优化 Prompt</h2>');
+    LSb.AppendLine('<p>依据当前健康度导出一段优化 Prompt，拷给原 AI 工具优化底层文件（旁路工具原则）。</p>');
+    LSb.AppendLine('<button class="btn-ticket" data-action="export-optimization-prompt">' +
+      '导出优化 Prompt</button>');
+
+    // --- 原有页面列表 ---
     LSb.AppendLine('<h2>Pages</h2>');
     LSb.AppendLine('<ul>');
     LSb.AppendLine('  <li><a href="scan-report.html">Scan Report</a> (' +
@@ -176,14 +315,42 @@ begin
     LSb.AppendLine('  <li><a href="function-tree.html">Function Tree</a></li>');
     LSb.AppendLine('  <li><a href="module-tree.html">Module Tree</a></li>');
     LSb.AppendLine('  <li><a href="view-tree.html">View Tree</a></li>');
-    LSb.AppendLine('  <li><a href="data-tree.html">Data Tree</a></li>');
+    // Only link data-tree.html when it was actually rendered; otherwise the
+    // link 404s on non-Delphi projects (bugfix.md BUG-10).
+    if AHasDataTree then
+      LSb.AppendLine('  <li><a href="data-tree.html">Data Tree</a></li>');
     LSb.AppendLine('</ul>');
+
+    // JS Bridge: forward export-optimization-prompt clicks to the WebView2 host.
+    // (Index page has no other data-action buttons, so a focused script suffices.
+    // Falls back to a visible alert when opened in a regular browser.)
+    LSb.AppendLine('<script>');
+    LSb.AppendLine('(function() {');
+    LSb.AppendLine('  var hasBridge = !!(window.chrome && window.chrome.webview && window.chrome.webview.postMessage);');
+    LSb.AppendLine('  document.addEventListener("click", function(e) {');
+    LSb.AppendLine('    var t = e.target;');
+    LSb.AppendLine('    if (!(t instanceof HTMLElement)) return;');
+    LSb.AppendLine('    if (t.getAttribute("data-action") !== "export-optimization-prompt") return;');
+    LSb.AppendLine('    if (t.classList.contains("posted")) return;');
+    LSb.AppendLine('    if (hasBridge) {');
+    LSb.AppendLine('      try { window.chrome.webview.postMessage(JSON.stringify({action: "export-optimization-prompt"})); }');
+    LSb.AppendLine('      catch (err) { console.error("DeepSpec bridge:", err); return; }');
+    LSb.AppendLine('      t.classList.add("posted");');
+    LSb.AppendLine('      t.textContent = "✓ Prompt 已导出 (见 prompts/optimization-prompt.md)";');
+    LSb.AppendLine('    } else {');
+    LSb.AppendLine('      alert("DeepSpec bridge unavailable. Open this page inside DeepSpec to export the prompt.");');
+    LSb.AppendLine('    }');
+    LSb.AppendLine('  });');
+    LSb.AppendLine('})();');
+    LSb.AppendLine('</script>');
+
     LSb.Append(PageFooter);
 
     TFile.WriteAllText(TPath.Combine(FBasePath, 'index.html'),
       LSb.ToString, TEncoding.UTF8);
   finally
     LSb.Free;
+    if LSorted <> nil then LSorted.Free;
   end;
 end;
 
@@ -202,6 +369,14 @@ end;
 function TDeepSpecRenderService.SourceLayerBadge(const ALayer: string): string;
 begin
   Result := '<span class="badge badge-source">' + HtmlEscape(ALayer) + '</span>';
+end;
+
+function TDeepSpecRenderService.FogStateCssClass(
+  AFog: DeepSpec.Models.TFogState): string;
+begin
+  // FogStateToStr returns YAML-style 'unknown_unknowns'; CSS class slugs use
+  // hyphens to match badge-fog-misty / badge-fog-foggy.
+  Result := DeepSpec.Models.TSpecEnums.FogStateToStr(AFog).Replace('_', '-');
 end;
 
 procedure TDeepSpecRenderService.RenderTree(const ATreeName, ATreeTitle: string;
@@ -233,6 +408,15 @@ var
     LSb.Append(ConfidenceBadge(DeepSpec.Models.TSpecEnums.ConfidenceToStr(LNode.Confidence)));
     LSb.Append(' ');
     LSb.Append(SourceLayerBadge(DeepSpec.Models.TSpecEnums.SourceLayerToStr(LNode.SourceLayer)));
+
+    // Fog badge (only when fog_state is explicitly set and not clear)
+    if LNode.HasFogState and (LNode.FogState <> DeepSpec.Models.fsClear) then
+    begin
+      var LFog := DeepSpec.Models.TSpecEnums.FogStateToStr(LNode.FogState);
+      LSb.Append(' <span class="badge badge-fog-' + FogStateCssClass(LNode.FogState) +
+        '" title="Requirement endpoint is in the fog">fog: ' +
+        HtmlEscape(LFog) + '</span>');
+    end;
 
     // Decision buttons for candidate nodes (JS Bridge writes back via WebView2 postMessage)
     if LStatus = 'candidate' then
@@ -356,7 +540,16 @@ begin
     for var LNode in ANodes do
       LNodeMap.AddOrSetValue(LNode.Id, LNode);
 
-    LSb.Append(PageHeader(ATreeTitle));
+    // Localize the tree page title by file key (function-tree/module-tree/...)
+    var LTitle := ATreeTitle;
+    if FLocale = 'zh-CN' then
+    begin
+      if ATreeName = 'function-tree' then LTitle := '功能树'
+      else if ATreeName = 'module-tree' then LTitle := '模块树'
+      else if ATreeName = 'view-tree' then LTitle := '界面树'
+      else if ATreeName = 'data-tree' then LTitle := '数据树';
+    end;
+    LSb.Append(PageHeader(LTitle));
 
     // Tree-specific styles
     LSb.AppendLine('<style>');
@@ -376,6 +569,9 @@ begin
     LSb.AppendLine('  .badge-conf-low { background: #f8d7da; color: #721c24; }');
     LSb.AppendLine('  .badge-conf-medium { background: #fff3cd; color: #856404; }');
     LSb.AppendLine('  .badge-conf-high { background: #d4edda; color: #155724; }');
+    LSb.AppendLine('  .badge-fog-misty { background: #fff3cd; color: #856404; font-size: 0.75em; }');
+    LSb.AppendLine('  .badge-fog-foggy { background: #ffe0b2; color: #e65100; font-size: 0.75em; }');
+    LSb.AppendLine('  .badge-fog-unknown-unknowns { background: #455a64; color: #fff; font-size: 0.75em; }');
     LSb.AppendLine('  .badge-source { background: #cce5ff; color: #004085; font-size: 0.8em; }');
     LSb.AppendLine('  .badge-gen-draft { background: #e2e3e5; color: #383d41; font-size: 0.75em; }');
     LSb.AppendLine('  .badge-gen-generated { background: #cce5ff; color: #004085; font-size: 0.75em; }');
@@ -417,7 +613,7 @@ begin
     LSb.AppendLine('  .trust-relevance { color: #6c757d; font-size: 0.9em; }');
     LSb.AppendLine('</style>');
 
-    LSb.AppendLine('<h1>' + HtmlEscape(ATreeTitle) + '</h1>');
+    LSb.AppendLine('<h1>' + HtmlEscape(LTitle) + '</h1>');
     LSb.AppendLine('<p><a href="index.html">'#$2190' Back to index</a></p>');
 
     if ANodes.Count = 0 then
@@ -471,7 +667,8 @@ begin
 end;
 
 procedure TDeepSpecRenderService.RenderProblemsPage(
-  AFuncNodes, AModuleNodes, AViewNodes, ADataNodes: TList<TSpecNode>);
+  AFuncNodes, AModuleNodes, AViewNodes, ADataNodes: TList<TSpecNode>;
+  AIssues: TList<TSpecIssue>);
 var
   LSb: TStringBuilder;
   LAllIds: TDictionary<string, Boolean>;
@@ -484,7 +681,7 @@ var
       // Low confidence
       if LNode.Confidence = clLow then
         LSb.AppendLine('<li class="problem problem-low-confidence">' +
-          '<span class="badge badge-conf-low">low confidence</span> ' +
+          '<span class="badge badge-conf-low">' + T('low confidence', '低置信度') + '</span> ' +
           HtmlEscape(LNode.Title) +
           ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span>' +
           ' <code>' + HtmlEscape(LNode.Id) + '</code>' +
@@ -495,7 +692,7 @@ var
         and (LNode.GenStatus in [gsDraft, gsGenerated])
         and (LNode.SourceLayer = slAiInferred) then
         LSb.AppendLine('<li class="problem problem-no-evidence">' +
-          '<span class="badge badge-prob-no-evidence">no evidence</span> ' +
+          '<span class="badge badge-prob-no-evidence">' + T('no evidence', '无证据') + '</span> ' +
           HtmlEscape(LNode.Title) +
           ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span>' +
           ' <code>' + HtmlEscape(LNode.Id) + '</code>' +
@@ -504,7 +701,7 @@ var
       // Candidate/unreviewed node (needs human review)
       if (LNode.Status = nsCandidate) and (LNode.ReviewStatus = rsUnreviewed) then
         LSb.AppendLine('<li class="problem problem-unreviewed">' +
-          '<span class="badge badge-prob-unreviewed">unreviewed</span> ' +
+          '<span class="badge badge-prob-unreviewed">' + T('unreviewed', '未审阅') + '</span> ' +
           HtmlEscape(LNode.Title) +
           ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span>' +
           ' <code>' + HtmlEscape(LNode.Id) + '</code>' +
@@ -513,11 +710,24 @@ var
       // Uncertain node
       if LNode.Status = nsUncertain then
         LSb.AppendLine('<li class="problem problem-uncertain">' +
-          '<span class="badge badge-uncertain">uncertain</span> ' +
+          '<span class="badge badge-uncertain">' + T('uncertain', '不确定') + '</span> ' +
           HtmlEscape(LNode.Title) +
           ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span>' +
           ' <code>' + HtmlEscape(LNode.Id) + '</code>' +
           '</li>');
+
+      // Fog: node whose requirement endpoint is in the fog (foggy or unknown_unknowns)
+      if LNode.HasFogState and (LNode.FogState in [
+        DeepSpec.Models.fsFoggy, DeepSpec.Models.fsUnknownUnknowns]) then
+      begin
+        var LFog := DeepSpec.Models.TSpecEnums.FogStateToStr(LNode.FogState);
+        LSb.AppendLine('<li class="problem problem-fog">' +
+          '<span class="badge badge-fog-' + FogStateCssClass(LNode.FogState) + '">fog: ' + HtmlEscape(LFog) + '</span> ' +
+          HtmlEscape(LNode.Title) +
+          ' <a href="#fog-map" class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</a>' +
+          ' <code>' + HtmlEscape(LNode.Id) + '</code>' +
+          '</li>');
+      end;
 
       // Orphan: has parent_id but parent not found in any tree
       if LNode.ParentId <> '' then
@@ -536,7 +746,7 @@ var
             if LN.Id = LNode.ParentId then begin LFound := True; Break; end;
         if not LFound then
           LSb.AppendLine('<li class="problem problem-orphan">' +
-            '<span class="badge badge-prob-orphan">orphan</span> ' +
+            '<span class="badge badge-prob-orphan">' + T('orphan', '孤立') + '</span> ' +
             HtmlEscape(LNode.Title) +
             ' — parent <code>' + HtmlEscape(LNode.ParentId) + '</code> not found' +
             ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span>' +
@@ -553,35 +763,55 @@ var
       for var LRef in LN.RelatedFunctions do
         if (LAllIds <> nil) and not LAllIds.ContainsKey(LRef) then
           LSb.AppendLine('<li class="problem problem-orphan">' +
-            '<span class="badge badge-prob-orphan">broken ref</span> ' +
+            '<span class="badge badge-prob-orphan">' + T('broken ref', '断裂引用') + '</span> ' +
             HtmlEscape(LN.Title) + ' '#8594' func <code>' + HtmlEscape(LRef) + '</code> (not found)' +
             ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span></li>');
       for var LRef in LN.RelatedModules do
         if (LAllIds <> nil) and not LAllIds.ContainsKey(LRef) then
           LSb.AppendLine('<li class="problem problem-orphan">' +
-            '<span class="badge badge-prob-orphan">broken ref</span> ' +
+            '<span class="badge badge-prob-orphan">' + T('broken ref', '断裂引用') + '</span> ' +
             HtmlEscape(LN.Title) + ' '#8594' mod <code>' + HtmlEscape(LRef) + '</code> (not found)' +
             ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span></li>');
       for var LRef in LN.RelatedViews do
         if (LAllIds <> nil) and not LAllIds.ContainsKey(LRef) then
           LSb.AppendLine('<li class="problem problem-orphan">' +
-            '<span class="badge badge-prob-orphan">broken ref</span> ' +
+            '<span class="badge badge-prob-orphan">' + T('broken ref', '断裂引用') + '</span> ' +
             HtmlEscape(LN.Title) + ' '#8594' view <code>' + HtmlEscape(LRef) + '</code> (not found)' +
             ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span></li>');
       for var LRef in LN.RelatedData do
         if (LAllIds <> nil) and not LAllIds.ContainsKey(LRef) then
           LSb.AppendLine('<li class="problem problem-orphan">' +
-            '<span class="badge badge-prob-orphan">broken ref</span> ' +
+            '<span class="badge badge-prob-orphan">' + T('broken ref', '断裂引用') + '</span> ' +
             HtmlEscape(LN.Title) + ' '#8594' data <code>' + HtmlEscape(LRef) + '</code> (not found)' +
             ' <span class="problem-tree">(' + HtmlEscape(ATreeLabel) + ')</span></li>');
     end;
+  end;
+
+  // Emit nodes whose fog_state equals AFogTarget into the current Fog Map group.
+  // Captures LSb, LFoundAny, LHasFog from the enclosing scope.
+  procedure EmitFogNodes(const ALabel: string; ANodes: TList<TSpecNode>;
+    AFogTarget: DeepSpec.Models.TFogState; var LFoundAny, LHasFogOut: Boolean);
+  begin
+    if ANodes = nil then Exit;
+    for var LN in ANodes do
+      if LN.HasFogState and (LN.FogState = AFogTarget) then
+      begin
+        LFoundAny := True;
+        LHasFogOut := True;
+        LSb.AppendLine('<div class="fog-node">' +
+          '<span class="problem-tree">(' + HtmlEscape(ALabel) + ')</span> ' +
+          HtmlEscape(LN.Title) + ' <code>' + HtmlEscape(LN.Id) + '</code>' +
+          ' <button class="btn-ticket" data-action="ticket-create"' +
+          ' data-node-id="' + HtmlEscape(LN.Id) + '"' +
+          ' data-node-title="' + HtmlEscape(LN.Title) + '">＋ ' + T('ticket', '开票') + '</button></div>');
+      end;
   end;
 
 begin
   LSb := TStringBuilder.Create;
   LAllIds := nil;
   try
-    LSb.Append(PageHeader('Problems'));
+    LSb.Append(PageHeader(T('Problems', '问题')));
 
     LSb.AppendLine('<style>');
     LSb.AppendLine('  .problem { list-style: none; padding: 0.4em 0.6em; margin: 0.3em 0;' +
@@ -591,46 +821,65 @@ begin
     LSb.AppendLine('  .problem-unreviewed { border-left-color: #6c757d; background: #f8f9fa; }');
     LSb.AppendLine('  .problem-uncertain { border-left-color: #dc3545; background: #fff5f5; }');
     LSb.AppendLine('  .problem-orphan { border-left-color: #e83e8c; background: #fdf5ff; }');
+    LSb.AppendLine('  .problem-fog { border-left-color: #e65100; background: #fff8f0; }');
     LSb.AppendLine('  .problem-tree { color: #6c757d; font-size: 0.85em; }');
     LSb.AppendLine('  .problem code { font-size: 0.85em; color: #495057; }');
     LSb.AppendLine('  .badge-prob-no-evidence { background: #d1ecf1; color: #0c5460; }');
     LSb.AppendLine('  .badge-prob-unreviewed { background: #e2e3e5; color: #383d41; }');
     LSb.AppendLine('  .badge-prob-orphan { background: #f5d0e8; color: #8b4572; }');
+    LSb.AppendLine('  .badge-fog-misty { background: #fff3cd; color: #856404; font-size: 0.8em; }');
+    LSb.AppendLine('  .badge-fog-foggy { background: #ffe0b2; color: #e65100; font-size: 0.8em; }');
+    LSb.AppendLine('  .badge-fog-unknown-unknowns { background: #455a64; color: #fff; font-size: 0.8em; }');
+    LSb.AppendLine('  .fog-group { margin: 0.5em 0; }');
+    LSb.AppendLine('  .fog-group-title { font-weight: 600; color: #495057; margin-bottom: 0.3em; }');
+    LSb.AppendLine('  .fog-node { padding: 0.3em 0.6em; margin: 0.2em 0; border-radius: 3px; background: #f8f9fa; }');
+    LSb.AppendLine('  .ticket { padding: 0.4em 0.6em; margin: 0.3em 0; border-radius: 4px;' +
+      ' border-left: 3px solid #4a90e2; background: #f0f4f8; }');
+    LSb.AppendLine('  .ticket code { font-size: 0.85em; color: #495057; }');
+    LSb.AppendLine('  .btn-ticket { font-size: 0.8em; margin-left: 0.5em; cursor: pointer;' +
+      ' background: #e3f2fd; border: 1px solid #90caf9; color: #1565c0; border-radius: 3px; }');
+    LSb.AppendLine('  .btn-ticket:hover { background: #bbdefb; }');
+    LSb.AppendLine('  .ticket-meta { color: #6c757d; font-size: 0.85em; margin-left: 0.5em; }');
     LSb.AppendLine('  .prob-section { margin-top: 1.5em; }');
     LSb.AppendLine('  .prob-summary { display: inline-block; margin: 0.5em 1em 0.5em 0;' +
       ' padding: 0.5em 1em; background: #f0f4f8; border-left: 3px solid #4a90e2; }');
     LSb.AppendLine('  .prob-summary strong { display: block; font-size: 1.5em; color: #4a90e2; }');
     LSb.AppendLine('</style>');
 
-    LSb.AppendLine('<h1>Problems</h1>');
-    LSb.AppendLine('<p><a href="index.html">'#$2190' Back to index</a></p>');
+    LSb.AppendLine('<h1>' + T('Problems', '问题') + '</h1>');
+    LSb.AppendLine('<p><a href="index.html">'#$2190' ' +
+      T('Back to index', '返回索引') + '</a></p>');
 
     // Summary
-    LSb.AppendLine('<h2>Summary</h2>');
+    LSb.AppendLine('<h2>' + T('Summary', '汇总') + '</h2>');
     var LFC: Integer := 0; if AFuncNodes <> nil then LFC := AFuncNodes.Count;
     var LMC: Integer := 0; if AModuleNodes <> nil then LMC := AModuleNodes.Count;
     var LVC: Integer := 0; if AViewNodes <> nil then LVC := AViewNodes.Count;
     var LDC: Integer := 0; if ADataNodes <> nil then LDC := ADataNodes.Count;
     LSb.AppendLine('<div class="prob-summary"><strong>' + LFC.ToString +
-      '</strong>Function nodes</div>');
+      '</strong>' + T('Function nodes', '功能节点') + '</div>');
     LSb.AppendLine('<div class="prob-summary"><strong>' + LMC.ToString +
-      '</strong>Module nodes</div>');
+      '</strong>' + T('Module nodes', '模块节点') + '</div>');
     LSb.AppendLine('<div class="prob-summary"><strong>' + LVC.ToString +
-      '</strong>View nodes</div>');
+      '</strong>' + T('View nodes', '界面节点') + '</div>');
     LSb.AppendLine('<div class="prob-summary"><strong>' + LDC.ToString +
-      '</strong>Data nodes</div>');
+      '</strong>' + T('Data nodes', '数据节点') + '</div>');
 
     // Problem list
-    LSb.AppendLine('<h2>Issues</h2>');
+    LSb.AppendLine('<h2>' + T('Issues', '问题列表') + '</h2>');
     LSb.AppendLine('<ul style="padding-left: 0;">');
-    ScanNodes('Function', AFuncNodes);
-    ScanNodes('Module', AModuleNodes);
-    ScanNodes('View', AViewNodes);
-    ScanNodes('Data', ADataNodes);
+    ScanNodes(T('Function', '功能'), AFuncNodes);
+    ScanNodes(T('Module', '模块'), AModuleNodes);
+    ScanNodes(T('View', '界面'), AViewNodes);
+    ScanNodes(T('Data', '数据'), ADataNodes);
     LSb.AppendLine('</ul>');
 
     // Cross-tree consistency: detect broken cross-tree references
     LSb.AppendLine('<h2>Cross-Tree Consistency</h2>');
+    // 总数复用共享 helper（DRY，与 index.html 看板一致）
+    LSb.AppendLine('<p>跨树断引用共 ' +
+      CountCrossTreeConflicts(AFuncNodes, AModuleNodes, AViewNodes, ADataNodes).ToString +
+      ' 处：</p>');
     LAllIds := TDictionary<string, Boolean>.Create;
     try
       if AFuncNodes <> nil then for var LN in AFuncNodes do LAllIds.AddOrSetValue(LN.Id, True);
@@ -639,15 +888,122 @@ begin
       if ADataNodes <> nil then for var LN in ADataNodes do LAllIds.AddOrSetValue(LN.Id, True);
 
       LSb.AppendLine('<ul style="padding-left: 0;">');
-      CheckNodeRefs('Function', AFuncNodes);
-      CheckNodeRefs('Module', AModuleNodes);
-      CheckNodeRefs('View', AViewNodes);
-      CheckNodeRefs('Data', ADataNodes);
+      CheckNodeRefs(T('Function', '功能'), AFuncNodes);
+      CheckNodeRefs(T('Module', '模块'), AModuleNodes);
+      CheckNodeRefs(T('View', '界面'), AViewNodes);
+      CheckNodeRefs(T('Data', '数据'), ADataNodes);
       LSb.AppendLine('</ul>');
     finally
       LAllIds.Free;
       LAllIds := nil;
     end;
+
+    // Fog Map: nodes grouped by fog_state (the growing/shrinking map of foggy endpoints)
+    LSb.AppendLine('<h2 id="fog-map">' + T('Fog Map', '雾区地图') + '</h2>');
+    LSb.AppendLine('<p>Requirement endpoints still in the fog. Converges one-way: ' +
+      '<code>unknown_unknowns</code> '#8594' <code>foggy</code> '#8594' ' +
+      '<code>misty</code> '#8594' <code>clear</code>. ' +
+      'Resolve each via an open exploration ticket.</p>');
+
+    var LHasFog := False;
+    for var LState in [DeepSpec.Models.fsUnknownUnknowns,
+                       DeepSpec.Models.fsFoggy,
+                       DeepSpec.Models.fsMisty] do
+    begin
+      var LStateStr := DeepSpec.Models.TSpecEnums.FogStateToStr(LState);
+      var LFoundAny := False;
+      LSb.AppendLine('<div class="fog-group">');
+      LSb.AppendLine('<div class="fog-group-title"><span class="badge badge-fog-' +
+        FogStateCssClass(LState) + '">fog: ' + HtmlEscape(LStateStr) + '</span></div>');
+
+      EmitFogNodes(T('Function', '功能'), AFuncNodes, LState, LFoundAny, LHasFog);
+      EmitFogNodes(T('Module', '模块'), AModuleNodes, LState, LFoundAny, LHasFog);
+      EmitFogNodes(T('View', '界面'), AViewNodes, LState, LFoundAny, LHasFog);
+      EmitFogNodes(T('Data', '数据'), ADataNodes, LState, LFoundAny, LHasFog);
+
+      LSb.AppendLine('</div>');
+    end;
+
+    if not LHasFog then
+      LSb.AppendLine('<p><em>No nodes in the fog. All requirement endpoints are clear.</em></p>');
+
+    // Open Tickets: exploration tickets persisted in issues/doc-issues.yaml.
+    // Only open tickets of the four exploration types are shown here.
+    LSb.AppendLine('<h2 id="open-tickets">' + T('Open Tickets', '开放 Ticket') + '</h2>');
+    var LTicketCount := 0;
+    if AIssues <> nil then
+    begin
+      for var LI in AIssues do
+      begin
+        if LI.Status <> DeepSpec.Models.issOpen then Continue;
+        if not (LI.IssueType in [DeepSpec.Models.itResearchTicket,
+                                 DeepSpec.Models.itPrototypeTicket,
+                                 DeepSpec.Models.itGrillingTicket,
+                                 DeepSpec.Models.itFogUnknown]) then Continue;
+        Inc(LTicketCount);
+        var LTypeStr := DeepSpec.Models.TSpecEnums.IssueTypeToStr(LI.IssueType);
+        var LSevStr := DeepSpec.Models.TSpecEnums.IssueSeverityToStr(LI.Severity);
+        LSb.AppendLine('<div class="ticket">' +
+          '<span class="badge">' + HtmlEscape(LTypeStr) + '</span> ' +
+          '<span class="badge">' + HtmlEscape(LSevStr) + '</span> ' +
+          HtmlEscape(LI.Title) +
+          ' <code>' + HtmlEscape(LI.Id) + '</code>');
+        if Length(LI.AffectedNodes) > 0 then
+        begin
+          LSb.Append(' <span class="ticket-meta">affects: ');
+          for var J := 0 to High(LI.AffectedNodes) do
+          begin
+            if J > 0 then LSb.Append(', ');
+            LSb.Append('<code>' + HtmlEscape(LI.AffectedNodes[J]) + '</code>');
+          end;
+          LSb.AppendLine('</span>');
+        end
+        else
+          LSb.AppendLine('');
+        if LI.HasRequiresHuman then
+        begin
+          var LHumanity := 'AFK';
+          if LI.RequiresHuman then LHumanity := 'HITL';
+          LSb.AppendLine(' <span class="ticket-meta">' + LHumanity + '</span>');
+        end;
+        LSb.AppendLine('</div>');
+      end;
+    end;
+    if LTicketCount = 0 then
+      LSb.AppendLine('<p><em>No open exploration tickets. Open one from a fog node above.</em></p>');
+
+    // JS Bridge: forward ticket-create button clicks to the WebView2 host.
+    // Mirrors the tree-page handler. Ticket buttons are NOT greyed-out after a
+    // click (a node may open multiple tickets), so the handler skips the
+    // .posted swap for data-action="ticket-create".
+    LSb.AppendLine('<script>');
+    LSb.AppendLine('(function() {');
+    LSb.AppendLine('  var hasBridge = !!(window.chrome && window.chrome.webview && window.chrome.webview.postMessage);');
+    LSb.AppendLine('  document.addEventListener("click", function(e) {');
+    LSb.AppendLine('    var t = e.target;');
+    LSb.AppendLine('    if (!(t instanceof HTMLElement)) return;');
+    LSb.AppendLine('    var action = t.getAttribute("data-action");');
+    LSb.AppendLine('    if (!action) return;');
+    LSb.AppendLine('    if (t.classList.contains("posted")) return;');
+    LSb.AppendLine('    var msg = {');
+    LSb.AppendLine('      action: action,');
+    LSb.AppendLine('      node_id: t.getAttribute("data-node-id") || "",');
+    LSb.AppendLine('      node_title: t.getAttribute("data-node-title") || ""');
+    LSb.AppendLine('    };');
+    LSb.AppendLine('    if (hasBridge) {');
+    LSb.AppendLine('      try { window.chrome.webview.postMessage(JSON.stringify(msg)); }');
+    LSb.AppendLine('      catch (err) { console.error("DeepSpec bridge:", err); return; }');
+    LSb.AppendLine('      // Ticket buttons stay re-clickable; only decision buttons grey out.');
+    LSb.AppendLine('      if (action !== "ticket-create") {');
+    LSb.AppendLine('        t.classList.add("posted");');
+    LSb.AppendLine('        t.textContent = (action === "node-confirm" ? "'#$2713' posted" : "'#$2715' posted");');
+    LSb.AppendLine('      }');
+    LSb.AppendLine('    } else {');
+    LSb.AppendLine('      alert("DeepSpec bridge unavailable. Open this page inside DeepSpec to create tickets.");');
+    LSb.AppendLine('    }');
+    LSb.AppendLine('  });');
+    LSb.AppendLine('})();');
+    LSb.AppendLine('</script>');
 
     LSb.Append(PageFooter);
 
@@ -674,7 +1030,7 @@ begin
     if AViewNodes <> nil then for var N in AViewNodes do LAllNodes.AddOrSetValue(N.Id, N);
     if ADataNodes <> nil then for var N in ADataNodes do LAllNodes.AddOrSetValue(N.Id, N);
 
-    LSb.Append(PageHeader('Semantic Bundles'));
+    LSb.Append(PageHeader(T('Semantic Bundles', '语义束')));
 
     LSb.AppendLine('<style>');
     LSb.AppendLine('  .bundle { margin: 1em 0; padding: 0.8em; border: 1px solid #dee2e6; border-radius: 6px; }');
@@ -692,7 +1048,7 @@ begin
     LSb.AppendLine('<p><a href="index.html">'#$2190' Back to index</a></p>');
 
     if (ABundles = nil) or (ABundles.Count = 0) then
-      LSb.AppendLine('<p><em>No bundles defined. Bundles group related nodes for batch review.</em></p>')
+      LSb.AppendLine('<p><em>' + T('No bundles defined. Bundles group related nodes for batch review.', '未定义语义束。语义束将相关节点分组供批量审阅。') + '</em></p>')
     else
     begin
       for var I := 0 to ABundles.Count - 1 do
@@ -721,9 +1077,9 @@ begin
         LSb.AppendLine('</ul>');
         LSb.AppendLine('<div class="bundle-actions">');
         LSb.AppendLine('<button class="btn-accept-all" data-action="bundle-accept" data-bundle-id="' +
-          HtmlEscape(LB.Id) + '">Accept All</button>');
+          HtmlEscape(LB.Id) + '">' + T('Accept All', '全部接受') + '</button>');
         LSb.AppendLine('<button class="btn-reject-all" data-action="bundle-reject" data-bundle-id="' +
-          HtmlEscape(LB.Id) + '">Reject All</button>');
+          HtmlEscape(LB.Id) + '">' + T('Reject All', '全部拒绝') + '</button>');
         LSb.AppendLine('</div>');
         LSb.AppendLine('</div>');
       end;
@@ -761,6 +1117,163 @@ begin
   finally
     LSb.Free;
     LAllNodes.Free;
+  end;
+end;
+
+procedure TDeepSpecRenderService.RenderNodeDetail(const ANode: TSpecNode);
+var
+  LSb: TStringBuilder;
+begin
+  LSb := TStringBuilder.Create;
+  try
+    LSb.Append(PageHeader(ANode.Title));
+    LSb.AppendLine('<p><a href="index.html">'#$2190' ' +
+      T('Back to index', '返回索引') + '</a></p>');
+    LSb.AppendLine('<h1>' + HtmlEscape(ANode.Title) + '</h1>');
+
+    LSb.AppendLine('<div class="stat"><strong>' + HtmlEscape(ANode.Id) +
+      '</strong>' + T('Node ID', '节点 ID') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + HtmlEscape(
+      DeepSpec.Models.TSpecEnums.NodeStatusToStr(ANode.Status)) +
+      '</strong>' + T('Status', '状态') + '</div>');
+    LSb.AppendLine('<div class="stat"><strong>' + HtmlEscape(
+      DeepSpec.Models.TSpecEnums.ConfidenceToStr(ANode.Confidence)) +
+      '</strong>' + T('Confidence', '置信度') + '</div>');
+
+    if ANode.Summary <> '' then
+    begin
+      LSb.AppendLine('<h2>' + T('Summary', '摘要') + '</h2>');
+      LSb.AppendLine('<p>' + HtmlEscape(ANode.Summary) + '</p>');
+    end;
+
+    if (ANode.GenStatus <> gsDraft) or (ANode.ReviewStatus <> rsUnreviewed) then
+    begin
+      LSb.AppendLine('<h2>' + T('Review state', '审阅状态') + '</h2>');
+      LSb.AppendLine('<p><span class="badge">gen: ' + HtmlEscape(
+        DeepSpec.Models.TSpecEnums.GenStatusToStr(ANode.GenStatus)) +
+        '</span><span class="badge">rev: ' + HtmlEscape(
+        DeepSpec.Models.TSpecEnums.ReviewStatusToStr(ANode.ReviewStatus)) +
+        '</span></p>');
+    end;
+
+    if Length(ANode.SourceRefs) > 0 then
+    begin
+      LSb.AppendLine('<h2>' + T('Evidence', '证据') + '</h2>');
+      LSb.AppendLine('<ul>');
+      for var LR in ANode.SourceRefs do
+        LSb.AppendLine('<li><code>' + HtmlEscape(LR.RefId) + '</code> (' +
+          HtmlEscape(LR.Relevance) + ')</li>');
+      LSb.AppendLine('</ul>');
+    end;
+
+    if ANode.HasFogState then
+    begin
+      LSb.AppendLine('<h2>' + T('Fog state', '雾状态') + '</h2>');
+      LSb.AppendLine('<p>' + HtmlEscape(
+        DeepSpec.Models.TSpecEnums.FogStateToStr(ANode.FogState)) + '</p>');
+    end;
+
+    LSb.Append(PageFooter);
+    TFile.WriteAllText(TPath.Combine(FBasePath, 'node-detail.html'),
+      LSb.ToString, TEncoding.UTF8);
+  finally
+    LSb.Free;
+  end;
+end;
+
+class function TDeepSpecRenderService.ComputeHealthMetrics(AFunc, AModule, AView,
+  AData: TList<TSpecNode>; AIssues: TList<TSpecIssue>): THealthMetrics;
+var
+  LConfSum: Double;
+  LCount: Integer;
+  LI: TSpecIssue;
+
+  procedure Scan(ANodes: TList<TSpecNode>);
+  var
+    LN2: TSpecNode;
+    LCV: Double;
+  begin
+    if ANodes = nil then Exit;
+    for LN2 in ANodes do
+    begin
+      Inc(Result.TotalNodes);
+      case LN2.Confidence of
+        clLow:    LCV := 0.3;
+        clMedium: LCV := 0.7;
+        clHigh:   LCV := 1.0;
+      else
+        LCV := 0.7;
+      end;
+      LConfSum := LConfSum + LCV;
+      Inc(LCount);
+      if LN2.GenStatus = gsConfirmed then
+        Inc(Result.ConfirmedNodes);
+      if LN2.HasFogState and (LN2.FogState <> fsClear) then
+        Inc(Result.FogCount);
+    end;
+  end;
+
+begin
+  Result := Default(THealthMetrics);
+  LConfSum := 0; LCount := 0;
+  Scan(AFunc);
+  Scan(AModule);
+  Scan(AView);
+  Scan(AData);
+  if LCount > 0 then
+    Result.AvgConfidence := LConfSum / LCount;
+  if Result.TotalNodes > 0 then
+    Result.CoveragePct := (Result.ConfirmedNodes / Result.TotalNodes) * 100.0;
+  if AIssues <> nil then
+    for LI in AIssues do
+    begin
+      if LI.Status = issOpen then
+      begin
+        Inc(Result.DecisionBacklog);
+        if (LI.Severity = isCritical) or (LI.Severity = isHigh) then
+          Inc(Result.HighRiskOpen);
+      end;
+    end;
+end;
+
+class function TDeepSpecRenderService.CountCrossTreeConflicts(AFunc, AModule,
+  AView, AData: TList<TSpecNode>): Integer;
+var
+  LAllIds: TDictionary<string, Boolean>;
+
+  procedure ScanRefs(ANodes: TList<TSpecNode>);
+  var
+    LN: TSpecNode;
+    LRef: string;
+  begin
+    if ANodes = nil then Exit;
+    for LN in ANodes do
+    begin
+      for LRef in LN.RelatedModules do
+        if not LAllIds.ContainsKey(LRef) then Inc(Result);
+      for LRef in LN.RelatedViews do
+        if not LAllIds.ContainsKey(LRef) then Inc(Result);
+      for LRef in LN.RelatedData do
+        if not LAllIds.ContainsKey(LRef) then Inc(Result);
+    end;
+  end;
+
+var
+  LN: TSpecNode;
+begin
+  Result := 0;
+  LAllIds := TDictionary<string, Boolean>.Create;
+  try
+    if AFunc   <> nil then for LN in AFunc   do LAllIds.AddOrSetValue(LN.Id, True);
+    if AModule <> nil then for LN in AModule do LAllIds.AddOrSetValue(LN.Id, True);
+    if AView   <> nil then for LN in AView   do LAllIds.AddOrSetValue(LN.Id, True);
+    if AData   <> nil then for LN in AData   do LAllIds.AddOrSetValue(LN.Id, True);
+    ScanRefs(AFunc);
+    ScanRefs(AModule);
+    ScanRefs(AView);
+    ScanRefs(AData);
+  finally
+    LAllIds.Free;
   end;
 end;
 

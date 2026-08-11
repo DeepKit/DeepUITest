@@ -28,6 +28,12 @@
 - ✅ **防假绿机制**：宁可降级也不显示假绿状态，确保输出质量
 - ✅ **结构化胶片产出**：将决策显影为可视化思维胶片
 - ✅ **病毒裂变设计**：分享卡片带品牌水印，邀请链接自动传播
+- ✅ **追问流式输出**：胶片后继续对话，SSE 实时推送新推演结果
+- ✅ **历史服务端持久化**：SQLite WAL 存储，支持 CRUD、导出/导入、跨浏览器同步
+- ✅ **脑内 X 光片**（T19b/c/d）：第三人称自我觉察分析（decision/treehole 双模式）
+- ✅ **跨会话成长对比**：结合历史会话摘要，指出与以往相比的差异或成长
+- ✅ **树洞模式**（T19b）：轻量倾诉陪伴，随时生成温和诚实的 X 光片反馈
+- ✅ **多家族 LLM 治理**（T20）：通过 WiseGateway 调用 GPT/GLM/Kimi/Qwen 等 8 个模型家族
 
 ---
 
@@ -37,10 +43,14 @@
 
 ```bash
 cd Skills
-export KIRO_API_KEY="your-api-key"
-export OPENAI_API_KEY="your-api-key"
+set KIRO_API_KEY=your-api-key
+set OPENAI_API_KEY=your-api-key
 
-python -m uvicorn src.main:app --host 127.0.0.1 --port 8001
+REM Windows 推荐：使用端口自适应脚本
+start_skills.bat
+
+REM 或者手动启动新版本实例（8002）：
+python -m uvicorn src.main:app --host 127.0.0.1 --port 8002
 ```
 
 **验证服务健康：**

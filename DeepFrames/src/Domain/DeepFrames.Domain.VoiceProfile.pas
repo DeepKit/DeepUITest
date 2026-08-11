@@ -40,6 +40,8 @@ type
     class function PitchToText(APitch: TTtsPitch): string; static;
     class function BuiltInVoices: TArray<string>; static;
     class function IsInstructionValid(const AInstruction: string): Boolean; static;
+    class function ToneToEmotion(const ATone: string): TTtsEmotion; static;
+    class function BuildInstructionFromTone(const ATone: string): string; static;
   end;
 
 implementation
@@ -104,25 +106,26 @@ end;
 
 class function TVoiceProfile.EmotionToText(AEmotion: TTtsEmotion): string;
 begin
+  // Chinese instructions per docs/05.audio §1 — StepFun TTS is more stable with Chinese
   case AEmotion of
-    teCalm:       Result := 'calm';
-    teTense:      Result := 'tense';
-    teSad:        Result := 'sad';
-    teHappy:      Result := 'happy';
-    teAngry:      Result := 'angry';
-    teMysterious: Result := 'mysterious';
-    teNeutral:    Result := 'neutral';
-  else Result := 'calm';
+    teCalm:       Result := '平静沉稳';
+    teTense:      Result := '紧张急迫';
+    teSad:        Result := '低落伤感';
+    teHappy:      Result := '欢快愉悦';
+    teAngry:      Result := '愤怒激烈';
+    teMysterious: Result := '神秘低沉';
+    teNeutral:    Result := '中性平稳';
+  else Result := '平静沉稳';
   end;
 end;
 
 class function TVoiceProfile.PaceToText(APace: TTtsPace): string;
 begin
   case APace of
-    tpSlow:   Result := 'slow';
-    tpNormal: Result := 'normal';
-    tpFast:   Result := 'fast';
-  else Result := 'normal';
+    tpSlow:   Result := '语速偏慢';
+    tpNormal: Result := '正常语速';
+    tpFast:   Result := '语速偏快';
+  else Result := '正常语速';
   end;
 end;
 
@@ -130,8 +133,8 @@ class function TVoiceProfile.PitchToText(APitch: TTtsPitch): string;
 begin
   case APitch of
     tpHNormal: Result := '';
-    tpHHigh:   Result := 'high_pitch';
-    tpHLow:    Result := 'low_pitch';
+    tpHHigh:   Result := '音调偏高';
+    tpHLow:    Result := '音调偏低';
   else Result := '';
   end;
 end;
@@ -165,6 +168,25 @@ end;
 class function TVoiceProfile.IsInstructionValid(const AInstruction: string): Boolean;
 begin
   Result := Length(AInstruction) <= 200;
+end;
+
+class function TVoiceProfile.ToneToEmotion(const ATone: string): TTtsEmotion;
+var LT: string;
+begin
+  LT := LowerCase(Trim(ATone));
+  if (Pos('energetic',LT)>0) or (Pos('excited',LT)>0) or (Pos('dynamic',LT)>0) then Result := teHappy
+  else if (Pos('tense',LT)>0) or (Pos('urgent',LT)>0) or (Pos('nervous',LT)>0) then Result := teTense
+  else if (Pos('serious',LT)>0) or (Pos('official',LT)>0) or (Pos('solemn',LT)>0) then Result := teNeutral
+  else if (Pos('warm',LT)>0) or (Pos('gentle',LT)>0) or (Pos('cozy',LT)>0) then Result := teCalm
+  else if (Pos('sad',LT)>0) or (Pos('melancholy',LT)>0) then Result := teSad
+  else if (Pos('angry',LT)>0) or (Pos('furious',LT)>0) then Result := teAngry
+  else if (Pos('mysterious',LT)>0) or (Pos('eerie',LT)>0) then Result := teMysterious
+  else Result := teCalm;
+end;
+
+class function TVoiceProfile.BuildInstructionFromTone(const ATone: string): string;
+begin
+  Result := BuildInstruction(ToneToEmotion(ATone), tpNormal, tpHNormal);
 end;
 
 end.

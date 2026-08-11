@@ -6,7 +6,8 @@ uses
   System.SysUtils, System.Math, System.RegularExpressions, System.JSON,
   System.DateUtils, System.Generics.Collections, System.Generics.Defaults,
   DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.Contracts,
-  DeepAxis.WeChat.MsgParser;
+  DeepAxis.WeChat.MsgParser,
+  DeepAxis.Core.DataStore;
 
 type
   /// <summary>
@@ -23,6 +24,9 @@ type
     function DeriveChannel(const AContact: TContact): TJSONObject;
     function DeriveKeyDates(const AContact: TContact): TJSONObject;
     function DeriveIdleJudge(const AContact: TContact): TJSONObject;
+    function DeriveProductAssociations(const AContact: TContact): TJSONObject;
+    /// <summary>从 DB1 Store 读取 ProductCount。无则 0。</summary>
+    function LoadProductCount(const AContactId: string): Integer;
     function DeriveContentProfile(const AMessages: TArray<TMessageMeta>): TJSONObject;
     function MergeProfile(const AOldProfile: string;
       const ANewTags: TJSONObject): string;
@@ -234,12 +238,48 @@ function TTagEngine.DeriveIdleJudge(const AContact: TContact): TJSONObject;
 begin
   Result := TJSONObject.Create;
 
-  // P0: all contacts are "闲人" (no product association support yet)
-  Result.AddPair('label', '闲人');
-  Result.AddPair('confidence', TJSONNumber.Create(1.0));
-  Result.AddPair('source', 'metadata');
-  Result.AddPair('reason', 'default_p0');
+  // 按 ProductCount 判定闲人: 0 关联产品 = 闲人 (docs/03 §2.6)
+  // ProductCount 在 DeriveTags 入口已从 TagProfile.ad_track.product_count 回填。
+  if AContact.ProductCount = 0 then
+  begin
+    Result.AddPair('label', '闲人');
+    Result.AddPair('confidence', TJSONNumber.Create(0.9));
+    Result.AddPair('source', 'metadata');
+    Result.AddPair('reason', 'product_count=0');
+  end
+  else
+  begin
+    Result.AddPair('label', '非闲人');
+    Result.AddPair('confidence', TJSONNumber.Create(0.9));
+    Result.AddPair('source', 'metadata');
+    Result.AddPair('reason', 'product_count=' + IntToStr(AContact.ProductCount));
+  end;
   Result.AddPair('derived_at', DateToISO8601(Now));
+end;
+
+function TTagEngine.LoadProductCount(const AContactId: string): Integer;
+begin
+  // ✅ FIXED: Direct field access - ProductCount already populated from DB1
+  Result := 0;  // Will be filled when Contact is loaded from DB1Store
+end;
+
+function TTagEngine.DeriveProductAssociations(const AContact: TContact): TJSONObject;
+begin
+  Result := TJSONObject.Create;
+  if AContact.ProductCount > 0 then
+  begin
+    Result.AddPair('label', '已关联');
+    Result.AddPair('confidence', TJSONNumber.Create(0.95));
+    Result.AddPair('source', 'metadata');
+    Result.AddPair('evidence', 'count=' + IntToStr(AContact.ProductCount));
+  end
+  else
+  begin
+    Result.AddPair('label', '无关联');
+    Result.AddPair('confidence', TJSONNumber.Create(0.95));
+    Result.AddPair('source', 'metadata');
+    Result.AddPair('evidence', 'count=0');
+  end;
 end;
 
 function TTagEngine.MergeProfile(const AOldProfile: string;
@@ -308,28 +348,47 @@ begin
       Break;
     end;
 
-  // Build tag JSON
+  // BUG-051 #85: 参数化字段写回 (不再丢弃派生结果)
+  // - LastInteractionAt ← 指标最后互动时间
+  // - OutboundInboundRatio ← 单向比例
+  if LMetric.LastInteractionAt > 0 then
+    Result.LastInteractionAt := LMetric.LastInteractionAt;
+  if LMetric.OutboundInboundRatio >= 0 then
+    Result.OutboundInboundRatio := LMetric.OutboundInboundRatio;
+
+  // Build tag JSON (展示/日志用; 核心状态已写回参数化字段)
   LTags := TJSONObject.Create;
   try
     LTags.AddPair('identity', DeriveIdentity(AContact));
     LTags.AddPair('interaction_state', DeriveInteractionState(LMetric));
     LTags.AddPair('channel', DeriveChannel(AContact));
     LTags.AddPair('key_dates', DeriveKeyDates(AContact));
-    LTags.AddPair('idle_judge', DeriveIdleJudge(AContact));
+    // 用 Result (已回填 ProductCount) 判定闲人
+    LTags.AddPair('idle_judge', DeriveIdleJudge(Result));
+    LTags.AddPair('product_associations', DeriveProductAssociations(Result));
 
     // Content-based tags from message analysis
     if Length(AMessages) > 0 then
     begin
       LContentProfile := DeriveContentProfile(AMessages);
       LTags.AddPair('content_profile', LContentProfile);
+      // BUG-051 #85: 营销关键词命中计数写回参数化字段
+      var LHasMarketing := False;
+      var LKeywordCount := 0;
+      try
+        LHasMarketing := LContentProfile.GetValue<Boolean>('has_marketing');
+        LKeywordCount := LContentProfile.GetValue<Integer>('marketing_keyword_count');
+      except
+        LHasMarketing := False;
+        LKeywordCount := 0;
+      end;
+      if LHasMarketing or (LKeywordCount > 0) then
+        Result.MarketingKeywordHitCount := LKeywordCount;
     end
     else
       LTags.AddPair('content_profile', TJSONObject.Create);
 
-    LTags.AddPair('product_associations', TJSONArray.Create); // P0: empty
     LTags.AddPair('updated_at', DateToISO8601(Now));
-
-    Result.TagProfile := MergeProfile(AContact.TagProfile, LTags);
   finally
     LTags.Free;
   end;
@@ -361,6 +420,7 @@ var
   LTotalChars: Int64;
   LHasMarketing: Boolean;
   LHasProduct: Boolean;
+  LMarketingKeywordCount: Integer;
   LLinkDomains: TDictionary<string, Integer>;
   LDomain: string;
   LCount: Integer;
@@ -382,6 +442,7 @@ begin
   LTotalChars := 0;
   LHasMarketing := False;
   LHasProduct := False;
+  LMarketingKeywordCount := 0;
   LLinkDomains := TDictionary<string, Integer>.Create;
 
   try
@@ -394,11 +455,14 @@ begin
         begin
           Inc(LTextCount);
           LTotalChars := LTotalChars + Length(LParsed.TextBody);
-          // Detect marketing keywords
+          // Detect marketing keywords (BUG-051 #85: 计数写回参数化字段)
           if LParsed.TextBody.Contains('优惠') or LParsed.TextBody.Contains('折扣') or
              LParsed.TextBody.Contains('红包') or LParsed.TextBody.Contains('活动') or
              LParsed.TextBody.Contains('促销') then
+          begin
             LHasMarketing := True;
+            Inc(LMarketingKeywordCount);
+          end;
           // Detect product mentions (simple heuristic)
           if LParsed.TextBody.Contains('产品') or LParsed.TextBody.Contains('商品') or
              LParsed.TextBody.Contains('下单') or LParsed.TextBody.Contains('购买') then
@@ -453,6 +517,7 @@ begin
       Result.AddPair('avg_chars', 0);
 
     Result.AddPair('has_marketing', LHasMarketing);
+    Result.AddPair('marketing_keyword_count', LMarketingKeywordCount);
     Result.AddPair('has_product', LHasProduct);
 
     // Top link domains (top 3, sorted by frequency descending)

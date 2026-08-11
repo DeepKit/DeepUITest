@@ -1,4 +1,0 @@
-[00:31:18.944] [INFO] [27652] [DeepFrames.Workflow] [test_event] job=test-job test message
-[00:31:18.944] [INFO] [27652] [DeepFrames.Workflow] [step_done] job=test-job step=step-1 step ok
-[00:31:18.944] [INFO] [27652] [DeepFrames.Workflow] [gate_evaluated] job=test-job Gate gate2: pass (score=0.92)
-[00:31:18.944] [INFO] [27652] [DeepFrames.Workflow] [provider_call] job=test-job step=step-1 fake/fake-model/llm 10ms 100/200 tokens

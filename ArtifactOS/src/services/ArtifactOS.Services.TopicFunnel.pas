@@ -139,7 +139,7 @@ type
 implementation
 
 uses
-  FireDAC.Comp.Client,
+  FireDAC.Comp.Client, FireDAC.Stan.Param,
   DeepBase.LLM,
   ArtifactOS.Core.DB.Connection,
   ArtifactOS.Services.DeepLLMProxy,

@@ -1,4 +1,4 @@
-program TestWeChatReader;
+﻿program TestWeChatReader;
 
 {$APPTYPE CONSOLE}
 {.$R *.res}

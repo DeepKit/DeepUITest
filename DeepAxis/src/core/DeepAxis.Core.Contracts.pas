@@ -8,6 +8,19 @@ uses
   DeepAxis.Core.DataTypes;
 
 type
+  // ── Churn event types (Decision #1 in IDOC) ───────────────────
+  
+  TChurnEventType = (cetFriendRemovedYou, cetBlockedByUser, cetDeletedByUser);
+  
+  TChurnEvent = record
+    ContactId: string;
+    ChurnType: TChurnEventType;  // ← Changed from 'Type' to avoid reserved word conflict
+    OccurredAt: TDateTime;
+    Details: string;
+    RecoveryStatus: string; // e.g., 'pending', 'resolved', 'skipped'
+    RecoverySuggestion: string;
+  end;
+  
   // ── Schema adapter (forward-use by IWxReader) ──────────────────
 
   ISchemaAdapter = interface
@@ -48,6 +61,12 @@ type
     procedure Close;
     function IsOpen: Boolean;
     function GetAdapter: ISchemaAdapter;
+    /// <summary>读 session 表对应联系人的 last_message_time (Int64, 毫秒)。
+    ///   ContactId = SHA256Hex(username), 内部遍历 session 反查 (session 表只有 username 列)。
+    ///   返回 0 表示未找到/未开/获取异常 — 调用方据此判 srUnknown, 不臆测成功。</summary>
+    function GetSessionLastMessageTime(const AContactId: string): Int64;
+    /// <summary>body-zero 审计报告 (BUG-051 #82): 真实反映正文探测/读取/写库/UIA 计数。</summary>
+    function GetLastBodyZeroReport: TBodyZeroReport;
   end;
 
   // ── Metric calculator ──────────────────────────────────────────
@@ -75,7 +94,8 @@ type
   IEvidenceBuilder = interface
     ['{D4E5F6A7-B8C9-0123-DEFA-234567890123}']
     function Build(const AHint: TRadarHint;
-      const AMetrics: TArray<TInteractionMetric>): TArray<TEvidenceRecord>;
+      const AMetrics: TArray<TInteractionMetric>;
+      const AMessages: TArray<TMessageMeta> = nil): TArray<TEvidenceRecord>;
     function BuildBodyZeroReport: TBodyZeroReport;
   end;
 
@@ -111,6 +131,31 @@ type
     function GetStateLabel(const AState: TAxis1State): string;
   end;
 
+  // ── Tier classifier (绿/黄/红简化分级) ───────────────────────
+  
+  /// <summary>
+  ///   Classifies a contact into a display tier (绿/黄/红/灰) based on
+  ///   metadata + interaction metrics. Cold-start (M0) usable.
+  /// </summary>
+  ITierClassifier = interface
+    ['{D0E1F2A3-B4C5-6789-0ABC-890123456789}']
+    function Classify(const AContact: TContact;
+      const AMetric: TInteractionMetric): TTier;
+    function ClassifyAll(const AData: TPollResult): TArray<TTierEntry>;
+  end;
+  
+  // ── Churn monitor ──────────────────────────────────────────────
+
+  
+  IChurnDetector = interface
+    ['{C7F5D4E3-8A9B-6D1C-0E2F-4ABCDEF01234}']  // Valid GUID: 8-4-4-4-12 hex chars only
+    procedure OnFriendRemoved(const AContactId: string);
+    procedure OnBlockedByUser(const AContactId: string);
+    procedure OnDeletedByUser(const AContactId: string);
+    function GetRecoverySuggestion(const AContactId: string): string;
+    procedure ProcessUnresolvedEvents;
+  end;
+  
   // ── Pipeline orchestrator ──────────────────────────────────────
 
   IPipelineOrchestrator = interface

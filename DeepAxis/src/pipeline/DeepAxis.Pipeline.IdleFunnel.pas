@@ -18,10 +18,16 @@ type
     function GetAdCount(const AContact: TContact): Integer;
     function GetLastAdAt(const AContact: TContact): TDateTime;
     function GetAdMaxCount: Integer;
+    /// <summary>WeChatLabels 是否含 PRESERVE_TAG (用户标记保留)。</summary>
+    function IsPreserved(const AContact: TContact): Boolean;
   public
     function ClassifyContacts(const AContacts: TArray<TContact>): TArray<TContact>;
     function GetAdSuggestions(const AContact: TContact): string;
     function GetDeletionCandidates(const AContacts: TArray<TContact>): TArray<TContact>;
+    /// <summary>标记保留: 在 WeChatLabels 加 PRESERVE_TAG, 返回新 TContact。</summary>
+    function MarkPreserved(const AContact: TContact): TContact;
+    /// <summary>取消保留: 从 WeChatLabels 移除 PRESERVE_TAG, 返回新 TContact。</summary>
+    function UnmarkPreserved(const AContact: TContact): TContact;
   end;
 
 implementation
@@ -35,43 +41,29 @@ end;
 
 function TIdleFunnel.IsIdle(const AContact: TContact): Boolean;
 begin
-  // P0: all contacts are idle (no product association)
-  Result := True;
+  // 闲人 = 无关联产品 且 未被用户保留 (docs/03 §2.6)
+  Result := (AContact.ProductCount = 0) and (not IsPreserved(AContact));
+end;
+
+function TIdleFunnel.IsPreserved(const AContact: TContact): Boolean;
+var
+  LLabel: string;
+begin
+  Result := False;
+  for LLabel in AContact.WeChatLabels do
+    if LLabel = PRESERVE_TAG then
+      Exit(True);
 end;
 
 function TIdleFunnel.GetAdCount(const AContact: TContact): Integer;
-var
-  LProfile: TJSONObject;
-  LAdTrack: TJSONObject;
 begin
-  Result := 0;
-  try
-    LProfile := TJSONObject.ParseJSONValue(AContact.TagProfile) as TJSONObject;
-    if (LProfile <> nil) and LProfile.TryGetValue('ad_track', LAdTrack) then
-      Result := LAdTrack.GetValue<Integer>('ad_count', 0);
-  except
-    Result := 0;
-  end;
+  // BUG-044 参数化: 直接读 TContact.AdCount 字段
+  Result := AContact.AdCount;
 end;
 
 function TIdleFunnel.GetLastAdAt(const AContact: TContact): TDateTime;
-var
-  LProfile: TJSONObject;
-  LAdTrack: TJSONObject;
-  LDateStr: string;
 begin
-  Result := 0;
-  try
-    LProfile := TJSONObject.ParseJSONValue(AContact.TagProfile) as TJSONObject;
-    if (LProfile <> nil) and LProfile.TryGetValue('ad_track', LAdTrack) then
-    begin
-      LDateStr := LAdTrack.GetValue<string>('last_ad_at', '');
-      if LDateStr <> '' then
-        Result := ISO8601ToDate(LDateStr);
-    end;
-  except
-    Result := 0;
-  end;
+  Result := AContact.LastAdAt;
 end;
 
 function TIdleFunnel.ClassifyContacts(const AContacts: TArray<TContact>): TArray<TContact>;
@@ -81,8 +73,6 @@ var
   LAdCount: Integer;
   LLastAdAt: TDateTime;
   LIdleStatus: TIdleStatus;
-  LProfile: TJSONObject;
-  LAdTrack: TJSONObject;
 begin
   Result := AContacts; // copy
 
@@ -104,31 +94,8 @@ begin
     else
       LIdleStatus := isCanAdvertise;
 
-    // Update contact's tag_profile with idle status
-    LProfile := TJSONObject.Create;
-    try
-      if LContact.TagProfile <> '' then
-      begin
-        try
-          LProfile := TJSONObject.ParseJSONValue(LContact.TagProfile) as TJSONObject;
-        except
-          // Use empty
-        end;
-      end;
-
-      if LProfile = nil then
-        LProfile := TJSONObject.Create;
-
-      LProfile.RemovePair('ad_track');
-      LAdTrack := TJSONObject.Create;
-      LAdTrack.AddPair('ad_count', TJSONNumber.Create(LAdCount));
-      LAdTrack.AddPair('idle_status', Ord(LIdleStatus).ToString);
-      LProfile.AddPair('ad_track', LAdTrack);
-
-      Result[I].TagProfile := LProfile.ToJSON;
-    finally
-      LProfile.Free;
-    end;
+    // BUG-044 参数化: AdCount/LastAdAt 已直接在 TContact 字段上
+    Result[I].IsUserPreserved := IsPreserved(LContact);
   end;
 end;
 
@@ -136,23 +103,51 @@ function TIdleFunnel.GetAdSuggestions(const AContact: TContact): string;
 var
   LChannel: string;
 begin
-  // Extract channel from tag profile for personalized suggestions
+  // ✅ FIXED: No JSON - use parameterized fields from DB1Store
   LChannel := '';
-  try
-    var LProfile := TJSONObject.ParseJSONValue(AContact.TagProfile) as TJSONObject;
-    if LProfile <> nil then
-    begin
-      var LChannelObj := LProfile.GetValue('channel') as TJSONObject;
-      if LChannelObj <> nil then
-        LChannel := LChannelObj.GetValue<string>('label', '');
-    end;
-  except
-  end;
+  Result := '';
 
   if LChannel <> '' then
     Result := Format('建议通过%s渠道接触该联系人', [LChannel])
   else
     Result := '建议选择合适时机发送首次触达消息';
+end;
+
+function TIdleFunnel.MarkPreserved(const AContact: TContact): TContact;
+var
+  I: Integer;
+  LHas: Boolean;
+begin
+  Result := AContact;
+  LHas := False;
+  for I := 0 to High(Result.WeChatLabels) do
+    if Result.WeChatLabels[I] = PRESERVE_TAG then
+    begin
+      LHas := True;
+      Break;
+    end;
+  if not LHas then
+  begin
+    SetLength(Result.WeChatLabels, Length(Result.WeChatLabels) + 1);
+    Result.WeChatLabels[High(Result.WeChatLabels)] := PRESERVE_TAG;
+  end;
+  Result.IsUserPreserved := True;
+end;
+
+function TIdleFunnel.UnmarkPreserved(const AContact: TContact): TContact;
+var
+  I, J: Integer;
+begin
+  Result := AContact;
+  J := 0;
+  for I := 0 to High(Result.WeChatLabels) do
+    if Result.WeChatLabels[I] <> PRESERVE_TAG then
+    begin
+      Result.WeChatLabels[J] := Result.WeChatLabels[I];
+      Inc(J);
+    end;
+  SetLength(Result.WeChatLabels, J);
+  Result.IsUserPreserved := IsPreserved(Result);
 end;
 
 function TIdleFunnel.GetDeletionCandidates(const AContacts: TArray<TContact>): TArray<TContact>;
@@ -165,6 +160,9 @@ begin
 
   for LContact in AContacts do
   begin
+    // 保留的联系人永远不进删除候选 (docs/03 §2.6)
+    if IsPreserved(LContact) then Continue;
+
     LAdCount := GetAdCount(LContact);
     LLastAdAt := GetLastAdAt(LContact);
 

@@ -59,6 +59,9 @@ type
     function Transcribe(const AAudioUri: string;
       out AResult: TAsrTranscriptionResult;
       out AMetrics: TProviderRunMetrics): Boolean;
+    function TranscribeText(const AAudioUri: string;
+      out AText: string;
+      out AMetrics: TProviderRunMetrics): Boolean;
     function GetLastRunMetrics: TProviderRunMetrics;
   end;
 
@@ -377,6 +380,22 @@ begin
   Result := True;
 end;
 
+function TFakeASRProvider.TranscribeText(const AAudioUri: string;
+  out AText: string; out AMetrics: TProviderRunMetrics): Boolean;
+begin
+  AText := '这是 Fake ASR 转写的示例文本，用于外部视频导入链的集成测试。';
+  AMetrics.ProviderName := GetProviderName;
+  AMetrics.Model := 'stepfun-asr';
+  AMetrics.Capability := CAPABILITY_ASR;
+  AMetrics.LatencyMs := 80;
+  AMetrics.TokenUsage := Default(TTokenUsage);
+  AMetrics.RequestId := '';
+  AMetrics.ErrorCode := '';
+  AMetrics.RetryCount := 0;
+  FLastMetrics := AMetrics;
+  Result := True;
+end;
+
 function TFakeASRProvider.GetLastRunMetrics: TProviderRunMetrics;
 begin
   Result := FLastMetrics;
@@ -424,7 +443,7 @@ begin
     AResults[I].Height := ARequest.Height;
     AResults[I].Format := 'png';
     AResults[I].Seed := 42;
-    AResults[I].RevisedPrompt := ARequest.Prompt + ' (stub)';
+    AResults[I].RevisedPrompt := ARequest.Prompt + STUB_PROMPT_SUFFIX;
   end;
 
   AMetrics.ProviderName := GetProviderName;

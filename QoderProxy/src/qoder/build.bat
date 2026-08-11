@@ -1,45 +1,33 @@
 @echo off
-setlocal EnableDelayedExpansion
+title QokerProxy v2.2 Build (Delphi 13.1)
+chcp 65001 >nul
 
 echo ========================================
-echo QoderProxy v2.2 Compilation Script
-echo Using Delphi 13.1 Compiler (bcc64.exe)
+echo Building QokerProxy v2.2 with Delphi 13.1
 echo ========================================
 echo.
 
-cd /d "%~dp0"
+cd /d "D:\_Progs\02Business\QoderProxy\src\qoder"
 
-echo Compiler path: "D:\Program Files (x86)\Embarcadero\Studio\37.0\bin\bcc64.exe"
-echo Working directory: %CD%
+REM Clean old files
+echo Cleaning...
+del /q *.dcu *.obj *.exe *.tds 2>nul
+
+echo Starting compiler...
 echo.
 
-REM Check if compiler exists
-if not exist "D:\Program Files (x86)\Embarcadero\Studio\37.0\bin\bcc64.exe" (
-    echo ERROR: Compiler not found!
-    pause
-    exit /b 1
-)
+"D:\Program Files (x86)\Embarcadero\Studio\37.0\bin\dcc64.exe" -B -Q -U".;..\..\node_modules;D:\_Progs\02Business\DeepBase\Core;D:\_Progs\02Business\DeepBase\Persistence;D:\_Progs\02Business\DeepBase\VCL;D:\_Progs\02Business\DeepBase\Features" -O".;..\..\node_modules;D:\_Progs\02Business\DeepBase\Core;D:\_Progs\02Business\DeepBase\Persistence;D:\_Progs\02Business\DeepBase\VCL;D:\_Progs\02Business\DeepBase\Features" -I".;..\..\node_modules;D:\_Progs\02Business\DeepBase\Core;D:\_Progs\02Business\DeepBase\Persistence;D:\_Progs\02Business\DeepBase\VCL;D:\_Progs\02Business\DeepBase\Features" QokerProxy.v2_2.dpr
 
-REM Remove old compiled files
-echo Cleaning previous build artifacts...
-del /q *.dcu *.obj *.exe 2>nul
-
-echo Starting compilation...
-echo.
-
-"D:\Program Files (x86)\Embarcadero\Studio\37.0\bin\bcc64.exe" -B"." "..\node_modules" "..\DeepBase\Source" QokerProxy.v2_2.dpr
-
-if errorlevel 1 (
-    echo.
-    echo COMPILATION FAILED!
-    pause
-    exit /b 1
-) else (
+if %ERRORLEVEL% EQU 0 (
     echo.
     echo ========================================
-    echo ✅ COMPILATION SUCCESSFUL!
+    echo SUCCESS! Build complete.
     echo Output: QokerProxy.v2_2.exe
     echo ========================================
+) else (
+    echo.
+    echo FAILED with error code: %ERRORLEVEL%
 )
 
+echo.
 pause

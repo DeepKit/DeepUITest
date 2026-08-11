@@ -36,6 +36,8 @@ type
     WriteAttempts: Integer;
     UiaCalls: Integer;
     GeneratedAt: TDateTime;
+    /// <summary>实际读取正文的次数 (M1 授权模式为真实计数, 非 0/1 布尔)。</summary>
+    BodyQueriedCount: Integer;
     function IsClean: Boolean;
     class function CreateClean: TBodyZeroReport; static;
   end;
@@ -48,6 +50,25 @@ type
     Kind: string; // DIRECT, GROUP, UNKNOWN
     ParticipantRefs: TArray<string>;
     PrivacyScope: TPrivacyScope;
+  end;
+
+  // ── Tag profile (参数化, BUG-044 Phase 3) ─────────────────────
+
+  /// <summary>
+  ///   联系人标签画像 (参数化字段, 非 JSON)。
+  ///   与 TContact 参数化字段对齐, 供 ITagProfileStore 持久化。
+  /// </summary>
+  TTagProfile = record
+    ContactId: string;
+    SourceAccountId: string;
+    ProductCount: Integer;
+    IsUserPreserved: Boolean;
+    AdCount: Integer;
+    LastAdAt: TDateTime;
+    MarketingKeywordHitCount: Integer;
+    LastInteractionAt: TDateTime;
+    UpdatedAt: TDateTime;
+    class function CreateClean(const AContactId: string): TTagProfile; static;
   end;
 
   // ── Ad track ───────────────────────────────────────────────────
@@ -70,7 +91,7 @@ type
   // ── Contact ────────────────────────────────────────────────────
 
   /// <summary>
-  ///   Local representation of a WeChat contact. tag_profile is stored as JSON.
+  ///   Local representation of a WeChat contact.
   ///   display_name_hash is SHA-256 of the actual display name.
   ///   display_name_redacted is a masked version for display (e.g. "张**").
   /// </summary>
@@ -83,10 +104,20 @@ type
     PrivacySource: TPrivacySource;
     FirstSeen: TDateTime;
     LastSeen: TDateTime;
-    TagProfile: string; // JSON
-    WeChatLabels: TArray<string>; // imported WeChat label names
-    Remark: string; // contact remark (hashed or redacted for privacy)
-    MessagePreview: string; // Brief summary of recent messages
+    
+    // ❌ REMOVED: TagProfile: string; // JSON - Bad design!
+    // ✅ FIXED: Parameterized fields with DB1Store-backed indexes
+    
+    ProductCount: Integer;                    // 关联产品数 (0=闲人)
+    AdCount: Integer;                         // 广告触达次数 (替代 ad_track.ad_count)
+    LastAdAt: TDateTime;                      // 最后广告时间 (替代 ad_track.last_ad_at)
+    IsUserPreserved: Boolean;                 // 用户标记"保留"
+    LastInteractionAt: TDateTime;             // 最后互动时间
+    OutboundInboundRatio: Double;             // 发送/接收比 (-1 if none)
+    MarketingKeywordHitCount: Integer;        // 营销关键词命中次数
+    WeChatLabels: TArray<string>;             // imported WeChat label names
+    Remark: string;                           // contact remark (hashed/redacted)
+    MessagePreview: string;                   // Brief summary of recent messages
     function IsBusiness: Boolean;
     function IsPrivate: Boolean;
     function IsUnknown: Boolean;
@@ -151,7 +182,15 @@ type
     Confidence: Double;
     WindowStart: TDateTime;
     WindowEnd: TDateTime;
-    ThresholdsUsed: string; // JSON
+    
+    // ❌ REMOVED: ThresholdsUsed: string; // JSON - Bad design!
+    // ✅ FIXED: Parameterized threshold values
+    CoolingDays: Integer;                 // Days threshold for cooling detection
+    LongSilenceDays: Integer;             // Days threshold for long silence
+    ReactivatedDays: Integer;             // Days threshold for reactivated detection
+    OutboundHeavyRatio: Double;           // Ratio threshold for outbound heavy
+    MinMessagesForMetric: Integer;        // Message count threshold
+    
     Uncertainty: string;
     Prediction: string;
     ExpiresAt: TDateTime;
@@ -224,6 +263,23 @@ type
     AuditEvents: TArray<TAuditEvent>;
     NewMessageCount: Integer;
     UpdatedAt: TDateTime;
+    /// <summary>body-zero 审计报告 (BUG-051 #82): 真实反映正文读取/写库/UIA。</summary>
+    BodyZero: TBodyZeroReport;
+  end;
+
+  // ── Tier entry (绿/黄/红 分级结果) ────────────────────────────
+
+  /// <summary>
+  ///   One row in the tier workbench: a contact + its (possibly absent)
+  ///   interaction metric + the derived display tier. Joining is done by
+  ///   TTierClassifier.ClassifyAll via ContactId.
+  /// </summary>
+  TTierEntry = record
+    Contact: TContact;
+    Metric: TInteractionMetric;   // Default when no metric exists
+    Tier: TTier;
+    HasMetric: Boolean;
+    DaysSinceLast: Integer;       // 999 when no interaction timestamp
   end;
 
   // ── Pipeline state ─────────────────────────────────────────────
@@ -240,6 +296,13 @@ implementation
 
 // ── TBodyZeroReport ──────────────────────────────────────────────
 
+class function TTagProfile.CreateClean(const AContactId: string): TTagProfile;
+begin
+  Result := Default(TTagProfile);
+  Result.ContactId := AContactId;
+  Result.UpdatedAt := Now;
+end;
+
 function TBodyZeroReport.IsClean: Boolean;
 begin
   Result := (not BodyColumnsQueried) and (WriteAttempts = 0) and (UiaCalls = 0);
@@ -252,6 +315,7 @@ begin
   Result.BodyColumnsQueried := False;
   Result.WriteAttempts := 0;
   Result.UiaCalls := 0;
+  Result.BodyQueriedCount := 0;
   Result.GeneratedAt := Now;
 end;
 

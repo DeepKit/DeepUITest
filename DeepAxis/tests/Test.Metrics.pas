@@ -1,4 +1,4 @@
-unit Test.Metrics;
+﻿unit Test.Metrics;
 
 interface
 
@@ -47,7 +47,7 @@ end;
 
 procedure TTestMetrics.TestComputeEmptyMessages;
 begin
-  var LCalc := TMetricCalculator.Create;
+  var LCalc := TMetricCalculator.Create(False); // No DB storage in tests
   var LOldMetric := Default(TInteractionMetric);
   var LMetric := LCalc.Compute(nil, LOldMetric);
   Assert.AreEqual(dqDataInsufficient, LMetric.DataQuality);
@@ -56,7 +56,7 @@ end;
 
 procedure TTestMetrics.TestComputeWithMessages;
 begin
-  var LCalc := TMetricCalculator.Create;
+  var LCalc := TMetricCalculator.Create(False); // No DB storage in tests
   var LMsgs: TArray<TMessageMeta>;
   SetLength(LMsgs, 10);
   for var I := 0 to 4 do LMsgs[I] := MakeInboundMsg('c1', I);
@@ -72,7 +72,7 @@ end;
 
 procedure TTestMetrics.TestComputeDataQuality;
 begin
-  var LCalc := TMetricCalculator.Create;
+  var LCalc := TMetricCalculator.Create(False); // No DB storage in tests
   var LMsgs: TArray<TMessageMeta>;
   SetLength(LMsgs, 3);
   LMsgs[0] := MakeInboundMsg('c1', 0);
@@ -98,7 +98,7 @@ end;
 
 procedure TTestMetrics.TestComputeOutboundInboundRatio;
 begin
-  var LCalc := TMetricCalculator.Create;
+  var LCalc := TMetricCalculator.Create(False); // No DB storage in tests
   var LMsgs: TArray<TMessageMeta>;
   SetLength(LMsgs, 20);
   for var I := 0 to 14 do LMsgs[I] := MakeOutboundMsg('c1', I);
@@ -112,7 +112,7 @@ end;
 
 procedure TTestMetrics.TestComputeBatch;
 begin
-  var LCalc := TMetricCalculator.Create;
+  var LCalc := TMetricCalculator.Create(False); // No DB storage in tests
   var LContacts := TArray<TContact>.Create(
     Default(TContact), Default(TContact));
   LContacts[0].ContactId := 'c1';

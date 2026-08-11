@@ -1,4 +1,4 @@
-unit Test.Radar;
+﻿unit Test.Radar;
 
 interface
 
@@ -31,7 +31,7 @@ implementation
 
 procedure TTestRadar.TestGenerateDataInsufficient;
 begin
-  var LEngine := TRadarEngine.Create;
+  var LEngine := TRadarEngine.Create(False);
   var LContact := Default(TContact);
   LContact.ContactId := 'c1';
   LContact.Privacy := psBusiness;
@@ -49,7 +49,7 @@ end;
 
 procedure TTestRadar.TestGenerateLongSilence;
 begin
-  var LEngine := TRadarEngine.Create;
+  var LEngine := TRadarEngine.Create(False);
   var LContact := Default(TContact);
   LContact.ContactId := 'c1';
   LContact.Privacy := psBusiness;
@@ -68,7 +68,7 @@ end;
 
 procedure TTestRadar.TestGenerateOutboundHeavy;
 begin
-  var LEngine := TRadarEngine.Create;
+  var LEngine := TRadarEngine.Create(False);
   var LContact := Default(TContact);
   LContact.ContactId := 'c1';
   LContact.Privacy := psBusiness;
@@ -88,7 +88,7 @@ end;
 
 procedure TTestRadar.TestSkipPrivateContacts;
 begin
-  var LEngine := TRadarEngine.Create;
+  var LEngine := TRadarEngine.Create(False);
   var LContact := Default(TContact);
   LContact.ContactId := 'c1';
   LContact.Privacy := psPrivate;
@@ -105,7 +105,7 @@ end;
 
 procedure TTestRadar.TestConfidenceCalculation;
 begin
-  var LEngine := TRadarEngine.Create;
+  var LEngine := TRadarEngine.Create(False);
   var LContact := Default(TContact);
   LContact.ContactId := 'c1';
   LContact.Privacy := psBusiness;

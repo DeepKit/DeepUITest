@@ -25,7 +25,7 @@ import psycopg2
 from dotenv import load_dotenv
 
 # Load .env from project root
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'), override=True)
 
 MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
 
@@ -42,12 +42,21 @@ SAFE_DB_NAMES = {'artifactos_test'}
 
 
 def get_connection(dbname=None):
-    """Create a psycopg2 connection."""
-    return psycopg2.connect(
+    """Create a psycopg2 connection, then switch server messages to English
+    so UTF-8 decoding of PG error strings doesn't choke on a Chinese (GBK)
+    lc_messages locale."""
+    conn = psycopg2.connect(
         host=DB_HOST, port=DB_PORT,
         dbname=dbname or DB_NAME,
         user=DB_USER, password=DB_PASS,
     )
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SET lc_messages = "english"')
+        conn.commit()
+    except Exception:
+        pass
+    return conn
 
 
 def ensure_tracking_table(conn):

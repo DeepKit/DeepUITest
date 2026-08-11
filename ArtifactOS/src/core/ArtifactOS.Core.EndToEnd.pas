@@ -20,15 +20,8 @@ uses
 class procedure TArtifactOSEndToEnd.RunCreateChain(out CaseId, StudioId, ArtifactId, SnapshotId, PackageId: string);
 
   function InsertReturningId(const SQL: string): string;
-  var
-    Q: TFDQuery;
   begin
-    Q := ArtifactOS_DB.Query(SQL);
-    try
-      Result := Q.Fields[0].AsString;
-    finally
-      Q.Free;
-    end;
+    Result := ArtifactOS_DB.InsertAndReturnId(SQL);
   end;
 
 begin
@@ -36,18 +29,50 @@ begin
   try
     ArtifactOS_DB.Connection.StartTransaction;
     try
-      // 1. Create a DaySubCase under yearcase_2026
+      // 1. Build full case hierarchy: year→quarter→month→week→day→day_sub
+      var Chain := IntToStr(Random(MaxInt));
+      var YearId := ArtifactOS_DB.ExecuteScalar(
+        'SELECT id::text FROM artifactos.case_record WHERE case_code=''yearcase_2026''');
+
+      // Find or create quarter under year
+      var QtrId := ArtifactOS_DB.ExecuteScalar(
+        'SELECT id::text FROM artifactos.case_record WHERE case_type=''quarter'' AND parent_case_id=''' + YearId + ''' LIMIT 1');
+      if QtrId = '' then
+        QtrId := InsertReturningId(
+          'INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
+          'VALUES (''e2e_qtr_' + Chain + ''', ''quarter'', ''E2E Quarter'', ''active'', ''tactical_execution'', ''' + YearId + ''', ''' + YearId + ''') RETURNING id');
+
+      // Find or create month under quarter
+      var MonId := ArtifactOS_DB.ExecuteScalar(
+        'SELECT id::text FROM artifactos.case_record WHERE case_type=''month'' AND parent_case_id=''' + QtrId + ''' LIMIT 1');
+      if MonId = '' then
+        MonId := InsertReturningId(
+          'INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
+          'VALUES (''e2e_mon_' + Chain + ''', ''month'', ''E2E Month'', ''active'', ''tactical_execution'', ''' + QtrId + ''', ''' + YearId + ''') RETURNING id');
+
+      // Find or create week under month
+      var WkId := ArtifactOS_DB.ExecuteScalar(
+        'SELECT id::text FROM artifactos.case_record WHERE case_type=''week'' AND parent_case_id=''' + MonId + ''' LIMIT 1');
+      if WkId = '' then
+        WkId := InsertReturningId(
+          'INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
+          'VALUES (''e2e_wk_' + Chain + ''', ''week'', ''E2E Week'', ''active'', ''tactical_execution'', ''' + MonId + ''', ''' + YearId + ''') RETURNING id');
+
+      // Create day under week
+      var DayId := InsertReturningId(
+        'INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
+        'VALUES (''e2e_day_' + Chain + ''', ''day'', ''E2E Day'', ''active'', ''tactical_execution'', ''' + WkId + ''', ''' + YearId + ''') RETURNING id');
+
+      // Create day_sub under day (our actual artifact case)
       CaseId := InsertReturningId(
         'INSERT INTO artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) ' +
-        'VALUES (''e2e_'' || floor(extract(epoch from now()))::text, ''day_sub'', ''E2E Chain Test'', ''active'', ''tactical_execution'', ' +
-        '(SELECT id FROM artifactos.case_record WHERE case_code=''yearcase_2026''), ' +
-        '(SELECT id FROM artifactos.case_record WHERE case_code=''yearcase_2026'')) ' +
+        'VALUES (''e2e_' + Chain + ''', ''day_sub'', ''E2E Chain Test'', ''active'', ''tactical_execution'', ''' + DayId + ''', ''' + YearId + ''') ' +
         'RETURNING id');
 
       // 2. Create Studio
       StudioId := InsertReturningId(
         'INSERT INTO artifactos.studio (studio_code, case_id, platform_id, artifact_type, theory_visibility, status) ' +
-        'VALUES (''e2e_studio_'' || floor(extract(epoch from now()))::text, ''' + CaseId + ''', ''zhihu'', ''zhihu_longform'', ''medium'', ''planning'') ' +
+        'VALUES (''e2e_' + IntToStr(Random(MaxInt)) + ''', ''' + CaseId + ''', ''zhihu'', ''zhihu_longform'', ''medium'', ''planning'') ' +
         'RETURNING id');
 
       // 3. Create ArtifactPlan + SubStudio
@@ -100,7 +125,7 @@ begin
       PackageId := InsertReturningId(
         'INSERT INTO artifactos.publication_package (artifact_id, artifact_version_id, quality_snapshot_id, platform, idempotency_key, simulation_only, run_mode, status) ' +
         'VALUES (''' + ArtifactId + ''', (SELECT id FROM artifactos.artifact_version WHERE artifact_id=''' + ArtifactId + ''' AND version_no=1), ' +
-        '''' + SnapshotId + ''', ''zhihu'', ''e2e_pkg_'' || floor(extract(epoch from now()))::text, true, ''shadow'', ''simulated'') ' +
+        '''' + SnapshotId + ''', ''zhihu'', ''e2e_pkg_' + Chain + ''', true, ''shadow'', ''simulated'') ' +
         'RETURNING id');
 
       ArtifactOS_DB.Connection.Commit;

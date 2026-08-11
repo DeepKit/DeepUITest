@@ -25,6 +25,8 @@
 
 unit ArtifactOS.Services.GenerationService;
 
+{$WARN IMPLICIT_STRING_CAST OFF}
+
 interface
 
 uses
@@ -101,9 +103,10 @@ type
       );
 
     class function NewId: string;
-    class function JsonStr(const S: string): string;
-    class function MakeParam(const AName, AValue: string): string;
-    class function MakeObj(const AFields: array of string): string;
+
+    class var
+      FContractCache: TDictionary<string,string>;
+      FCacheLock: TObject;
 
     // Prompt builders
     class function BuildOutlinePrompt(const AContextPrompt, AAngleName, AAngleDesc: string): string;
@@ -131,6 +134,7 @@ type
 
   public
     // Session lifecycle
+    class procedure ClearContractCache; static;   // N13.6: drop cached contract JSON (call on contract mutation)
     class function CreateSession(const AArtifactId, AContractId: string): string;
     class function GetSession(const ASessionId: string): TGenerationSession;
 
@@ -190,7 +194,9 @@ type
 implementation
 
 uses
-  FireDAC.Comp.Client;
+  System.SyncObjs,
+  FireDAC.Comp.Client,
+  ArtifactOS.Core.Common.JsonBuilder;
 
 { === Record helpers === }
 
@@ -241,30 +247,7 @@ end;
 
 class function TGenerationService.NewId: string;
 begin
-  Result := TGUID.NewGuid.ToString.Trim(['{', '}']);
-end;
-
-class function TGenerationService.JsonStr(const S: string): string;
-begin
-  Result := S.Replace('\', '\\').Replace('"', '\"').Replace(#13, '\r').Replace(#10, '\n');
-end;
-
-class function TGenerationService.MakeParam(const AName, AValue: string): string;
-begin
-  Result := '"' + AName + '":"' + JsonStr(AValue) + '"';
-end;
-
-class function TGenerationService.MakeObj(const AFields: array of string): string;
-var
-  I: Integer;
-begin
-  Result := '{';
-  for I := 0 to High(AFields) do
-  begin
-    if I > 0 then Result := Result + ',';
-    Result := Result + AFields[I];
-  end;
-  Result := Result + '}';
+  Result := NewGuidStr;
 end;
 
 class function TGenerationService.ExtractJsonField(const AJson, AFieldName: string): string;
@@ -454,23 +437,64 @@ var
 begin
   V := ArtifactOS_DB.ExecuteScalarJson(
     'SELECT COALESCE(MAX(version_no),0)::text FROM artifactos.artifact_version WHERE artifact_id=:id::uuid',
-    MakeObj([MakeParam('id', AArtifactId)]));
+    MakeJsonObj([MakeJsonParam('id', AArtifactId)]));
   Result := StrToIntDef(V, 0) + 1;
 end;
 
 class function TGenerationService.GetContractJson(const AContractId: string): string;
+var
+  Cached: string;
 begin
+  // N13.6: contract content fields are immutable during a pipeline; cache by id
+  // to avoid 5 redundant DB round-trips per session.
+  if not Assigned(FContractCache) then
+  begin
+    TMonitor.Enter(FCacheLock);
+    try
+      if not Assigned(FContractCache) then
+        FContractCache := TDictionary<string,string>.Create;
+    finally
+      TMonitor.Exit(FCacheLock);
+    end;
+  end;
+
+  TMonitor.Enter(FCacheLock);
+  try
+    if FContractCache.TryGetValue(AContractId, Cached) then
+      Exit(Cached);
+  finally
+    TMonitor.Exit(FCacheLock);
+  end;
+
   Result := ArtifactOS_DB.ExecuteScalarJson(
     'SELECT row_to_json(t) FROM (SELECT source, strategy, directive, structure, ' +
     'constraints, quality, materials FROM artifactos.artifact_contract WHERE id=:id::uuid) t',
-    MakeObj([MakeParam('id', AContractId)]));
+    MakeJsonObj([MakeJsonParam('id', AContractId)]));
+
+  TMonitor.Enter(FCacheLock);
+  try
+    FContractCache.AddOrSetValue(AContractId, Result);
+  finally
+    TMonitor.Exit(FCacheLock);
+  end;
+end;
+
+class procedure TGenerationService.ClearContractCache;
+begin
+  TMonitor.Enter(FCacheLock);
+  try
+    if Assigned(FContractCache) then
+      FContractCache.Clear;
+  finally
+    TMonitor.Exit(FCacheLock);
+  end;
 end;
 
 class function TGenerationService.UpdateSessionStatus(const ASessionId, AStatus: string): Boolean;
 begin
   ArtifactOS_DB.ExecuteJson(
     'UPDATE artifactos.generation_session SET status=:status WHERE id=:id::uuid',
-    MakeObj([MakeParam('status', AStatus), MakeParam('id', ASessionId)]));
+    MakeJsonObj([MakeJsonParam('status', AStatus), MakeJsonParam('id', ASessionId)]));
   Result := True;
 end;
 
@@ -479,7 +503,7 @@ begin
   ArtifactOS_DB.ExecuteJson(
     'UPDATE artifactos.generation_session SET track_a_version_id=:a::uuid, track_b_version_id=:b::uuid ' +
     'WHERE id=:id::uuid',
-    MakeObj([MakeParam('a', ATrackA), MakeParam('b', ATrackB), MakeParam('id', ASessionId)]));
+    MakeJsonObj([MakeJsonParam('a', ATrackA), MakeJsonParam('b', ATrackB), MakeJsonParam('id', ASessionId)]));
   Result := True;
 end;
 
@@ -493,7 +517,7 @@ begin
   else ColName := 'qualification_c';
   ArtifactOS_DB.ExecuteJson(
     'UPDATE artifactos.generation_session SET ' + ColName + '=:q::jsonb WHERE id=:id::uuid',
-    MakeObj(['"q":' + AQualJson, MakeParam('id', ASessionId)]));
+    MakeJsonObj(['"q":' + AQualJson, MakeJsonParam('id', ASessionId)]));
   Result := True;
 end;
 
@@ -504,9 +528,9 @@ begin
     'UPDATE artifactos.generation_session SET ' +
     'winner_track=:wt, winner_version_id=:wv::uuid, runner_up_version_id=:rv::uuid, ' +
     'selection_result=:sr::jsonb, status=''completed'' WHERE id=:id::uuid',
-    MakeObj([MakeParam('wt', AWinnerTrack), MakeParam('wv', AWinnerVersionId),
-             MakeParam('rv', ARunnerUpVersionId), '"sr":' + ASelectionJson,
-             MakeParam('id', ASessionId)]));
+    MakeJsonObj([MakeJsonParam('wt', AWinnerTrack), MakeJsonParam('wv', AWinnerVersionId),
+             MakeJsonParam('rv', ARunnerUpVersionId), '"sr":' + ASelectionJson,
+             MakeJsonParam('id', ASessionId)]));
   Result := True;
 end;
 
@@ -519,9 +543,9 @@ begin
     ' score, score_detail, rank_no, selected) ' +
     'VALUES (:id::uuid, :sid::uuid, :tl, :an, :ot, :oj::jsonb, ' +
     ' :sc, :sd::jsonb, :rn, :sel)',
-    MakeObj([MakeParam('id', NewId), MakeParam('sid', ASessionId),
-             MakeParam('tl', AOutline.TrackLabel), MakeParam('an', AOutline.AngleName),
-             MakeParam('ot', AOutline.OutlineText), '"oj":' + AOutline.OutlineJson,
+    MakeJsonObj([MakeJsonParam('id', NewId), MakeJsonParam('sid', ASessionId),
+             MakeJsonParam('tl', AOutline.TrackLabel), MakeJsonParam('an', AOutline.AngleName),
+             MakeJsonParam('ot', AOutline.OutlineText), '"oj":' + AOutline.OutlineJson,
              '"sc":' + FloatToStr(AOutline.Score), '"sd":' + AOutline.ScoreDetail,
              '"rn":' + IntToStr(AOutline.RankNo),
              '"sel":' + BoolToStr(AOutline.Selected, True).ToLower]));
@@ -536,7 +560,7 @@ begin
   Result := ArtifactOS_DB.InsertAndReturnIdJson(
     'INSERT INTO artifactos.generation_session (id, artifact_id, contract_id) ' +
     'VALUES (:id::uuid, :aid::uuid, :cid::uuid) RETURNING id::text',
-    MakeObj([MakeParam('id', NewId), MakeParam('aid', AArtifactId), MakeParam('cid', AContractId)]));
+    MakeJsonObj([MakeJsonParam('id', NewId), MakeJsonParam('aid', AArtifactId), MakeJsonParam('cid', AContractId)]));
 end;
 
 class function TGenerationService.GetSession(const ASessionId: string): TGenerationSession;
@@ -549,7 +573,7 @@ begin
     'track_a_version_id::text, track_b_version_id::text, track_c_version_id::text, ' +
     'winner_track, winner_version_id::text, runner_up_version_id::text ' +
     'FROM artifactos.generation_session WHERE id=:id::uuid',
-    MakeObj([MakeParam('id', ASessionId)]));
+    MakeJsonObj([MakeJsonParam('id', ASessionId)]));
   try
     if not MT.Eof then
     begin
@@ -726,13 +750,13 @@ begin
 
   // Store as artifact_version
   AVersionId := NewId;
-  PayloadJson := '{"title":"' + JsonStr(ATitle) + '","body":"' + JsonStr(ABody) + '"}';
+  PayloadJson := '{"title":"' + JsonEscape(ATitle) + '","body":"' + JsonEscape(ABody) + '"}';
   ArtifactOS_DB.InsertAndReturnIdJson(
     'INSERT INTO artifactos.artifact_version (id, artifact_id, version_no, assembled_payload, seal_status, generation_reason) ' +
     'VALUES (:id::uuid, :aid::uuid, :vno, :payload::jsonb, ''unsealed'', :reason) RETURNING id::text',
-    MakeObj([MakeParam('id', AVersionId), MakeParam('aid', AArtifactId),
+    MakeJsonObj([MakeJsonParam('id', AVersionId), MakeJsonParam('aid', AArtifactId),
              '"vno":' + IntToStr(AVersionNo), '"payload":' + PayloadJson,
-             MakeParam('reason', 'AB generation track ' + AOutline.TrackLabel)]));
+             MakeJsonParam('reason', 'AB generation track ' + AOutline.TrackLabel)]));
 
   Result := True;
 end;
@@ -751,7 +775,7 @@ begin
   // Read version content from DB
   VersionPayload := ArtifactOS_DB.ExecuteScalarJson(
     'SELECT assembled_payload::text FROM artifactos.artifact_version WHERE id=:id::uuid',
-    MakeObj([MakeParam('id', AVersionId)]));
+    MakeJsonObj([MakeJsonParam('id', AVersionId)]));
 
   JObj := TJSONObject.ParseJSONValue(VersionPayload) as TJSONObject;
   if JObj <> nil then
@@ -1026,13 +1050,13 @@ begin
   // Seal the winner version
   ArtifactOS_DB.ExecuteJson(
     'UPDATE artifactos.artifact_version SET seal_status=''sealed'' WHERE id=:id::uuid',
-    MakeObj([MakeParam('id', AWinnerVersionId)]));
+    MakeJsonObj([MakeJsonParam('id', AWinnerVersionId)]));
 
   // Mark runner-up as superseded (backup but not primary)
   if ARunnerUpVersionId <> '' then
     ArtifactOS_DB.ExecuteJson(
       'UPDATE artifactos.artifact_version SET seal_status=''superseded'' WHERE id=:id::uuid',
-      MakeObj([MakeParam('id', ARunnerUpVersionId)]));
+      MakeJsonObj([MakeJsonParam('id', ARunnerUpVersionId)]));
 
   // Update session to completed with winner
   SetSessionWinner(ASessionId, AWinnerTrack, AWinnerVersionId, ARunnerUpVersionId, ASelectionJson);
@@ -1184,14 +1208,14 @@ begin
 
         // Persist rewritten version (inline, mirroring GenerateTrack's pattern)
         VerA := NewId;
-        var PayloadA := '{"title":"' + JsonStr(TitleA) + '","body":"' + JsonStr(BodyA) + '"}';
+        var PayloadA := '{"title":"' + JsonEscape(TitleA) + '","body":"' + JsonEscape(BodyA) + '"}';
         ArtifactOS_DB.InsertAndReturnIdJson(
           'INSERT INTO artifactos.artifact_version (id, artifact_id, version_no, assembled_payload, seal_status, generation_reason) ' +
           'VALUES (:id::uuid, :aid::uuid, :vno, :payload::jsonb, ''unsealed'', :reason) RETURNING id::text',
-          MakeObj([MakeParam('id', VerA), MakeParam('aid', AArtifactId),
+          MakeJsonObj([MakeJsonParam('id', VerA), MakeJsonParam('aid', AArtifactId),
                    '"vno":' + IntToStr(VerNoStart + 3 + RewriteI),
                    '"payload":' + PayloadA,
-                   MakeParam('reason', 'rewrite_A_' + IntToStr(RewriteI))]));
+                   MakeJsonParam('reason', 'rewrite_A_' + IntToStr(RewriteI))]));
 
         // Re-qualify
         JudgeQualification(VerA, AContractId, QualA);
@@ -1221,14 +1245,14 @@ begin
         BodyB := RewrittenBody;
 
         VerB := NewId;
-        var PayloadB := '{"title":"' + JsonStr(TitleB) + '","body":"' + JsonStr(BodyB) + '"}';
+        var PayloadB := '{"title":"' + JsonEscape(TitleB) + '","body":"' + JsonEscape(BodyB) + '"}';
         ArtifactOS_DB.InsertAndReturnIdJson(
           'INSERT INTO artifactos.artifact_version (id, artifact_id, version_no, assembled_payload, seal_status, generation_reason) ' +
           'VALUES (:id::uuid, :aid::uuid, :vno, :payload::jsonb, ''unsealed'', :reason) RETURNING id::text',
-          MakeObj([MakeParam('id', VerB), MakeParam('aid', AArtifactId),
+          MakeJsonObj([MakeJsonParam('id', VerB), MakeJsonParam('aid', AArtifactId),
                    '"vno":' + IntToStr(VerNoStart + 3 + MAX_REWRITE + RewriteI),
                    '"payload":' + PayloadB,
-                   MakeParam('reason', 'rewrite_B_' + IntToStr(RewriteI))]));
+                   MakeJsonParam('reason', 'rewrite_B_' + IntToStr(RewriteI))]));
 
         JudgeQualification(VerB, AContractId, QualB);
         WriteLn(Format('[AB Gen] Track B rewrite qual: %s (%.1f)', [BoolToStr(QualB.Passed, True), QualB.Score]));
@@ -1299,7 +1323,7 @@ begin
       // Update session with Track C version
       ArtifactOS_DB.ExecuteJson(
         'UPDATE artifactos.generation_session SET track_c_version_id=:c::uuid WHERE id=:id::uuid',
-        MakeObj([MakeParam('c', VerC), MakeParam('id', SessionId)]));
+        MakeJsonObj([MakeJsonParam('c', VerC), MakeJsonParam('id', SessionId)]));
 
       JudgeQualification(VerC, AContractId, QualC);
       SetSessionQualification(SessionId, 'C', Format('{"passed":%s,"score":%.1f,"detail":%s,"issues":%s}',
@@ -1333,14 +1357,14 @@ begin
           BodyC := RewrittenBody;
 
           VerC := NewId;
-          var PayloadC := '{"title":"' + JsonStr(TitleC) + '","body":"' + JsonStr(BodyC) + '"}';
+          var PayloadC := '{"title":"' + JsonEscape(TitleC) + '","body":"' + JsonEscape(BodyC) + '"}';
           ArtifactOS_DB.InsertAndReturnIdJson(
             'INSERT INTO artifactos.artifact_version (id, artifact_id, version_no, assembled_payload, seal_status, generation_reason) ' +
             'VALUES (:id::uuid, :aid::uuid, :vno, :payload::jsonb, ''unsealed'', :reason) RETURNING id::text',
-            MakeObj([MakeParam('id', VerC), MakeParam('aid', AArtifactId),
+            MakeJsonObj([MakeJsonParam('id', VerC), MakeJsonParam('aid', AArtifactId),
                      '"vno":' + IntToStr(VerNoStart + 3 + 2*MAX_REWRITE + RewriteI),
                      '"payload":' + PayloadC,
-                     MakeParam('reason', 'rewrite_C_' + IntToStr(RewriteI))]));
+                     MakeJsonParam('reason', 'rewrite_C_' + IntToStr(RewriteI))]));
 
           JudgeQualification(VerC, AContractId, QualC);
           WriteLn(Format('[AB Gen] Track C rewrite qual: %s (%.1f)', [BoolToStr(QualC.Passed, True), QualC.Score]));
@@ -1423,12 +1447,12 @@ begin
       '  ruling_reason=:reason, ' +
       '  ruling_evidence=CONCAT(COALESCE(ruling_evidence, ''''), :evidence::text) ' +
       'WHERE id=:id::uuid',
-      MakeObj([
-        MakeParam('action', ActionStr),
-        MakeParam('reason', FinalReason),
-        MakeParam('evidence', Format('{"strategy_ruling":{"action":"%s","reason":"%s"}}',
+      MakeJsonObj([
+        MakeJsonParam('action', ActionStr),
+        MakeJsonParam('reason', FinalReason),
+        MakeJsonParam('evidence', Format('{"strategy_ruling":{"action":"%s","reason":"%s"}}',
           [ActionStr, Copy(FinalReason, 1, 200)])),
-        MakeParam('id', ASessionId)
+        MakeJsonParam('id', ASessionId)
       ]));
 
     // Apply action-dependent state transitions
@@ -1438,11 +1462,11 @@ begin
         // Mark session as approved for auto-publish
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''approved_for_publish'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         // Seal the winner version
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.artifact_version SET seal_status=''sealed'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', AWinnerVersionId)]));
+          MakeJsonObj([MakeJsonParam('id', AWinnerVersionId)]));
         WriteLn('[StrategyRuling] → auto_publish: version sealed, session approved');
       end;
 
@@ -1450,7 +1474,7 @@ begin
       begin
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''pending_sample_review'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         WriteLn('[StrategyRuling] → sample_review: queued for human sampling');
       end;
 
@@ -1458,7 +1482,7 @@ begin
       begin
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''stored_draft'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         WriteLn('[StrategyRuling] → store_draft: saved for later revision');
       end;
 
@@ -1466,7 +1490,7 @@ begin
       begin
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''downgraded'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         WriteLn('[StrategyRuling] → downgrade: purpose type demoted');
       end;
 
@@ -1474,7 +1498,7 @@ begin
       begin
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''wait_human'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         WriteLn('[StrategyRuling] → wait_human: human intervention required');
       end;
 
@@ -1482,7 +1506,7 @@ begin
       begin
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''abandoned'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         WriteLn('[StrategyRuling] → abandon: task dropped');
       end;
 
@@ -1490,7 +1514,7 @@ begin
       begin
         ArtifactOS_DB.ExecuteJson(
           'UPDATE artifactos.generation_session SET status=''frozen'' WHERE id=:id::uuid',
-          MakeObj([MakeParam('id', ASessionId)]));
+          MakeJsonObj([MakeJsonParam('id', ASessionId)]));
         WriteLn('[StrategyRuling] → freeze_and_downgrade: frozen pending review');
       end;
 
@@ -1501,5 +1525,12 @@ begin
     ArtifactOS_DB.Disconnect;
   end;
 end;
+
+initialization
+  TGenerationService.FCacheLock := TObject.Create;
+
+finalization
+  TGenerationService.FContractCache.Free;
+  TGenerationService.FCacheLock.Free;
 
 end.

@@ -1,7 +1,7 @@
 @echo off
-REM ===== Delphi 13.1 Florence 环境变量 =====
-REM 所有 compile_*.bat 首行统一调用本文件
-REM 路径：02Business/scripts/env/delphi-13.1.bat
+REM ===== Delphi 13.1 Florence Environment Variables =====
+REM All compile_*.bat scripts call this file first
+REM Path: 02Business/scripts/env/delphi-13.1.bat
 
 set BDS=D:\Program Files (x86)\Embarcadero\Studio\37.0
 set BDSVERSION=37.0

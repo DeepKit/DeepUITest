@@ -1,4 +1,4 @@
-program TestZstdRawExtract;
+﻿program TestZstdRawExtract;
 
 {$APPTYPE CONSOLE}
 

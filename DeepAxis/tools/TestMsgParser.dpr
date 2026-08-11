@@ -1,4 +1,4 @@
-program TestMsgParser;
+﻿program TestMsgParser;
 
 {$APPTYPE CONSOLE}
 

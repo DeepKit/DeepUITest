@@ -1,4 +1,4 @@
-unit DeepAxis.WeChat.Zstd;
+﻿unit DeepAxis.WeChat.Zstd;
 
 interface
 

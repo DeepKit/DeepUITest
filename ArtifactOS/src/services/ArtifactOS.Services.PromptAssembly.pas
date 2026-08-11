@@ -146,36 +146,14 @@ type
 implementation
 
 uses
-  System.JSON;
+  System.JSON,
+  ArtifactOS.Core.Common.JsonBuilder;
 
 // ── Helpers ──
-
-function JsonStr(const S: string): string;
-begin
-  Result := S.Replace('\', '\\').Replace('"', '\"').Replace(#13, '\r').Replace(#10, '\n');
-end;
-
-function JsonParam(const AName, AValue: string): string;
-begin
-  Result := '"' + AName + '":"' + JsonStr(AValue) + '"';
-end;
 
 function JsonParamInt(const AName: string; AValue: Integer): string;
 begin
   Result := Format('"%s":%d', [AName, AValue]);
-end;
-
-function JsonObj(const AFields: array of string): string;
-var
-  I: Integer;
-begin
-  Result := '{';
-  for I := 0 to High(AFields) do
-  begin
-    if I > 0 then Result := Result + ',';
-    Result := Result + AFields[I];
-  end;
-  Result := Result + '}';
 end;
 
 // ── Pipeline Mode Resolution ──
@@ -540,6 +518,7 @@ begin
     if ContractJson = '' then
     begin
       AResult.ErrorMessage := Format('Contract not found: %s', [AContractId]);
+      Result := False;
       Exit;
     end;
 
@@ -547,6 +526,7 @@ begin
     if JContract = nil then
     begin
       AResult.ErrorMessage := 'Failed to parse contract JSON';
+      Result := False;
       Exit;
     end;
 
@@ -710,6 +690,7 @@ begin
         [AContractId, JContract.GetValue<Integer>('version_no', 1), AResult.Meta.ContextPackId]);
 
       AResult.Success := True;
+      Result := True;
 
     finally
       JContract.Free;
@@ -742,13 +723,13 @@ end;
 
 class function TPromptAssemblyService.MetaToJson(const AMeta: TAssemblyMeta): string;
 begin
-  Result := JsonObj([
-    JsonParam('context_pack_id', AMeta.ContextPackId),
-    JsonParam('pipeline_mode', AMeta.PipelineMode),
-    JsonParam('generation_mode', AMeta.GenerationMode),
-    JsonParam('theory_intervention_level', AMeta.TheoryInterventionLevel),
+  Result := MakeJsonObj([
+    MakeJsonParam('context_pack_id', AMeta.ContextPackId),
+    MakeJsonParam('pipeline_mode', AMeta.PipelineMode),
+    MakeJsonParam('generation_mode', AMeta.GenerationMode),
+    MakeJsonParam('theory_intervention_level', AMeta.TheoryInterventionLevel),
     Format('"is_rework":%s', [BoolToStr(AMeta.IsRework, True).ToLower]),
-    JsonParam('contract_id', AMeta.ContractId),
+    MakeJsonParam('contract_id', AMeta.ContractId),
     JsonParamInt('contract_version', AMeta.ContractVersion),
     JsonParamInt('token_estimate', AMeta.TokenEstimate),
     JsonParamInt('slot_count', AMeta.SlotCount),
@@ -769,11 +750,11 @@ begin
   else
     PromptSnippet := AResult.PromptText;
 
-  Result := JsonObj([
+  Result := MakeJsonObj([
     Format('"success":%s', [BoolToStr(AResult.Success, True).ToLower]),
-    JsonParam('error_message', AResult.ErrorMessage),
+    MakeJsonParam('error_message', AResult.ErrorMessage),
     Format('"meta":%s', [MetaStr]),
-    JsonParam('prompt_snippet', PromptSnippet),
+    MakeJsonParam('prompt_snippet', PromptSnippet),
     JsonParamInt('prompt_total_chars', Length(AResult.PromptText)),
     Format('"slots":%s', [SlotsToJson(AResult.Slots)])
   ]);

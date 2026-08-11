@@ -10,6 +10,7 @@ uses
   DeepBase.AIErrorHandler,
   DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.Contracts,
   DeepAxis.Pipeline.Privacy,
+  DeepAxis.Pipeline.AdTracker, DeepAxis.Pipeline.ContactOverlay,
   DeepAxis.WeChat.MsgParser;
 
 type
@@ -28,6 +29,7 @@ type
     FEvidenceBuilder: IEvidenceBuilder;
     FTagEngine: ITagEngine;
     FIdleFunnel: IIdleFunnel;
+    FOverlay: TContactOverlayStore;
     FIntervalForeground: Integer;
     FIntervalBackground: Integer;
     FIsForeground: Boolean;
@@ -46,7 +48,8 @@ type
   public
     constructor Create(const AReader: IWxReader; const AMetricCalc: IMetricCalculator;
       const ARadarEngine: IRadarEngine; const AEvidenceBuilder: IEvidenceBuilder;
-      const ATagEngine: ITagEngine; const AIdleFunnel: IIdleFunnel);
+      const ATagEngine: ITagEngine; const AIdleFunnel: IIdleFunnel;
+      const AOverlay: TContactOverlayStore);
     destructor Destroy; override;
     procedure ForcePoll;
     procedure SetForeground(AValue: Boolean);
@@ -106,6 +109,9 @@ type
     function GetSearchFilter: string;
     function GetHintTypeColor(const AHintType: TRadarHintType): TColor;
     function GetHintTypeEmoji(const AHintType: TRadarHintType): string;
+    // 显式紧急度权重：值越小排越前。避免依赖枚举序号导致 rhtDataInsufficient
+    // (枚举序号 4) 被误排到 rhtHighLinkSharing/rhtMarketingPattern 之前。
+    function GetHintTypeUrgency(const AHintType: TRadarHintType): Integer;
   public
     constructor Create(AOwner: TComponent); override;
     procedure SetData(const AData: TPollResult);
@@ -124,7 +130,7 @@ implementation
 constructor TDBPollerThread.Create(const AReader: IWxReader;
   const AMetricCalc: IMetricCalculator; const ARadarEngine: IRadarEngine;
   const AEvidenceBuilder: IEvidenceBuilder; const ATagEngine: ITagEngine;
-  const AIdleFunnel: IIdleFunnel);
+  const AIdleFunnel: IIdleFunnel; const AOverlay: TContactOverlayStore);
 begin
   inherited Create(True); // create suspended
   FReader := AReader;
@@ -133,6 +139,7 @@ begin
   FEvidenceBuilder := AEvidenceBuilder;
   FTagEngine := ATagEngine;
   FIdleFunnel := AIdleFunnel;
+  FOverlay := AOverlay;
   FIntervalForeground := POLL_INTERVAL_FOREGROUND;
   FIntervalBackground := POLL_INTERVAL_BACKGROUND;
   FIsForeground := True;
@@ -156,6 +163,27 @@ end;
 procedure TDBPollerThread.ForcePoll;
 begin
   SetEvent(FForcePollEvent);
+end;
+
+procedure ApplyOverlay(AOverlay: TContactOverlayStore; var AContacts: TArray<TContact>);
+var
+  LMap: TDictionary<string, string>;
+  LOverlayTp: string;
+  I: Integer;
+begin
+  // 用本地 DB1 持久化的 ad_track 覆盖 Reader 快照 TagProfile (字段级合并)
+  if (AOverlay = nil) or (Length(AContacts) = 0) then
+    Exit;
+  LMap := AOverlay.LoadAll; // 失败返回空字典, 退化纯 Reader 数据
+  try
+    if LMap.Count = 0 then
+      Exit;
+    for I := 0 to Length(AContacts) - 1 do
+      if LMap.TryGetValue(AContacts[I].ContactId, LOverlayTp) then
+        AContacts[I] := TAdTracker.ApplyOverlayJson(AContacts[I], LOverlayTp);
+  finally
+    LMap.Free;
+  end;
 end;
 
 function TDBPollerThread.GenerateMessagePreview(const AMessages: TArray<TMessageMeta>): string;
@@ -243,6 +271,9 @@ begin
     // Step 1: Read contacts
     LContacts := FReader.ReadContacts;
 
+    // BUG-051 #82: 捕获 body-zero 审计报告 (读者实例累计, 含本次读取的正文访问)
+    LResult.BodyZero := FReader.GetLastBodyZeroReport;
+
     // Step 1.5: 隐私分类 — 过滤 PRIVATE/UNKNOWN 联系人
     var LPrivacy := TPrivacyClassifier.Create;
     try
@@ -250,6 +281,22 @@ begin
     finally
       LPrivacy.Free;
     end;
+
+    // BUG-051 #90: PRIVATE/UNKNOWN 完全隔离出指标/雷达/证据链路
+    // (规格 07 §3.1: PRIVATE 不进入指标/雷达/导出; UNKNOWN 不展示不分析)
+    // 仅业务联系人 (含 SYSTEM_GUESS 候选) 进入指标计算与雷达提示;
+    // 全部联系人保留给 UI 展示 (面板按 Privacy 状态标记, 不参与分析)。
+    var LAllContacts := LContacts;
+    var LBizFilter := TPrivacyClassifier.Create;
+    try
+      LContacts := LBizFilter.FilterBusiness(LContacts);
+    finally
+      LBizFilter.Free;
+    end;
+
+    // Step 1.6: 应用本地 DB1 overlay — 用持久化的 ad_track 覆盖 Reader 快照
+    // (docs/09: 更新本地 Contact.ad_count; 修复 #74 ad_count 轮询复位)
+    ApplyOverlay(FOverlay, LContacts);
 
     // Step 2: Read new messages for each contact (incremental)
     SetLength(LAllMessages, 0);
@@ -336,11 +383,21 @@ begin
     // Save metrics as history for next poll cycle
     FOldMetrics := Copy(LMetrics);
 
-    // Step 7: Build evidence
+    // Step 7: Build evidence (BUG-051 #84: source_hash 用真实 MessageMeta 字段)
     SetLength(LEvidence, 0);
     for I := 0 to Length(LHints) - 1 do
     begin
-      var LHintEvidence := FEvidenceBuilder.Build(LHints[I], LMetrics);
+      // 取该提示对应联系人的消息元数据 (create_time/local_type/source_row_ref)
+      var LHintMsgs: TArray<TMessageMeta>;
+      SetLength(LHintMsgs, 0);
+      for var LHM in LAllMessages do
+        if LHM.ContactId = LHints[I].ContactId then
+        begin
+          SetLength(LHintMsgs, Length(LHintMsgs) + 1);
+          LHintMsgs[High(LHintMsgs)] := LHM;
+        end;
+
+      var LHintEvidence := FEvidenceBuilder.Build(LHints[I], LMetrics, LHintMsgs);
       for var LE in LHintEvidence do
       begin
         SetLength(LEvidence, Length(LEvidence) + 1);
@@ -349,7 +406,9 @@ begin
     end;
 
     // Build result
-    LResult.Contacts := LTaggedContacts;
+    // BUG-051 #90: Contacts 展示全量 (UI 标隐私状态), Metrics/Hints/Evidence
+    // 只覆盖业务联系人 (PRIVATE/UNKNOWN 已隔离出分析链路)
+    LResult.Contacts := LAllContacts;
     LResult.Metrics := LMetrics;
     LResult.Hints := LHints;
     LResult.EvidenceRecords := LEvidence;
@@ -479,6 +538,19 @@ begin
   else
     Result := '';
   end;
+end;
+
+function TDeepAxisRadarPanel.GetHintTypeUrgency(const AHintType: TRadarHintType): Integer;
+const
+  // 紧急度权重表 — 与枚举序号解耦，避免 rhtDataInsufficient(序号4) 误排到
+  // 高频链接/营销模式之前。值越小越紧急。
+  //   降温 / 长期沉默       → 0/1 (最高优先，需要主动跟进)
+  //   外重内轻 / 回暖       → 2/3 (次要)
+  //   高频链接 / 营销模式   → 4/5 (内容特征提示，非紧急)
+  //   数据不足             → 9 (最低，不应遮挡真正需跟进的联系人)
+  URGENCY: array [TRadarHintType] of Integer = (0, 1, 3, 2, 9, 4, 5);
+begin
+  Result := URGENCY[AHintType];
 end;
 
 procedure TDeepAxisRadarPanel.BuildUI;
@@ -653,7 +725,9 @@ begin
   FEmptyGuideLabel.Font.Size := 11;
   FEmptyGuideLabel.Font.Color := clGray;
   FEmptyGuideLabel.Caption := '正在等待数据...';
-  FEmptyGuideLabel.Visible := True;
+  // BUG-050 fix: 同 Parent 两个可见 alClient (FContactListBox 也是 alClient)
+  // 会让 VCL AlignControls 死锁。默认隐藏, 由 UpdateContactList 切换。
+  FEmptyGuideLabel.Visible := False;
 end;
 
 procedure TDeepAxisRadarPanel.OnContactListClick(Sender: TObject);
@@ -837,15 +911,16 @@ begin
   FEmptyGuideLabel.Visible := False;
   LFilter := LowerCase(GetSearchFilter);
 
-  // Sort hints by urgency: cooling > long_silence > reactivated > others
+  // Sort hints by urgency using explicit weight table (BUG-028 fix):
+  // cooling/long_silence first, then outbound/reactivated, then content
+  // hints (link/marketing), data-insufficient last. No longer relies on
+  // enum ordinal, which mis-ranked rhtDataInsufficient above content hints.
   var LSortedHints := Copy(FCurrentData.Hints);
   TArray.Sort<TRadarHint>(LSortedHints,
     TComparer<TRadarHint>.Construct(
       function(const A, B: TRadarHint): Integer
       begin
-        Result := Ord(A.HintType) - Ord(B.HintType);
-        // rhtCooling=0, rhtLongSilence=1 — these are highest urgency
-        // Others stay in default order
+        Result := GetHintTypeUrgency(A.HintType) - GetHintTypeUrgency(B.HintType);
       end));
 
   FContactListBox.Items.BeginUpdate;
@@ -1015,10 +1090,9 @@ begin
         var LRelTime: string;
         if LDaysAgo = 0 then LRelTime := '今天'
         else if LDaysAgo = 1 then LRelTime := '昨天'
-        else if LDaysAgo < 7 then LRelTime := Format('%d 天前', [LDaysAgo])
         else if LDaysAgo < 30 then LRelTime := Format('%d 天前', [LDaysAgo])
         else if LDaysAgo < 365 then LRelTime := Format('%d 个月前', [LDaysAgo div 30])
-        else LRelTime := Format('%d 个月前', [LDaysAgo div 30]);
+        else LRelTime := Format('%d 年前', [LDaysAgo div 365]);
 
         FLastInteractionLabel.Caption := Format('上次互动: %s (%s)',
           [LRelTime, DateToStr(FCurrentData.Metrics[I].LastInteractionAt)]);

@@ -28,6 +28,10 @@
     <h2 class="panel-title">开始一次治理</h2>
     <p class="panel-sub">输入您正在面对的决策，六位 AI 角色将并行推演，产出可鉴的思维胶片。</p>
 
+    <!-- T19c: 树洞模式入口 -->
+    <div class="mode-switch" style="margin-bottom: 12px; text-align: right;">
+      <button id="treehole-toggle" class="btn-secondary" title="轻量陪伴倾诉，可随时生成 X 光片自我觉察">🎋 树洞模式</button>
+    </div>
     <textarea id="problem-input" rows="3" placeholder="例如：直营门店要不要从 50 家扩到 80 家？预算 8000 万，周期两年。"></textarea>
 
     <div class="template-row">
@@ -84,6 +88,7 @@
     <div class="film-header">
       <h2 class="panel-title">决策思维胶片</h2>
       <div class="film-actions">
+        <button id="generate-xray-btn" class="btn-secondary" style="display:none;">生成脑内 X 光片</button>
         <button id="share-btn" class="btn-secondary">生成分享卡片</button>
         <button id="copy-btn" class="btn-secondary">复制胶片</button>
       </div>
@@ -95,9 +100,37 @@
       <span class="watermark-slogan">每个决策，可见，可鉴。</span>
       <span class="watermark-link">kejian.app 邀请你体验决策操作系统</span>
     </div>
+    
+    <!-- T19b: 脑内 X 光片显示区 -->
+    <section id="xray-section" class="panel hidden">
+      <div class="film-header">
+        <h2 class="panel-title">脑内 X 光片</h2>
+        <div class="status-badge">温和 · 诚实 · 第三人称</div>
+      </div>
+      <div id="xray-content"></div>
+      <div id="xray-narrative" class="xray-summary" style="margin-top: 14px;"></div>
+    </section>
   </section>
 
   <!-- 继续追问区 -->
+  <section id="followup-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">脑内 X 光片</h2>
+      <div class="status-badge">温和 · 诚实 · 第三人称</div>
+    </div>
+    <div id="xray-content"></div>
+    <div id="xray-narrative" class="xray-summary" style="margin-top: 14px;"></div>
+  </section>
+  
+  <section id="xray-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">脑内 X 光片</h2>
+      <div class="status-badge">温和 · 诚实 · 第三人称</div>
+    </div>
+    <div id="xray-content"></div>
+    <div id="xray-narrative" class="xray-summary" style="margin-top: 14px;"></div>
+  </section>
+  
   <section id="followup-section" class="panel hidden">
     <h2 class="panel-title">继续追问 <span class="panel-tag">对话式 · 即时</span></h2>
     <p class="panel-sub">对胶片有疑问？直接追问，可鉴会结合本次治理上下文继续回答。</p>

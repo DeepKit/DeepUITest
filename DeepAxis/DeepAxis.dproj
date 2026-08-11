@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567891}</ProjectGuid>
         <MainSource>DeepAxis.dpr</MainSource>
@@ -78,7 +78,7 @@
     <PropertyGroup Condition="'$(Base)'!=''">
         <SanitizedProjectName>DeepAxis</SanitizedProjectName>
         <DCC_Namespace>Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-        <DCC_UnitSearchPath>src\core;src\wechat;src\pipeline;src\ui;src\uia;..\DeepBase\Core;..\DeepBase\VCL;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>src\core;src\wechat;src\pipeline;src\ui;src\uia;src\config;..\DeepBase\Core;..\DeepBase\VCL;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>2052</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=;CFBundleName=</VerInfo_Keys>
         <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
@@ -87,7 +87,7 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win32)'!=''">
         <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;Bde;$(DCC_Namespace)</DCC_Namespace>
-        <DCC_UnitSearchPath>src\core;src\wechat;src\pipeline;src\ui;src\uia;..\DeepBase\Core;..\DeepBase\VCL;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>src\core;src\wechat;src\pipeline;src\ui;src\uia;src\config;..\DeepBase\Core;..\DeepBase\VCL;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <BT_BuildType>Debug</BT_BuildType>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
@@ -141,6 +141,7 @@
         <DCCReference Include="src\core\DeepAxis.Core.DataTypes.pas"/>
         <DCCReference Include="src\core\DeepAxis.Core.Contracts.pas"/>
         <DCCReference Include="src\core\DeepAxis.Core.Config.pas"/>
+        <DCCReference Include="src\config\DeepAxis.Config.DB1.pas"/>
         <DCCReference Include="src\core\DeepAxis.Core.Profile.pas"/>
         <DCCReference Include="src\core\DeepAxis.Core.Governance.pas"/>
         <DCCReference Include="src\wechat\DeepAxis.WeChat.Adapter.pas"/>

@@ -287,7 +287,7 @@ begin
   Result.Capability := Capability;
   Result.RetryCount := 0;
   Result.ErrorCode := '';
-  Result.Status := STATUS_DONE;
+  Result.Status := STATUS_COMPLETED;
   Result.TtsCharCount := 0;
   Result.AsrDurationSec := 0;
 end;

@@ -86,6 +86,20 @@ class PostgresStore:
             raise NotFound("User not found")
         return _public(row)
 
+    def update_user_phone(self, user_id: str, phone: str) -> dict[str, Any]:
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE users SET phone=%s, updated_at=now()
+                WHERE user_id=%s AND is_active=true
+                RETURNING *
+                """,
+                (phone, user_id),
+            ).fetchone()
+        if not row:
+            raise NotFound("User not found")
+        return _public(row)
+
     def save_refresh_token(self, raw_token: str, user_id: str, app_id: str, device_id: str, expires_at: datetime) -> None:
         with self.pool.connection() as conn:
             conn.execute(

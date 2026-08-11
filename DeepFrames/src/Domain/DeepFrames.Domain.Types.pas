@@ -18,6 +18,19 @@ type
     DisplayLabel: string;
     OrderIndex: Integer;
     Status: string;
+    // external_video_import adapter 来源元数据（docs/12.db）
+    SourceType: string;     // original_article|external_video|external_audio|local_file
+    OriginUrl: string;      // 外部来源 URL
+    LocalPath: string;      // 本地文件路径或下载落盘路径
+    LicenseHint: string;    // self|authorized|unknown
+    DownloadedAt: string;   // ISO8601 下载时间戳
+  end;
+
+  // VAD 分片结果（external_video_import adapter 用）
+  TAudioSegment = record
+    StartSec: Double;
+    DurationSec: Double;
+    LocalPath: string;   // 分片音频文件路径
   end;
 
   TSourceDocumentVersion = record
@@ -94,6 +107,7 @@ type
     ParentDocumentId: string;
     ContentHash: string;
     Status: string;
+    PayloadJson: string;   // shot-level script JSON: {shots:[{visual_prompt,...}]} or {segments:[...]}
   end;
 
   TAssetRecord = record

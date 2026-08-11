@@ -92,6 +92,12 @@ type
     /// <summary>Serialize worker progress to JSON.</summary>
     class function ProgressToJson(const AProgress: TWorkerProgress): string; static;
 
+    /// <summary>Write progress.json (heartbeat) to the work directory.
+    /// Worker-side call: invoke every HeartbeatIntervalMs so the host's
+    /// WaitForWorker sees a fresh mtime and does not flag heartbeat_timeout.</summary>
+    class procedure WriteProgress(const AWorkDir: string;
+      const AProgress: TWorkerProgress); static;
+
     /// <summary>Deserialize worker progress from JSON.</summary>
     class function JsonToProgress(const AJson: string): TWorkerProgress; static;
 
@@ -322,6 +328,22 @@ begin
   finally
     Obj.Free;
   end;
+end;
+
+class procedure TWorkerProtocol.WriteProgress(const AWorkDir: string;
+  const AProgress: TWorkerProgress);
+var
+  Json: string;
+  FilePath: string;
+begin
+  FilePath := TPath.Combine(AWorkDir, 'progress.json');
+  Json := ProgressToJson(AProgress);
+  // Atomic-ish write: write to a temp file then rename, so the host never
+  // reads a half-written progress.json (which would corrupt the heartbeat).
+  TFile.WriteAllText(FilePath + '.tmp', Json, TEncoding.UTF8);
+  if FileExists(FilePath) then
+    TFile.Delete(FilePath);
+  RenameFile(FilePath + '.tmp', FilePath);
 end;
 
 class function TWorkerProtocol.ReadProgress(const AWorkDir: string): TWorkerProgress;

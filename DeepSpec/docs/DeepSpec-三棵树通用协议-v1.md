@@ -139,6 +139,7 @@ slug_override: string | null  # 可选：覆盖默认 slug 生成规则（见 §
 summary: string               # 一句话描述
 status: enum                  # candidate | confirmed | uncertain | rejected | superseded
 confidence: enum              # low | medium | high
+fog_state: enum               # 见 §Fog 探索模型。clear | misty | foggy | unknown_unknowns。单向收敛
 source_layer: enum            # 见 4.4，纯英文枚举
 source_refs: []               # 来源证据 ev-id 引用列表，见 4.5
 decision_refs: []             # 关联决策 dec-id 列表
@@ -562,7 +563,49 @@ type:
   - parse_error
   - orphan_node
   - coverage_gap
+  # —— Fog 探索 ticket（见 §Fog 探索模型）——
+  - research_ticket            # 需调研才能明确的需求 ticket（Research）
+  - prototype_ticket           # 需做原型/spike 验证可行性的 ticket（Prototype）
+  - grilling_ticket            # 需对用户反复诘问澄清的 ticket（Grilling）
+  - fog_unknown                # 未知未知区——连问题都尚未成型的雾区标记
 ```
+
+---
+
+## 8.2 Fog 探索模型
+
+灵感来自《雾中寻路》：用户很多时候只有**模糊想法**，需求终点"在雾里"。DeepSpec 不假设需求一开始就清楚，而是用两个正交维度显式承载"还没搞清楚"这件事，让**探索本身成为一种可追踪的工作产物**。
+
+### 8.2.1 雾区收敛（fog_state，节点字段）
+
+每个节点的 `fog_state` 描述其需求终点在地图上的清晰度，**单向收敛**（逆向跳变由校验层告警）：
+
+```text
+unknown_unknowns  →  foggy  →  misty  →  clear
+  连问题都没成型      终点在雾里   有歧义点    需求清楚
+```
+
+- `clear`（默认）— 需求清楚，可正常进入确认/拒绝流程。
+- `misty` — 大致清楚但有歧义点，可继续但需留意。
+- `foggy` — 终点在雾里，应先开 `grilling_ticket` 澄清。
+- `unknown_unknowns` — 连问题都没成型，应开 `research_ticket` 或标记 `fog_unknown` issue。
+
+地图"会生长收缩"= 随探索推进，节点 fog_state 从雾端向 clear 端收敛；problems 页的 **Fog Map** 分区按 fog_state 聚合可视化这些节点。
+
+### 8.2.2 探索 ticket（issue_type，三种）
+
+探索 ticket 复用 §8 的 issue 结构，`status`（open/resolved/deferred）天然表达"是否已解"，`suggested_prompt` 字段承载给 AI 的探索指令：
+
+| issue_type | 用途 | 对应 fog_state 信号 |
+|---|---|---|
+| `research_ticket` | 需调研才能明确的需求 | unknown_unknowns |
+| `prototype_ticket` | 需做原型/spike 验证可行性 | foggy |
+| `grilling_ticket` | 需对用户反复诘问澄清 | misty / foggy |
+| `fog_unknown` | 未知未知区标记（非 ticket，是雾区占位） | unknown_unknowns |
+
+### 8.2.3 一次只解一个 ticket（建议流程）
+
+为保护 AI context，建议工作流：每个节点同一时刻**只保留一个 open 状态的探索 ticket**；解完一个（status → resolved）并据结果推进 fog_state 收敛一步后，再开下一个。协议层不强制此约束，由 UI/工作流保证。
 
 ---
 

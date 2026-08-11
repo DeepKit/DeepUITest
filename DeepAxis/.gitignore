@@ -43,6 +43,14 @@ probe/*.drc
 *.userosscache
 *.sln.docstates
 
+# Backup files
+*.bak
+
+# Python cache (probe scripts)
+__pycache__/
+*.pyc
+*.pyo
+
 # OS
 Thumbs.db
 Desktop.ini
@@ -56,3 +64,8 @@ research/wechat-mcp/*/pnpm-lock.yaml
 research/wechat-mcp/wxauto/*.egg-info/
 research/wechat-mcp/wxauto/__pycache__/
 research/wechat-mcp/wxauto/**/__pycache__/
+
+# Third-party cloned repos under research (have their own upstreams)
+research/wechat-mcp/openclaw-wechat-community/
+research/wechat-mcp/tencent-openclaw-weixin/
+research/wechat-mcp/weixin-mcp-standalone/

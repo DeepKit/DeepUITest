@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Yaml.Writer
 
@@ -201,6 +202,10 @@ begin
     WriteScalarKV('gen_status', TSpecEnums.GenStatusToStr(ANode.GenStatus));
     WriteScalarKV('review_status', TSpecEnums.ReviewStatusToStr(ANode.ReviewStatus));
     WriteScalarKV('confidence', TSpecEnums.ConfidenceToStr(ANode.Confidence));
+    // fog_state: write only when explicitly set so round-trip survives reload
+    // and we don't pollute every node with a default 'clear'.
+    if ANode.HasFogState then
+      WriteScalarKV('fog_state', TSpecEnums.FogStateToStr(ANode.FogState));
     WriteScalarKV('source_layer', TSpecEnums.SourceLayerToStr(ANode.SourceLayer));
     WriteSourceRefs('source_refs', ANode.SourceRefs);
     WriteStringList('decision_refs', ANode.DecisionRefs);
@@ -404,6 +409,11 @@ begin
       WriteQuotedKV('resolved_at', FormatTimestamp(AIssue.ResolvedAt))
     else
       WriteScalarKV('resolved_at', 'null');
+    // requires_human: HITL/AFK attribute for exploration tickets (BUG-11).
+    // Optional — persisted only when explicitly set, so non-ticket issues
+    // (which never set it) stay out of the YAML.
+    if AIssue.HasRequiresHuman then
+      WriteBoolKV('requires_human', AIssue.RequiresHuman);
   finally
     FIndent := 0;
   end;

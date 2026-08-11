@@ -8,7 +8,7 @@
         <TargetedPlatforms>2</TargetedPlatforms>
         <AppType>Application</AppType>
         <FrameworkType>VCL</FrameworkType>
-        <ProjectVersion>20.4</ProjectVersion>
+        <ProjectVersion>12.0</ProjectVersion>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
@@ -69,10 +69,10 @@
         <DCC_Namespace>Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <DCC_DcuOutput>.\dcu</DCC_DcuOutput>
         <DCC_ExeOutput>.\bin</DCC_ExeOutput>
-        <DCC_UnitSearchPath>src\app;src\services;src\providers;src\controllers;src\core;src\models;D:\_Progs\02Business\DeepBase\Core;D:\_Progs\02Business\DeepBase\VCL;D:\_Progs\02Business\DeepBase\Persistence;D:\_Progs\02Business\DeepBase\Features;D:\_Progs\02Business\DeepBase\Governance;D:\_Progs\02Business\DeepBase\CloudServices;D:\_Progs\02Business\DeepBase\Libs;D:\_Progs\02Business\DeepBase\doQry;D:\_Progs\02Business\DeepBase\Tools;D:\_Progs\02Business\DeepBase\DeepFlow;D:\_Progs\02Business\DeepBase\ThirdParty;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>src\app;src\services;src\providers;src\controllers;src\core;src\models;..\DeepBase\Core;..\DeepBase\VCL;..\DeepBase\Persistence;..\DeepBase\Features;..\DeepBase\Governance;..\DeepBase\CloudServices;..\DeepBase\Libs;..\DeepBase\doQry;..\DeepBase\Tools;..\DeepBase\DeepFlow;..\DeepBase\ThirdParty;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>2052</VerInfo_Locale>
-        <VerInfo_Keys>CompanyName=;FileDescription=DeepSpec;FileVersion=0.1.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=DeepSpec;ProductVersion=0.1.0.0;Comments=;CFBundleName=</VerInfo_Keys>
-        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
+        <VerInfo_Keys>CompanyName=DeepKit;FileDescription=DeepSpec;FileVersion=0.1.0.0;InternalName=;LegalCopyright=Copyright (c) 2026 DeepKit;LegalTrademarks=;OriginalFilename=;ProductName=DeepSpec;ProductVersion=0.1.0.0;Comments=;CFBundleName=</VerInfo_Keys>
+        <Icon_MainIcon>DeepSpec.ico</Icon_MainIcon>
         <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
         <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
     </PropertyGroup>
@@ -80,7 +80,7 @@
         <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;Bde;$(DCC_Namespace)</DCC_Namespace>
         <BT_BuildType>Debug</BT_BuildType>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
-        <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
+        <VerInfo_Keys>CompanyName=DeepKit;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=Copyright (c) 2026 DeepKit;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <VerInfo_Locale>1033</VerInfo_Locale>
         <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
     </PropertyGroup>

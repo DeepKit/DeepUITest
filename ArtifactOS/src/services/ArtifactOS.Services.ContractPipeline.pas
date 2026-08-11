@@ -149,30 +149,8 @@ type
 implementation
 
 uses
-  System.JSON;
-
-function JsonStr(const S: string): string;
-begin
-  Result := S.Replace('\', '\\').Replace('"', '\"').Replace(#13, '\r').Replace(#10, '\n');
-end;
-
-function JsonParam(const AName, AValue: string): string;
-begin
-  Result := '"' + AName + '":"' + JsonStr(AValue) + '"';
-end;
-
-function JsonObj(const AFields: array of string): string;
-var
-  I: Integer;
-begin
-  Result := '{';
-  for I := 0 to High(AFields) do
-  begin
-    if I > 0 then Result := Result + ',';
-    Result := Result + AFields[I];
-  end;
-  Result := Result + '}';
-end;
+  System.JSON,
+  ArtifactOS.Core.Common.JsonBuilder;
 
 // ── Create ──
 
@@ -204,15 +182,15 @@ begin
       '  :theory_level, :target_reader, :success_result,' +
       '  :in_scope::jsonb, :non_goals::jsonb, :unresolved::jsonb, ''ready_for_ctf'', ''accepted'', :payload::jsonb' +
       ') RETURNING id::text',
-      JsonObj([
-        JsonParam('topic', ATopic),
-        JsonParam('intent', AIntent),
+      MakeJsonObj([
+        MakeJsonParam('topic', ATopic),
+        MakeJsonParam('intent', AIntent),
         '"target_account":' + ATargetAccountJson,
         '"target_platform":' + ATargetPlatformJson,
-        JsonParam('entry_mode', AEntryMode),
-        JsonParam('theory_level', ATheoryInterventionLevel),
-        JsonParam('target_reader', ATargetReader),
-        JsonParam('success_result', ASuccessResult),
+        MakeJsonParam('entry_mode', AEntryMode),
+        MakeJsonParam('theory_level', ATheoryInterventionLevel),
+        MakeJsonParam('target_reader', ATargetReader),
+        MakeJsonParam('success_result', ASuccessResult),
         '"in_scope":' + AInScopeJson,
         '"non_goals":' + ANonGoalsJson,
         '"unresolved":' + AUnresolvedJson,
@@ -250,13 +228,13 @@ begin
       '  :bundles::jsonb, :content_hash, :source_hashes::jsonb, :accept_level,' +
       '  :coverage, ''fresh'', :payload::jsonb' +
       ') RETURNING id::text',
-      JsonObj([
-        JsonParam('rf_id', ARequirementFrameId),
+      MakeJsonObj([
+        MakeJsonParam('rf_id', ARequirementFrameId),
         '"bundles":' + ASemanticBundlesJson,
-        JsonParam('content_hash', AContentHash),
+        MakeJsonParam('content_hash', AContentHash),
         '"source_hashes":' + ASourceHashesJson,
-        JsonParam('accept_level', AAcceptLevel),
-        JsonParam('coverage', CoverageStr),
+        MakeJsonParam('accept_level', AAcceptLevel),
+        MakeJsonParam('coverage', CoverageStr),
         '"payload":' + APayloadJson
       ]));
   finally
@@ -289,12 +267,12 @@ begin
       '  :taboos::jsonb, :word_count::jsonb, :style,' +
       '  :strategy::jsonb, :payload::jsonb' +
       ') RETURNING id::text',
-      JsonObj([
-        JsonParam('spec_id', ASourceSpecSnapshotId),
+      MakeJsonObj([
+        MakeJsonParam('spec_id', ASourceSpecSnapshotId),
         '"must_land":' + ASuggestedMustLandJson,
         '"taboos":' + ASuggestedTaboosJson,
         '"word_count":' + ASuggestedWordCountJson,
-        JsonParam('style', ASuggestedStyle),
+        MakeJsonParam('style', ASuggestedStyle),
         '"strategy":' + AStrategyRecommendationJson,
         '"payload":' + APayloadJson
       ]));
@@ -341,15 +319,15 @@ begin
       '  :source::jsonb, :strategy::jsonb, :directive::jsonb, :structure::jsonb,' +
       '  :constraints::jsonb, :quality::jsonb, :asto::jsonb, :odd::jsonb, :payload::jsonb' +
       ') RETURNING id::text',
-      JsonObj([
-        JsonParam('code', AContractCode),
-        JsonParam('contract_type', AContractType),
-        JsonParam('maturity', AMaturity),
-        JsonParam('version', VersionStr),
-        JsonParam('status', AStatus),
-        JsonParam('rf_id', ARequirementFrameId),
-        JsonParam('spec_id', ASourceSpecSnapshotId),
-        JsonParam('candidate_id', AContractCandidateId),
+      MakeJsonObj([
+        MakeJsonParam('code', AContractCode),
+        MakeJsonParam('contract_type', AContractType),
+        MakeJsonParam('maturity', AMaturity),
+        MakeJsonParam('version', VersionStr),
+        MakeJsonParam('status', AStatus),
+        MakeJsonParam('rf_id', ARequirementFrameId),
+        MakeJsonParam('spec_id', ASourceSpecSnapshotId),
+        MakeJsonParam('candidate_id', AContractCandidateId),
         '"source":' + ASourceJson,
         '"strategy":' + AStrategyJson,
         '"directive":' + ADirectiveJson,
@@ -573,12 +551,12 @@ begin
       '  contract_id=:contract_id::uuid,' +
       '  spec_status=''contracted''' +
       ' WHERE id=:task_id::uuid',
-      JsonObj([
-        JsonParam('rf_id', ARequirementFrameId),
-        JsonParam('spec_id', ASpecSnapshotId),
-        JsonParam('candidate_id', AContractCandidateId),
-        JsonParam('contract_id', AArtifactContractId),
-        JsonParam('task_id', ATaskId)
+      MakeJsonObj([
+        MakeJsonParam('rf_id', ARequirementFrameId),
+        MakeJsonParam('spec_id', ASpecSnapshotId),
+        MakeJsonParam('candidate_id', AContractCandidateId),
+        MakeJsonParam('contract_id', AArtifactContractId),
+        MakeJsonParam('task_id', ATaskId)
       ]));
     Result := True;
   finally
@@ -623,7 +601,7 @@ begin
   try
     DB.ExecuteJson(
       'UPDATE artifactos.requirement_frame SET rsc_status=:status, updated_at=now() WHERE id=:id::uuid',
-      JsonObj([JsonParam('status', ANewRscStatus), JsonParam('id', AId)]));
+      MakeJsonObj([MakeJsonParam('status', ANewRscStatus), MakeJsonParam('id', AId)]));
     Result := True;
   finally
     DB.Disconnect;
@@ -640,7 +618,7 @@ begin
   try
     DB.ExecuteJson(
       'UPDATE artifactos.contract_candidate SET status=:status, updated_at=now() WHERE id=:id::uuid',
-      JsonObj([JsonParam('status', ANewStatus), JsonParam('id', AId)]));
+      MakeJsonObj([MakeJsonParam('status', ANewStatus), MakeJsonParam('id', AId)]));
     Result := True;
   finally
     DB.Disconnect;
@@ -657,7 +635,7 @@ begin
   try
     DB.ExecuteJson(
       'UPDATE artifactos.artifact_contract SET status=''active'', updated_at=now() WHERE id=:id::uuid AND status IN (''draft'',''agreed'',''approved'')',
-      JsonObj([JsonParam('id', AId)]));
+      MakeJsonObj([MakeJsonParam('id', AId)]));
     Result := True;
   finally
     DB.Disconnect;
@@ -674,7 +652,7 @@ begin
   try
     DB.ExecuteJson(
       'UPDATE artifactos.artifact_contract SET status=''completed'', updated_at=now() WHERE id=:id::uuid AND status IN (''active'',''executing'')',
-      JsonObj([JsonParam('id', AId)]));
+      MakeJsonObj([MakeJsonParam('id', AId)]));
     Result := True;
   finally
     DB.Disconnect;

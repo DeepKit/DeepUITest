@@ -1,4 +1,4 @@
-unit DeepAxis.UIA.Engine;
+﻿unit DeepAxis.UIA.Engine;
 
 {*******************************************************************************
   DeepAxis UIA Engine v2 — 三层降级架构
@@ -80,6 +80,8 @@ type
     RetryCount: Integer;
     DurationMs: Integer;
     Evidence: string;          // 操作证据快照
+    /// <summary>熔断是否已触发 (连续失败达阈值)。触发后所有写操作拒绝, 需 ResetCircuit 恢复。</summary>
+    CircuitTripped: Boolean;
     function ToString: string;
   end;
 
@@ -133,6 +135,9 @@ type
     FWeChatElement: IUIAutomationElement; // 微信主窗口 Element
     FRetryHandler: TRetryHandler;
     FLastStrategy: TUiaStrategy;
+    // ── 熔断 (docs/03 §4.4: 连续失败保护) ──
+    FConsecFails: Integer;
+    const MAX_CONSEC_FAIL = 5;
 
     // 内部方法
     function FindWeChatWindow: HWND;
@@ -148,6 +153,18 @@ type
     function BuildEvidence(const AStrategy: TUiaStrategy; const AStep: string;
       ADurationMs: Integer; ARetries: Integer; ASuccess: Boolean): string;
     function EnsureUIAInitialized: Boolean;
+    // ── 熔断辅助 ──
+    /// <summary>熔断是否已触发。</summary>
+    function IsCircuitTripped: Boolean;
+    /// <summary>构造"熔断已触发"拒绝结果。</summary>
+    function CircuitBlockedResult(const AStep: string; AStart: Int64): TUiaResult;
+    // ── UIA 菜单/对话框辅助 (DeleteContact/UpdateRemark 用, 最佳努力) ──
+    /// <summary>在微信主窗口上下文菜单中查找并 Invoke 指定名称的菜单项。</summary>
+    function FindAndInvokeMenuItem(const AMenuName: string): Boolean;
+    /// <summary>等待并查找弹出对话框中指定名称的按钮并 Invoke。</summary>
+    function FindAndInvokeDialogButton(const AButtonName: string; ATimeoutMs: Integer = 3000): Boolean;
+    /// <summary>UIA 按名称查找子元素并 Invoke (MenuItem/Button 共用)。</summary>
+    function FindAndInvokeByName(const AName: string; AControlTypeId: Integer): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -167,6 +184,15 @@ type
     /// <summary>发送图片</summary>
     function SendImage(const AImagePath: string): TUiaResult;
 
+    /// <summary>模拟 Enter 发送 (最终模式)。三层降级: UIA 发送按钮 Invoke → SendInput VK_RETURN。</summary>
+    function PressEnter: TUiaResult;
+
+    /// <summary>删除联系人 (UIA 最佳努力, 强依赖微信版本逆向, 实机验证)。路径: 右键→菜单项→确认对话框。</summary>
+    function DeleteContact(const AContactId: string): TUiaResult;
+
+    /// <summary>修改备���名 (UIA 最佳努力, 实机验证)。路径: 右键→备注名→Edit.SetValue→保存。</summary>
+    function UpdateRemark(const AContactId, ANewRemark: string): TUiaResult;
+
     /// <summary>获取微信窗口完整状态</summary>
     function GetWeChatWindowState: TWeChatWindowState;
 
@@ -176,8 +202,19 @@ type
     /// <summary>检查 UIA 是否可用</summary>
     class function IsAvailable: Boolean;
 
+    /// <summary>重置熔断 (设置页手动恢复)。</summary>
+    procedure ResetCircuit;
+
+    /// <summary>记录一次操作结果, 成功清零, 失败+1, 达阈值熔断。
+    /// 供 UIA 操作内部调用, 亦作为单测熔断状态机的测试接缝。</summary>
+    procedure RecordOutcome(ASuccess: Boolean);
+
     /// <summary>获取微信版本信息</summary>
     property Version: TWeChatVersion read FVersion;
+    /// <summary>连续失败计数 (只读)。</summary>
+    property ConsecutiveFailures: Integer read FConsecFails;
+    /// <summary>熔断是否已触发 (只读)。</summary>
+    property CircuitBreakerTripped: Boolean read IsCircuitTripped;
   end;
 
 implementation
@@ -466,6 +503,7 @@ begin
   FVersion := TWeChatVersion.Empty;
   FRetryHandler := TRetryHandler.Create(3, 100);
   FLastStrategy := usUIAutomation;
+  FConsecFails := 0;
 end;
 
 destructor TUiaEngine.Destroy;
@@ -1144,6 +1182,304 @@ end;
 function TUiaEngine.GetWeChatState: string;
 begin
   Result := GetWeChatWindowState.StateString;
+end;
+
+{===============================================================================
+  熔断 + UIA 菜单/对话框辅助 + PressEnter/DeleteContact/UpdateRemark
+  (docs/03 §4.4 发送双模式 / §2.6 闲人漏斗删除)
+  注意: DeleteContact/UpdateRemark 的 UIA 控件路径强依赖微信 PC 版本逆向,
+        未经实机验证。失败时由 ContactOps 降级为"仅生成建议、人工执行"。
+===============================================================================}
+
+function TUiaEngine.IsCircuitTripped: Boolean;
+begin
+  Result := FConsecFails >= MAX_CONSEC_FAIL;
+end;
+
+procedure TUiaEngine.RecordOutcome(ASuccess: Boolean);
+begin
+  if ASuccess then
+    FConsecFails := 0
+  else
+  begin
+    Inc(FConsecFails);
+    if FConsecFails >= MAX_CONSEC_FAIL then
+      ; // 达阈值, 后续 IsCircuitTripped 返回 True
+  end;
+end;
+
+procedure TUiaEngine.ResetCircuit;
+begin
+  FConsecFails := 0;
+end;
+
+function TUiaEngine.CircuitBlockedResult(const AStep: string; AStart: Int64): TUiaResult;
+begin
+  Result := Default(TUiaResult);
+  Result.Success := False;
+  Result.CircuitTripped := True;
+  Result.ErrorMessage := Format('熔断已触发 (连续 %d 次失败), 操作被拒绝: %s', [FConsecFails, AStep]);
+  Result.DurationMs := GetTickCount64Safe - AStart;
+  Result.Evidence := BuildEvidence(usUIAutomation, 'CircuitBlocked:' + AStep, Result.DurationMs, 0, False);
+end;
+
+function TUiaEngine.FindAndInvokeByName(const AName: string; AControlTypeId: Integer): Boolean;
+var
+  LHR: HRESULT;
+  LNameCond, LTypeCond, LAndCond: IUIAutomationCondition;
+  LFound: IUIAutomationElement;
+  LUnk: IInterface;
+  LPattern: IUIAutomationInvokePattern;
+  LSearchRoot: IUIAutomationElement;
+begin
+  Result := False;
+  if (FAuto = nil) and (not EnsureUIAInitialized) then Exit;
+  if FAuto = nil then Exit;
+
+  // 搜索根: 优先微信窗口 Element, 否则桌面根
+  LSearchRoot := FWeChatElement;
+  if LSearchRoot = nil then
+  begin
+    LHR := FAuto.GetRootElement(LSearchRoot);
+    if Failed(LHR) or (LSearchRoot = nil) then Exit;
+  end;
+
+  // 构造条件: Name = AName AND ControlType = AControlTypeId
+  LNameCond := nil;
+  LTypeCond := nil;
+  LAndCond := nil;
+  LHR := FAuto.CreatePropertyCondition(UIA_NamePropertyId, AName, LNameCond);
+  if Failed(LHR) or (LNameCond = nil) then Exit;
+  LHR := FAuto.CreatePropertyCondition(UIA_ControlTypePropertyId, AControlTypeId, LTypeCond);
+  if Failed(LHR) or (LTypeCond = nil) then Exit;
+  LHR := FAuto.CreateAndCondition(LNameCond, LTypeCond, LAndCond);
+  if Failed(LHR) or (LAndCond = nil) then Exit;
+
+  LHR := LSearchRoot.FindFirst(TreeScope_Descendants, LAndCond, LFound);
+  if Failed(LHR) or (LFound = nil) then Exit;
+
+  // Invoke: GetCurrentPattern 第2参数是 out IInterface, 再转 IUIAutomationInvokePattern
+  LUnk := nil;
+  LHR := LFound.GetCurrentPattern(UIA_InvokePatternId, LUnk);
+  if Succeeded(LHR) and (LUnk <> nil) and Supports(LUnk, IUIAutomationInvokePattern, LPattern) then
+  begin
+    LHR := LPattern.Invoke;
+    Result := Succeeded(LHR);
+  end;
+end;
+
+function TUiaEngine.FindAndInvokeMenuItem(const AMenuName: string): Boolean;
+begin
+  // 右键弹出菜单是独立窗口, 从桌面根搜索
+  Result := FindAndInvokeByName(AMenuName, UIA_MenuItemControlTypeId);
+end;
+
+function TUiaEngine.FindAndInvokeDialogButton(const AButtonName: string; ATimeoutMs: Integer): Boolean;
+var
+  LDeadline: Int64;
+begin
+  // 轮询等待对话框出现 (UIA 树刷新有延迟)
+  LDeadline := GetTickCount64Safe + ATimeoutMs;
+  Result := False;
+  while GetTickCount64Safe < LDeadline do
+  begin
+    if FindAndInvokeByName(AButtonName, UIA_ButtonControlTypeId) then
+      Exit(True);
+    Sleep(200);
+  end;
+end;
+
+function TUiaEngine.PressEnter: TUiaResult;
+var
+  LStart: Int64;
+  LEnterOk: Boolean;
+begin
+  LStart := GetTickCount64Safe;
+  Result := Default(TUiaResult);
+
+  if IsCircuitTripped then
+    Exit(CircuitBlockedResult('PressEnter', LStart));
+
+  if FWeChatWnd = 0 then
+    FWeChatWnd := FindWeChatWindow;
+  if FWeChatWnd = 0 then
+  begin
+    Result.Success := False;
+    Result.ErrorMessage := '微信窗口未找到';
+    Result.DurationMs := GetTickCount64Safe - LStart;
+    RecordOutcome(False);
+    Exit;
+  end;
+
+  SetForegroundWindow(FWeChatWnd);
+  Sleep(80);
+
+  // Layer 1: UIA 找"发送"按钮 Invoke (微信 4.x 输入框旁通常有发送按钮)
+  LEnterOk := False;
+  if EnsureUIAInitialized and (FAuto <> nil) then
+  begin
+    if FindAndInvokeByName('发送', UIA_ButtonControlTypeId) then
+    begin
+      LEnterOk := True;
+      Result.Strategy := usUIAutomation;
+      FLastStrategy := usUIAutomation;
+    end;
+  end;
+
+  // Layer 2/3: 降级到 SendInput VK_RETURN
+  if not LEnterOk then
+  begin
+    Result.Strategy := usKeyboardSimulation;
+    FLastStrategy := usKeyboardSimulation;
+    LEnterOk := SendInputKey(VK_RETURN) and SendInputKey(VK_RETURN, KEYEVENTF_KEYUP);
+  end;
+
+  Result.Success := LEnterOk;
+  Result.DurationMs := GetTickCount64Safe - LStart;
+  Result.Evidence := BuildEvidence(Result.Strategy, 'PressEnter', Result.DurationMs, 0, LEnterOk);
+  RecordOutcome(LEnterOk);
+end;
+
+function TUiaEngine.DeleteContact(const AContactId: string): TUiaResult;
+var
+  LStart: Int64;
+  LStepOk: Boolean;
+begin
+  LStart := GetTickCount64Safe;
+  Result := Default(TUiaResult);
+
+  if IsCircuitTripped then
+    Exit(CircuitBlockedResult('DeleteContact', LStart));
+
+  // 路径 (最佳努力, 未实机验证):
+  //   1. 已选中联系人 (调用方先 NavigateToContact)
+  //   2. 右键弹出上下文菜单 (SendInput 上下文菜单键或 Shift+F10)
+  //   3. 找菜单项"删除联系人" Invoke
+  //   4. 等确认对话框, 找"确定"按钮 Invoke
+  if FWeChatWnd = 0 then
+    FWeChatWnd := FindWeChatWindow;
+  if FWeChatWnd = 0 then
+  begin
+    Result.ErrorMessage := '微信窗口未找到';
+    Result.DurationMs := GetTickCount64Safe - LStart;
+    RecordOutcome(False);
+    Exit;
+  end;
+
+  SetForegroundWindow(FWeChatWnd);
+  Sleep(100);
+
+  Result.Strategy := usUIAutomation;
+  FLastStrategy := usUIAutomation;
+
+  // 弹出上下文菜单: Shift+F10
+  LStepOk := SendInputCombo(VK_SHIFT, VK_F10);
+  Sleep(400);
+
+  // 找"删除联系人"菜单项
+  if LStepOk then
+    LStepOk := FindAndInvokeMenuItem('删除联系人');
+  Sleep(400);
+
+  // 确认对话框"确定"
+  if LStepOk then
+    LStepOk := FindAndInvokeDialogButton('确定', 3000);
+
+  Result.Success := LStepOk;
+  Result.DurationMs := GetTickCount64Safe - LStart;
+  Result.Evidence := BuildEvidence(Result.Strategy,
+    Format('DeleteContact[%s]', [AContactId]), Result.DurationMs, 0, LStepOk);
+  RecordOutcome(LStepOk);
+end;
+
+function TUiaEngine.UpdateRemark(const AContactId, ANewRemark: string): TUiaResult;
+var
+  LStart: Int64;
+  LStepOk: Boolean;
+  LEditCond: IUIAutomationCondition;
+  LFound: IUIAutomationElement;
+  LUnk: IInterface;
+  LValuePat: IUIAutomationValuePattern;
+  LHR: HRESULT;
+  LSearchRoot: IUIAutomationElement;
+  LRemarkW: PWideChar;
+begin
+  LStart := GetTickCount64Safe;
+  Result := Default(TUiaResult);
+
+  if IsCircuitTripped then
+    Exit(CircuitBlockedResult('UpdateRemark', LStart));
+
+  if FWeChatWnd = 0 then
+    FWeChatWnd := FindWeChatWindow;
+  if FWeChatWnd = 0 then
+  begin
+    Result.ErrorMessage := '微信窗口未找到';
+    Result.DurationMs := GetTickCount64Safe - LStart;
+    RecordOutcome(False);
+    Exit;
+  end;
+
+  SetForegroundWindow(FWeChatWnd);
+  Sleep(100);
+
+  Result.Strategy := usUIAutomation;
+  FLastStrategy := usUIAutomation;
+  LStepOk := False;
+
+  // 路径 (最佳努力): 右键 → "备注名" 菜单项 → 弹出编辑框 → SetValue → 保存
+  SendInputCombo(VK_SHIFT, VK_F10);
+  Sleep(400);
+
+  if FindAndInvokeMenuItem('备注名') then
+  begin
+    Sleep(500);
+    // 在弹出的对话框/面板里找 Edit 控件, SetValue
+    if EnsureUIAInitialized and (FAuto <> nil) then
+    begin
+      LSearchRoot := FWeChatElement;
+      if LSearchRoot = nil then
+      begin
+        LHR := FAuto.GetRootElement(LSearchRoot);
+        if Failed(LHR) then LSearchRoot := nil;
+      end;
+      if LSearchRoot <> nil then
+      begin
+        LHR := FAuto.CreatePropertyCondition(UIA_ControlTypePropertyId,
+          UIA_EditControlTypeId, LEditCond);
+        if Succeeded(LHR) and (LEditCond <> nil) then
+        begin
+          LHR := LSearchRoot.FindFirst(TreeScope_Descendants, LEditCond, LFound);
+          if Succeeded(LHR) and (LFound <> nil) then
+          begin
+            LUnk := nil;
+            LHR := LFound.GetCurrentPattern(UIA_ValuePatternId, LUnk);
+            if Succeeded(LHR) and (LUnk <> nil) and
+               Supports(LUnk, IUIAutomationValuePattern, LValuePat) then
+            begin
+              LRemarkW := PWideChar(ANewRemark);
+              LHR := LValuePat.SetValue(LRemarkW);
+              LStepOk := Succeeded(LHR);
+            end;
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  // 保存: 找"保存"/"确定"按钮
+  if LStepOk then
+  begin
+    Sleep(300);
+    if not FindAndInvokeDialogButton('保存', 2000) then
+      FindAndInvokeDialogButton('确定', 2000);
+  end;
+
+  Result.Success := LStepOk;
+  Result.DurationMs := GetTickCount64Safe - LStart;
+  Result.Evidence := BuildEvidence(Result.Strategy,
+    Format('UpdateRemark[%s->%s]', [AContactId, ANewRemark]), Result.DurationMs, 0, LStepOk);
+  RecordOutcome(LStepOk);
 end;
 
 end.

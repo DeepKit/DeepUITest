@@ -29,7 +29,11 @@
         "parse_warning",
         "parse_error",
         "orphan_node",
-        "coverage_gap"
+        "coverage_gap",
+        "research_ticket",
+        "prototype_ticket",
+        "grilling_ticket",
+        "fog_unknown"
       ]
     },
     "issue_status": {

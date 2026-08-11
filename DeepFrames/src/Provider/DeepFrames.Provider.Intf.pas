@@ -82,6 +82,17 @@ type
       out AResult: TAsrTranscriptionResult;
       out AMetrics: TProviderRunMetrics): Boolean;
 
+    /// <summary>
+    /// Transcribe an audio file and return plain text (no timestamps).
+    /// Used by external_video_import adapter to produce source_document text
+    /// where whole-sentence text suffices (no subtitle sync needed).
+    /// Reuses the same SSE call as Transcribe but extracts transcript.text.done
+    /// instead of word-level delta timestamps.
+    /// </summary>
+    function TranscribeText(const AAudioUri: string;
+      out AText: string;
+      out AMetrics: TProviderRunMetrics): Boolean;
+
     /// <summary>Return the most recent call metrics.</summary>
     function GetLastRunMetrics: TProviderRunMetrics;
   end;
@@ -116,9 +127,38 @@ type
     function GetLastRunMetrics: TProviderRunMetrics;
   end;
 
+  /// <summary>Video generation provider (text-to-video, image-to-video).</summary>
+  IDeepFramesVideoProvider = interface
+    ['{E5F6A7B8-C9D0-1234-EF56-7890ABCDEF01}']
+    function GetProviderName: string;
+    function GetProviderStatus: TProviderStatus;
+    function GetCapabilities: TProviderCapabilities;
+
+    /// <summary>
+    /// Generate a video from a prompt, optionally using a reference image.
+    /// This is an async operation — may take several minutes.
+    /// Returns the saved video file path on success.
+    /// </summary>
+    function GenerateVideo(const ARequest: TVideoGenRequest;
+      out AResult: TVideoGenResult;
+      out AMetrics: TProviderRunMetrics): Boolean;
+
+    /// <summary>Return supported video sizes (e.g. '1280x704').</summary>
+    function GetSupportedSizes: TArray<string>;
+
+    /// <summary>Return the most recent call metrics.</summary>
+    function GetLastRunMetrics: TProviderRunMetrics;
+  end;
+
 const
   PROVIDER_FAKE = 'fake';
   PROVIDER_STEPFUN = 'stepfun';
+  PROVIDER_AGNES = 'agnes';
+  PROVIDER_BAIDU = 'baidu';
+  PROVIDER_GEMINI = 'gemini';
+  PROVIDER_FAILOVER = 'failover';
+  PROVIDER_WISEGATEWAY = 'wisegateway';
+  PROVIDER_STEPFUN_MIX = 'stepfun-mix';
 
 implementation
 

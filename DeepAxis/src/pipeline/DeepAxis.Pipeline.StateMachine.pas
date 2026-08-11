@@ -72,17 +72,67 @@ end;
 function TContactStateMachine.TransitState(const AContact: TContact;
   const ATrigger: string): TAxis1State;
 begin
-  // P0: Read-only — no auto-transition.
-  // Returns current derived state. In P2+, this will apply state changes
-  // based on triggers and confidence thresholds.
-  Result := GetAxis1State(AContact);
+  // BUG-051 #86: 触发信号驱动的状态推进 (P1.5 规则, 非纯只读)。
+  // 规则: 信号 → 状态, 仅当证据充分时推进; 不自动降级人工确认过的状态。
+  Result := DeriveStateFromMetadata(AContact);
+
+  if ATrigger = '' then
+    Exit;
+
+  // 已成交 (ProductCount>0) + 活跃 → 首购/复购带
+  if AContact.ProductCount > 0 then
+  begin
+    if GetDaysSinceLastInteraction(AContact) <= 7 then
+      Result := 5  // 首单 (有活跃产品关联)
+    else
+      Result := 7; // 降温中 (有产品但长期沉默)
+    Exit;
+  end;
+
+  // 触发信号: 意向/洽谈类 (M1 关键词或人工确认)
+  if (Pos('interest', ATrigger) > 0) or (Pos('意向', ATrigger) > 0) then
+    Exit(3); // 有兴趣
+  if (Pos('negotiate', ATrigger) > 0) or (Pos('洽谈', ATrigger) > 0) then
+    Exit(4); // 洽谈中
+
+  // 营销关键词命中 → 潜在产品关联信号 (状态 1: 知道)
+  if (Pos('marketing', ATrigger) > 0) and (AContact.MarketingKeywordHitCount > 0) then
+    Exit(1);
 end;
 
 function TContactStateMachine.GetTransitionEvents(const AContact: TContact): TArray<string>;
 begin
-  // P0: No transition events are generated.
-  // In P2+, this returns the list of Axis 2 events that triggered state changes.
+  // BUG-051 #86: 返回派生出的 Axis 2 事件 (供 UI/审计展示)。
   Result := nil;
+
+  // 降温信号 (7)
+  if (GetDaysSinceLastInteraction(AContact) > 30) and
+     (GetDaysSinceLastInteraction(AContact) <= 90) then
+  begin
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := 'cooldown:days>' + IntToStr(30);
+  end;
+
+  // 流失风险 (8)
+  if GetDaysSinceLastInteraction(AContact) > 90 then
+  begin
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := 'churn_risk:days>' + IntToStr(90);
+  end;
+
+  // 营销关键词命中 → 意向候选
+  if AContact.MarketingKeywordHitCount > 0 then
+  begin
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := 'marketing_hit:count=' + IntToStr(AContact.MarketingKeywordHitCount);
+  end;
+
+  // 广告计数达上限 → 删除候选信号
+  if AContact.AdCount >= AD_MAX_COUNT then
+  begin
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := 'ad_exhausted:count=' + IntToStr(AContact.AdCount);
+  end;
 end;
 
 function TContactStateMachine.GetStateLabel(const AState: TAxis1State): string;

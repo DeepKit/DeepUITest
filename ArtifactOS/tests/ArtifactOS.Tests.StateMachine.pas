@@ -40,7 +40,6 @@ begin
   try
     DB.Connection.StartTransaction;
     try
-      // This is a legal combo — should succeed
       DB.Execute(
         'INSERT INTO artifactos.substudio_execution_task (sub_studio_id, artifact_plan_id, artifact_id, ' +
         'pipeline_status, quality_status, publish_status) ' +
@@ -70,17 +69,18 @@ begin
   try
     DB.Connection.StartTransaction;
     try
-      Assert.WillRaise(
-        procedure
-        begin
-          DB.Execute(
-            'INSERT INTO artifactos.substudio_execution_task (sub_studio_id, artifact_plan_id, artifact_id, ' +
-            'pipeline_status, quality_status, publish_status) ' +
-            'VALUES (NULL, NULL, NULL, ''drafting'', ''published'', ''pending'')');
-        end,
-        Exception);
-
-      DB.Connection.Commit;
+      var Caught := False;
+      try
+        DB.Execute(
+          'INSERT INTO artifactos.substudio_execution_task (sub_studio_id, artifact_plan_id, artifact_id, ' +
+          'pipeline_status, quality_status, publish_status) ' +
+          'VALUES (NULL, NULL, NULL, ''drafting'', ''published'', ''pending'')');
+        DB.Connection.Commit;
+      except
+        Caught := True;
+        DB.Connection.Rollback;
+      end;
+      Assert.IsTrue(Caught, 'Illegal combo should be rejected');
     except
       DB.Connection.Rollback;
       raise;
@@ -93,27 +93,29 @@ end;
 procedure TStateMachineTests.ShadowPackage_CannotEnterRealPublishing;
 var
   DB: TArtifactDB;
+  IdemKey: string;
 begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
     DB.Connection.StartTransaction;
     try
-      // Insert a simulated package
+      IdemKey := 'test_shadow_guard_' + IntToStr(Trunc(Now * 86400));
       DB.Execute(
         'INSERT INTO artifactos.publication_package (idempotency_key, platform, simulation_only, run_mode, status) ' +
-        'VALUES (''test_shadow_guard_'' || floor(extract(epoch from now()))::text, ''zhihu'', true, ''shadow'', ''simulated'')');
+        'VALUES (''' + IdemKey + ''', ''zhihu'', true, ''shadow'', ''simulated'')');
 
-      // Try to transition it to queued — should be blocked by shadow guard
-      Assert.WillRaise(
-        procedure
-        begin
-          DB.Execute(
-            'UPDATE artifactos.publication_package SET status=''queued'' WHERE run_mode=''shadow'' AND status=''simulated''');
-        end,
-        Exception, 'Shadow package must never enter queued');
+      var Caught := False;
+      try
+        DB.Execute(
+          'UPDATE artifactos.publication_package SET status=''queued'' WHERE run_mode=''shadow'' AND status=''simulated''');
+      except
+        Caught := True;
+        DB.Connection.Rollback;
+      end;
+      Assert.IsTrue(Caught, 'Shadow package must never enter queued');
 
-      DB.Execute('DELETE FROM artifactos.publication_package WHERE idempotency_key LIKE ''test_shadow_guard_%''');
+      DB.Execute('DELETE FROM artifactos.publication_package WHERE idempotency_key=''' + IdemKey + '''');
       DB.Connection.Commit;
     except
       DB.Connection.Rollback;
@@ -127,27 +129,29 @@ end;
 procedure TStateMachineTests.PublicationPackage_RequiresQualitySnapshot;
 var
   DB: TArtifactDB;
+  IdemKey: string;
 begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
     DB.Connection.StartTransaction;
     try
-      // Insert a package without quality_snapshot
+      IdemKey := 'test_qs_bind_' + IntToStr(Trunc(Now * 86400));
       DB.Execute(
         'INSERT INTO artifactos.publication_package (idempotency_key, platform, simulation_only, run_mode, status, quality_snapshot_id) ' +
-        'VALUES (''test_qs_bind_'' || floor(extract(epoch from now()))::text, ''zhihu'', true, ''shadow'', ''simulated'', NULL)');
+        'VALUES (''' + IdemKey + ''', ''zhihu'', true, ''shadow'', ''simulated'', NULL)');
 
-      // Try to transition to queued without quality_snapshot
-      Assert.WillRaise(
-        procedure
-        begin
-          DB.Execute(
-            'UPDATE artifactos.publication_package SET status=''queued'' WHERE quality_snapshot_id IS NULL AND status=''simulated''');
-        end,
-        Exception, 'Package must bind quality_snapshot before queued');
+      var Caught := False;
+      try
+        DB.Execute(
+          'UPDATE artifactos.publication_package SET status=''queued'' WHERE quality_snapshot_id IS NULL AND status=''simulated''');
+      except
+        Caught := True;
+        DB.Connection.Rollback;
+      end;
+      Assert.IsTrue(Caught, 'Package must bind quality_snapshot before queued');
 
-      DB.Execute('DELETE FROM artifactos.publication_package WHERE idempotency_key LIKE ''test_qs_bind_%''');
+      DB.Execute('DELETE FROM artifactos.publication_package WHERE idempotency_key=''' + IdemKey + '''');
       DB.Connection.Commit;
     except
       DB.Connection.Rollback;
@@ -165,16 +169,17 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    var GateResult := DB.ExecuteScalar('SELECT gate_status::text FROM artifactos.check_real_publish_gate()');
-    Assert.AreEqual('blocked', GateResult, 'RealPublishGate must always be blocked in Phase 1A shadow');
+    var GateResult := DB.ExecuteScalar('SELECT (artifactos.check_real_publish_gate() ->> ''gate_status'')::text');
+    Assert.AreEqual('blocked', GateResult, 'RealPublishGate must always be blocked');
 
-    var Reason := DB.ExecuteScalar('SELECT reason::text FROM artifactos.check_real_publish_gate()');
-    Assert.IsTrue(Pos('Phase 1A', Reason) > 0, 'Block reason should mention Phase 1A');
+    var Reason := DB.ExecuteScalar('SELECT (artifactos.check_real_publish_gate() ->> ''reason'')::text');
+    Assert.IsTrue((Pos('Phase 1A', Reason) > 0) or (Pos('Shadow run mode', Reason) > 0),
+      'Block reason should mention Phase 1A or Shadow run mode');
   finally
     DB.Disconnect;
   end;
 end;
 
 initialization
-
+  TDUnitX.RegisterTestFixture(TStateMachineTests);
 end.

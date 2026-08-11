@@ -17,6 +17,21 @@ class WeChatPayError(Exception):
     pass
 
 
+# Channel 别名映射，兼容小程序端可能发送的非标准名称
+CHANNEL_ALIASES = {
+    "wechat_jsapi": "jsapi",
+    "wechat_mini_program": "mini_program",
+    "wechat_native": "native",
+    "wechat_h5": "h5",
+    "wechat_app": "app",
+}
+
+
+def normalize_channel(channel: str) -> str:
+    """将 channel 标准化为微信支付的官方名称"""
+    return CHANNEL_ALIASES.get(channel, channel)
+
+
 def _load_public_key(path: str):
     if not path:
         raise WeChatPayError("WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH is required")
@@ -86,6 +101,8 @@ def create_prepay(
 ) -> dict[str, Any]:
     if not all([app_id, mch_id, merchant_serial, merchant_private_key_path, notify_url]):
         raise WeChatPayError("WeChat Pay prepay settings are incomplete")
+    # 标准化 channel 名称
+    channel = normalize_channel(channel)
     if channel in ("jsapi", "mini_program"):
         endpoint = "/v3/pay/transactions/jsapi"
     elif channel == "native":

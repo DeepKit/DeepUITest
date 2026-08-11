@@ -66,6 +66,7 @@ type
   TArtifactOSLLMProxy = class
   private
     class var FInstance: TArtifactOSLLMProxy;
+    class var FLock: TObject;  // guards Instance lazy-init
 
     /// <summary>Map tier → DeepBase.LLM config name.</summary>
     class function ConfigNameForTier(const ATier: TAOSLLMTier): string;
@@ -105,8 +106,6 @@ type
     /// Get tier display name for logging.
     /// </summary>
     class function TierDisplayName(const ATier: TAOSLLMTier): string;
-
-    destructor Destroy; override;
   end;
 
   /// <summary>Convenience alias for singleton access.</summary>
@@ -115,6 +114,7 @@ function ArtifactOS_LLM: TArtifactOSLLMProxy;
 implementation
 
 uses
+  System.SyncObjs,
   DeepBase.Config;
 
 function ArtifactOS_LLM: TArtifactOSLLMProxy;
@@ -217,8 +217,17 @@ end;
 
 class function TArtifactOSLLMProxy.Instance: TArtifactOSLLMProxy;
 begin
+  // Thread-safe lazy init with double-checked locking
   if FInstance = nil then
-    FInstance := TArtifactOSLLMProxy.Create;
+  begin
+    TMonitor.Enter(TArtifactOSLLMProxy.FLock);
+    try
+      if FInstance = nil then
+        FInstance := TArtifactOSLLMProxy.Create;
+    finally
+      TMonitor.Exit(TArtifactOSLLMProxy.FLock);
+    end;
+  end;
   Result := FInstance;
 end;
 
@@ -275,6 +284,9 @@ begin
     Exit;
   end;
 
+  // Per-call LLM instance for thread safety — TDeepBaseLLM is not documented
+  // as thread-safe, and concurrent pipelines (GenerationService, QualityGate,
+  // TopicFunnel, TheoryWeave) may call Chat simultaneously.
   LLM := TDeepBaseLLM.Create(nil);
   try
     ConfigName := ConfigNameForTier(ATier);
@@ -329,6 +341,7 @@ var
   Config: TLLMConfig;
 begin
   Result := False;
+  // Per-call instance for thread safety
   LLM := TDeepBaseLLM.Create(nil);
   try
     Config := LLM.GetConfig('Default');
@@ -338,15 +351,12 @@ begin
   end;
 end;
 
-destructor TArtifactOSLLMProxy.Destroy;
-begin
-  inherited;
-end;
-
 initialization
+  TArtifactOSLLMProxy.FLock := TObject.Create;
 
 finalization
   if Assigned(TArtifactOSLLMProxy.FInstance) then
     FreeAndNil(TArtifactOSLLMProxy.FInstance);
+  TArtifactOSLLMProxy.FLock.Free;
 
 end.

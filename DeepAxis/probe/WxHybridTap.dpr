@@ -1,11 +1,33 @@
-program WxHybridTap;
+﻿program WxHybridTap;
 
 {$APPTYPE CONSOLE}
+
+// ─────────────────────────────────────────────────────────────────
+//  DeepAxis WxHybridTap v3.0
+//  微信 4.x SQLCipher 密钥实时抓取 (INT3 断点)。
+//
+//  本版本是 probe/probe_v4.py (已验证成功链路) 的忠实 Delphi 移植：
+//    · 断点仅两个：CfgHandler / Verify3 (probe_v4 实测可命中并取到密钥)
+//    · 密钥校验复用 DeepAxis.WeChat.Decrypt (已验证正确，解密 17 库靠它)
+//    · Verify3 命中后额外走 codec 链 (Rcx→btree→pager→codec) 深挖密钥
+//    · x64 CONTEXT 强制 16 字节对齐，避免 GetThreadContext 静默失败
+//
+//  历史 bug (v2.0)：
+//    1. 断点 RVA 全错——3 个 RVA >2GB，超出 Weixin.dll 模块大小，断点根本
+//       无法写入 (ReadProcMem 返回 nil → SKIP)，其余 RVA 也非取密钥函数。
+//    2. VerifyKeyBytes 把原始 32 字节密钥 UTF8 转字符串 (有损) 且只做单次
+//       HMAC 而非 PBKDF2(2 轮)，即便断点命中拿到正确密钥也无法通过校验。
+//  → 两处叠加导致 “Key capture failed”。本版已修复。
+//
+//  注意：断点 RVA 与具体 Weixin.dll 构建版本绑定。此处沿用 probe_v4 验证过
+//  的 4.1.10.x 偏移；若目标微信版本不同需重新静态分析定位。
+// ─────────────────────────────────────────────────────────────────
 
 uses
   System.SysUtils, System.Classes, System.IOUtils, System.Math, System.DateUtils,
   System.Generics.Collections, System.Hash, System.JSON,
-  Winapi.Windows, Winapi.ShellAPI, Winapi.TlHelp32;
+  Winapi.Windows, Winapi.ShellAPI, Winapi.TlHelp32,
+  DeepAxis.WeChat.Decrypt;
 
 function OpenThread(dwDesiredAccess: DWORD; bInheritHandle: BOOL;
   dwThreadId: DWORD): THandle; stdcall; external kernel32;
@@ -13,16 +35,11 @@ function OpenThread(dwDesiredAccess: DWORD; bInheritHandle: BOOL;
 const
   PAGE_SZ = 4096;
   KEY_SIZE = 32;
-  HMAC_SHA512_SIZE = 64;
-  RESERVE_SIZE = 80;
 
-  // From bugfix.md — verified static analysis of Weixin.dll 4.1.10.30-53
-  RVA_HYBRID_ECDH_DECRYPT   = $0DEE300;
-  RVA_AES_GCM_DECRYPT       = $29F3520;
-  RVA_UNCOMPRESSED_OUTPUT   = $29F3BEE;
-  RVA_SQLCIPHER_KEY_DBNAME  = $984BDDA0;
-  RVA_SQLCIPHER_KEY_DBINDEX = $984BDB00;
-  RVA_SQLCIPHER_CODEC_KEY   = $9671C380;
+  // ── 已验证断点 RVA (probe_v4.py 实测命中并取到密钥) ──────────────
+  //   CfgHandler / Verify3 是 SQLCipher key 流经的两个点。
+  RVA_CFG_HANDLER = $5032E70;
+  RVA_VERIFY3     = $5034DF3;
 
 type
   TBreakpoint = record
@@ -30,7 +47,7 @@ type
     Rva: UInt64;
     AbsAddr: UInt64;
     OriginalByte: Byte;
-    Hit: Boolean;
+    Valid: Boolean;
   end;
 
   TDBFile = record
@@ -49,15 +66,6 @@ var
   GTimeoutMs: Integer = 90000;
   GDumpDir: string = '';
 
-function HexToBytes(const AHex: string): TBytes;
-var I, L: Integer;
-begin
-  L := Length(AHex) div 2;
-  SetLength(Result, L);
-  for I := 0 to L - 1 do
-    Result[I] := Byte(StrToInt('$' + Copy(AHex, I * 2 + 1, 2)));
-end;
-
 function BytesToHex(const AData: TBytes): string;
 var I: Integer;
 begin
@@ -75,52 +83,24 @@ begin
   SetLength(Result, LRead);
 end;
 
-function VerifyKeyBytes(const AKey: TBytes; const APage1: TBytes): Boolean;
-var
-  LSalt, LMacSalt, LData, LStoredHmac: TBytes;
-  LSHA: THashSHA2;
-  LKeyStr: string;
-  LDataStr: string;
-  LMacKey: TBytes;
-  I: Integer;
-  LPageNum: Cardinal;
-  LHMAC: TBytes;
+function ReadQWord(AHandle: THandle; AAddr: UInt64): UInt64;
+var LBuf: TBytes;
 begin
-  Result := False;
-  if (Length(AKey) <> KEY_SIZE) or (Length(APage1) < PAGE_SZ) then Exit;
-
-  LSalt := Copy(APage1, 0, 16);
-  SetLength(LMacSalt, 16);
-  for I := 0 to 15 do LMacSalt[I] := LSalt[I] xor $3A;
-
-  // PBKDF2-HMAC-SHA512(AKey, MacSalt, 2 iters) → 32B MAC key
-  LKeyStr := TEncoding.UTF8.GetString(AKey);
-  LMacKey := THashSHA2.GetHMACAsBytes(
-    TEncoding.UTF8.GetString(LMacSalt), LKeyStr, THashSHA2.TSHA2Version.SHA512);
-  SetLength(LMacKey, KEY_SIZE);
-
-  // HMAC data = page1[16 : PAGE_SZ - RESERVE_SIZE + 16] = page1[16 : 4032]
-  LData := Copy(APage1, 16, PAGE_SZ - RESERVE_SIZE);
-
-  // Stored HMAC = page1[PAGE_SZ - 64 : PAGE_SZ]
-  LStoredHmac := Copy(APage1, PAGE_SZ - HMAC_SHA512_SIZE, HMAC_SHA512_SIZE);
-
-  // Compute HMAC(mac_key, data || page_num_LE)
-  LPageNum := 1;
-  var LFullData: TBytes;
-  SetLength(LFullData, Length(LData) + 4);
-  Move(LData[0], LFullData[0], Length(LData));
-  Move(LPageNum, LFullData[Length(LData)], 4);
-
-  LDataStr := TEncoding.UTF8.GetString(LFullData);
-  LHMAC := THashSHA2.GetHMACAsBytes(
-    LDataStr, TEncoding.UTF8.GetString(LMacKey), THashSHA2.TSHA2Version.SHA512);
-
-  Result := CompareMem(@LHMAC[0], @LStoredHmac[0], HMAC_SHA512_SIZE);
+  Result := 0;
+  LBuf := ReadProcMem(AHandle, AAddr, 8);
+  if (LBuf <> nil) and (Length(LBuf) = 8) then
+    Move(LBuf[0], Result, 8);
 end;
 
-function ScanBufferForKey(const ABuf: TBytes; const ADBFiles: TArray<TDBFile>;
-  var AFoundKeys: TDictionary<string, TKeyMatch>): Integer;
+function IsUserPtr(AAddr: UInt64): Boolean; inline;
+begin
+  Result := (AAddr > $100000000) and (AAddr < $7FFFFFFFFFFF);
+end;
+
+// ── 用第一页校验候选 32 字节密钥；命中则登记 ──────────────────────
+function ScanBufferForKey(AHandle: THandle; const ABuf: TBytes;
+  const ADBFiles: TArray<TDBFile>;
+  const AFoundKeys: TDictionary<string, TKeyMatch>): Integer;
 var
   LI, LJ: Integer;
   LCandidate: TBytes;
@@ -131,37 +111,83 @@ var
   LSaltHex: string;
 begin
   Result := 0;
-  if Length(ABuf) < 32 then Exit;
+  if Length(ABuf) < KEY_SIZE then Exit;
 
-  for LI := 0 to Length(ABuf) - 32 do
+  LI := 0;
+  while LI <= Length(ABuf) - KEY_SIZE do
   begin
-    if LI mod 8 <> 0 then Continue;
-    LCandidate := Copy(ABuf, LI, 32);
+    LCandidate := Copy(ABuf, LI, KEY_SIZE);
 
+    // 快速去噪：唯一字节数过低的一定不是高熵密钥
     LUnique := 0;
     FillChar(LSeen, SizeOf(LSeen), 0);
-    for LJ := 0 to 31 do
+    for LJ := 0 to KEY_SIZE - 1 do
       if not LSeen[LCandidate[LJ]] then
       begin
         LSeen[LCandidate[LJ]] := True;
         Inc(LUnique);
       end;
-    if LUnique < 20 then Continue;
-
-    for LDB in ADBFiles do
+    if LUnique >= 22 then
     begin
-      LSaltHex := BytesToHex(Copy(LDB.Page1, 0, 16));
-      if AFoundKeys.ContainsKey(LSaltHex) then Continue;
-      if VerifyKeyBytes(LCandidate, LDB.Page1) then
+      for LDB in ADBFiles do
       begin
-        LKey.RelPath := LDB.RelPath;
-        LKey.KeyHex := BytesToHex(LCandidate);
-        LKey.SaltHex := LSaltHex;
-        AFoundKeys.Add(LSaltHex, LKey);
-        WriteLn(Format('  KEY: %s = %s', [LDB.RelPath, LKey.KeyHex]));
-        Inc(Result);
+        LSaltHex := BytesToHex(Copy(LDB.Page1, 0, 16));
+        if AFoundKeys.ContainsKey(LSaltHex) then Continue;
+        // 复用已验证正确的 SQLCipher 校验 (PBKDF2-HMAC-SHA512 2 轮 + 页 HMAC)
+        if TWeChatDecryptor.VerifyKeyBytesAgainstPage1(LCandidate, LDB.Page1) then
+        begin
+          LKey.RelPath := LDB.RelPath;
+          LKey.KeyHex := BytesToHex(LCandidate);
+          LKey.SaltHex := LSaltHex;
+          AFoundKeys.Add(LSaltHex, LKey);
+          WriteLn(Format('  KEY: %s = %s', [LDB.RelPath, LKey.KeyHex]));
+          Inc(Result);
+        end;
       end;
     end;
+    Inc(LI, 8); // 8 字节对齐步进，与 probe_v4 一致
+  end;
+end;
+
+// ── Verify3 codec 链：Rcx→[+0x48]btree→pager→codec，深挖密钥 ───────
+procedure ScanVerify3Chain(AHandle: THandle; ARcx: UInt64;
+  const ADBFiles: TArray<TDBFile>;
+  const AFoundKeys: TDictionary<string, TKeyMatch>);
+var
+  LBtree, LPager, LCodec: UInt64;
+  LPageOff, LCodecOff: Integer;
+  LBt, LPg, LCd: TBytes;
+begin
+  if not IsUserPtr(ARcx) then Exit;
+  LBtree := ReadQWord(AHandle, ARcx + $48);
+  if not IsUserPtr(LBtree) then Exit;
+  LBt := ReadProcMem(AHandle, LBtree, 256);
+  if LBt = nil then Exit;
+
+  LPageOff := 0;
+  while LPageOff <= 248 - 8 do
+  begin
+    Move(LBt[LPageOff], LPager, 8);
+    if IsUserPtr(LPager) then
+    begin
+      LPg := ReadProcMem(AHandle, LPager, 512);
+      if LPg <> nil then
+      begin
+        LCodecOff := 0;
+        while LCodecOff <= 504 - 8 do
+        begin
+          Move(LPg[LCodecOff], LCodec, 8);
+          if IsUserPtr(LCodec) then
+          begin
+            LCd := ReadProcMem(AHandle, LCodec, 512);
+            if LCd <> nil then
+              ScanBufferForKey(AHandle, LCd, ADBFiles, AFoundKeys);
+          end;
+          Inc(LCodecOff, 8);
+        end;
+      end;
+    end;
+    Inc(LPageOff, 8);
   end;
 end;
 
@@ -271,7 +297,7 @@ begin
       GDumpDir := LArg.Substring(11)
     else if LArg = '--help' then
     begin
-      WriteLn('DeepAxis WxHybridTap v2.0');
+      WriteLn('DeepAxis WxHybridTap v3.0');
       WriteLn('Usage: WxHybridTap.exe [--timeout-ms=<ms>] [--dump-dir=<path>]');
       Halt(0);
     end;
@@ -283,38 +309,39 @@ end;
 // ── Main ─────────────────────────────────────────────────────────
 
 var
-  LDataDir, LDumpDir: string;
+  LDataDir: string;
   LDBFiles: TArray<TDBFile>;
   LFoundKeys: TDictionary<string, TKeyMatch>;
   LPid: Cardinal;
   LDllBase: UInt64;
   LProcHandle: THandle;
-  LBreakpoints: array[0..5] of TBreakpoint;
-  LBPNames: array[0..5] of string;
-  LBPOffsets: array[0..5] of UInt64;
+  LBreakpoints: array[0..1] of TBreakpoint;
   LStartTime: TDateTime;
   LEvent: TDebugEvent;
   LContinue: DWORD;
   LTh: THandle;
-  LCtx: TContext;
   LMem: TBytes;
-  LI, LJ: Integer;
+  LI: Integer;
   LHit: Integer;
-  LOrig: Byte;
   LWritten: SIZE_T;
   LInt3: Byte;
   LMs: Integer;
   LExcAddr: UInt64;
   LExcCode: DWORD;
   LFoundIdx: Integer;
-  LDebugWait: BOOL;
+  LPending: Integer;      // 单步后需重新武装的断点下标 (-1 = 无)
   LWeChatPath: string;
+  // x64 CONTEXT 需 16 字节对齐，否则 GetThreadContext 会静默失败
+  LCtxBuf: array[0..SizeOf(TContext) + 15] of Byte;
+  LCtx: PContext;
 begin
   ParseArgs;
 
-  WriteLn('DeepAxis WxHybridTap v2.0');
+  WriteLn('DeepAxis WxHybridTap v3.0');
   WriteLn('  Timeout: ', GTimeoutMs, 'ms  Dump: ', GDumpDir);
   WriteLn('');
+
+  ForceDirectories(GDumpDir);
 
   LDataDir := FindWeChatDataDir;
   if LDataDir <> '' then
@@ -325,6 +352,12 @@ begin
   end
   else
     WriteLn('WARNING: No WeChat data dir found');
+
+  if Length(LDBFiles) = 0 then
+  begin
+    WriteLn('ERROR: 无可校验的 DB 文件，无法确认捕获的密钥；终止。');
+    Halt(2);
+  end;
 
   WriteLn('[2/7] Killing WeChat...');
   LPid := FindWeChatProcess;
@@ -347,7 +380,7 @@ begin
   if not TFile.Exists(LWeChatPath) then
   begin
     WriteLn('ERROR: Weixin.exe not found');
-    ReadLn; Exit;
+    Halt(3);
   end;
   ShellExecute(0, 'open', PChar(LWeChatPath), nil, nil, SW_SHOW);
 
@@ -367,7 +400,7 @@ begin
   if (LPid = 0) or (LDllBase = 0) then
   begin
     WriteLn('ERROR: Weixin.dll not found');
-    ReadLn; Exit;
+    Halt(4);
   end;
   WriteLn(Format('  PID=%d, DLL=0x%x', [LPid, LDllBase]));
 
@@ -375,7 +408,7 @@ begin
   if not DebugActiveProcess(LPid) then
   begin
     WriteLn(Format('ERROR: DebugActiveProcess failed (0x%x)', [GetLastError]));
-    ReadLn; Exit;
+    Halt(5);
   end;
 
   LProcHandle := OpenProcess(PROCESS_ALL_ACCESS, False, LPid);
@@ -383,27 +416,22 @@ begin
   begin
     WriteLn('ERROR: OpenProcess failed');
     DebugActiveProcessStop(LPid);
-    ReadLn; Exit;
+    Halt(5);
   end;
 
-  LBPNames[0] := 'HybridEcdhDecrypt';     LBPOffsets[0] := RVA_HYBRID_ECDH_DECRYPT;
-  LBPNames[1] := 'AesGcmDecrypt';          LBPOffsets[1] := RVA_AES_GCM_DECRYPT;
-  LBPNames[2] := 'UncompressedOutput';     LBPOffsets[2] := RVA_UNCOMPRESSED_OUTPUT;
-  LBPNames[3] := 'SQLCipherKeyDbName';     LBPOffsets[3] := RVA_SQLCIPHER_KEY_DBNAME;
-  LBPNames[4] := 'SQLCipherKeyDbIndex';    LBPOffsets[4] := RVA_SQLCIPHER_KEY_DBINDEX;
-  LBPNames[5] := 'SQLCipherCodecKey';      LBPOffsets[5] := RVA_SQLCIPHER_CODEC_KEY;
+  LBreakpoints[0].Name := 'CfgHandler'; LBreakpoints[0].Rva := RVA_CFG_HANDLER;
+  LBreakpoints[1].Name := 'Verify3';    LBreakpoints[1].Rva := RVA_VERIFY3;
 
-  for LI := 0 to 5 do
+  for LI := 0 to High(LBreakpoints) do
   begin
-    LBreakpoints[LI].Name := LBPNames[LI];
-    LBreakpoints[LI].Rva := LBPOffsets[LI];
-    LBreakpoints[LI].AbsAddr := LDllBase + LBPOffsets[LI];
-    LBreakpoints[LI].Hit := False;
+    LBreakpoints[LI].AbsAddr := LDllBase + LBreakpoints[LI].Rva;
+    LBreakpoints[LI].Valid := False;
 
     LMem := ReadProcMem(LProcHandle, LBreakpoints[LI].AbsAddr, 1);
     if LMem = nil then
     begin
-      WriteLn(Format('  SKIP %s (unreadable)', [LBPNames[LI]]));
+      WriteLn(Format('  SKIP %s @ 0x%x (unreadable — RVA 可能不匹配当前微信版本)',
+        [LBreakpoints[LI].Name, LBreakpoints[LI].AbsAddr]));
       Continue;
     end;
     LBreakpoints[LI].OriginalByte := LMem[0];
@@ -412,17 +440,24 @@ begin
     WriteProcessMemory(LProcHandle, Pointer(NativeUInt(LBreakpoints[LI].AbsAddr)),
       @LInt3, 1, LWritten);
     FlushInstructionCache(LProcHandle, Pointer(NativeUInt(LBreakpoints[LI].AbsAddr)), 1);
-    WriteLn(Format('  BP: %s @ 0x%x', [LBPNames[LI], LBreakpoints[LI].AbsAddr]));
+    LBreakpoints[LI].Valid := True;
+    WriteLn(Format('  BP: %s @ 0x%x', [LBreakpoints[LI].Name, LBreakpoints[LI].AbsAddr]));
   end;
 
   WriteLn('');
-  WriteLn('[6/7] Waiting for breakpoints — SCAN QR CODE NOW');
+  WriteLn('============================================================');
+  WriteLn('[6/7] >>> 请立即扫码登录微信 (SCAN QR CODE NOW) <<<');
   WriteLn(Format('  Timeout: %d seconds', [GTimeoutMs div 1000]));
+  WriteLn('============================================================');
   WriteLn('');
+
+  // 16 字节对齐的 CONTEXT 指针
+  LCtx := PContext((NativeUInt(@LCtxBuf[0]) + 15) and not NativeUInt(15));
 
   LFoundKeys := TDictionary<string, TKeyMatch>.Create;
   try
     LHit := 0;
+    LPending := -1;
     LStartTime := Now;
 
     while True do
@@ -434,8 +469,7 @@ begin
         Break;
       end;
 
-      LDebugWait := WaitForDebugEvent(LEvent, 1000);
-      if not LDebugWait then
+      if not WaitForDebugEvent(LEvent, 1000) then
       begin
         if (LMs mod 15000 < 1000) and (LMs > 0) then
           WriteLn(Format('  [%ds] hits=%d keys=%d', [LMs div 1000, LHit, LFoundKeys.Count]));
@@ -452,95 +486,118 @@ begin
         if LExcCode = EXCEPTION_BREAKPOINT then
         begin
           LFoundIdx := -1;
-          for LJ := 0 to 5 do
-            if (LExcAddr = LBreakpoints[LJ].AbsAddr) or
-               (LExcAddr = LBreakpoints[LJ].AbsAddr + 1) then
-            begin LFoundIdx := LJ; Break; end;
+          for LI := 0 to High(LBreakpoints) do
+            if LBreakpoints[LI].Valid and
+               ((LExcAddr = LBreakpoints[LI].AbsAddr) or
+                (LExcAddr = LBreakpoints[LI].AbsAddr + 1)) then
+            begin LFoundIdx := LI; Break; end;
 
           if LFoundIdx >= 0 then
           begin
             Inc(LHit);
-            LTh := OpenThread($8 or $10,
-              False, LEvent.dwThreadId);
+            LTh := OpenThread($8 or $10, False, LEvent.dwThreadId); // GET_CONTEXT|SET_CONTEXT
             if LTh <> 0 then
             begin
-              FillChar(LCtx, SizeOf(LCtx), 0);
-              LCtx.ContextFlags := CONTEXT_FULL;
-              GetThreadContext(LTh, LCtx);
-
-              WriteLn(Format('[%d] %s RCX=0x%x RDX=0x%x',
-                [LHit, LBreakpoints[LFoundIdx].Name, LCtx.Rcx, LCtx.Rdx]));
-
-              // Scan RDX memory
-              if LCtx.Rdx > $10000 then
+              FillChar(LCtx^, SizeOf(TContext), 0);
+              LCtx^.ContextFlags := CONTEXT_FULL;
+              if GetThreadContext(LTh, LCtx^) then
               begin
-                LMem := ReadProcMem(LProcHandle, LCtx.Rdx, 4096);
-                if LMem <> nil then
-                  ScanBufferForKey(LMem, LDBFiles, LFoundKeys);
-              end;
-              // Scan RCX memory
-              if LCtx.Rcx > $10000 then
-              begin
-                LMem := ReadProcMem(LProcHandle, LCtx.Rcx, 4096);
-                if LMem <> nil then
-                  ScanBufferForKey(LMem, LDBFiles, LFoundKeys);
-              end;
-              // Scan RSP memory
-              if LCtx.Rsp > $10000 then
-              begin
-                LMem := ReadProcMem(LProcHandle, LCtx.Rsp, 1024);
-                if LMem <> nil then
-                  ScanBufferForKey(LMem, LDBFiles, LFoundKeys);
-              end;
+                WriteLn(Format('[%d] %s RCX=0x%x RDX=0x%x',
+                  [LHit, LBreakpoints[LFoundIdx].Name, LCtx^.Rcx, LCtx^.Rdx]));
 
-              if LFoundKeys.Count > 0 then
-                SaveResults(LFoundKeys, GDumpDir);
+                // 扫 RDX 指向内存
+                if LCtx^.Rdx > $10000 then
+                begin
+                  LMem := ReadProcMem(LProcHandle, LCtx^.Rdx, 4096);
+                  if LMem <> nil then
+                    ScanBufferForKey(LProcHandle, LMem, LDBFiles, LFoundKeys);
+                end;
+                // 扫 RCX 指向内存
+                if LCtx^.Rcx > $10000 then
+                begin
+                  LMem := ReadProcMem(LProcHandle, LCtx^.Rcx, 4096);
+                  if LMem <> nil then
+                    ScanBufferForKey(LProcHandle, LMem, LDBFiles, LFoundKeys);
+                end;
+                // 扫栈
+                if LCtx^.Rsp > $10000 then
+                begin
+                  LMem := ReadProcMem(LProcHandle, LCtx^.Rsp, 1024);
+                  if LMem <> nil then
+                    ScanBufferForKey(LProcHandle, LMem, LDBFiles, LFoundKeys);
+                end;
+                // Verify3: 额外走 codec 链
+                if SameText(LBreakpoints[LFoundIdx].Name, 'Verify3') then
+                  ScanVerify3Chain(LProcHandle, LCtx^.Rcx, LDBFiles, LFoundKeys);
 
-              // Restore original byte
-              if LBreakpoints[LFoundIdx].OriginalByte <> 0 then
-              begin
-                WriteProcessMemory(LProcHandle,
-                  Pointer(NativeUInt(LBreakpoints[LFoundIdx].AbsAddr)),
-                  @LBreakpoints[LFoundIdx].OriginalByte, 1, LWritten);
-                FlushInstructionCache(LProcHandle,
-                  Pointer(NativeUInt(LBreakpoints[LFoundIdx].AbsAddr)), 1);
+                if LFoundKeys.Count > 0 then
+                  SaveResults(LFoundKeys, GDumpDir);
+
+                // 先临时恢复原字节，单步跨过该指令，再重新武装 (probe_v4 pending 模式)
+                if LBreakpoints[LFoundIdx].Valid then
+                begin
+                  WriteProcessMemory(LProcHandle,
+                    Pointer(NativeUInt(LBreakpoints[LFoundIdx].AbsAddr)),
+                    @LBreakpoints[LFoundIdx].OriginalByte, 1, LWritten);
+                  FlushInstructionCache(LProcHandle,
+                    Pointer(NativeUInt(LBreakpoints[LFoundIdx].AbsAddr)), 1);
+                end;
+
+                LCtx^.Rip := LBreakpoints[LFoundIdx].AbsAddr;
+                LCtx^.EFlags := LCtx^.EFlags or $100; // Trap Flag → 单步
+                SetThreadContext(LTh, LCtx^);
+                LPending := LFoundIdx;
               end;
-
-              // Single-step: set RIP back, enable TF
-              LCtx.Rip := LBreakpoints[LFoundIdx].AbsAddr;
-              LCtx.EFlags := LCtx.EFlags or $100;
-              SetThreadContext(LTh, LCtx);
               CloseHandle(LTh);
             end;
           end;
         end
-        else if LExcCode = EXCEPTION_SINGLE_STEP then
+        else if (LExcCode = EXCEPTION_SINGLE_STEP) and (LPending >= 0) then
         begin
-          // Re-arm all breakpoints
-          for LJ := 0 to 5 do
+          // 单步已跨过原指令，重新武装该断点
+          if LBreakpoints[LPending].Valid then
           begin
             LInt3 := $CC;
             WriteProcessMemory(LProcHandle,
-              Pointer(NativeUInt(LBreakpoints[LJ].AbsAddr)),
+              Pointer(NativeUInt(LBreakpoints[LPending].AbsAddr)),
               @LInt3, 1, LWritten);
             FlushInstructionCache(LProcHandle,
-              Pointer(NativeUInt(LBreakpoints[LJ].AbsAddr)), 1);
+              Pointer(NativeUInt(LBreakpoints[LPending].AbsAddr)), 1);
           end;
+          LPending := -1;
         end;
       end;
 
       ContinueDebugEvent(LEvent.dwProcessId, LEvent.dwThreadId, LContinue);
+
+      if LFoundKeys.Count >= Length(LDBFiles) then
+      begin
+        WriteLn('All DB keys found!');
+        Break;
+      end;
+      if LHit >= 500 then
+      begin
+        WriteLn('500 hits — stopping.');
+        Break;
+      end;
     end;
 
     WriteLn('');
     WriteLn('[7/7] Saving results...');
+    // 收尾恢复原字节
+    for LI := 0 to High(LBreakpoints) do
+      if LBreakpoints[LI].Valid then
+        WriteProcessMemory(LProcHandle,
+          Pointer(NativeUInt(LBreakpoints[LI].AbsAddr)),
+          @LBreakpoints[LI].OriginalByte, 1, LWritten);
+
     if LFoundKeys.Count > 0 then
     begin
       SaveResults(LFoundKeys, GDumpDir);
       WriteLn(Format('SUCCESS: %d keys captured', [LFoundKeys.Count]));
     end
     else
-      WriteLn('No keys captured. Breakpoints did not fire.');
+      WriteLn('No keys captured. Breakpoints did not fire (检查 RVA 是否匹配当前微信版本)。');
     WriteLn(Format('  Total hits: %d', [LHit]));
 
   finally

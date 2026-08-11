@@ -7,12 +7,12 @@
         <ProjectName Condition="'$(ProjectName)'==''">DeepFrames.Tests</ProjectName>
         <TargetedPlatforms>3</TargetedPlatforms>
         <AppType>Console</AppType>
-        <ProjectVersion>20.2</ProjectVersion>
+        <ProjectVersion>12.0</ProjectVersion>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
-        <DCC_UnitSearchPath>..\src\App;..\src\UI;..\src\Domain;..\src\Persistence;..\src\Workflow;..\src\Shared;..\src\Provider;..\..\..\02Business\DeepBase\Core;..\..\..\02Business\DeepBase\VCL;..\..\..\02Business\DeepBase\Persistence;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\src\App;..\src\UI;..\src\Domain;..\src\Persistence;..\src\Workflow;..\src\Shared;..\src\Provider;..\..\..\02Business\DeepBase\Core;..\..\..\02Business\DeepBase\VCL;..\..\..\02Business\DeepBase\Persistence;..\..\..\02Business\DeepBase\Features;..\..\..\02Business\DeepBase\Governance;..\..\..\02Business\DeepBase\Libs;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_2)'!=''">
         <Cfg_2>true</Cfg_2>

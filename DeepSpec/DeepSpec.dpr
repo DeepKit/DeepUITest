@@ -65,9 +65,12 @@ begin
   Application.MainFormOnTaskbar := True;
   Application.Title := 'DeepSpec';
 
-  // DeepBase init - best effort, log failure but continue
+  // DeepBase init - best effort, but never silent (BUG-7): the user must
+  // see a failure instead of a debugger-only OutputDebugString line.
   if not DeepBase.Manager.DeepBase.InitializeEx(GErrorMsg) then
-    OutputDebugString(PChar('DeepSpec: DeepBase init failed - ' + GErrorMsg));
+    ShowMessage('DeepBase initialization failed: ' + GErrorMsg + sLineBreak +
+      'Settings persistence and LLM features may be unavailable. ' +
+      'The application will continue without them.');
 
   try
     try

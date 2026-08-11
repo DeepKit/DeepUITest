@@ -37,6 +37,12 @@ type
 
     [Test]
     procedure InvalidConfidence_ReportedAsError;
+
+    [Test]
+    procedure ValidFogState_NoErrors;
+
+    [Test]
+    procedure InvalidFogState_ReportedAsError;
   end;
 
   [TestFixture]
@@ -135,6 +141,37 @@ type
 
     [Test]
     procedure InvalidReviewStatus_ReportedAsError;
+  end;
+
+  /// <summary>Issues / exploration-ticket validation (BUG-11 step 1 remainder).
+  /// Covers id prefix, enum legality, non-empty affected_nodes, and
+  /// requires_human consistency with ticket types.</summary>
+  [TestFixture]
+  TValidationIssuesTests = class
+  public
+    [Test]
+    procedure ValidIssue_NoErrors;
+
+    [Test]
+    procedure EmptyId_ReportedAsError;
+
+    [Test]
+    procedure InvalidIssueIdPrefix_ReportedAsError;
+
+    [Test]
+    procedure InvalidSeverity_ReportedAsError;
+
+    [Test]
+    procedure InvalidIssueType_ReportedAsError;
+
+    [Test]
+    procedure EmptyAffectedNodes_ReportedAsError;
+
+    [Test]
+    procedure ResearchTicketWithRequiresHuman_NoError;
+
+    [Test]
+    procedure NonTicketWithRequiresHuman_ReportedAsWarning;
   end;
 
 implementation
@@ -238,9 +275,12 @@ begin
       '    kind: feature' + #10 +
       '    status: invalid_status');
     try
-      // If the parser correctly parsed the block sequence, we should see the error.
-      // If not (parser limitation), the nodes seq may be nil and no node errors appear.
-      // Either way, the validator must not crash.
+      // block sequence parsing is verified working (bugfix.md BUG-4),
+      // so the validator must surface invalid_status for status: invalid_status.
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'invalid_status' then LFound := True;
+      Assert.IsTrue(LFound, 'status: invalid_status must raise invalid_status error');
     finally
       R.Free;
     end;
@@ -265,7 +305,71 @@ begin
       '    kind: feature' + #10 +
       '    confidence: super_high');
     try
-      // Same as above: depends on block sequence parsing
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'invalid_confidence' then LFound := True;
+      Assert.IsTrue(LFound, 'confidence: super_high must raise invalid_confidence error');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationTreeFileTests.ValidFogState_NoErrors;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+  LFound: Boolean;
+  LE: TValidationError;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateTreeFile(
+      'version: "1.0"' + #10 +
+      'tree: function' + #10 +
+      'nodes:' + #10 +
+      '  - id: func-fog' + #10 +
+      '    title: Foggy node' + #10 +
+      '    kind: feature' + #10 +
+      '    fog_state: foggy');
+    try
+      // foggy is a legal value — no invalid_fog_state error should appear
+      LFound := False;
+      for LE in R.Errors do
+        if LE.Rule = 'invalid_fog_state' then LFound := True;
+      Assert.IsFalse(LFound, 'fog_state: foggy must be valid, no invalid_fog_state error');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationTreeFileTests.InvalidFogState_ReportedAsError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+  LFound: Boolean;
+  LE: TValidationError;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateTreeFile(
+      'version: "1.0"' + #10 +
+      'tree: function' + #10 +
+      'nodes:' + #10 +
+      '  - id: func-fog' + #10 +
+      '    title: Foggy node' + #10 +
+      '    kind: feature' + #10 +
+      '    fog_state: blurry');
+    try
+      LFound := False;
+      for LE in R.Errors do
+        if LE.Rule = 'invalid_fog_state' then LFound := True;
+      Assert.IsTrue(LFound, 'fog_state: blurry must raise invalid_fog_state error');
     finally
       R.Free;
     end;
@@ -378,7 +482,11 @@ begin
       '  - id: dec-1' + #10 +
       '    decided_by: human');
     try
-      // Depends on block sequence parsing
+      // decided_by: human in LLM output is a security violation.
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'forbidden_human_decided_by' then LFound := True;
+      Assert.IsTrue(LFound, 'decided_by: human must raise forbidden_human_decided_by');
     finally
       R.Free;
     end;
@@ -498,7 +606,10 @@ begin
   try
     R := V.ValidateTreeFile('{{{{invali d yaml ::::');
     try
-      // Must not crash; may report parse_error or treat as empty map
+      // Must not crash. The validator either reports parse_error or treats
+      // the malformed input as an empty map; both are acceptable as long as
+      // no exception escapes. A returned report object proves survival.
+      Assert.IsTrue(R <> nil, 'Validator must return a report, not crash, on malformed YAML');
     finally
       R.Free;
     end;
@@ -524,6 +635,9 @@ begin
       for var E in R.Errors do
         if E.Rule = 'invalid_id_format' then
           Assert.Fail('Valid tree file should not have invalid_id_format');
+      // The loop above may execute zero Asserts when there are no errors;
+      // make the success explicit so FailsOnNoAsserts stays satisfied.
+      Assert.IsFalse(R.HasErrors, 'Valid function tree file must have no errors');
     finally
       R.Free;
     end;
@@ -547,7 +661,11 @@ begin
       '    title: Bad' + #10 +
       '    kind: feature');
     try
-      // Depends on block sequence parsing
+      // id prefix must match the tree type: function tree requires 'func-'.
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'invalid_id_format' then LFound := True;
+      Assert.IsTrue(LFound, 'id: xxx-bad in function tree must raise invalid_id_format');
     finally
       R.Free;
     end;
@@ -574,7 +692,11 @@ begin
       '    title: Second' + #10 +
       '    kind: feature');
     try
-      // Depends on block sequence parsing
+      // Two nodes sharing the same id must be flagged.
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'duplicate_id' then LFound := True;
+      Assert.IsTrue(LFound, 'duplicate id must raise duplicate_id error');
     finally
       R.Free;
     end;
@@ -600,7 +722,11 @@ begin
       '    title: Custom' + #10 +
       '    kind: x_custom_type');
     try
-      // Depends on block sequence parsing
+      // x_ prefixed kinds are legal extensions and must not raise unknown_kind.
+      for var E in R.Errors do
+        if E.Rule = 'unknown_kind' then
+          Assert.Fail('kind: x_custom_type should be accepted as extension, not unknown_kind');
+      Assert.IsFalse(R.HasErrors, 'x_-prefixed extension kind must produce no errors');
     finally
       R.Free;
     end;
@@ -633,6 +759,7 @@ begin
       for var E in R.Errors do
         if E.Rule = 'invalid_parent_ref' then
           Assert.Fail('Valid parent ref should not produce invalid_parent_ref');
+      Assert.IsFalse(R.HasErrors, 'valid parent/child tree must have no errors');
     finally
       R.Free;
     end;
@@ -660,11 +787,7 @@ begin
       var LFound := False;
       for var E in R.Errors do
         if E.Rule = 'invalid_parent_ref' then LFound := True;
-      // Depends on block sequence parsing; if parsed, must detect
-      if LFound then
-        Assert.Pass('Detected missing parent ref')
-      else
-        Assert.Pass('Block sequence not parsed (parser limitation)');
+      Assert.IsTrue(LFound, 'parent_id referencing non-existent node must raise invalid_parent_ref');
     finally
       R.Free;
     end;
@@ -696,10 +819,7 @@ begin
       var LFound := False;
       for var E in R.Errors do
         if E.Rule = 'circular_parent' then LFound := True;
-      if LFound then
-        Assert.Pass('Detected circular parent chain')
-      else
-        Assert.Pass('Block sequence not parsed (parser limitation)');
+      Assert.IsTrue(LFound, 'mutual parent_id (a->b->a) must raise circular_parent');
     finally
       R.Free;
     end;
@@ -729,6 +849,7 @@ begin
       for var E in R.Errors do
         if E.Rule = 'invalid_gen_status' then
           Assert.Fail('Valid gen_status should not produce error');
+      Assert.IsFalse(R.HasErrors, 'valid gen_status tree must have no errors');
     finally
       R.Free;
     end;
@@ -756,10 +877,7 @@ begin
       var LFound := False;
       for var E in R.Errors do
         if E.Rule = 'invalid_gen_status' then LFound := True;
-      if LFound then
-        Assert.Pass('Detected invalid gen_status')
-      else
-        Assert.Pass('Block sequence not parsed (parser limitation)');
+      Assert.IsTrue(LFound, 'gen_status: published must raise invalid_gen_status');
     finally
       R.Free;
     end;
@@ -787,10 +905,259 @@ begin
       var LFound := False;
       for var E in R.Errors do
         if E.Rule = 'invalid_review_status' then LFound := True;
-      if LFound then
-        Assert.Pass('Detected invalid review_status')
-      else
-        Assert.Pass('Block sequence not parsed (parser limitation)');
+      Assert.IsTrue(LFound, 'review_status: maybe must raise invalid_review_status');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+{ TValidationIssuesTests }
+
+procedure TValidationIssuesTests.ValidIssue_NoErrors;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "issue-fog-func-root"' + #10 +
+      '    severity: high' + #10 +
+      '    type: coverage_gap' + #10 +
+      '    title: Missing coverage' + #10 +
+      '    description: function root has no children' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-root' + #10 +
+      '    status: open');
+    try
+      Assert.IsFalse(R.HasErrors, 'A complete valid issue must produce no errors');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.EmptyId_ReportedAsError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: ""' + #10 +
+      '    severity: medium' + #10 +
+      '    type: conflict' + #10 +
+      '    title: T' + #10 +
+      '    description: d' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-x' + #10 +
+      '    status: open');
+    try
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'missing_id' then LFound := True;
+      Assert.IsTrue(LFound, 'empty issue id must raise missing_id');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.InvalidIssueIdPrefix_ReportedAsError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "func-bad"' + #10 +
+      '    severity: medium' + #10 +
+      '    type: conflict' + #10 +
+      '    title: T' + #10 +
+      '    description: d' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-x' + #10 +
+      '    status: open');
+    try
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'invalid_issue_id' then LFound := True;
+      Assert.IsTrue(LFound, 'id without issue- prefix must raise invalid_issue_id');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.InvalidSeverity_ReportedAsError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "issue-1"' + #10 +
+      '    severity: urgent' + #10 +
+      '    type: conflict' + #10 +
+      '    title: T' + #10 +
+      '    description: d' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-x' + #10 +
+      '    status: open');
+    try
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'invalid_issue_severity' then LFound := True;
+      Assert.IsTrue(LFound, 'severity: urgent must raise invalid_issue_severity');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.InvalidIssueType_ReportedAsError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "issue-1"' + #10 +
+      '    severity: medium' + #10 +
+      '    type: bogus_ticket' + #10 +
+      '    title: T' + #10 +
+      '    description: d' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-x' + #10 +
+      '    status: open');
+    try
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'invalid_issue_type' then LFound := True;
+      Assert.IsTrue(LFound, 'type: bogus_ticket must raise invalid_issue_type');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.EmptyAffectedNodes_ReportedAsError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "issue-1"' + #10 +
+      '    severity: medium' + #10 +
+      '    type: conflict' + #10 +
+      '    title: T' + #10 +
+      '    description: d' + #10 +
+      '    affected_nodes: []' + #10 +
+      '    status: open');
+    try
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'empty_affected_nodes' then LFound := True;
+      Assert.IsTrue(LFound, 'empty affected_nodes must raise empty_affected_nodes');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.ResearchTicketWithRequiresHuman_NoError;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    // research_ticket may be AFK (requires_human: false) — no mismatch error.
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "issue-research-1"' + #10 +
+      '    severity: medium' + #10 +
+      '    type: research_ticket' + #10 +
+      '    title: Probe fog' + #10 +
+      '    description: investigate unknowns' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-root' + #10 +
+      '    status: open' + #10 +
+      '    requires_human: false');
+    try
+      for var E in R.Errors do
+        if E.Rule = 'requires_human_mismatch' then
+          Assert.Fail('research_ticket + requires_human must not raise mismatch');
+      Assert.IsFalse(R.HasErrors, 'research_ticket with requires_human must have no errors');
+    finally
+      R.Free;
+    end;
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TValidationIssuesTests.NonTicketWithRequiresHuman_ReportedAsWarning;
+var
+  V: TYamlValidator;
+  R: TValidationReport;
+begin
+  V := TYamlValidator.Create;
+  try
+    // requires_human on a non-ticket issue (conflict) is meaningless -> warning,
+    // and must NOT be an error (field stays optional).
+    R := V.ValidateIssuesFile(
+      'version: "1.0"' + #10 +
+      'issues:' + #10 +
+      '  - id: "issue-1"' + #10 +
+      '    severity: medium' + #10 +
+      '    type: conflict' + #10 +
+      '    title: T' + #10 +
+      '    description: d' + #10 +
+      '    affected_nodes:' + #10 +
+      '      - func-x' + #10 +
+      '    status: open' + #10 +
+      '    requires_human: true');
+    try
+      var LFound := False;
+      for var E in R.Errors do
+        if E.Rule = 'requires_human_mismatch' then LFound := True;
+      Assert.IsTrue(LFound, 'non-ticket issue with requires_human must raise requires_human_mismatch');
+      Assert.IsFalse(R.HasErrors, 'requires_human_mismatch is a warning, not an error');
     finally
       R.Free;
     end;
@@ -809,5 +1176,6 @@ initialization
   TDUnitX.RegisterTestFixture(TValidationKindTests);
   TDUnitX.RegisterTestFixture(TValidationParentRefTests);
   TDUnitX.RegisterTestFixture(TValidationStatusTests);
+  TDUnitX.RegisterTestFixture(TValidationIssuesTests);
 
 end.

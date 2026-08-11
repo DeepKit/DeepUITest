@@ -194,6 +194,7 @@ HTML / VCL TreeView / WebView2
 | 前后对比 | 重新生成后对比三棵树变化和问题减少情况。 |
 | 来源证据 | 每个节点尽量关联到原文件路径和片段摘要。 |
 | 文档健康度 | 用简单指标表达当前开发文档是否足够支撑 AI 开发。 |
+| Fog 探索 | 承认需求终点可能在"雾里"：节点 `fog_state`（clear→misty→foggy→unknown_unknowns 单向收敛）+ 探索 ticket（research/prototype/grilling）+ problems 页 Fog Map 可视化。一次只解一个 ticket 以保护 AI context。详见协议 §Fog 探索模型。 |
 
 ---
 
@@ -205,7 +206,7 @@ HTML / VCL TreeView / WebView2
 doc_issues:
   - id: issue.auth.001
     severity: high
-    type: missing_requirement # missing_requirement | conflict | ambiguity | stale_doc | no_source | low_confidence
+    type: missing_requirement # missing_requirement | conflict | ambiguity | stale_doc | no_source | low_confidence | research_ticket | prototype_ticket | grilling_ticket | fog_unknown
     title: 登录失败后的处理规则缺失
     description: 文档提到用户登录，但未说明密码错误、账号不存在、网络失败时的交互。
     affected_nodes:

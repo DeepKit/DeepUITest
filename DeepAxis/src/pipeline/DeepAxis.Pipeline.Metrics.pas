@@ -6,6 +6,7 @@ uses
   System.SysUtils, System.DateUtils, System.Math,
   System.Generics.Collections, System.Generics.Defaults,
   DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.Contracts,
+  DeepAxis.Core.DataStore,
   DeepAxis.WeChat.MsgParser;
 
 type
@@ -14,7 +15,16 @@ type
   ///   P0: Pure metadata analysis — no body content accessed.
   /// </summary>
   TMetricCalculator = class(TInterfacedObject, IMetricCalculator)
+  private
+    FMetricStore: IMetricStore;
+    FUseDB1Store: Boolean;
+    
+    procedure PersistMetric(const AMetric: TInteractionMetric);
+    function LoadOldMetric(const AContactId: string): TInteractionMetric;
   public
+    constructor Create(AUseDB1Store: Boolean = True; AMetricStore: IMetricStore = nil); reintroduce; overload;
+    constructor Create; reintroduce; overload;
+    
     function Compute(const AMessages: TArray<TMessageMeta>;
       const AOldMetric: TInteractionMetric): TInteractionMetric;
     function ComputeBatch(const AContacts: TArray<TContact>;
@@ -25,6 +35,44 @@ type
 implementation
 
 { TMetricCalculator }
+
+constructor TMetricCalculator.Create;
+begin
+  Self.Create(True, nil);
+end;
+
+constructor TMetricCalculator.Create(AUseDB1Store: Boolean; AMetricStore: IMetricStore);
+begin
+  inherited Create;
+  FUseDB1Store := AUseDB1Store;
+  FMetricStore := AMetricStore;
+end;
+
+procedure TMetricCalculator.PersistMetric(const AMetric: TInteractionMetric);
+begin
+  if FUseDB1Store and Assigned(FMetricStore) then
+    try
+      FMetricStore.Save(AMetric);
+    except
+      on E: Exception do
+        ; // Ignore persistence errors - continue with memory-only
+    end;
+end;
+
+function TMetricCalculator.LoadOldMetric(const AContactId: string): TInteractionMetric;
+begin
+  Result := Default(TInteractionMetric);
+  if not FUseDB1Store or not Assigned(FMetricStore) then
+    Exit;
+    
+  try
+    // Use LoadLatest to get the most recent metric for this contact
+    Result := FMetricStore.LoadLatest(AContactId);
+  except
+    on E: Exception do
+      Result := Default(TInteractionMetric);
+  end;
+end;
 
 function TMetricCalculator.Compute(const AMessages: TArray<TMessageMeta>;
   const AOldMetric: TInteractionMetric): TInteractionMetric;
@@ -60,7 +108,7 @@ begin
       Result := AOldMetric;
       // If last interaction was long ago, degrade quality
       if (AOldMetric.LastInteractionAt > 0) and
-         (DaysBetween(Now, AOldMetric.LastInteractionAt) > LONG_SILENCE_DAYS) then
+         (DaysBetween(Now, AOldMetric.LastInteractionAt) > RADAR_LONG_SILENCE_DAYS_DEFAULT) then
         Result.DataQuality := dqDataInsufficient;
     end
     else
@@ -203,9 +251,9 @@ begin
     Result.OutboundInboundRatio := -1; // no inbound data
 
   // Data quality
-  if (LInboundCount + LOutboundCount) < MIN_MESSAGES_FOR_METRIC then
+  if (LInboundCount + LOutboundCount) < RADAR_MIN_MESSAGES_FOR_METRIC_DEFAULT then
     Result.DataQuality := dqDataInsufficient
-  else if (LInboundCount + LOutboundCount) < MIN_MESSAGES_FOR_OK then
+  else if (LInboundCount + LOutboundCount) < RADAR_MIN_MESSAGES_FOR_OK_DEFAULT then
     Result.DataQuality := dqPartial
   else
     Result.DataQuality := dqOK;
@@ -252,19 +300,25 @@ begin
       for I := 0 to Length(AContacts) - 1 do
       begin
         LContact := AContacts[I];
-
+        
         // Get messages for this contact
         if LMsgDict.TryGetValue(LContact.ContactId, LMsgList) then
           LContactMessages := LMsgList.ToArray
         else
           LContactMessages := nil;
-
-        // Get old metric for this contact
-        if not LOldDict.TryGetValue(LContact.ContactId, LOldMetric) then
-          LOldMetric := Default(TInteractionMetric);
-
+        
+        // Try to load old metric from DB1Store first
+        LOldMetric := LoadOldMetric(LContact.ContactId);
+            
+        // Fall back to passed-in OLDMETRIC if no database record found
+        if (LOldMetric.MetricId = '') and LOldDict.ContainsKey(LContact.ContactId) then
+          LOldMetric := LOldDict.Items[LContact.ContactId];
+        
         Result[I] := Compute(LContactMessages, LOldMetric);
         Result[I].ContactId := LContact.ContactId;
+            
+        // Persist computed metric
+        PersistMetric(Result[I]);
       end;
     finally
       LOldDict.Free;

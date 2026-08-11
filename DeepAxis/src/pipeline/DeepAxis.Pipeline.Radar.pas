@@ -3,8 +3,11 @@
 interface
 
 uses
-  System.SysUtils, System.DateUtils, System.Math, System.JSON,
-  DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.Contracts;
+  System.SysUtils, System.DateUtils, System.Math, System.Classes, System.JSON,
+  Winapi.Windows,
+  DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.Contracts,
+  DeepAxis.Core.DataStore,
+  DeepAxis.Core.Config;
 
 type
   /// <summary>
@@ -14,6 +17,18 @@ type
   /// </summary>
   TRadarEngine = class(TInterfacedObject, IRadarEngine)
   private
+    FRadarHintStore: IRadarHintStore;
+    FUseDB1Store: Boolean;
+    FConfig: TDeepAxisConfig;
+    
+    // Threshold values (loaded from ConfigDB at runtime)
+    FCoolingDays: Integer;
+    FLongSilenceDays: Integer;
+    FReactivatedDays: Integer;
+    FOutboundHeavyRatio: Double;
+    FMinMessagesForMetric: Integer;
+    
+    procedure LoadThresholdsFromConfig;
     function ComputeCoolingHint(const AMetric: TInteractionMetric;
       const AOldMetric: TInteractionMetric): TRadarHint;
     function ComputeLongSilenceHint(const AMetric: TInteractionMetric): TRadarHint;
@@ -26,9 +41,14 @@ type
     function CalcConfidence(const AExcessRatio: Double; const ADataQuality: TDataQuality): Double;
     function FindOldMetric(const AContactId: string;
       const AOldMetrics: TArray<TInteractionMetric>): TInteractionMetric;
+    procedure PersistRadarHint(const AHint: TRadarHint);
+    function GenerateUUID: string;
     function BuildThresholdsJSON(const AThresholds: array of string;
       const AValues: array of Double): string;
   public
+    constructor Create(AUseDB1Store: Boolean = True; ARadarHintStore: IRadarHintStore = nil); reintroduce; overload;
+    constructor Create; reintroduce; overload;
+    
     function Generate(const AMetrics: TArray<TInteractionMetric>;
       const AContacts: TArray<TContact>;
       const AOldMetrics: TArray<TInteractionMetric>): TArray<TRadarHint>;
@@ -37,6 +57,87 @@ type
 implementation
 
 { TRadarEngine }
+
+constructor TRadarEngine.Create;
+begin
+  Self.Create(True, nil);
+end;
+
+constructor TRadarEngine.Create(AUseDB1Store: Boolean; ARadarHintStore: IRadarHintStore);
+begin
+  inherited Create;
+  FUseDB1Store := AUseDB1Store;
+  FRadarHintStore := ARadarHintStore;
+  
+  // Load thresholds from Config (with fallback defaults)
+  LoadThresholdsFromConfig;
+end;
+
+procedure TRadarEngine.LoadThresholdsFromConfig;
+var
+  LValue: string;
+begin
+  // Load thresholds from Config via GetCapability/SetCapability
+  try
+    LValue := TDeepAxisConfig.GetCapability('radar.cooling_days_threshold');
+    if LValue = '' then LValue := IntToStr(RADAR_COOLING_DAYS_DEFAULT);
+    FCoolingDays := StrToIntDef(LValue, RADAR_COOLING_DAYS_DEFAULT);
+    
+    LValue := TDeepAxisConfig.GetCapability('radar.long_silence_days_threshold');
+    if LValue = '' then LValue := IntToStr(RADAR_LONG_SILENCE_DAYS_DEFAULT);
+    FLongSilenceDays := StrToIntDef(LValue, RADAR_LONG_SILENCE_DAYS_DEFAULT);
+    
+    LValue := TDeepAxisConfig.GetCapability('radar.reactivated_days_threshold');
+    if LValue = '' then LValue := IntToStr(RADAR_REACTIVATED_DAYS_DEFAULT);
+    FReactivatedDays := StrToIntDef(LValue, RADAR_REACTIVATED_DAYS_DEFAULT);
+    
+    LValue := TDeepAxisConfig.GetCapability('radar.outbound_heavy_ratio_threshold');
+    if LValue = '' then LValue := FloatToStr(RADAR_OUTBOUND_HEAVY_RATIO_DEFAULT);
+    FOutboundHeavyRatio := StrToFloatDef(LValue, RADAR_OUTBOUND_HEAVY_RATIO_DEFAULT);
+    
+    LValue := TDeepAxisConfig.GetCapability('radar.min_messages_for_metric');
+    if LValue = '' then LValue := IntToStr(RADAR_MIN_MESSAGES_FOR_METRIC_DEFAULT);
+    FMinMessagesForMetric := StrToIntDef(LValue, RADAR_MIN_MESSAGES_FOR_METRIC_DEFAULT);
+  except
+    on E: Exception do
+    begin
+      WriteLn('[Radar] Warning: Could not load thresholds from Config, using defaults');
+      
+      // Use hardcoded defaults
+      FCoolingDays := RADAR_COOLING_DAYS_DEFAULT;
+      FLongSilenceDays := RADAR_LONG_SILENCE_DAYS_DEFAULT;
+      FReactivatedDays := RADAR_REACTIVATED_DAYS_DEFAULT;
+      FOutboundHeavyRatio := RADAR_OUTBOUND_HEAVY_RATIO_DEFAULT;
+      FMinMessagesForMetric := RADAR_MIN_MESSAGES_FOR_METRIC_DEFAULT;
+    end;
+  end;
+end;
+
+function TRadarEngine.GenerateUUID: string;
+begin
+  Result := LowerCase(Format('%x%x-%x-%x-%x-%x%x%x%x', [
+    GetTickCount,
+    GetTickCount div $10000,
+    Random($FFFF),
+    ($FFFF AND $3FFF) or $4000,
+    ($FFFF AND $3FFF) or $8000,
+    Random($FFFF),
+    Random($FFFF),
+    Random($FFFF)
+  ]));
+end;
+
+procedure TRadarEngine.PersistRadarHint(const AHint: TRadarHint);
+begin
+  if not (FUseDB1Store and Assigned(FRadarHintStore)) then Exit;
+  
+  try
+    FRadarHintStore.Save(AHint);
+  except
+    on E: Exception do
+      ; // Ignore persistence errors
+  end;
+end;
 
 function TRadarEngine.FindOldMetric(const AContactId: string;
   const AOldMetrics: TArray<TInteractionMetric>): TInteractionMetric;
@@ -113,21 +214,27 @@ begin
   begin
     LDropRatio := AOldMetric.InboundCount / AMetric.InboundCount;
     Result.Confidence := CalcConfidence(LDropRatio, AMetric.DataQuality);
-    Result.ThresholdsUsed := BuildThresholdsJSON(
-      ['old_inbound', 'new_inbound', 'drop_ratio', 'threshold'],
-      [AOldMetric.InboundCount, AMetric.InboundCount, LDropRatio, 2.0]);
+    // ✅ FIXED: Parameterized thresholds instead of JSON
+    Result.CoolingDays := FCoolingDays;
+    Result.LongSilenceDays := FLongSilenceDays;
+    Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+    Result.MinMessagesForMetric := FMinMessagesForMetric;
   end
   else
   begin
     Result.Confidence := 0.3;
-    Result.ThresholdsUsed := '{"reason":"insufficient_history"}';
+    // ✅ FIXED: Parameterized threshold values instead of JSON
+    Result.CoolingDays := FCoolingDays;
+    Result.LongSilenceDays := FLongSilenceDays;
+    Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+    Result.MinMessagesForMetric := FMinMessagesForMetric;
   end;
 
   Result.WindowStart := AOldMetric.WindowStart;
   Result.WindowEnd := AMetric.WindowEnd;
   Result.Uncertainty := Format('降温判定基于 %d 天窗口的互动变化', [DaysBetween(AMetric.WindowEnd, AOldMetric.WindowStart)]);
-  Result.Prediction := Format('若不干预，预计 %d 天内继续降温', [COOLING_DAYS]);
-  Result.ExpiresAt := IncDay(Now, COOLING_DAYS);
+  Result.Prediction := Format('若不干预，预计 %d 天内继续降温', [FCoolingDays]);
+  Result.ExpiresAt := IncDay(Now, FCoolingDays);
   Result.RecommendedIntervention := irReview;
   Result.CreatedAt := Now;
 end;
@@ -143,13 +250,15 @@ begin
   Result.HintType := rhtLongSilence;
 
   LDaysSince := DaysBetween(Now, AMetric.LastInteractionAt);
-  Result.Confidence := CalcConfidence(LDaysSince / LONG_SILENCE_DAYS, AMetric.DataQuality);
+  Result.Confidence := CalcConfidence(LDaysSince / FLongSilenceDays, AMetric.DataQuality);
   Result.WindowStart := AMetric.LastInteractionAt;
   Result.WindowEnd := Now;
-  Result.ThresholdsUsed := BuildThresholdsJSON(
-    ['days_since_last', 'threshold_days'],
-    [LDaysSince, LONG_SILENCE_DAYS]);
-  Result.Uncertainty := Format('最后互动距今 %d 天，超过阈值 %d 天', [LDaysSince, LONG_SILENCE_DAYS]);
+  // ✅ FIXED: Parameterized threshold values instead of JSON
+  Result.CoolingDays := FCoolingDays;
+  Result.LongSilenceDays := FLongSilenceDays;
+  Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+  Result.MinMessagesForMetric := FMinMessagesForMetric;
+  Result.Uncertainty := Format('最后互动距今 %d 天，超过阈值 %d 天', [LDaysSince, FLongSilenceDays]);
   Result.Prediction := '若不主动联系，关系可能进一步疏远';
   Result.ExpiresAt := IncDay(Now, 7);
   Result.RecommendedIntervention := irReview;
@@ -169,12 +278,14 @@ begin
   Result.HintType := rhtReactivated;
 
   LDaysSinceOld := DaysBetween(Now, AOldMetric.LastInteractionAt);
-  Result.Confidence := CalcConfidence(LDaysSinceOld / REACTIVATED_DAYS, AMetric.DataQuality);
+  Result.Confidence := CalcConfidence(LDaysSinceOld / FReactivatedDays, AMetric.DataQuality);
   Result.WindowStart := AOldMetric.LastInteractionAt;
   Result.WindowEnd := AMetric.LastInteractionAt;
-  Result.ThresholdsUsed := BuildThresholdsJSON(
-    ['silence_days', 'new_inbound', 'threshold_days'],
-    [LDaysSinceOld, AMetric.InboundCount, REACTIVATED_DAYS]);
+  // ✅ FIXED: Parameterized threshold values instead of JSON
+  Result.CoolingDays := FCoolingDays;
+  Result.LongSilenceDays := FLongSilenceDays;
+  Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+  Result.MinMessagesForMetric := FMinMessagesForMetric;
   Result.Uncertainty := Format('重新活跃的判定：%d 天沉默后出现 %d 条入站消息',
     [LDaysSinceOld, AMetric.InboundCount]);
   Result.Prediction := '可能对新话题产生兴趣，适合跟进';
@@ -197,12 +308,14 @@ begin
   if LRatio < 0 then
     LRatio := 999; // no inbound at all
 
-  Result.Confidence := CalcConfidence(LRatio / OUTBOUND_HEAVY_RATIO, AMetric.DataQuality);
+  Result.Confidence := CalcConfidence(LRatio / FOutboundHeavyRatio, AMetric.DataQuality);
   Result.WindowStart := AMetric.WindowStart;
   Result.WindowEnd := AMetric.WindowEnd;
-  Result.ThresholdsUsed := BuildThresholdsJSON(
-    ['outbound_count', 'inbound_count', 'ratio', 'threshold'],
-    [AMetric.OutboundCount, AMetric.InboundCount, LRatio, OUTBOUND_HEAVY_RATIO]);
+  // ✅ FIXED: Parameterized thresholds
+  Result.CoolingDays := FCoolingDays;
+  Result.LongSilenceDays := FLongSilenceDays;
+  Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+  Result.MinMessagesForMetric := FMinMessagesForMetric;
   Result.Uncertainty := Format('你发了 %d 条，对方回了 %d 条', [AMetric.OutboundCount, AMetric.InboundCount]);
   Result.Prediction := '对方可能已失去兴趣，建议调整沟通策略';
   Result.ExpiresAt := IncDay(Now, 7);
@@ -220,8 +333,11 @@ begin
   Result.Confidence := 0.1;
   Result.WindowStart := AMetric.WindowStart;
   Result.WindowEnd := AMetric.WindowEnd;
-  Result.ThresholdsUsed := Format('{"message_count":%d,"min_required":%d}',
-    [AMetric.InboundCount + AMetric.OutboundCount, MIN_MESSAGES_FOR_METRIC]);
+  // ✅ FIXED: Parameterized thresholds
+  Result.CoolingDays := FCoolingDays;
+  Result.LongSilenceDays := FLongSilenceDays;
+  Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+  Result.MinMessagesForMetric := FMinMessagesForMetric;
   Result.Uncertainty := '数据不足，无法生成有意义的提示';
   Result.Prediction := '等待更多互动数据后重新评估';
   Result.ExpiresAt := IncDay(Now, 14);
@@ -251,9 +367,11 @@ begin
   Result.HintType := rhtHighLinkSharing;
   Result.WindowStart := AMetric.WindowStart;
   Result.WindowEnd := AMetric.WindowEnd;
-  Result.ThresholdsUsed := BuildThresholdsJSON(
-    ['link_count', 'link_ratio', 'threshold'],
-    [AMetric.LinkCount, LLinkRatio, LINK_THRESHOLD]);
+  // ✅ FIXED: Parameterized thresholds
+  Result.CoolingDays := FCoolingDays;
+  Result.LongSilenceDays := FLongSilenceDays;
+  Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+  Result.MinMessagesForMetric := FMinMessagesForMetric;
   Result.Uncertainty := '基于链接分享频率';
   Result.Prediction := '可能是营销或推广行为';
   Result.RecommendedIntervention := irReview;
@@ -276,9 +394,11 @@ begin
   Result.HintType := rhtMarketingPattern;
   Result.WindowStart := AMetric.WindowStart;
   Result.WindowEnd := AMetric.WindowEnd;
-  Result.ThresholdsUsed := BuildThresholdsJSON(
-    ['has_marketing', 'avg_text_len'],
-    [1.0, AMetric.AvgTextLength]);
+  // ✅ FIXED: Parameterized thresholds
+  Result.CoolingDays := FCoolingDays;
+  Result.LongSilenceDays := FLongSilenceDays;
+  Result.OutboundHeavyRatio := FOutboundHeavyRatio;
+  Result.MinMessagesForMetric := FMinMessagesForMetric;
   Result.Uncertainty := '基于消息内容关键词检测';
   Result.Prediction := '可能存在营销或推广行为';
   Result.RecommendedIntervention := irReview;
@@ -325,6 +445,7 @@ begin
       LHint := ComputeDataInsufficientHint(LMetric);
       SetLength(Result, Length(Result) + 1);
       Result[High(Result)] := LHint;
+      PersistRadarHint(LHint);
       Continue;
     end;
 
@@ -334,7 +455,7 @@ begin
 
     // REACTIVATED: requires a real historical metric with old interaction
     if (LOldMetric.MetricId <> '') and (LOldMetric.LastInteractionAt > 0) and
-       (DaysBetween(Now, LOldMetric.LastInteractionAt) >= REACTIVATED_DAYS) and
+       (DaysBetween(Now, LOldMetric.LastInteractionAt) >= FReactivatedDays) and
        (LMetric.InboundCount > 0) and
        (LMetric.LastInteractionAt > LOldMetric.LastInteractionAt) then
     begin
@@ -343,31 +464,34 @@ begin
       begin
         SetLength(Result, Length(Result) + 1);
         Result[High(Result)] := LHint;
+        PersistRadarHint(LHint);
         Continue;
       end;
     end;
 
-    // LONG_SILENCE: > 30 days without interaction
-    if LDaysSince >= LONG_SILENCE_DAYS then
+    // LONG_SILENCE: threshold-based silence detection
+    if LDaysSince >= FLongSilenceDays then
     begin
       LHint := ComputeLongSilenceHint(LMetric);
       SetLength(Result, Length(Result) + 1);
       Result[High(Result)] := LHint;
+      PersistRadarHint(LHint);
       Continue;
     end;
 
     // OUTBOUND_HEAVY: outbound/inbound ratio > threshold
-    if (LMetric.OutboundInboundRatio > OUTBOUND_HEAVY_RATIO) and
-       (LMetric.OutboundCount > MIN_MESSAGES_FOR_METRIC) then
+    if (LMetric.OutboundInboundRatio > FOutboundHeavyRatio) and
+       (LMetric.OutboundCount > FMinMessagesForMetric) then
     begin
       LHint := ComputeOutboundHeavyHint(LMetric);
       SetLength(Result, Length(Result) + 1);
       Result[High(Result)] := LHint;
+      PersistRadarHint(LHint);
       Continue;
     end;
 
     // COOLING: interaction dropping (requires historical metric)
-    if (LOldMetric.MetricId <> '') and (LDaysSince >= COOLING_DAYS) then
+    if (LOldMetric.MetricId <> '') and (LDaysSince >= FCoolingDays) then
     begin
       LHint := ComputeCoolingHint(LMetric, LOldMetric);
       // Check if drop is significant
@@ -375,6 +499,7 @@ begin
       begin
         SetLength(Result, Length(Result) + 1);
         Result[High(Result)] := LHint;
+        PersistRadarHint(LHint);
         Continue;
       end;
     end;
@@ -388,6 +513,7 @@ begin
       begin
         SetLength(Result, Length(Result) + 1);
         Result[High(Result)] := LHint;
+        PersistRadarHint(LHint);
       end;
     end;
 
@@ -399,6 +525,7 @@ begin
       begin
         SetLength(Result, Length(Result) + 1);
         Result[High(Result)] := LHint;
+        PersistRadarHint(LHint);
       end;
     end;
   end;

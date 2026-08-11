@@ -1,4 +1,4 @@
-unit DeepFrames.UI.MainForm;
+﻿unit DeepFrames.UI.MainForm;
 
 interface
 
@@ -10,6 +10,7 @@ uses
   Vcl.StdCtrls,
   Vcl.ExtCtrls,
   Vcl.Dialogs,
+  DeepBase.AutoFix,
   DeepBase.VCL.DeepShell,
   DeepBase.VCL.DeepShell.Types,
   DeepBase.VCL.DeepShell.Intf;
@@ -80,6 +81,7 @@ type
   TMainForm = class(TDeepMainForm)
   private
     FSettingsStore: IShellSettingsStore;
+    FLocaleService: IShellLocalizationService;
     procedure CmdNewProject;
     procedure CmdImportMarkdown;
     procedure CmdRunPreprocess;
@@ -89,6 +91,7 @@ type
     procedure CmdRunVideoChain;
     procedure CmdRunPackageChain;
     procedure CmdRunExtensionChain;
+    procedure CmdRunFullPipeline;
     procedure CmdSwitchProvider;
     procedure CmdTestDb2;
     procedure CmdRunMigrations;
@@ -107,8 +110,10 @@ implementation
 
 uses
   DeepBase.Config,
+  DeepBase.i18n,
   DeepBase.Manager,
   DeepBase.VCL.DeepShell.Layout,
+  DeepBase.VCL.DeepShell.Localization,
   DeepFrames.App.Constants,
   DeepFrames.App.Services,
   DeepFrames.Shared.Consts,
@@ -613,7 +618,7 @@ function TDeepFramesMainViewProvider.GetViewForObject(
 begin
   Result := TShellViewInfo.Make('deepframes.' + ARef.Kind + '.' + ARef.Id,
     svkText, ARef.DisplayName,
-    Format('DeepFrames object' + sLineBreak + sLineBreak + 'Kind: %s' + sLineBreak + 'Id: %s',
+    Format('DeepFrames 对象' + sLineBreak + sLineBreak + '类型: %s' + sLineBreak + 'ID: %s',
       [ARef.Kind, ARef.Id]));
 end;
 
@@ -645,10 +650,10 @@ var
   I: Integer;
 begin
   SetLength(Result, 4);
-  Result[0].Name := 'Id'; Result[0].Value := ARef.Id; Result[0].Group := 'Identity'; Result[0].ReadOnly := True;
-  Result[1].Name := 'Kind'; Result[1].Value := ARef.Kind; Result[1].Group := 'Identity'; Result[1].ReadOnly := True;
-  Result[2].Name := 'Provider'; Result[2].Value := ARef.ProviderId; Result[2].Group := 'Identity'; Result[2].ReadOnly := True;
-  Result[3].Name := 'Display'; Result[3].Value := ARef.DisplayName; Result[3].Group := 'Identity'; Result[3].ReadOnly := True;
+  Result[0].Name := 'ID'; Result[0].Value := ARef.Id; Result[0].Group := '基本'; Result[0].ReadOnly := True;
+  Result[1].Name := '类型'; Result[1].Value := ARef.Kind; Result[1].Group := '基本'; Result[1].ReadOnly := True;
+  Result[2].Name := '来源'; Result[2].Value := ARef.ProviderId; Result[2].Group := '基本'; Result[2].ReadOnly := True;
+  Result[3].Name := '名称'; Result[3].Value := ARef.DisplayName; Result[3].Group := '基本'; Result[3].ReadOnly := True;
 
   // Enrich inspector based on kind
   if SameText(ARef.Kind, 'script_document') then
@@ -972,6 +977,48 @@ end;
 procedure TMainForm.RegisterServices;
 begin
   inherited;
+
+  // i18n: register zh-CN translations
+  var LLocale: TShellDefaultLocalizationService;
+  LLocale := TShellDefaultLocalizationService.Create('zh-CN');
+  FLocaleService := LLocale;
+  LLocale.RegisterText('zh-CN', 'shell.cat.file', '文件');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.fileExit', '退出');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.recent.clear', '清除最近');
+  LLocale.RegisterText('zh-CN', 'shell.cat.view', '视图');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.view.toggleTop', '顶部');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.view.toggleMiddle', '中间');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.view.toggleBottom', '底部');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.view.structure', '结构窗口');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.view.inspector', '检查器');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.view.resetLayout', '重置布局');
+  LLocale.RegisterText('zh-CN', 'shell.cat.tools', '工具');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.settings.open', '设置');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.settings.restoreDefaults', '恢复默认');
+  LLocale.RegisterText('zh-CN', 'shell.cat.log', '日志');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.log.clear', '清除日志');
+  LLocale.RegisterText('zh-CN', 'shell.cat.help', '帮助');
+  LLocale.RegisterText('zh-CN', 'shell.cmd.help.about', '关于');
+  LLocale.RegisterText('zh-CN', 'shell.help.aboutBody', 'DeepFrames - AI视频制作平台');
+  LLocale.RegisterText('zh-CN', 'shell.toolwin.structure', '结构');
+  LLocale.RegisterText('zh-CN', 'shell.toolwin.inspector', '检查器');
+  LLocale.RegisterText('zh-CN', 'shell.inspector.col.name', '名称');
+  LLocale.RegisterText('zh-CN', 'shell.inspector.col.value', '值');
+  LLocale.RegisterText('zh-CN', 'shell.cat.misc', '其他');
+  LLocale.RegisterText('zh-CN', 'cmd.new_project', '新建项目');
+  LLocale.RegisterText('zh-CN', 'cmd.import_md', '导入Markdown');
+  LLocale.RegisterText('zh-CN', 'cmd.preprocess', '预处理');
+  LLocale.RegisterText('zh-CN', 'cmd.doc_chain', '文档链');
+  LLocale.RegisterText('zh-CN', 'cmd.agent_chain', '智能体链');
+  LLocale.RegisterText('zh-CN', 'cmd.audio_chain', '音频链');
+  LLocale.RegisterText('zh-CN', 'cmd.video_chain', '视频链');
+  LLocale.RegisterText('zh-CN', 'cmd.pkg_chain', '候选包');
+  LLocale.RegisterText('zh-CN', 'cmd.ext_chain', '扩展');
+  LLocale.RegisterText('zh-CN', 'cmd.switch_prov', '切换AI供应商');
+  LLocale.RegisterText('zh-CN', 'cmd.test_db2', '测试DB2');
+  LLocale.RegisterText('zh-CN', 'cmd.run_migrations', '执行迁移');
+  Services.RegisterService(CAP_SHELL_I18N, FLocaleService as IInterface);
+
   FSettingsStore := TDeepFramesSettingsStore.Create;
   Services.RegisterService(CAP_SHELL_SETTINGS, FSettingsStore);
   Services.RegisterService(CAP_SHELL_LAYOUT,
@@ -981,29 +1028,31 @@ end;
 procedure TMainForm.RegisterCommands;
 begin
   inherited;
-  Commands.RegisterCommand(ShellCommand(CMD_PROJECT_NEW, 'New Project')
+  Commands.RegisterCommand(ShellCommand(CMD_PROJECT_NEW, ShellText('cmd.new_project', 'New Project'))
     .Category('DeepFrames').Hint('Create a Phase 1 DeepFrames project').RiskLevel(rlLow).OnExecute(CmdNewProject));
-  Commands.RegisterCommand(ShellCommand(CMD_PROJECT_IMPORT, 'Import Markdown')
+  Commands.RegisterCommand(ShellCommand(CMD_PROJECT_IMPORT, ShellText('cmd.import_md', 'Import Markdown'))
     .Category('DeepFrames').Hint('Import markdown as source_document').RiskLevel(rlLow).OnExecute(CmdImportMarkdown));
-  Commands.RegisterCommand(ShellCommand(CMD_PREPROCESS_RUN, 'Run Preprocess')
+  Commands.RegisterCommand(ShellCommand(CMD_PREPROCESS_RUN, ShellText('cmd.preprocess', 'Preprocess'))
     .Category('DeepFrames').Hint('Create and complete a local preprocess job').RiskLevel(rlLow).OnExecute(CmdRunPreprocess));
-  Commands.RegisterCommand(ShellCommand(CMD_DOCUMENT_CHAIN_RUN, 'Run Document Chain')
+  Commands.RegisterCommand(ShellCommand(CMD_DOCUMENT_CHAIN_RUN, ShellText('cmd.doc_chain', 'Document Chain'))
     .Category('DeepFrames').Hint('Run the Phase 2 document chain workflow (stub data)').RiskLevel(rlLow).OnExecute(CmdRunDocumentChain));
-  Commands.RegisterCommand(ShellCommand(CMD_AGENT_CHAIN_RUN, 'Run Agent Chain')
+  Commands.RegisterCommand(ShellCommand(CMD_AGENT_CHAIN_RUN, ShellText('cmd.agent_chain', 'Agent Chain'))
     .Category('DeepFrames').Hint('Run the Phase 3 agent chain workflow (fake provider)').RiskLevel(rlLow).OnExecute(CmdRunAgentChain));
-  Commands.RegisterCommand(ShellCommand(CMD_AUDIO_CHAIN_RUN, 'Run Audio Chain')
+  Commands.RegisterCommand(ShellCommand(CMD_AUDIO_CHAIN_RUN, ShellText('cmd.audio_chain', 'Audio Chain'))
     .Category('DeepFrames').Hint('Run the Phase 4 audio chain workflow (fake TTS/ASR)').RiskLevel(rlLow).OnExecute(CmdRunAudioChain));
-  Commands.RegisterCommand(ShellCommand(CMD_VIDEO_CHAIN_RUN, 'Run Video Chain')
+  Commands.RegisterCommand(ShellCommand(CMD_VIDEO_CHAIN_RUN, ShellText('cmd.video_chain', 'Video Chain'))
     .Category('DeepFrames').Hint('Run the Phase 5 video chain workflow (fake HyperFrames)').RiskLevel(rlLow).OnExecute(CmdRunVideoChain));
-  Commands.RegisterCommand(ShellCommand(CMD_PACKAGE_CHAIN_RUN, 'Run Package Chain')
+  Commands.RegisterCommand(ShellCommand(CMD_PACKAGE_CHAIN_RUN, ShellText('cmd.pkg_chain', 'Package Chain'))
     .Category('DeepFrames').Hint('Run the Phase 6 candidate package workflow').RiskLevel(rlLow).OnExecute(CmdRunPackageChain));
-  Commands.RegisterCommand(ShellCommand(CMD_EXTENSION_CHAIN_RUN, 'Run Extension Chain')
+  Commands.RegisterCommand(ShellCommand(CMD_EXTENSION_CHAIN_RUN, ShellText('cmd.ext_chain', 'Extension'))
     .Category('DeepFrames').Hint('Run the Phase 7 extension chain (adapters, BGM, readiness)').RiskLevel(rlLow).OnExecute(CmdRunExtensionChain));
-  Commands.RegisterCommand(ShellCommand(CMD_PROVIDER_SWITCH, 'Switch AI Provider')
+  Commands.RegisterCommand(ShellCommand(CMD_FULL_PIPELINE_RUN, ShellText('cmd.full_pipeline', 'Run Full Pipeline'))
+    .Category('DeepFrames').Hint('Run all 6 phases asynchronously via DeepBase TWorkerQueue (DBA-4)').RiskLevel(rlMedium).OnExecute(CmdRunFullPipeline));
+  Commands.RegisterCommand(ShellCommand(CMD_PROVIDER_SWITCH, ShellText('cmd.switch_prov', 'Switch AI Provider'))
     .Category('DeepFrames').Hint('Toggle between fake and stepfun providers').RiskLevel(rlMedium).OnExecute(CmdSwitchProvider));
-  Commands.RegisterCommand(ShellCommand(CMD_DB2_TEST, 'Test DB2 Connection')
+  Commands.RegisterCommand(ShellCommand(CMD_DB2_TEST, ShellText('cmd.test_db2', 'Test DB2'))
     .Category('DeepFrames').Hint('Open the configured PostgreSQL connection').RiskLevel(rlReadOnly).OnExecute(CmdTestDb2));
-  Commands.RegisterCommand(ShellCommand(CMD_DB2_MIGRATE, 'Run DB2 Migration')
+  Commands.RegisterCommand(ShellCommand(CMD_DB2_MIGRATE, ShellText('cmd.run_migrations', 'Run Migrations'))
     .Category('DeepFrames').Hint('Apply PostgreSQL migrations').RiskLevel(rlMedium).OnExecute(CmdRunMigrations));
 end;
 
@@ -1019,12 +1068,20 @@ end;
 procedure TMainForm.AfterShellShown;
 begin
   inherited;
+  Constraints.MinWidth := 1024;
+  Constraints.MinHeight := 640;
+  if Width < 1440 then Width := 1440;
+  if Height < 900 then Height := 900;
+
   Caption := 'DeepFrames';
   Status.Info('deepframes.boot',
     'DeepFrames Phase 1-7 shell is ready. Provider: ' +
     TProviderRegistry.Instance.ActiveProviderName +
     '. Configure DB2, run migrations, then create a project and run workflows.');
   OpenView(TShellObjectRef.Make('welcome', 'setup', PROVIDER_DEEPFRAMES, 'DeepFrames'));
+
+  // AutoFix: signal shell is ready for scenario execution
+  AutoFix.NotifyShellShown;
 end;
 
 procedure TMainForm.CmdNewProject;
@@ -1175,6 +1232,47 @@ begin
     end;
   end;
   RefreshProjectView;
+end;
+
+procedure TMainForm.CmdRunFullPipeline;
+begin
+  // DBA-4: enqueue the full 6-phase pipeline on a DeepBase TWorkerQueue worker
+  // thread so the VCL main thread stays responsive. Per-phase progress and the
+  // terminal result are marshaled back via TThread.Queue (the OnProgress /
+  // OnComplete callbacks fire on the worker thread — touching VCL directly
+  // would race). We do not block: the command returns immediately and the UI
+  // is updated incrementally as phases complete.
+  Status.TaskStart('fullpipeline', 'deepframes.workflow', 'Running full pipeline (async, DBA-4)');
+  TDeepFramesAppService.RunFullPipelineAsync(False,
+    procedure(const APhase: string; const APhaseJob: TDeepFramesJob)
+    var
+      PhaseMsg: string;
+    begin
+      PhaseMsg := Format('Phase %s: %s', [APhase, APhaseJob.Status]);
+      TThread.Queue(nil,
+        procedure
+        begin
+          Status.TaskStart('fullpipeline', 'deepframes.workflow', PhaseMsg);
+        end);
+    end,
+    procedure(const AFinalJob: TDeepFramesJob)
+    var
+      FinalStatus: string;
+    begin
+      FinalStatus := AFinalJob.Status;
+      TThread.Queue(nil,
+        procedure
+        begin
+          if SameText(FinalStatus, STATUS_DONE) or SameText(FinalStatus, STATUS_COMPLETED) then
+            Status.TaskFinish('fullpipeline', 'Full pipeline completed: ' + FinalStatus)
+          else
+          begin
+            Status.TaskFinish('fullpipeline', 'Full pipeline ended: ' + FinalStatus);
+            Status.LogError('deepframes.fullpipeline', 'Pipeline did not complete', FinalStatus);
+          end;
+          RefreshProjectView;
+        end);
+    end);
 end;
 
 procedure TMainForm.CmdSwitchProvider;

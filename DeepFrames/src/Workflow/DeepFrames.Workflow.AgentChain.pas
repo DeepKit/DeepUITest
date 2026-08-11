@@ -127,7 +127,7 @@ begin
 
     Binding := TProjectService.CreateModelBinding(
       AGENT_ROLE_SPLITTER, Provider.GetProviderName,
-      'step-3.5-flash', CAPABILITY_LLM);
+      'step-3.7-flash', CAPABILITY_LLM);
     Repo.InsertModelBinding(Binding);
 
     // Run each agent step through LLM provider
@@ -151,7 +151,7 @@ begin
       ChatReq.UserMessage := AgentSteps[I].UserPrompt;
       ChatReq.AgentRole := AgentSteps[I].Role; // fake provider routing key
       ChatReq.OutputSchemaJson := AgentSteps[I].OutputSchema;
-      ChatReq.Model := 'step-3.5-flash';
+      ChatReq.Model := 'step-3.7-flash';
       ChatReq.Temperature := 0.7;
       ChatReq.MaxTokens := 4096;
 
@@ -188,7 +188,7 @@ begin
       PromptId := TPromptVersionManager.ComputeIdentity(
         AgentSteps[I].SystemPrompt, AgentSteps[I].UserPrompt,
         AgentSteps[I].OutputSchema, AgentSteps[I].Role,
-        'step-3.5-flash', 0.7, 4096);
+        'step-3.7-flash', 0.7, 4096);
       VersionCheck := TPromptVersionManager.CheckReproducibility(
         PromptId, Template);
 
@@ -213,6 +213,7 @@ begin
           Job.JobId, AgentSteps[I].Role, 0.95);
         EvalResult.JobStepId := Step.StepId;
         EvalResult.PromptRunId := PromptRun.RunId;
+        EvalResult.ShotDocumentId := ShotDocumentId;
         if AgentSteps[I].Role = AGENT_ROLE_QA then
         begin
           EvalResult.Gate := GATE_2;

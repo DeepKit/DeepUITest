@@ -71,6 +71,19 @@ type
   /// </summary>
   TAxis1State = 0..9;
 
+  // ── Display tier (绿/黄/红 简化分级) ──────────────────────────
+  /// <summary>
+  ///   User-facing contact tier derived from metadata. A simplified
+  ///   three-color aggregation over Axis1State + interaction metrics,
+  ///   usable in cold-start (M0). Does NOT replace TAxis1State — that
+  ///   remains the precise fact state for the full state machine (P2).
+  ///   tGreen  = 热客·活跃 (≤7d 且双向互动)
+  ///   tYellow = 待激活·降温 (8-30d，或 ≤7d 但单向发)
+  ///   tRed    = 闲人·沉默 (>30d)
+  ///   tGray   = 数据不足 (无有效 metric)
+  /// </summary>
+  TTier = (tGreen, tYellow, tRed, tGray);
+
   // ── Tag source ─────────────────────────────────────────────────
   TTagSource = (
     tsMetadata,          // M0 metadata
@@ -111,17 +124,23 @@ const
   POLL_INTERVAL_FOREGROUND = 5000;
   POLL_INTERVAL_BACKGROUND = 60000;
 
-  // ── Radar thresholds ───────────────────────────────────────────
-  COOLING_DAYS = 7;              // 7 days of dropping interaction = cooling
-  LONG_SILENCE_DAYS = 30;        // 30 days no interaction = long silence
-  REACTIVATED_DAYS = 14;         // 14 days after silence resuming = reactivated
-  OUTBOUND_HEAVY_RATIO = 3.0;    // outbound/inbound > 3.0 = outbound_heavy
-  MIN_MESSAGES_FOR_METRIC = 5;   // minimum messages for valid metric
-  MIN_MESSAGES_FOR_OK = 20;      // minimum messages for dqOK
+  // ── Radar thresholds (--1 = load from ConfigDB at runtime) ─────
+  RADAR_COOLING_DAYS_DEFAULT = 7;              // 7 days of dropping interaction = cooling
+  RADAR_LONG_SILENCE_DAYS_DEFAULT = 30;        // 30 days no interaction = long silence
+  RADAR_REACTIVATED_DAYS_DEFAULT = 14;         // 14 days after silence resuming = reactivated
+  RADAR_OUTBOUND_HEAVY_RATIO_DEFAULT = 3.0;    // outbound/inbound > 3.0 = outbound_heavy
+  RADAR_MIN_MESSAGES_FOR_METRIC_DEFAULT = 5;   // minimum messages for valid metric
+  RADAR_MIN_MESSAGES_FOR_OK_DEFAULT = 20;      // minimum messages for dqOK
 
-  // ── Ad funnel ──────────────────────────────────────────────────
+  // -- Tier thresholds (绿/黄/红 简化分级) -- ────────────────────
+  TIER_ACTIVE_DAYS = 7;          // ≤7d 互动 = 活跃窗口
+  TIER_SILENCE_DAYS = 30;        // >30d = 闲人/沉默
+
+  // -- Ad funnel -- ──────────────────────────────────────────────────
   AD_MAX_COUNT = 3;              // default max ad count before deletion suggestion
   AD_COOLDOWN_DAYS = 7;          // days after last ad before deletion suggestion
+  /// <summary>用户"保留"标记。写入 TContact.WeChatLabels, 跨轮询存活 (TagProfile JSON 会被轮询覆盖, WeChatLabels 由 DeepAxis 附加不覆盖)。</summary>
+  PRESERVE_TAG = '__preserved__';
 
   // ── Schema adapter identifiers ─────────────────────────────────
   ADAPTER_WECHAT_411053 = 'wechat-4.1.10.53';
@@ -226,6 +245,15 @@ function StrToProfileIdentity(const S: string): TProfileIdentity;
 /// <summary>Convert TAxis1State to Chinese display name.</summary>
 function Axis1StateToChinese(const AState: TAxis1State): string;
 
+/// <summary>Convert TTier to machine string (green/yellow/red/gray).</summary>
+function TierToStr(const ATier: TTier): string;
+
+/// <summary>Convert TTier to Chinese display name.</summary>
+function TierToChinese(const ATier: TTier): string;
+
+/// <summary>Convert TTier to emoji color marker.</summary>
+function TierToEmoji(const ATier: TTier): string;
+
 /// <summary>Convert TWeChatProcessState to display string.</summary>
 function WeChatStateToStr(const AState: TWeChatProcessState): string;
 
@@ -319,6 +347,36 @@ begin
     7: Result := '降温中';
     8: Result := '已流失';
     9: Result := '不适用';
+  end;
+end;
+
+function TierToStr(const ATier: TTier): string;
+begin
+  case ATier of
+    tGreen:  Result := 'green';
+    tYellow: Result := 'yellow';
+    tRed:    Result := 'red';
+    tGray:   Result := 'gray';
+  end;
+end;
+
+function TierToChinese(const ATier: TTier): string;
+begin
+  case ATier of
+    tGreen:  Result := '热客';
+    tYellow: Result := '待激活';
+    tRed:    Result := '闲人';
+    tGray:   Result := '数据不足';
+  end;
+end;
+
+function TierToEmoji(const ATier: TTier): string;
+begin
+  case ATier of
+    tGreen:  Result := '🟢';
+    tYellow: Result := '🟡';
+    tRed:    Result := '🔴';
+    tGray:   Result := '⚪';
   end;
 end;
 

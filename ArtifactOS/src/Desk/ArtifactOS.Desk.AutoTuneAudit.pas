@@ -15,7 +15,7 @@ unit ArtifactOS.Desk.AutoTuneAudit;
 interface
 
 uses
-  System.SysUtils, System.Classes,
+  System.SysUtils, System.Classes, System.Generics.Collections,
   Vcl.Controls, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Graphics, Vcl.Forms, Vcl.Grids,
   DeepBase.VCL.DeepShell.Types,
   DeepBase.VCL.DeepShell.Intf,
@@ -324,10 +324,11 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    Result := DB.ExecuteScalar(
+    var Params := '{"path":"' + ParamPath + '"}';
+    Result := DB.ExecuteScalarJson(
       'SELECT id::text FROM artifactos.auto_tune_event ' +
-      'WHERE parameter_path=''' + ParamPath + ''' ' +
-      'ORDER BY created_at DESC LIMIT 1');
+      'WHERE parameter_path=:path ' +
+      'ORDER BY created_at DESC LIMIT 1', Params);
   finally
     DB.Disconnect;
   end;
@@ -355,13 +356,14 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
+    var Params := '{"id":"' + EventId + '"}';
     // Confirm the auto-tune — mark as reviewed, keep effective
-    DB.Execute(
+    DB.ExecuteJson(
       'UPDATE artifactos.auto_tune_event SET ' +
       '  requires_human_review=false, ' +
       '  human_visible_level=''digest'', ' +
       '  metadata=jsonb_set(COALESCE(metadata,''{}''), ''{human_action}'', ''"approved"'') ' +
-      'WHERE id=''' + EventId + '''');
+      'WHERE id=:id::uuid', Params);
   finally
     DB.Disconnect;
   end;
@@ -373,7 +375,7 @@ end;
 procedure TAutoTuneAuditFrame.RejectBtnClick(Sender: TObject);
 var
   DB: TArtifactDB;
-  EventId, RollbackPath: string;
+  EventId: string;
 begin
   EventId := GetSelectedEventId;
   if EventId = '' then begin
@@ -384,16 +386,13 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    // Get before_value for rollback
-    RollbackPath := DB.ExecuteScalar(
-      'SELECT before_value FROM artifactos.auto_tune_event WHERE id=''' + EventId + '''');
-
+    var Params := '{"id":"' + EventId + '"}';
     // Set effective_to to now — disabling the auto-tune
-    DB.Execute(
+    DB.ExecuteJson(
       'UPDATE artifactos.auto_tune_event SET ' +
       '  effective_to=now(), ' +
       '  metadata=jsonb_set(COALESCE(metadata,''{}''), ''{human_action}'', ''"rejected"'') ' +
-      'WHERE id=''' + EventId + '''');
+      'WHERE id=:id::uuid', Params);
   finally
     DB.Disconnect;
   end;
@@ -429,13 +428,14 @@ begin
   DB.Connect;
   try
     // Store human negotiation feedback in metadata
-    DB.Execute(
+    var Params := '{"id":"' + FCurrentEventId + '", "fb":"' + Feedback + '"}';
+    DB.ExecuteJson(
       'UPDATE artifactos.auto_tune_event SET ' +
       '  requires_human_review=true, ' +
       '  metadata=jsonb_set(jsonb_set(COALESCE(metadata,''{}''), ' +
       '    ''{human_action}'', ''"negotiated"''), ' +
-      '    ''{negotiation_feedback}'', to_jsonb(' + QuotedStr(Feedback) + '::text)) ' +
-      'WHERE id=''' + FCurrentEventId + '''');
+      '    ''{negotiation_feedback}'', to_jsonb(:fb::text)) ' +
+      'WHERE id=:id::uuid', Params);
   finally
     DB.Disconnect;
   end;

@@ -9,6 +9,7 @@ uses
   FireDAC.Comp.Client, FireDAC.Stan.Def, FireDAC.Stan.Async, FireDAC.DApt,
   FireDAC.Phys.SQLite, FireDAC.Phys.SQLiteDef, FireDAC.Stan.Param,
   DeepAxis.Core.Base, DeepAxis.Core.DataTypes, DeepAxis.Core.Contracts,
+  DeepAxis.Pipeline.BodyZero,
   DeepAxis.WeChat.Adapter, DeepAxis.WeChat.Zstd;
 
 type
@@ -37,6 +38,10 @@ type
     FMsgDbCacheConns: TArray<TFDConnection>;
     FMsgDbCacheTables: TArray<TArray<string>>;  // parallel array: Msg_* tables per conn
     FMsgDbCacheReady: Boolean;
+    // ── Body-zero audit (BUG-051 #82) ────────────────────────────
+    // 真实记录正文列探测/正文读取/写库/UIA 计数, 供 P0c 门禁核验。
+    FAuditor: TBodyZeroAuditor;
+    procedure EnsureAuditor;
     procedure EnsureMsgDbCache;
     procedure FreeMsgDbCache;
     function ConnectToDb(const ADbPath: string; const AKeyBytes: TBytes): TFDConnection;
@@ -45,6 +50,7 @@ type
     function BuildContactQuery: string;
     function BuildMessageQuery(const ATableName: string): string;
     function BuildSessionQuery: string;
+    function BuildSessionTimeQuery: string;
     function RowToContact(const ARow: TDataSet): TContact;
     function RowToMessageMeta(const ARow: TDataSet): TMessageMeta;
     function RowToConversation(const ARow: TDataSet): TConversation;
@@ -67,6 +73,9 @@ type
     procedure Close;
     function IsOpen: Boolean;
     function GetAdapter: ISchemaAdapter;
+    function GetSessionLastMessageTime(const AContactId: string): Int64;
+    /// <summary>body-zero 审计报告 (BUG-051 #82): 真实反映正文探测/读取/写库/UIA。</summary>
+    function GetLastBodyZeroReport: TBodyZeroReport;
 
     /// <summary>
     ///   Batch: read messages for ALL contacts in one pass over all message DBs.
@@ -124,6 +133,7 @@ begin
   FContactIdToMsgTable := nil;
   FMsgDbCacheReady := False;
   FZstdDecompressor := TZstdDecompressor.Create;
+  EnsureAuditor;
 end;
 
 destructor TWeChatReader.Destroy;
@@ -131,7 +141,20 @@ begin
   FreeMsgDbCache;
   Close;
   FZstdDecompressor.Free;
+  FAuditor.Free;
   inherited;
+end;
+
+procedure TWeChatReader.EnsureAuditor;
+begin
+  if FAuditor = nil then
+    FAuditor := TBodyZeroAuditor.Create;
+end;
+
+function TWeChatReader.GetLastBodyZeroReport: TBodyZeroReport;
+begin
+  EnsureAuditor;
+  Result := FAuditor.GenerateReport;
 end;
 
 function TWeChatReader.ComputeMsgTableHash(const AUsername: string): string;
@@ -348,6 +371,12 @@ begin
     'FROM session';
 end;
 
+function TWeChatReader.BuildSessionTimeQuery: string;
+begin
+  // 仅取 username + last_message_time (供 GetSessionLastMessageTime 反查 ContactId 用)
+  Result := 'SELECT username, last_message_time FROM session';
+end;
+
 function TWeChatReader.RowToContact(const ARow: TDataSet): TContact;
 var
   LUsername: string;
@@ -373,7 +402,7 @@ begin
   Result.PrivacySource := psSystemGuess;
   Result.FirstSeen := 0;
   Result.LastSeen := 0;
-  Result.TagProfile := '{}';
+  // REMOVED: Result.TagProfile := '{}'; // TagProfile field removed - use parameterized fields instead
 
   // Keep only a stable hash of remark in P0. Raw remarks often contain PII.
   try
@@ -420,6 +449,10 @@ begin
   Result.IngestedAt := Now;
   Result.HasBodyColumn := True;
   Result.BodyQueried := True;
+  // BUG-051 #82: body-zero 审计 — 正文列已读取 (M1 授权模式, 真实计数)
+  EnsureAuditor;
+  FAuditor.RecordBodyColumnSeen;
+  FAuditor.RecordBodyColumnQueried('message_content');
 
   // Decompress message_content (zstd)
   LDecompressor := TZstdDecompressor(FZstdDecompressor);
@@ -824,6 +857,39 @@ end;
 function TWeChatReader.GetScanCursors: TScanCursorArray;
 begin
   Result := nil;
+end;
+
+function TWeChatReader.GetSessionLastMessageTime(const AContactId: string): Int64;
+var
+  LConn: TFDConnection;
+  LQuery: TFDQuery;
+  LUsername: string;
+begin
+  // ContactId = SHA256Hex(username) 是单向 hash; session 表只有 username 列,
+  // 遍历每行 ComputeContactId 反查。返回 0 = 未找到/未开/异常 (判 srUnknown)。
+  Result := 0;
+  if not FIsOpen or (FSessionFile = '') or (AContactId = '') then Exit;
+
+  LConn := ConnectToDb(FSessionFile, nil);
+  try
+    LQuery := TFDQuery.Create(nil);
+    try
+      LQuery.Connection := LConn;
+      LQuery.SQL.Text := BuildSessionTimeQuery;
+      LQuery.Open;
+      while not LQuery.Eof do
+      begin
+        LUsername := LQuery.FieldByName('username').AsString;
+        if ComputeContactId(LUsername) = AContactId then
+          Exit(LQuery.FieldByName('last_message_time').AsLargeInt);
+        LQuery.Next;
+      end;
+    finally
+      LQuery.Free;
+    end;
+  finally
+    LConn.Free;
+  end;
 end;
 
 end.

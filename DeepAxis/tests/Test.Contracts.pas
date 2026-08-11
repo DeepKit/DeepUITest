@@ -1,4 +1,4 @@
-unit Test.Contracts;
+﻿unit Test.Contracts;
 
 interface
 
@@ -45,7 +45,8 @@ begin
   Assert.IsFalse(LContact.IsBusiness);
   Assert.IsTrue(LContact.IsUnknown);
   Assert.AreEqual('', LContact.DisplayNameHash);
-  Assert.AreEqual('', LContact.TagProfile);
+  Assert.AreEqual(0, LContact.AdCount);
+  Assert.AreEqual(0, LContact.ProductCount);
 end;
 
 procedure TTestContracts.TestContactPrivacy;

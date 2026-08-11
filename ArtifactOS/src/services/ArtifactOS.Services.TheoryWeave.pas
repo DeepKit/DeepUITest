@@ -716,7 +716,8 @@ begin
           'INSERT INTO artifactos.theory_mapping (contract_id, topic, entry_mode, intervention, mapping_kind, mapping_json) ' +
           'VALUES (' + Escape(AMapping.ContractId) + ', ' + Escape(AMapping.Topic) + ', ' +
           Escape(AMapping.EntryMode) + ', ' + Escape(AMapping.Intervention) + ', ' +
-          Escape(AMapping.MappingKind) + ', ' + Escape(MJ.ToJSON) + '::jsonb)');
+          Escape(AMapping.MappingKind) + ', ' + Escape(MJ.ToJSON) + '::jsonb) ' +
+          'RETURNING id::text');
       end
       else
       begin

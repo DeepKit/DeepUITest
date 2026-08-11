@@ -22,6 +22,8 @@
    - `13.worker-Worker协议-worker-contract.md` — 外部 worker 最小协议 v0。
    - `14.prompt-structured-output-Prompt结构化输出.md` — Agent 输出解析、校验、修复和重试策略。
    - `15.cost-usage-成本与用量-cost-usage.md` — 自用版用量记录与预算控制边界。
+   - `17.lessons-y2a-借鉴笔记-lessons.md` — 从 Y2A-Auto 借鉴的能力点与不借鉴清单（字幕QC/转码回退/通知/CookieCloud/并发限流等）。
+   - `18.pg-runtime-ArtifactOS生产任务与资产契约优化.md` — PG生产任务真相、lease/fencing、幂等候选和跨机资产URI开发要求。
 6. `11.e2e-端到端数据流实例.md` — 用一条完整示例验证字段和数据流是否能串起来。
 
 ## 历史评审材料
@@ -34,6 +36,7 @@
 - `review-report-2026-06-01.md` — 第一轮多专家评审报告。
 - `review-decisions-2026-06-01.md` — 已完成的逐项决策记录。
 - `better.md` — 8.4 → 9.5 的历史优化笔记。
+- `18.pg-runtime-ArtifactOS生产任务与资产契约优化.md`虽为新增优化要求，但由`BCW-D20260714-003`批准；实现前仍需与现有正式规格及真实schema做一致性校验。
 
 如果历史材料与正式规格冲突，以正式规格为准；历史材料只用于理解为什么做出某个决策。
 
@@ -45,6 +48,10 @@
 - `accuracy_report` 是脚本级准确性报告；Gate 2 QA 结果写入质量门控记录。
 - Worker 取消以 `CTRL-BREAK` 为主，`cancel_file` 为辅。
 - StepFun（正文技术语境）与阶跃星辰（文档标题/元数据）是同一 provider 的不同称呼。
+- 字幕 QC 采用「规则硬拦截 + AI 抽样复核」两层架构，规则层不调 LLM，边界样本才抽样（见 `05.audio` 3.1、`17.lessons-y2a`）。
+- 转码优先 HEVC 硬编，失败自动回退 `libx264`（H.264）；生产与上传并发分离限流（见 `04.video` 5.1、`09.engineer`）。
+- DeepFrames 字幕文本来自 script/shot，ASR 只产时间戳，不跑文本生成（借鉴 Y2A-Auto 时已剥离，见 `17.lessons-y2a`）。
+- DeepFrames 支持自有/授权外部视频导入（`external_video_import` adapter）：下载走 yt-dlp 全站 + 本地文件，ASR 转写走 StepFun，产出 `source_document` 接入原创生产线；合规参数化、默认全自动、不设授权硬门（程序自用，用户自担合规）。不做未授权搬运（C 类）；不引入 YouTube 监控（后置）。
 
 ## 已确认战略决策索引
 

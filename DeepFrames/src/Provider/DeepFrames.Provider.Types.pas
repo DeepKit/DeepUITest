@@ -8,6 +8,19 @@ unit DeepFrames.Provider.Types;
 
 interface
 
+const
+  /// <summary>
+  /// Stub-mode markers. Providers fall back to stub output when no API key is
+  /// configured (ProviderStatus = psDegraded). These constants centralise the
+  /// scattered 'stub' string literals so the marker is consistent across
+  /// Agnes/Gemini/StepFun and downstream consumers can detect stub output
+  /// by comparing against STUB_STATUS_MARKER rather than a magic string.
+  /// DBA-3 残留「stub 未集中」收敛点。
+  /// </summary>
+  STUB_STATUS_MARKER = 'stub';        // JSON 'status' field value marking stub output
+  STUB_PROMPT_SUFFIX  = ' (stub)';    // RevisedPrompt suffix tagging stub image results
+  STUB_ASSET_PREFIX   = 'stub_';      // shared prefix for stub asset filenames/URIs
+
 type
   /// <summary>LLM chat completion result — token usage.</summary>
   TTokenUsage = record
@@ -29,7 +42,7 @@ type
   end;
 
   /// <summary>Set of capabilities a provider advertises.</summary>
-  TProviderCapabilities = set of (pcLLM, pcTTS, pcASR, pcImageGen, pcImageEdit);
+  TProviderCapabilities = set of (pcLLM, pcTTS, pcASR, pcImageGen, pcImageEdit, pcVideoGen);
 
   /// <summary>Result of a TTS synthesis call (returned by any TTS provider).</summary>
   TTtsSynthesisResult = record
@@ -107,6 +120,28 @@ type
     RevisedPrompt: string;    // model-optimized version of prompt
   end;
 
+  /// <summary>Video generation request.</summary>
+  TVideoGenRequest = record
+    Prompt: string;
+    ImageUrl: string;          // optional: reference image URL for img2video
+    Width: Integer;            // 0 = API default
+    Height: Integer;           // 0 = API default
+    DurationSec: Double;       // 0 = API default
+  end;
+
+  /// <summary>Video generation result.</summary>
+  TVideoGenResult = record
+    OutputUri: string;         // saved video file path
+    VideoUrl: string;          // remote URL (before download or if download skipped)
+    TaskId: string;
+    Status: string;            // queued | processing | completed | failed
+    DurationSec: Double;
+    Width: Integer;
+    Height: Integer;
+    Format: string;            // mp4
+    OutputSizeBytes: Int64;
+  end;
+
 function ProviderCapabilitiesToStr(const Caps: TProviderCapabilities): string;
 function ProviderStatusToStr(const Status: TProviderStatus): string;
 
@@ -128,6 +163,8 @@ begin
     Result := Result + 'ImageGen,';
   if pcImageEdit in Caps then
     Result := Result + 'ImageEdit,';
+  if pcVideoGen in Caps then
+    Result := Result + 'VideoGen,';
   if Result <> '' then
     SetLength(Result, Length(Result) - 1)
   else

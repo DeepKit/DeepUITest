@@ -20,6 +20,8 @@ implementation
 uses
   System.SysUtils,
   System.JSON,
+  System.IOUtils,
+  DeepBase.Manager,
   DeepFrames.Domain.Project,
   DeepFrames.Persistence.Repository,
   DeepFrames.Workflow.GateEvaluator,
@@ -141,10 +143,12 @@ begin
 
     if SameText(TargetPlatform, PLATFORM_BILIBILI) then
       ExportResult := TPackageExporter.ExportBilibiliPackage(
-        Pkg, StubManifest, StubVIR, StubVJob, ExportAssets, BiliMeta, 'packages')
+        Pkg, StubManifest, StubVIR, StubVJob, ExportAssets, BiliMeta,
+        TPath.Combine(DeepBase.Manager.DeepBase.RootPath, 'packages'))
     else
       ExportResult := TPackageExporter.ExportAudioPackage(
-        Pkg, StubManifest, ExportAssets, 'packages');
+        Pkg, StubManifest, ExportAssets,
+        TPath.Combine(DeepBase.Manager.DeepBase.RootPath, 'packages'));
 
     if not ExportResult.Success then
       raise Exception.Create('Package export failed: ' + ExportResult.ErrorMessage);

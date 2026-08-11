@@ -1,14 +1,15 @@
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{C1D2E3F4-A5B6-7890-CDEF-123456789002}</ProjectGuid>
         <MainSource>DeepUITestRunner.dpr</MainSource>
+        <Icon_MainIcon>DeepUITest.ico</Icon_MainIcon>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
         <ProjectName Condition="'$(ProjectName)'==''">DeepUITestRunner</ProjectName>
         <TargetedPlatforms>2</TargetedPlatforms>
         <AppType>Application</AppType>
         <FrameworkType>None</FrameworkType>
-        <ProjectVersion>20.4</ProjectVersion>
+        <ProjectVersion>12.0</ProjectVersion>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
@@ -39,7 +40,7 @@
         <DCC_Namespace>System;Winapi;Xml;Data;$(DCC_Namespace)</DCC_Namespace>
         <DCC_DcuOutput>.\dcu</DCC_DcuOutput>
         <DCC_ExeOutput>.\bin</DCC_ExeOutput>
-        <DCC_UnitSearchPath>src;D:\_Progs\02Business\DeepBase\Core;D:\_Progs\02Business\DeepBase\Persistence;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>src;..\DeepBase\Core;..\DeepBase\Persistence;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win64)'!=''">
         <BT_BuildType>Debug</BT_BuildType>

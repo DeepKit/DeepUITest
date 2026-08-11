@@ -14,29 +14,11 @@ type
   /// </summary>
   TTagSuggestion = record
     ContactId: string;
-    Action: string;      // merge/clean/extract
-    Detail: string;      // 建议详情
+    Action: string;      // merge/clean/extract/add/product_match
+    Detail: string;      // 建议详情 (自然语言, 展示用)
     Confidence: Double;
-  end;
-
-  TTagManager = class
-  private
-    function ExtractPhone(const AText: string): TArray<string>;
-    function ExtractAmount(const AText: string): TArray<string>;
-    function ExtractDate(const AText: string): TArray<string>;
-    function ExtractChannel(const AText: string): string;
-  public
-    /// <summary>检测相似标签（建议合并）</summary>
-    function DetectSimilarLabels(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
-
-    /// <summary>检测备注中可提取的信息</summary>
-    function AnalyzeRemarks(const AContact: TContact): TArray<TTagSuggestion>;
-
-    /// <summary>检测空备注（建议补充）</summary>
-    function DetectEmptyRemarks(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
-
-    /// <summary>生成标签整理建议报告</summary>
-    function GenerateReport(const AContacts: TArray<TContact>): string;
+    Field: string;       // 标准备注字段名 (渠道/成交/产品/电话/金额/标签建议/备注补全), 供 L2a 写回
+    Value: string;       // 字段值 (如 '小红书' / '0520' / '合并A到B'); add 类为空, 由 UI 补全
   end;
 
   /// <summary>
@@ -66,10 +48,48 @@ type
     function GetProductNames: TArray<string>;
   end;
 
+  TTagManager = class
+  private
+    FProductFactCard: TProductFactCard;
+    function ExtractPhone(const AText: string): TArray<string>;
+    function ExtractAmount(const AText: string): TArray<string>;
+    function ExtractDate(const AText: string): TArray<string>;
+    function ExtractChannel(const AText: string): string;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    /// <summary>检测相似标签（建议合并）</summary>
+    function DetectSimilarLabels(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
+
+    /// <summary>检测备注中可提取的信息（电话/金额/日期/渠道 + 已知产品匹配）</summary>
+    function AnalyzeRemarks(const AContact: TContact): TArray<TTagSuggestion>;
+
+    /// <summary>检测空备注（建议补充）</summary>
+    function DetectEmptyRemarks(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
+
+    /// <summary>生成标签整理建议报告（文本摘要）</summary>
+    function GenerateReport(const AContacts: TArray<TContact>): string;
+
+    /// <summary>生成 L0 只读分析报告 — 结构化建议列表（供 L1 面板展示）。
+    ///  聚合 DetectSimilarLabels + DetectEmptyRemarks + AnalyzeRemarks 三类 L0 建议。
+    ///  docs/08 §1 L0: 只分析本地数据, 不产生任何对微信的变更。</summary>
+    function GenerateL0Report(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
+
+    /// <summary>产品事实卡 (话术引擎变量来源), 无产品库时为空</summary>
+    property ProductFactCard: TProductFactCard read FProductFactCard;
+
+    /// <summary>L2a 写回辅助: 在原备注末尾追加标准化字段 ┊{Field}:{Value}。
+    ///  docs/08 §3.3 格式; §3.2 安全约束: 不改用户原文(只 append)、不覆盖写入(同字段已存在则原样返回)。
+    ///  AValue 为空时原样返回 (add 类由 UI 弹框补全后再调)。</summary>
+    class function BuildAppendRemark(const AOrigRemark, AField, AValue: string): string; static;
+  end;
+
   /// <summary>
   ///   轻量订单信号 — 从备注和聊天元数据中提取订单状态。
   ///   P0: 从备注中正则提取日期/金额信号。
   ///   P2+: 从消息内容中提取。
+  ///   TODO(P2): 无真实订单数据源, 现仅从备注正则提取; 接入订单 DB 后扩展 ExtractOrderFromRemark。
   /// </summary>
   TOrderSignal = record
     ContactId: string;
@@ -99,16 +119,31 @@ implementation
 
 { TTagManager }
 
+constructor TTagManager.Create;
+begin
+  inherited;
+  FProductFactCard := TProductFactCard.Create;
+  // 无产品库数据源, FProductFactCard 暂为空; FindProduct 对空库返回 Default(TProductFact), 安全。
+  // TODO(P1+): 接入产品库后调用 FProductFactCard.AddProduct 加载真实产品。
+end;
+
+destructor TTagManager.Destroy;
+begin
+  FProductFactCard.Free;
+  inherited;
+end;
+
 function TTagManager.ExtractPhone(const AText: string): TArray<string>;
 var
   LMatch: TMatch;
 begin
   Result := nil;
-  LMatch := TRegEx.Match(AText, '\b1[3-9]\d{9}\b');
+  // 电话: 1[3-9] 开头 + 9 位数字. 中文环境 \b 不可靠, 用非数字边界限定, 取捕获组1
+  LMatch := TRegEx.Match(AText, '(?:^|[^0-9])(1[3-9]\d{9})(?:[^0-9]|$)');
   while LMatch.Success do
   begin
     SetLength(Result, Length(Result) + 1);
-    Result[High(Result)] := LMatch.Value;
+    Result[High(Result)] := LMatch.Groups[1].Value;
     LMatch := LMatch.NextMatch;
   end;
 end;
@@ -118,7 +153,8 @@ var
   LMatch: TMatch;
 begin
   Result := nil;
-  LMatch := TRegEx.Match(AText, '\b\d+\.?\d*\s*[元块]\b');
+  // 去掉末尾 \b — "元"是中文, 其后无 \w 词边界
+  LMatch := TRegEx.Match(AText, '\d+\.?\d*\s*[元块]');
   while LMatch.Success do
   begin
     SetLength(Result, Length(Result) + 1);
@@ -175,6 +211,8 @@ begin
           LSugg.Action := 'merge';
           LSugg.Detail := Format('标签"%s"和"%s"相似，建议合并', [LContact.WeChatLabels[I], LContact.WeChatLabels[J]]);
           LSugg.Confidence := 0.8;
+          LSugg.Field := '标签建议';
+          LSugg.Value := Format('合并%s到%s', [LContact.WeChatLabels[I], LContact.WeChatLabels[J]]);
           SetLength(Result, Length(Result) + 1);
           Result[High(Result)] := LSugg;
         end;
@@ -199,6 +237,8 @@ begin
     LSugg.Action := 'extract';
     LSugg.Detail := Format('备注中发现电话: %s', [S]);
     LSugg.Confidence := 0.9;
+    LSugg.Field := '电话';
+    LSugg.Value := S;
     SetLength(Result, Length(Result) + 1); Result[High(Result)] := LSugg;
   end;
 
@@ -209,6 +249,8 @@ begin
     LSugg.Action := 'extract';
     LSugg.Detail := Format('备注中发现金额: %s', [S]);
     LSugg.Confidence := 0.85;
+    LSugg.Field := '金额';
+    LSugg.Value := S;
     SetLength(Result, Length(Result) + 1); Result[High(Result)] := LSugg;
   end;
 
@@ -219,6 +261,8 @@ begin
     LSugg.Action := 'extract';
     LSugg.Detail := Format('备注中发现日期: %s', [S]);
     LSugg.Confidence := 0.85;
+    LSugg.Field := '成交';
+    LSugg.Value := S;
     SetLength(Result, Length(Result) + 1); Result[High(Result)] := LSugg;
   end;
 
@@ -229,8 +273,64 @@ begin
     LSugg.Action := 'extract';
     LSugg.Detail := Format('备注中发现渠道: %s', [LChannel]);
     LSugg.Confidence := 0.8;
+    LSugg.Field := '渠道';
+    LSugg.Value := LChannel;
     SetLength(Result, Length(Result) + 1); Result[High(Result)] := LSugg;
   end;
+
+  // 产品事实卡匹配 — 若备注中出现已知产品名, 标注关联产品 (无产品库时跳过)
+  for S in FProductFactCard.GetProductNames do
+    if Pos(S, AContact.Remark) > 0 then
+    begin
+      LSugg.ContactId := AContact.ContactId;
+      LSugg.Action := 'product_match';
+      LSugg.Detail := Format('备注匹配已知产品: %s', [S]);
+      LSugg.Confidence := 0.85;
+      LSugg.Field := '产品';
+      LSugg.Value := S;
+      SetLength(Result, Length(Result) + 1); Result[High(Result)] := LSugg;
+    end;
+end;
+
+function TTagManager.GenerateL0Report(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
+var
+  LSugg: TTagSuggestion;
+  LContact: TContact;
+  LRemarks: TArray<TTagSuggestion>;
+begin
+  Result := nil;
+  // 1. 相似标签建议 (merge)
+  for LSugg in DetectSimilarLabels(AContacts) do
+  begin
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := LSugg;
+  end;
+  // 2. 空备注建议 (add)
+  for LSugg in DetectEmptyRemarks(AContacts) do
+  begin
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := LSugg;
+  end;
+  // 3. 逐个联系人备注提取 (extract + product_match)
+  for LContact in AContacts do
+  begin
+    LRemarks := AnalyzeRemarks(LContact);
+    for LSugg in LRemarks do
+    begin
+      SetLength(Result, Length(Result) + 1);
+      Result[High(Result)] := LSugg;
+    end;
+  end;
+end;
+
+class function TTagManager.BuildAppendRemark(const AOrigRemark, AField, AValue: string): string;
+begin
+  // docs/08 §3.2 安全约束: 不覆盖写入 — 同字段已存在则原样返回 (不重复加, 不改原值)
+  if AValue = '' then
+    Exit(AOrigRemark);
+  if Pos('┊' + AField + ':', AOrigRemark) > 0 then
+    Exit(AOrigRemark);
+  Result := AOrigRemark + '┊' + AField + ':' + AValue;
 end;
 
 function TTagManager.DetectEmptyRemarks(const AContacts: TArray<TContact>): TArray<TTagSuggestion>;
@@ -246,6 +346,8 @@ begin
       LSugg.Action := 'add';
       LSugg.Detail := Format('联系人"%s"备注为空，建议补充信息', [LContact.DisplayNameRedacted]);
       LSugg.Confidence := 0.9;
+      LSugg.Field := '备注补全';
+      LSugg.Value := '';
       SetLength(Result, Length(Result) + 1);
       Result[High(Result)] := LSugg;
     end;

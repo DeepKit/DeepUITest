@@ -1,4 +1,4 @@
-{ ============================================================================
+﻿{ ============================================================================
   DeepSpec.Delphi.DfmParser
 
   Lightweight DFM (Delphi Form) text parser. Extracts form/control hierarchy

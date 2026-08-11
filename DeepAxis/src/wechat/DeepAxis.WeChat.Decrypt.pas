@@ -52,6 +52,16 @@ type
     class function DeriveKeys(const ARawKeyHex, ASaltHex: string;
       out AAesKey, AMacKey: TBytes): Boolean;
 
+    /// <summary>字节版密钥派生：原始 32 字节密钥 + 16 字节 salt → AES 密钥 + MAC 密钥。
+    ///   与 DeriveKeys 相同算法，但接受原始字节 (供实时抓取的候选密钥校验用)。</summary>
+    class function DeriveKeysFromBytes(const ARawKey, ASalt: TBytes;
+      out AAesKey, AMacKey: TBytes): Boolean;
+
+    /// <summary>用数据库第一页 (完整 4096 字节) 校验候选原始密钥字节。
+    ///   salt 取自 APage1 前 16 字节。校验通过说明该 32 字节即为正确 enc_key。
+    ///   算法与 probe_v4.py verify_key_bytes 一致 (PBKDF2-HMAC-SHA512 2 轮 + 页 HMAC)。</summary>
+    class function VerifyKeyBytesAgainstPage1(const AKeyBytes, APage1: TBytes): Boolean;
+
     /// <summary>Verify a key by decrypting and checking first page</summary>
     class function VerifyKey(const ADbPath: string;
       const AKeyHex, ASaltHex: string): Boolean;
@@ -322,21 +332,18 @@ begin
   Result := FTempDir;
 end;
 
-class function TWeChatDecryptor.DeriveKeys(const ARawKeyHex, ASaltHex: string;
+class function TWeChatDecryptor.DeriveKeysFromBytes(const ARawKey, ASalt: TBytes;
   out AAesKey, AMacKey: TBytes): Boolean;
 var
   hSha512: BCRYPT_ALG_HANDLE;
-  LRawKey, LSalt, LMacSalt: TBytes;
+  LMacSalt: TBytes;
   I: Integer;
 begin
   Result := False;
-  if (Length(ARawKeyHex) <> 64) or (Length(ASaltHex) <> 32) then
+  if (Length(ARawKey) <> KEY_SIZE) or (Length(ASalt) <> SALT_SIZE) then
     Exit;
 
-  LRawKey := HexToBytes(ARawKeyHex);
-  LSalt := HexToBytes(ASaltHex);
-
-  AAesKey := Copy(LRawKey);
+  AAesKey := Copy(ARawKey);
   SetLength(AMacKey, KEY_SIZE);
 
   if not IsNTSTATUS_Success(
@@ -346,9 +353,9 @@ begin
 
   try
     // MAC salt = salt XOR 0x3a
-    SetLength(LMacSalt, Length(LSalt));
-    for I := 0 to Length(LSalt) - 1 do
-      LMacSalt[I] := LSalt[I] xor $3a;
+    SetLength(LMacSalt, Length(ASalt));
+    for I := 0 to Length(ASalt) - 1 do
+      LMacSalt[I] := ASalt[I] xor $3a;
 
     // PBKDF2-HMAC-SHA512(AES key, mac_salt, 2) → MAC key
     if not IsNTSTATUS_Success(
@@ -361,6 +368,30 @@ begin
   finally
     BCryptCloseAlgorithmProvider(hSha512, 0);
   end;
+end;
+
+class function TWeChatDecryptor.VerifyKeyBytesAgainstPage1(
+  const AKeyBytes, APage1: TBytes): Boolean;
+var
+  LAesKey, LMacKey, LSalt: TBytes;
+begin
+  Result := False;
+  if (Length(AKeyBytes) <> KEY_SIZE) or (Length(APage1) < PAGE_SIZE) then
+    Exit;
+  LSalt := Copy(APage1, 0, SALT_SIZE);
+  if not DeriveKeysFromBytes(AKeyBytes, LSalt, LAesKey, LMacKey) then
+    Exit;
+  Result := VerifyPageHmac(Copy(APage1, 0, PAGE_SIZE), LMacKey, 1);
+end;
+
+class function TWeChatDecryptor.DeriveKeys(const ARawKeyHex, ASaltHex: string;
+  out AAesKey, AMacKey: TBytes): Boolean;
+begin
+  Result := False;
+  if (Length(ARawKeyHex) <> 64) or (Length(ASaltHex) <> 32) then
+    Exit;
+  Result := DeriveKeysFromBytes(HexToBytes(ARawKeyHex), HexToBytes(ASaltHex),
+    AAesKey, AMacKey);
 end;
 
 class function TWeChatDecryptor.VerifyKey(const ADbPath: string;

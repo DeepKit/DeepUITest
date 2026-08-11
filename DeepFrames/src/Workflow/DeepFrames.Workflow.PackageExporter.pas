@@ -112,10 +112,25 @@ uses
 
 class function TPackageExporter.WritePackageFile(const ABaseDir, ARelativePath,
   AContent: string): string;
+var
+  FullPath: string;
+  Dir: string;
 begin
-  Result := TPath.Combine(ABaseDir, ARelativePath);
-  ForceDirectories(TPath.GetDirectoryName(Result));
-  TFile.WriteAllText(Result, AContent, TEncoding.UTF8);
+  FullPath := TPath.Combine(ABaseDir, ARelativePath);
+  Dir := TPath.GetDirectoryName(FullPath);
+  // ForceDirectories may fail silently on mixed separators; use TDirectory
+  if not TDirectory.Exists(Dir) then
+    TDirectory.CreateDirectory(Dir);
+  if not TDirectory.Exists(Dir) then
+    raise Exception.CreateFmt('WritePackageFile: cannot create directory %s', [Dir]);
+  try
+    TFile.WriteAllText(FullPath, AContent, TEncoding.UTF8);
+  except
+    on E: Exception do
+      raise Exception.CreateFmt('WritePackageFile failed: %s (file=%s)',
+        [E.Message, FullPath]);
+  end;
+  Result := FullPath;
 end;
 
 class function TPackageExporter.VerifySourceTrace(const APackage: TCandidatePackage;

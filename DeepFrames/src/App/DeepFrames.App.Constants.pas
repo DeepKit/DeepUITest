@@ -14,6 +14,7 @@ const
   CMD_VIDEO_CHAIN_RUN = 'deepframes.video_chain.run';
   CMD_PACKAGE_CHAIN_RUN = 'deepframes.package_chain.run';
   CMD_EXTENSION_CHAIN_RUN = 'deepframes.extension_chain.run';
+  CMD_FULL_PIPELINE_RUN = 'deepframes.full_pipeline.run';
   CMD_PROVIDER_SWITCH = 'deepframes.provider.switch';
 
   SETTINGS_PAGE_GENERAL = 'deepframes.settings.general';

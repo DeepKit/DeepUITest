@@ -311,20 +311,23 @@ begin
     try
       if ARef.Kind = 'case' then
       begin
-        var Status := ArtifactOS_DB.ExecuteScalar(
-          'SELECT status FROM artifactos.case_record WHERE id=''' + ARef.Id + '''');
+        var Params := '{"id":"' + ARef.Id + '"}';
+        var Status := ArtifactOS_DB.ExecuteScalarJson(
+          'SELECT status FROM artifactos.case_record WHERE id=:id::uuid', Params);
         AddProp('Status', Status, 'Case status');
       end
       else if ARef.Kind = 'package' then
       begin
-        var Status := ArtifactOS_DB.ExecuteScalar(
-          'SELECT status FROM artifactos.publication_package WHERE id=''' + ARef.Id + '''');
+        var Params := '{"id":"' + ARef.Id + '"}';
+        var Status := ArtifactOS_DB.ExecuteScalarJson(
+          'SELECT status FROM artifactos.publication_package WHERE id=:id::uuid', Params);
         AddProp('Status', Status, 'Package status');
       end
       else if ARef.Kind = 'contract' then
       begin
-        var Status := ArtifactOS_DB.ExecuteScalar(
-          'SELECT contract_status FROM artifactos.artifact_contract WHERE id=''' + ARef.Id + '''');
+        var Params := '{"id":"' + ARef.Id + '"}';
+        var Status := ArtifactOS_DB.ExecuteScalarJson(
+          'SELECT contract_status FROM artifactos.artifact_contract WHERE id=:id::uuid', Params);
         AddProp('Status', Status, 'Contract status');
       end;
     finally
