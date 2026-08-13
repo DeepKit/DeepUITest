@@ -90,7 +90,7 @@ uses
 }
 ```
 
-### 第2 步：执行工作流?
+### 第2 步：执行工作流
 
 ```pascal
 procedure TForm1.RunWorkflow;
@@ -99,10 +99,10 @@ var
   Executor: TWorkflowExecutor;
   Context: TWorkflowContext;
 begin
-   // 从文件加载定义?
+   // 从文件加载定义
   Definition := TWorkflowDefinition.FromFile('my_workflow.json');
   try
-     // 创建执行器?
+     // 创建执行器
     Executor := TWorkflowExecutor.Create(Definition);
     try
       // 创建带有输入变量的上下文
@@ -131,7 +131,7 @@ end;
 
 ## 添加 LLM 集成
 
-### 第1 步：更新工作流?
+### 第1 步：更新工作流
 
 ```json
 {
@@ -176,7 +176,7 @@ end;
 }
 ```
 
-### 第2 步：注册 LLM 执行器?
+### 第2 步：注册 LLM 执行器
 
 ```pascal
 uses
@@ -184,7 +184,7 @@ uses
 
 procedure TForm1.InitializeWorkflow;
 begin
-   // 注册 LLM 动作执行器?
+   // 注册 LLM 动作执行器
   RegisterLLMExecutor(Executor, LLMClient);
 end;
 ```

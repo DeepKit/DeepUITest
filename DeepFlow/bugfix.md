@@ -130,7 +130,7 @@ Inc(LRecord.Count) 替换为
 - **发现/修复日期**: 2025-12-05
 - **严重程度**: Low
 - **影响范围**: UniFlow.Performance.Pool.pas
-- **问题描述**: `TotalAcquired = 0` 时除法?
+- **问题描述**: `TotalAcquired = 0` 时除法。
 - **修复方案**: 添加除零保护
 
 ---
@@ -183,17 +183,17 @@ Inc(LRecord.Count) 替换为
 - **发现/修复日期**: 2025-12-05
 - **严重程度**: High (Memory)
 - **影响范围**: UniFlow.Workflow.Executor.pas
-- **问题描述**: `ExecuteAction`/`ExecuteCondition` 等缺少异常保护?
+- **问题描述**: `ExecuteAction`/`ExecuteCondition` 等缺少异常保护？
 - **修复方案**: 添加 `try-except` 保护，异常时释放已创建的结果
 
-### BUG-052: CODE-005 子工作流变量污染父上下文 污染?
+### BUG-052: CODE-005 子工作流变量污染父上下文 污染
 - **发现/修复日期**: 2025-12-05
 - **严重程度**: Medium
 - **影响范围**: UniFlow.Workflow.Executor.pas
-- **问题描述**: 子工作流变量可能泄漏到父上下文?
-- **修复方案**: 子工作流创建独立上下文?`TWorkflowContext`，仅显式传递输入?输出
+- **问题描述**: 子工作流变量可能泄漏到父上下文？
+- **修复方案**: 子工作流创建独立上下文：`TWorkflowContext`，仅显式传递输入、输出
 
-### BUG-053: SEC-004 Skill 服务缺少身份认证 认证?
+### BUG-053: SEC-004 Skill 服务缺少身份认证 认证
 - **发现/修复日期**: 2025-12-05
 - **严重程度**: Medium (Security)
 - **影响范围**: UniFlow.Skill.Client.pas
@@ -201,10 +201,10 @@ Inc(LRecord.Count) 替换为
 - **修复方案**: 
   - 新增 `TSkillAuthType` 枚举 (None/ApiKey/Bearer/Basic)
   - `TSkillClientConfig` 添加认证配置 (ApiKey/BearerToken/BasicAuth)
-  - `ApplyAuthentication` 方法在请求中添加认证头?
-  - 401/403 错误不重试直接抛出?
+  - `ApplyAuthentication` 方法在请求中添加认证头
+  - 401/403 错误不重试直接抛出
 
-### BUG-054: CODE-004 HTTP/重试超时硬编码?码?
+### BUG-054: CODE-004 HTTP/重试超时硬编码码
 - **发现/修复日期**: 2025-12-05
 - **严重程度**: Low
 - **影响范围**: UniFlow.Skill.Client.pas
@@ -212,45 +212,45 @@ Inc(LRecord.Count) 替换为
 - **修复方案**: 
   - `TSkillClientConfig` 新增高级配置 (RetryBackoffMultiplier/MaxRetryDelayMs/EnableRetryOnTimeout/EnableRetryOn5xx)
   - 添加 `LoadFromJSON`/`ToJSON`/`LoadFromFile`/`SaveToFile` 方法
-  - `CalculateRetryDelay` 实现指数退避算法?
+  - `CalculateRetryDelay` 实现指数退避算法
   - `ShouldRetry` 根据配置判断是否重试
 
-### BUG-055: ARCH-004 并行执行为串行实?行?
+### BUG-055: ARCH-004 并行执行为串行实现
 - **发现/修复日期**: 2025-12-06
 - **严重程度**: Medium (Architecture)
 - **影响范围**: UniFlow.Workflow.Executor.pas
 - **问题描述**: `ExecuteParallel` 使用串行实现，无法利用多核性能
-- **修复方案**: 使用 `TTask` 为每个分支创建独立上下文并行执行，支持?`FailFast/WaitAll`
+- **修复方案**: 使用 `TTask` 为每个分支创建独立上下文并行执行，支持：`FailFast/WaitAll`
 
-### BUG-056: QA-001 缺少核心单元测试 测试?
+### BUG-056: QA-001 缺少核心单元测试 测试
 - **发现/修复日期**: 2025-12-06
 - **严重程度**: Critical (QA)
 - **影响范围**: Tests
 - **问题描述**: 缺少 `Executor/Context/Definition` 核心单元测试
 - **修复方案**: 新增 `UniFlow.Tests.Executor.pas`，覆盖基础执行/条件/循环/并行/上下文等场景
 
-### BUG-057: UX-001 错误信息不够友好 友好?
+### BUG-057: UX-001 错误信息不够友好 友好
 - **发现/修复日期**: 2025-12-06
 - **严重程度**: High (UX)
 - **影响范围**: 错误展示
 - **问题描述**: 错误代码直出，缺少用户友好描述和建议
-- **修复方案**: 新增 `UniFlow.Workflow.Errors.pas` 提供友好错误映射、多语言与建议输出?
+- **修复方案**: 新增 `UniFlow.Workflow.Errors.pas` 提供友好错误映射、多语言与建议输出
 
-### BUG-058: ARCH-001 缺少依赖注入容器 容器?
+### BUG-058: ARCH-001 缺少依赖注入容器 容器
 - **发现/修复日期**: 2025-12-06
 - **严重程度**: Medium (Architecture)
 - **影响范围**: Core
 - **问题描述**: 组件创建硬编码，缺少统一依赖管理
-- **修复方案**: 新增 `UniFlow.DI.pas` 轻量级容器，支持单例/瞬时/工厂/作用域?
+- **修复方案**: 新增 `UniFlow.DI.pas` 轻量级容器，支持单例/瞬时/工厂/作用域
 
-### BUG-059: QA-002~004 边界/并发/恢复测试 缺陷?
+### BUG-059: QA-002~004 边界/并发/恢复测试 缺陷
 - **发现/修复日期**: 2025-12-06
 - **严重程度**: High (QA)
 - **影响范围**: Tests
-- **问题描述**: 缺少边界条件、并发场景、错误恢复测试?
+- **问题描述**: 缺少边界条件、并发场景、错误恢复测试
 - **修复方案**: 新增 `TBoundaryConditionTests`/`TConcurrencyTests`/`TErrorRecoveryTests` 测试套件
 
-### BUG-060: ARCH-003 Skill URL 配置硬编码?
+### BUG-060: ARCH-003 Skill URL 配置硬编码
 - **发现/修复日期**: 2025-12-06
 - **严重程度**: Low
 - **影响范围**: UniFlow.Skill.Executor.pas
@@ -538,7 +538,7 @@ Inc(LRecord.Count) 替换为
     - ServiceAccount / RBAC
     - Ingress (TLS + 限流)
 - PVC (持久化存储)
-  - `DeepFlow-worker.yaml` (~435 行?: Worker 部署
+  - `DeepFlow-worker.yaml` (~435 行: Worker 部署
     - Worker Deployment + HPA
     - Scheduler Deployment (单实例+ Leader Election)
     - Leader Election RBAC
@@ -551,12 +551,12 @@ Inc(LRecord.Count) 替换为
 - **内容**: 
   - 新建 `Deploy/helm/DeepFlow/` 目录
   - `Chart.yaml` Chart 定义 (依赖 PostgreSQL/Redis/RabbitMQ)
-  - `values.yaml` (~337 行?: 完整配置
+  - `values.yaml` (~337 行: 完整配置
     - API/Worker/Scheduler 配置
     - 应用配置 (Server/Workflow/Cache/Queue/Monitoring/Tracing/Security)
     - Secrets 配置 (Database/Redis/RabbitMQ/JWT/LLM)
     - 子图表配置(PostgreSQL/Redis/RabbitMQ)
-  - `templates/_helpers.tpl` (~282 行?: 模板助手函数
+  - `templates/_helpers.tpl` (~282 行: 模板助手函数
   - `templates/api-deployment.yaml` API Deployment 模板
   - `templates/service.yaml` / `templates/ingress.yaml`
   - `templates/hpa.yaml` / `templates/rbac.yaml`
@@ -568,7 +568,7 @@ Inc(LRecord.Count) 替换为
 - **影响范围**: Deploy
 - **内容**: 
   - 新建 `Deploy/istio/` 目录
-  - `DeepFlow-mesh.yaml` (~407 行?: Istio 配置
+  - `DeepFlow-mesh.yaml` (~407 行: Istio 配置
     - Gateway (HTTP/HTTPS 入口)
     - VirtualService (路由规则 + 重试 + 超时)
     - DestinationRule (负载均衡 + 熔断 + 子集)
@@ -586,18 +586,18 @@ Inc(LRecord.Count) 替换为
 - **影响范围**: Cloud
 - **内容**: 
   - 新建 `Source/Cloud/` 目录
-  - `UniFlow.Cloud.Telemetry.Types.pas` (~1507 行?: OTel 类型
+  - `UniFlow.Cloud.Telemetry.Types.pas` (~1507 行: OTel 类型
     - Trace 类型: TSpan / TTraceContext / TSpanEvent / TSpanLink
     - Metrics 类型: TCounter / TGauge / THistogramMetric
     - Logs 类型: TLogRecord / TLogSeverity
     - 资源配置: TResource / TExporterConfig / TSamplerConfig / TOTelConfig
     - 工作流属性 TWorkflowTraceAttributes / TWorkflowMetrics
-  - `UniFlow.Cloud.Telemetry.SDK.pas` (~1689 行?: OTel SDK
-    - TracerProvider / Tracer / 采样器?(AlwaysOn/Off/Ratio/ParentBased)
+  - `UniFlow.Cloud.Telemetry.SDK.pas` (~1689 行: OTel SDK
+    - TracerProvider / Tracer / 采样器 (AlwaysOn/Off/Ratio/ParentBased)
     - MeterProvider / Meter
     - LoggerProvider / Logger
     - 批处理处理器 (TBatchSpanProcessor)
-     - OTLP HTTP 导出器?(Traces/Metrics/Logs)
+     - OTLP HTTP 导出器 (Traces/Metrics/Logs)
     - 控制台导出器
     - TOpenTelemetry 全局单例
 
@@ -612,13 +612,13 @@ Inc(LRecord.Count) 替换为
 - **内容**: 
   - `UniFlow.AI.Recommendation.pas` (~2228 行
     - `TRecommendation` / `TUserPreferences` / `TWorkflowFeatures` 基础类型
-     - `TFeatureExtractor` 特征提取器?(执行频率/平均时间/错误率等)
+     - `TFeatureExtractor` 特征提取器 (执行频率/平均时间/错误率等)
     - `TCollaborativeFilter` 协同过滤推荐 (用户-物品矩阵)
-     - `TContentBasedRecommender` 基于内容推荐 (余弦相似度?
+     - `TContentBasedRecommender` 基于内容推荐 (余弦相似度)
     - `THybridRecommender` 混合推荐引擎
      - `TOptimizationAnalyzer` 优化建议分析 (并行处理/缓存/批处理/错误处理)
     - `TErrorPatternAnalyzer` 错误模式分析
-     - `TRecommendationService` 推荐服务 (模板/优化/类似工作流?
+     - `TRecommendationService` 推荐服务 (模板/优化/类似工作流)
     - `TTemplateRecommender` 模板推荐
 
 ### TASK-3011: 自然语言工作流生成器。
@@ -628,10 +628,10 @@ Inc(LRecord.Count) 替换为
 - **内容**: 
   - `UniFlow.AI.NLWorkflowGen.pas` (~1641 行
     - `TIntentType` / `TEntityType` / `TParsedIntent` 意图解析类型
-     - `TIntentParser` 意图解析器?(正则模式匹配)
-     - `TSkillDefinition` / `TSkillMatcher` Skill 匹配器?
-     - `TWorkflowGenerator` 基础工作流生成器 (意图→步骤?
-     - `TLLMWorkflowGenerator` LLM 增强生成器?(低置信度时调用?LLM)
+     - `TIntentParser` 意图解析器 (正则模式匹配)
+     - `TSkillDefinition` / `TSkillMatcher` Skill 匹配器
+     - `TWorkflowGenerator` 基础工作流生成器 (意图→步骤)
+     - `TLLMWorkflowGenerator` LLM 增强生成器 (低置信度时调用 LLM)
 - `TConversationalBuilder` 对话式工作流构建器
 - `TTemplateManager` 模板管理器
 
@@ -668,12 +668,12 @@ Inc(LRecord.Count) 替换为
      - `TBackoffType` 退避策略(Fixed/Linear/Exponential/Fibonacci/Decorrelated)
     - `IRetryStrategy` 重试策略接口
     - `TFixedDelayStrategy` / `TExponentialBackoffStrategy` / `TAdaptiveRetryStrategy`
-- `TCircuitBreaker` 熔断器状态?(Closed/Open/HalfOpen)
+ - `TCircuitBreaker` 熔断器状态 (Closed/Open/HalfOpen)
     - `TCircuitBreakerRegistry` 熔断器注册表
-- `TRetryExecutor` 重试执行器?(泛型执行)
-- `TSmartStrategySelector` 智能策略选择器?(历史分析+启发式)
+- `TRetryExecutor` 重试执行器(泛型执行)
+- `TSmartStrategySelector` 智能策略选择器(历史分析+启发式)
     - `TSmartRetryService` 智能重试服务
-- `TRetryStrategyBuilder` 策略构建器?(Fluent API)
+- `TRetryStrategyBuilder` 策略构建器(Fluent API)
 
 ---
 
@@ -714,8 +714,8 @@ Inc(LRecord.Count) 替换为
 - [x] 步骤执行流程测试
 - [x] 状态持久化测试
 - [x] 错误处理测试
-- [x] 编辑器单元测试?
-- [x] CI/CD 自动化测试?
+- [x] 编辑器单元测试
+- [x] CI/CD 自动化测试
 
 ---
 
@@ -784,7 +784,7 @@ Inc(LRecord.Count) 替换为
   - 例如：`值？` → `值？`,冒号缺失，行末字符塌缩等
   - 这是入库时即存在的已有损坏，之前未被 rename-identifiers.py 工具处理
 - **已发现示例**:
-  - `DeepFlow.AI.Adapter.pas`: `使用默认?` → 应为 `使用默认值`
+  - `DeepFlow.AI.Adapter.pas`: `使用默认值` → 应为 `使用默认值`
   - `DeepFlow.Workflow.Executor.pas`: `线性步骤执？` → 应为 `线性步骤执行`
 - **修复方案**: 
   - 需像 simple_qa.workflow.json 一样逐字语义还原
