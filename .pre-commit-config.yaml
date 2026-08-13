@@ -1,0 +1,32 @@
+# 编码污染门禁 — pre-commit 框架
+#
+# 拦截 UTF-8 文档编码签名损坏，防止污染进库：
+#   - U+FFFD(�)      ：批量替换脚本用错编码切断多字节汉字的标志（不可逆）
+#   - 汉字+?         ：LLM 语义重建把 U+FFFD 换成字面问号的占位残留
+#
+# 历史：f7a9b2f2 批量替换引入 2209 处 U+FFFD；469366d6 修 4 文件留 354 处 汉字+?；
+# 2026-08-13 全目录清零。此门禁是通用防线，防任何来源的污染再进库。
+#
+# 用法：
+#   pre-commit install            # 安装到 .git/hooks/pre-commit（提交时自动拦）
+#   pre-commit run --all-files    # 全量扫描（等效"CI 门禁"）
+#   pre-commit run --files <path> # 只查指定文件
+# 跳过（谨慎）：SKIP=block-ufffd,block-hanzi-qmark pre-commit run
+repos:
+  - repo: local
+    hooks:
+      - id: block-ufffd
+        name: "block U+FFFD (replacement char)"
+        entry: "�"
+        language: pygrep
+        types: [text]
+        files: '\.(md|markdown|txt|rst|tex)$'
+        exclude: '(^|/)HANDOFF-|_qmark_backup'
+
+      - id: block-hanzi-qmark
+        name: "block 汉字+? corruption"
+        entry: '[一-鿿]\?'
+        language: pygrep
+        types: [text]
+        files: '\.(md|markdown|txt|rst|tex)$'
+        exclude: '(^|/)HANDOFF-|_qmark_backup'

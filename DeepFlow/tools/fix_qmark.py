@@ -51,10 +51,9 @@ def write_file(path, text, has_bom):
     # LLM 有时会把 BOM 字符 '﻿' 复制进首行，写回时需剥离，避免重复 BOM
     if text.startswith('﻿'):
         text = text[1:]
-    data = text.encode('utf-8')
-    if has_bom:
-        data = b'\xef\xbb\xbf' + data
-    path.write_bytes(data)
+    # 受控写：显式 UTF-8 + 污染校验 + 原子写 + 写后重读（源头防线，防再引入 U+FFFD）
+    from safe_write import atomic_write_text
+    atomic_write_text(path, text, has_bom=has_bom)
 
 
 def find_bad_lines(lines):
