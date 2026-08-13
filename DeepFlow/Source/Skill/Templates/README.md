@@ -21,7 +21,7 @@
 
 ## Python HTTP Client
 
-HTTP 请求 Skill，支持自动重试、超时处理、响应解析�?
+HTTP 请求 Skill，支持自动重试、超时处理、响应解析。
 
 ### 安装
 
@@ -31,7 +31,7 @@ pip install requests
 
 ### 使用
 
-**命令�?**
+**命令：**
 ```bash
 python python-http-client.py \
   --url "https://api.example.com/users" \
@@ -65,22 +65,22 @@ python python-http-client.py \
 
 ## Python Data Transformer
 
-数据转换 Skill，支持数�?对象的各种操作�?
+数据转换 Skill，支持数组、对象的各种操作。
 
 ### 操作列表
 
 | 操作 | 描述 | 配置 |
 |------|------|------|
-| `map` | 映射转换 | `expression`: 表达�?(x, idx) |
-| `filter` | 过滤 | `condition`: 条件表达�?|
+| `map` | 映射转换 | `expression`: 表达式(x, idx) |
+| `filter` | 过滤 | `condition`: 条件表达式|
 | `reduce` | 聚合 | `operation`: sum/count/avg/min/max/join |
 | `sort` | 排序 | `key`: 排序字段, `reverse`: 是否降序 |
 | `group` | 分组 | `key`: 分组字段 |
-| `flatten` | 扁平�?| `depth`: 深度 |
+| `flatten` | 扁平化| `depth`: 深度 |
 | `unique` | 去重 | `key`: 去重字段 |
 | `pick` | 选取字段 | `fields`: 字段列表 |
 | `omit` | 排除字段 | `fields`: 字段列表 |
-| `rename` | 重命�?| `mapping`: {旧名: 新名} |
+| `rename` | 重命名| `mapping`: {旧名: 新名} |
 | `convert` | 格式转换 | `from`/`to`: json/csv/string |
 | `validate` | 数据验证 | `schema`: JSON Schema |
 
@@ -110,7 +110,7 @@ python python-data-transformer.py \
 
 ## Node.js File Utils
 
-文件操作 Skill，支持文件读写、目录管理、文件搜索�?
+文件操作 Skill，支持文件读写、目录管理、文件搜索。
 
 ### 操作列表
 
@@ -120,12 +120,12 @@ python python-data-transformer.py \
 | `write` | 写入文件 | `path`, `content` |
 | `delete` | 删除文件 | `path` |
 | `copy` | 复制文件 | `path`, `dest` |
-| `move` | 移动/重命�?| `path`, `dest` |
+| `move` | 移动/重命名| `path`, `dest` |
 | `info` | 获取文件信息 | `path` |
-| `list` | 列出目录 | `path` (可�? |
+| `list` | 列出目录 | `path` (可选) |
 | `mkdir` | 创建目录 | `path` |
 | `rmdir` | 删除目录 | `path` |
-| `exists` | 检查是否存�?| `path` |
+| `exists` | 检查是否存在| `path` |
 
 ### 示例
 
@@ -139,18 +139,18 @@ node nodejs-file-utils.js --action write --path "./output.txt" --content "Hello 
 # 列出目录
 node nodejs-file-utils.js --action list --path "./src" --options '{"recursive":true,"pattern":"*.js"}'
 
-# 检查文件是否存�?
+# 检查文件是否存在。
 node nodejs-file-utils.js --action exists --path "./README.md"
 ```
 
 ---
 
-## 创建自定�?Skill
+## 创建自定义 Skill
 
 1. 复制合适的模板
 2. 修改 `execute_skill()` 函数
 3. 添加业务逻辑
-4. 测试 CLI �?Skill 接口
+4. 测试 CLI 和 Skill 接口
 
 ### 模板结构
 
@@ -166,8 +166,8 @@ def execute_skill(input_data: Dict[str, Any]) -> Dict[str, Any]:
         {
             "success": True/False,
             "data": 结果数据,
-            "error": 错误�?(失败�?,
-            "message": 错误信息 (失败�?
+            "error": 错误信息 (失败时),
+            "message": 错误信息 (失败时)
         }
     """
     # 1. 验证输入
@@ -180,8 +180,8 @@ def execute_skill(input_data: Dict[str, Any]) -> Dict[str, Any]:
 
 ## 更多模板 (计划)
 
-- [ ] `python-database.py` - 数据库操�?(SQLite/MySQL/PostgreSQL)
-- [ ] `python-email.py` - 邮件发�?(SMTP)
+- [ ] `python-database.py` - 数据库操作(SQLite/MySQL/PostgreSQL)
+- [ ] `python-email.py` - 邮件发送(SMTP)
 - [ ] `python-ocr.py` - 图片文字识别
-- [ ] `nodejs-websocket.js` - WebSocket 客户�?
+- [ ] `nodejs-websocket.js` - WebSocket 客户端
 - [ ] `nodejs-queue.js` - 消息队列 (Redis/RabbitMQ)

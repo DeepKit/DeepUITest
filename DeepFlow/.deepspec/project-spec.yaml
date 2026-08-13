@@ -1,0 +1,26 @@
+﻿version: "1.0"
+project:
+  name: "DeepFlow"
+  path: "."
+  type: "delphi_vcl"
+  scan_time: "2026-08-09T16:25:46+08:00"
+
+summary:
+  total_nodes: 0
+  confirmed_nodes: 0
+  uncertain_nodes: 0
+  open_issues: 0
+  decisions_count: 0
+
+trees:
+  function_tree: "trees/function-tree.yaml"
+  module_tree: "trees/module-tree.yaml"
+  view_tree: "trees/view-tree.yaml"
+  data_tree: "trees/data-tree.yaml"
+
+relations: "relations/requirement-relations.yaml"
+evidence: "evidence/source-evidence.yaml"
+issues: "issues/doc-issues.yaml"
+decisions: "decisions/requirement-decisions.yaml"
+
+imports: []

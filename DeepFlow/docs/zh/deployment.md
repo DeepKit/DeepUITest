@@ -1,29 +1,29 @@
 ﻿# 生产部署指南
 
-使用 Docker、Kubernetes 和云平台部署 DeepFlow 到生产环境�?
+使用 Docker、Kubernetes 和云平台部署 DeepFlow 到生产环境中？
 
 ## 架构概览
 
 ```
-                    ┌─────────────────────�?
-                    �?   负载均衡�?      �?
-                    �?  (nginx/traefik)   �?
-                    └─────────┬───────────�?
-                              �?
-        ┌─────────────────────┼─────────────────────�?
-        �?                    �?                    �?
-        �?                    �?                    �?
-┌───────────────�?   ┌───────────────�?   ┌───────────────�?
-�?  DeepBase     �?   �?   Python     �?   �?  Node.js     �?
-�?  (Delphi)    �?   �?   Skills     �?   �?   Skills     �?
-└───────┬───────�?   └───────┬───────�?   └───────┬───────�?
-        �?                    �?                    �?
-        └─────────────────────┼─────────────────────�?
-                              �?
-                    ┌─────────▼───────────�?
-                    �?     数据�?        �?
-                    �? (SQLite/Postgres)  �?
-                    └─────────────────────�?
+                    ┌─────────────────────┐
+                    │   负载均衡│      │
+                    │  (nginx/traefik)   │
+                    └─────────┬───────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                    │                    │
+        │                    │                    │
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│  DeepBase     │   │   Python     │   │  Node.js     │
+│  (Delphi)    │   │   Skills     │   │   Skills     │
+└───────┬───────┘   └───────┬───────┘   └───────┬───────┘
+        │                    │                    │
+        └─────────────────────┼─────────────────────┘
+                              │
+                    ┌─────────▼───────────┐
+                    │     数据│        │
+                    │ (SQLite/Postgres)  │
+                    └─────────────────────┘
 ```
 
 ---
@@ -31,8 +31,8 @@
 ## 前置条件
 
 - Docker 24.0+
-- Docker Compose 2.20+（用�?Compose 部署�?
-- Kubernetes 1.28+（用�?K8s 部署�?
+- Docker Compose 2.20+（用 Docker Compose 部署）
+- Kubernetes 1.28+（用 K8s 部署）
 - 建议 4GB+ 内存
 
 ---
@@ -42,10 +42,10 @@
 ### 构建镜像
 
 ```bash
-# 构建所有服�?
+# 构建所有服务
 docker compose build
 
-# 或单独构�?
+# 或单独构建
 docker build -t deepflow-python-skills:latest ./Skills/Python
 docker build -t deepflow-node-skills:latest ./Skills/NodeJS
 ```
@@ -195,7 +195,7 @@ http {
             proxy_read_timeout 60s;
         }
 
-        # 健康检�?
+        # 健康检查
         location /health {
             return 200 'OK';
             add_header Content-Type text/plain;
@@ -487,10 +487,10 @@ spec:
         periodSeconds: 15
 ```
 
-### 部署�?Kubernetes
+### 部署到 Kubernetes
 
 ```bash
-# 应用所有配�?
+# 应用所有配置
 kubectl apply -f namespace.yaml
 kubectl apply -f configmap.yaml
 kubectl apply -f secrets.yaml
@@ -499,7 +499,7 @@ kubectl apply -f node-skills-deployment.yaml
 kubectl apply -f ingress.yaml
 kubectl apply -f hpa.yaml
 
-# 检查状�?
+# 检查状态
 kubectl get pods -n deepflow
 kubectl get svc -n deepflow
 kubectl get hpa -n deepflow
@@ -519,12 +519,12 @@ kubectl logs -f deployment/python-skills -n deepflow
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 
-# 数据�?
+# 数据库
 DATABASE_URL=postgresql://user:pass@host:5432/deepflow
-# 或使�?SQLite
+# 或使用 SQLite
 DATABASE_PATH=/data/deepflow.db
 
-# Redis（用于分布式会话�?
+# Redis（用于分布式会话缓存）
 REDIS_URL=redis://host:6379/0
 
 # 日志
@@ -536,9 +536,9 @@ LOG_FORMAT=json
 
 ```bash
 # 工作进程
-WORKERS=4                    # Gunicorn 工作进程数（CPU * 2 + 1�?
-MAX_REQUESTS=1000           # 工作进程重启前的请求�?
-MAX_REQUESTS_JITTER=50      # 防止同时重启的抖�?
+WORKERS=4                    # Gunicorn 工作进程数（CPU * 2 + 1）
+MAX_REQUESTS=1000           # 工作进程重启前的请求数
+MAX_REQUESTS_JITTER=50      # 防止同时重启的抖动
 TIMEOUT=60                  # 请求超时
 
 # 性能
@@ -582,24 +582,24 @@ app.get('/metrics', async (req, res) => {
 });
 ```
 
-### Grafana 仪表�?
+### Grafana 仪表盘
 
 监控的关键指标：
-- 请求速率和延迟（p50、p95、p99�?
-- 按端点的错误�?
+- 请求速率和延迟（p50、p95、p99%）
+- 按端点的错误率
 - CPU 和内存使用率
-- 活动连接�?
-- 工作流执行时�?
-- 步骤成功/失败�?
+- 活动连接数
+- 工作流执行时间
+- 步骤成功/失败数
 
-### 健康检�?
+### 健康检查
 
 ```bash
-# 检查所有服�?
+# 检查所有服务
 curl http://localhost/api/skills/python/health
 curl http://localhost/api/skills/node/health
 
-# Kubernetes 就绪状�?
+# Kubernetes 就绪状态
 kubectl get pods -n deepflow
 kubectl describe pod <pod-name> -n deepflow
 ```
@@ -645,7 +645,7 @@ spec:
 ### Pod 安全
 
 ```yaml
-# 添加到部�?spec
+# 添加到部署spec
 securityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -671,7 +671,7 @@ api_key_header = APIKeyHeader(name="X-API-Key")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
     if api_key != os.environ.get("API_KEY"):
-        raise HTTPException(status_code=403, detail="无效�?API 密钥")
+        raise HTTPException(status_code=403, detail="无效的 API 密钥")
     return api_key
 
 @app.post("/execute", dependencies=[Depends(verify_api_key)])
@@ -681,9 +681,9 @@ async def execute(request: SkillRequest):
 
 ---
 
-## 备份与恢�?
+## 备份与恢复
 
-### 数据库备�?
+### 数据库备份
 
 ```bash
 # PostgreSQL
@@ -702,7 +702,7 @@ find /backups -name "deepflow_*.sql.gz" -mtime +7 -delete
 ### Kubernetes 备份
 
 ```bash
-# 备份 Secrets �?ConfigMaps
+# 备份 Secrets 和 ConfigMaps
 kubectl get secret deepflow-secrets -n deepflow -o yaml > secrets-backup.yaml
 kubectl get configmap deepflow-config -n deepflow -o yaml > config-backup.yaml
 ```
@@ -715,23 +715,23 @@ kubectl get configmap deepflow-config -n deepflow -o yaml > config-backup.yaml
 
 **服务无法启动**
 ```bash
-# 检查日�?
+# 检查日志？
 docker compose logs python-skills
 kubectl logs -f deployment/python-skills -n deepflow
 
-# 检查资�?
+# 检查资源？
 docker stats
 kubectl top pods -n deepflow
 ```
 
-**高延�?*
+**高延性**
 ```bash
 # 检查连接池
-# 添加�?Python
+# 添加库到Python
 SQLALCHEMY_POOL_SIZE=10
 SQLALCHEMY_MAX_OVERFLOW=20
 
-# 检查超时设�?
+# 检查超时设置
 # 如需要则增加
 TIMEOUT=120
 ```
@@ -742,7 +742,7 @@ TIMEOUT=120
 pip install memory-profiler
 python -m memory_profiler main.py
 
-# Node.js 堆分�?
+# Node.js 堆分析
 node --inspect main.js
 # 连接 Chrome DevTools
 ```
@@ -767,7 +767,7 @@ DEBUG=* node src/index.js
 ### Python Skills
 
 ```python
-# 使用连接�?
+# 使用连接池
 from sqlalchemy import create_engine
 engine = create_engine(
     DATABASE_URL,
@@ -776,7 +776,7 @@ engine = create_engine(
     pool_pre_ping=True
 )
 
-# 尽可能使用异�?
+# 尽可能使用异步
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
@@ -837,22 +837,22 @@ def cached(ttl=300):
 
 ---
 
-## 检查清�?
+## 检查清单
 
-### 部署�?
+### 部署步骤
 
 - [ ] 所有环境变量已配置
-- [ ] SSL 证书已安�?
+- [ ] SSL 证书已安装
 - [ ] 数据库迁移已执行
 - [ ] 健康检查通过
-- [ ] 资源限制已设�?
-- [ ] 日志已配�?
-- [ ] 监控已启�?
+- [ ] 资源限制已设置
+- [ ] 日志已配置
+- [ ] 监控已启用
 
-### 部署�?
+### 部署步骤
 
-- [ ] 服务在端点正常响�?
+- [ ] 服务在端点正常响应
 - [ ] 指标正在收集
-- [ ] 告警已配�?
-- [ ] 备份计划已激�?
-- [ ] 文档已更�?
+- [ ] 告警已配置?
+- [ ] 备份计划已激活?
+- [ ] 文档已更新?

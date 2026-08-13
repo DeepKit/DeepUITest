@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-08-11T00:11:28.316882",
+  "problem": "封版审计：是否现在发布可鉴 v1.0.0 正式版？",
+  "context": {
+    "decision_type": "strategic",
+    "scope": "expansion/new-market/product"
+  },
+  "stages": {
+    "perspectives": 4,
+    "aggregated": true,
+    "film_generated": true
+  },
+  "results": {
+    "views": {
+      "coach": {
+        "key_insights_count": 2,
+        "questions_count": 3,
+        "degraded": true,
+        "degrade_reason": "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error. LiteLLM Retried: 2 times"
+      },
+      "critic": {
+        "degraded": true,
+        "degrade_reason": "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error. LiteLLM Retried: 2 times"
+      },
+      "mirror": {
+        "degraded": true,
+        "degrade_reason": "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error. LiteLLM Retried: 2 times"
+      },
+      "observer": {
+        "degraded": true,
+        "degrade_reason": "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error. LiteLLM Retried: 2 times"
+      }
+    },
+    "aggregated": {
+      "key_insights_count": 5,
+      "questions_count": 5,
+      "degraded": false,
+      "emotional_summary": {
+        "primary_emotion": "uncertainty",
+        "secondary_emotions": [
+          "hope",
+          "fear",
+          "excitement"
+        ],
+        "intensity": 0.7,
+        "notes": "情绪强度中等偏高，混合正向与负向情绪，反映典型的两难决策心理状态"
+      },
+      "views_count": 1
+    },
+    "film": {
+      "questions_count": 6,
+      "degraded": false
+    }
+  },
+  "statistics": {
+    "total_calls": 6,
+    "successful": 2,
+    "degraded": 4,
+    "errors": 0,
+    "total_time_ms": 118993.066
+  },
+  "total_elapsed_seconds": 118.995583
+}

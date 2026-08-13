@@ -148,8 +148,8 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 my_skill/
 ├── src/
-�?  ├── index.js      # Express application
-�?  └── skill.js      # Skill implementation
+│  ├── index.js      # Express application
+│  └── skill.js      # Skill implementation
 ├── package.json
 ├── Dockerfile
 └── tests/

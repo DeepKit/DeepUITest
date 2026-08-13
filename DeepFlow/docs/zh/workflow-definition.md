@@ -1,32 +1,32 @@
-﻿# 工作流定义格�?
+﻿# 工作流定义格式
 
-DeepFlow 工作�?JSON 格式完整参考�?
+DeepFlow 工作流 JSON 格式完整参考指南
 
 ## 基本结构
 
 ```json
 {
   "id": "workflow-id",
-  "name": "工作流名�?,
+  "name": "工作流名称",
   "version": "1.0.0",
-  "description": "可选描�?,
+  "description": "可选描述",
   "steps": [...],
   "triggers": [...],
   "hooks": {...}
 }
 ```
 
-## 顶层属�?
+## 顶层属性
 
-| 属�?| 类型 | 必填 | 描述 |
+| 属性| 类型 | 必填 | 描述 |
 |------|------|------|------|
-| `id` | string | �?| 工作流唯一标识�?|
-| `name` | string | �?| 人类可读名称 |
-| `version` | string | �?| 语义版本（如 "1.0.0"）|
-| `description` | string | �?| 工作流描�?|
-| `steps` | array | �?| 工作流步骤数�?|
-| `triggers` | array | �?| 触发器配�?|
-| `hooks` | object | �?| 生命周期钩子 |
+| `id` | string | 是| 工作流唯一标识 |
+| `name` | string | 是| 人类可读名称 |
+| `version` | string | 是| 语义版本（如 "1.0.0"）|
+| `description` | string | 是| 工作流描述 |
+| `steps` | array | 是| 工作流步骤数量 |
+| `triggers` | array | 是| 触发器配置 |
+| `hooks` | object | 是| 生命周期钩子 |
 
 ---
 
@@ -34,7 +34,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Action 步骤
 
-执行特定动作�?
+执行特定动作。
 
 ```json
 {
@@ -57,13 +57,13 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Condition 步骤
 
-条件分支�?
+条件分支。
 
 ```json
 {
   "id": "check-condition",
   "type": "condition",
-  "name": "检查�?,
+  "name": "检查项",
   "condition": {
     "expression": "{{ vars.value }} > 10"
   },
@@ -83,7 +83,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Loop 步骤
 
-集合或条件迭代�?
+集合或条件迭代？
 
 ```json
 {
@@ -102,14 +102,14 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-循环模式�?
+循环模式？
 - `forEach` - 遍历集合
-- `while` - 条件为真时循�?
+- `while` - 条件为真时循环？
 - `repeat` - 固定次数迭代
 
 ### Parallel 步骤
 
-并行执行分支�?
+并行执行分支？
 
 ```json
 {
@@ -128,7 +128,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Wait 步骤
 
-等待事件或时间�?
+等待事件或时间？
 
 ```json
 {
@@ -144,14 +144,14 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-等待策略�?
+等待策略？
 - `duration` - 等待固定时间
 - `event` - 等待外部事件
 - `approval` - 等待人工审批
 
 ### Subworkflow 步骤
 
-调用另一个工作流�?
+调用另一个工作流？
 
 ```json
 {
@@ -172,13 +172,13 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### End 步骤
 
-工作流终止�?
+工作流终止？
 
 ```json
 {
   "id": "end",
   "type": "end",
-  "name": "工作流完�?,
+"name": "工作流完成",
   "output": {
     "result": "{{ vars.final_result }}",
     "status": "success"
@@ -192,7 +192,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### LLM 动作
 
-调用语言模型�?
+调用语言模型。
 
 ```json
 {
@@ -200,7 +200,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
   "provider": "openai",
   "model": "gpt-4",
   "prompt": "{{ vars.user_input }}",
-  "system_prompt": "你是一个有帮助的助手�?,
+"system_prompt": "你是一个有帮助的助手。",
   "temperature": 0.7,
   "max_tokens": 1000,
   "json_output": false,
@@ -208,20 +208,20 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-| 属�?| 类型 | 描述 |
+| 属性 | 类型 | 描述 |
 |------|------|------|
 | `provider` | string | openai, anthropic, azure, ollama |
-| `model` | string | 模型标识�?|
+| `model` | string | 模型标识 |
 | `prompt` | string | 用户提示词（支持模板）|
-| `system_prompt` | string | 系统/指令提示�?|
-| `temperature` | number | 0.0 �?2.0 |
-| `max_tokens` | integer | 最大响�?Token �?|
+| `system_prompt` | string | 系统/指令提示词 |
+| `temperature` | number | 0.0 到 2.0 |
+| `max_tokens` | integer | 最大响应Token数 |
 | `json_output` | boolean | 请求 JSON 输出 |
-| `json_schema` | object | 用于验证�?JSON Schema |
+| `json_schema` | object | 用于验证JSON Schema |
 
 ### Skill 动作
 
-调用外部 Skill 服务�?
+调用外部 Skill 服务：
 
 ```json
 {
@@ -237,7 +237,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### HTTP 动作
 
-发起 HTTP 请求�?
+发起 HTTP 请求：
 
 ```json
 {
@@ -257,7 +257,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Script 动作
 
-执行内联代码�?
+执行内联代码：
 
 ```json
 {
@@ -272,7 +272,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Assign 动作
 
-设置变量值�?
+设置变量值配置?
 
 ```json
 {
@@ -292,7 +292,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Log 动作
 
-输出日志消息�?
+输出日志消息打印?
 
 ```json
 {
@@ -306,7 +306,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ### Guard 动作
 
-输入验证�?
+输入验证检查?
 
 ```json
 {
@@ -338,7 +338,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ## 输出映射
 
-将步骤输出映射到变量�?
+将步骤输出映射到变量中?
 
 ```json
 {
@@ -350,17 +350,17 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-| 属�?| 描述 |
+| 属性 | 描述 |
 |------|------|
 | `target` | 存储结果的变量名 |
-| `json_path` | 用于提取�?JSONPath 表达�?|
+`json_path` | 用于提取的JSONPath 表达式 |
 | `transform` | 要应用的转换 |
 
 ---
 
 ## 错误处理
 
-### 错误处理�?
+### 错误处理机制
 
 ```json
 {
@@ -374,11 +374,11 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-策略�?
-- `retry` - 按策略重�?
+策略如下
+- `retry` - 按策略重试
 - `fallback` - 跳转到回退步骤
-- `ignore` - 继续下一�?
-- `abort` - 停止工作�?
+- `ignore` - 继续下一步
+- `abort` - 停止工作流
 
 ### 重试策略
 
@@ -396,9 +396,9 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ---
 
-## 触发�?
+## 触发器
 
-### 定时触发�?
+### 定时触发器
 
 ```json
 {
@@ -412,7 +412,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-### 事件触发�?
+### 事件触发器
 
 ```json
 {
@@ -428,7 +428,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 }
 ```
 
-### Webhook 触发�?
+### Webhook 触发器
 
 ```json
 {
@@ -447,7 +447,7 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ## 钩子
 
-生命周期回调�?
+生命周期回调函数
 
 ```json
 {
@@ -462,36 +462,36 @@ DeepFlow 工作�?JSON 格式完整参考�?
 
 ---
 
-## 表达式语�?
+## 表达式语言
 
-DeepFlow 使用类似 Jinja2 的模板语法�?
+DeepFlow 使用类似 Jinja2 的模板语法。
 
 ### 变量访问
 
 ```
-{{ vars.name }}                    - 简单变�?
-{{ vars.user.email }}              - 嵌套属�?
+{{ vars.name }}                    - 简单变量
+{{ vars.user.email }}              - 嵌套属性
 {{ vars.items[0] }}                - 数组索引
 {{ vars.data['key'] }}             - 字典访问
 ```
 
-### 过滤�?
+### 过滤器
 
 ```
-{{ vars.name | default:'未知' }}     - 默认�?
+{{ vars.name | default:'未知' }}     - 默认值
 {{ vars.text | upper }}              - 大写
 {{ vars.text | lower }}              - 小写
 {{ vars.text | trim }}               - 去除空白
-{{ vars.obj | json }}                - JSON 字符�?
+{{ vars.obj | json }}                - JSON 字符串
 {{ vars.text | truncate:50 }}        - 截断
 {{ vars.list | join:', ' }}          - 连接数组
-{{ vars.text | split:', ' }}         - 分割字符�?
+{{ vars.text | split:', ' }}         - 分割字符串
 ```
 
 ### 模板中的条件
 
 ```
-{{ '�? if vars.active else '�? }}
+{{ 'true' if vars.active else 'false' }}
 ```
 
 ### 内置变量
@@ -501,8 +501,8 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
 | `vars.*` | 用户定义变量 |
 | `step.id` | 当前步骤 ID |
 | `step.name` | 当前步骤名称 |
-| `workflow.id` | 工作�?ID |
-| `workflow.name` | 工作流名�?|
+| `workflow.id` | 工作流ID |
+| `workflow.name` | 工作流名称 |
 | `execution.id` | 执行实例 ID |
 | `execution.start_time` | 开始时间戳 |
 
@@ -513,9 +513,9 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
 ```json
 {
   "id": "customer-support",
-  "name": "客户支持工作�?,
+  "name": "客户支持工作流",
   "version": "1.0.0",
-  "description": "�?AI 的自动化客户支持",
+"description": "对话AI 的自动化客户支持",
   "steps": [
     {
       "id": "validate-input",
@@ -541,7 +541,7 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
         "type": "llm",
         "provider": "openai",
         "model": "gpt-4",
-        "prompt": "对这条客户消息进行分�? {{ vars.message }}",
+"prompt": "对这条客户消息进行分类 {{ vars.message }}",
         "system_prompt": "将意图分类为: billing（账单）, technical（技术）, general（一般）, complaint（投诉）",
         "temperature": 0.3
       },
@@ -551,7 +551,7 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
     {
       "id": "route-by-intent",
       "type": "condition",
-      "name": "按意图路�?,
+"name": "按意图路由",
       "branches": [
         { "condition": "{{ vars.intent }} == 'billing'", "target": "billing-response" },
         { "condition": "{{ vars.intent }} == 'technical'", "target": "technical-response" },
@@ -576,7 +576,7 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
     {
       "id": "technical-response",
       "type": "action",
-      "name": "技术回�?,
+"name": "技术回复",
       "action": {
         "type": "skill",
         "skill": "knowledge_search",
@@ -588,13 +588,13 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
     {
       "id": "generate-tech-response",
       "type": "action",
-      "name": "生成技术回�?,
+"name": "生成技术回复",
       "action": {
         "type": "llm",
         "provider": "openai",
         "model": "gpt-4",
-        "prompt": "问题: {{ vars.message }}\n\n知识�? {{ vars.knowledge }}",
-        "system_prompt": "你是技术支持专�?.."
+"prompt": "问题: {{ vars.message }}\n\n知识库: {{ vars.knowledge }}"
+"system_prompt": "你是技术支持专家.."
       },
       "output": { "target": "response" },
       "next_step": "end"
@@ -602,7 +602,7 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
     {
       "id": "general-response",
       "type": "action",
-      "name": "一般回�?,
+"name": "一般回复",
       "action": {
         "type": "llm",
         "provider": "openai",
@@ -616,11 +616,11 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
     {
       "id": "escalate-human",
       "type": "action",
-      "name": "转人�?,
+"name": "转人工",
       "action": {
         "type": "assign",
         "assignments": [
-          { "target": "response", "value": "您的请求已转交人工客服处理�? },
+{ "target": "response", "value": "您的请求已转交人工客服处理。" },
           { "target": "escalated", "value": true }
         ]
       },
@@ -633,7 +633,7 @@ DeepFlow 使用类似 Jinja2 的模板语法�?
       "action": {
         "type": "assign",
         "assignments": [
-          { "target": "response", "value": "请提供有效的消息�? }
+{ "target": "response", "value": "请提供有效的消息。" }
         ]
       },
       "next_step": "end"
