@@ -202,8 +202,12 @@ def main():
     if files:
         targets = [root / f for f in files if (root / f).exists()]
     else:
-        targets = sorted(root.glob('*.md'))
-    targets = [t for t in targets if t.name != 'fix_qmark.py' and t.name != 'fix_doc_encoding.py']
+        targets = sorted(root.rglob('*.md'))
+    targets = [t for t in targets
+               if t.name not in ('fix_qmark.py', 'fix_doc_encoding.py', 'fix_qmark_deterministic.py',
+                                 'verify_doc_encoding.py', 'restore_box_drawing.py')
+               and '_qmark_backup' not in str(t)
+               and not t.name.startswith('HANDOFF-')]
     if limit:
         targets = targets[:limit]
 

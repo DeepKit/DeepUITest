@@ -1,6 +1,6 @@
-﻿# DeepFlow 开发历史记录?
+﻿# DeepFlow 开发历史记录
 
-> 记录已完成的开发任务、里程碑和重要决策?
+> 记录已完成的开发任务、里程碑和重要决策
 
 ---
 
@@ -47,7 +47,7 @@
 
 ---
 
-## Phase 1: 核心框架?(Week 1-2)
+## Phase 1: 核心框架(Week 1-2)
 
 ### 2024-12-04 ~ 2024-12-05
 
@@ -56,36 +56,36 @@
 - 创建 `Config/workflows/` 配置目录
 - 创建 `Config/schemas/` Schema 目录
 
-#### 完成核心消息与角色定义?
+#### 完成核心消息与角色定义
 - `UniFlow.Core.Message.pas` - 消息基类与序列化
-- `UniFlow.Core.Role.pas` - 角色基类与接口定义?
+- `UniFlow.Core.Role.pas` - 角色基类与接口定义
 - `UniFlow.Core.Engine.pas` - 消息驱动引擎核心
 
 #### 完成配置加载系统
-- `UniFlow.Config.Loader.pas` - YAML/JSON 配置加载系统?
+- `UniFlow.Config.Loader.pas` - YAML/JSON 配置加载系统
 - `UniFlow.Config.Types.pas` - 配置类型定义
 
 ---
 
-## Phase 2: 调度能力框架?(Week 3)
+## Phase 2: 调度能力框架(Week 3)
 
 ### 2024-12-05
 
 #### 完成 Workflow 定义数据结构
-- `UniFlow.Workflow.Definition.pas` (~2400 行?
+- `UniFlow.Workflow.Definition.pas` (~2400 行)
   - `TStepType` 枚举 (action, condition, loop, parallel, subworkflow, wait, end)
   - `TActionType` 枚举 (skill, llm, guard, log, assign, http, script)
   - `TConditionOperator` 枚举 (eq, ne, gt, lt, ge, le, contains, startsWith, endsWith, matches, isEmpty, isNotEmpty, in, and, or, not)
   - `TLoopMode`, `TWaitStrategy`, `TFailureStrategy` 枚举
   - `TRetryPolicy` - 重试策略配置
-  - `TConditionExpression` - 条件表达式?
+  - `TConditionExpression` - 条件表达式
   - `TOutputConfig` - 输出映射配置
   - `TActionDefinition` - 动作定义
   - `TConditionBranch` - 条件分支
   - `TLoopConfig` - 循环配置
   - `TParallelConfig` - 并行配置
   - `TWaitConfig` - 等待配置
-  - `TErrorHandler` - 错误处理机制?
+  - `TErrorHandler` - 错误处理机制
 - `TWorkflowStep` - 工作流步骤
   - `TWorkflowHook/TWorkflowHooks` - 生命周期钩子
 - `TTriggerConfig` - 触发器配置
@@ -694,22 +694,22 @@
   - **TSQLiteAuditStore** - 完整审计日志存储
     - `TSQLiteAuditStoreConfig` - 配置项(WAL模式/FTS搜索/连接池大小/保留天数)
     - 完整 `IAuditStore` 接口实现
-- 自动 Schema 创建和迁移?
+- 自动 Schema 创建和迁移
 - 8 个索引(timestamp/category/severity/action/user_id/session_id/workflow_id/correlation_id)
     - 批量写入 + 事务支持
-- 自动清理和保留策略?
+- 自动清理和保留策略
     - Vacuum/Optimize/GetDatabaseSize 维护方法
     - 导出/导入 JSON 支持
   - **TSQLiteSessionStore** - 完整会话存储
-- `TSQLiteSessionStoreConfig` - 配置类?
+- `TSQLiteSessionStoreConfig` - 配置类
     - 完整 `ISessionStore` 接口实现
     - 4 张表: sessions, session_messages, session_variables, session_metadata
     - 外键级联删除
-- 用户会话查询/过期会话清理/状态查询?
-- Touch/UpdateStatus 等便捷方法?
+- 用户会话查询/过期会话清理/状态查询
+- Touch/UpdateStatus 等便捷方法
     - GetStats 统计信息
-- **TSQLiteConnectionPool** - 连接池?
-- 预创建连接?
+- **TSQLiteConnectionPool** - 连接池
+- 预创建连接
     - Acquire/Release
     - 可配置池大小
 
@@ -824,7 +824,7 @@
   - GitHub Actions 更新
   - Docker 基础镜像更新
 - ?创建 .github/playwright.config.js (~56 行
-- Chromium 浏览器配置?
+- Chromium 浏览器配置
   - 测试报告生成 (HTML/JSON)
 - ?创建 Editor/tests/editor.spec.js (~153 行)
   - Playwright 测试用例
@@ -835,7 +835,7 @@
 - ?创建 docs/en/README.md (~190 行)
   - 项目概述和架构图
   - 快速入门指南
-  - 文档导航?
+  - 文档导航
 - ?创建 docs/en/quick-start.md (~353 行)
   - 5分钟快速入门教程
   - 完整代码示例
@@ -1207,7 +1207,7 @@ Inc(LRecord.Count); LCount := LRecord.Count; Inc(LCount); LRecord.Count := LCoun
   - Sparkline / Heatmap 样式
   - Progress Bar 样式
 
-#### TASK-1031: Event Timeline UI 组件?
+#### TASK-1031: Event Timeline UI 组件
 - 创建 Analytics/js/utils.js (~451 文件)
   - 日期格式函数(formatDate/formatDuration/relativeTime/getTimeRange)
   - 数字格式工具(formatNumber/formatPercent/formatBytes/compactNumber)
@@ -1219,10 +1219,10 @@ Inc(LRecord.Count); LCount := LRecord.Count; Inc(LCount); LRecord.Count := LCoun
   - API 工具 (fetch/buildQueryString)
   - LocalStorage 工具
 - 创建 Analytics/js/charts.js (~786 文件)
-  - lineChart - 折线图?(多系列/面积填充/网格/Tooltip)
-  - barChart - 柱状图?(水平/垂直/动画)
+  - lineChart - 折线图(多系列/面积填充/网格/Tooltip)
+  - barChart - 柱状图(水平/垂直/动画)
   - histogram - 用于延迟分布
-  - donutChart - 环形图?(内径/圆心标签/图例)
+  - donutChart - 环形图(内径/圆心标签/图例)
 - gaugeChart - 仪表盘(阈值颜色)
 - sparkline - 迷你趋势图
 - stackedBarChart - 堆叠柱状图
@@ -1240,20 +1240,20 @@ Inc(LRecord.Count); LCount := LRecord.Count; Inc(LCount); LRecord.Count := LCoun
   - Dashboard 主控制器
 - 时间范围选择器
 - 自动刷新 (30秒)
-- 粒度选择器?
+- 粒度选择器
     - 导出报告 (JSON)
-- Demo 数据生成器?
+- Demo 数据生成器
     - 随机执行历史
-- 工作流统计?
+- 工作流统计
     - 错误统计
-- 异常检测?
+- 异常检测
   - UI 更新方法
     - updateSummaryCards - 摘要卡片
     - updateCharts - 图表
-- updateWorkflowTable - 工作流表格?
+- updateWorkflowTable - 工作流表格
     - updateErrorTable - 错误表格
     - updateAnomalies - 异常列表
-- updateTimeline - 时间线?
+- updateTimeline - 时间线
 
 ### P4 Direction D 代码统计
 
@@ -1269,7 +1269,7 @@ Inc(LRecord.Count); LCount := LRecord.Count; Inc(LCount); LRecord.Count := LCoun
 || dashboard.js | js | ~641 |
 || **Direction D 合计** | **8 files** | **~5,481** |
 
-### 分析仪表板功能?
+### 分析仪表板功能
 
 1. **摘要卡片** - 总流程数/成功/失败/成功率/平均时长
 2. **执行趋势图** - 成功/失败折线图，支持粒度切换
@@ -1719,7 +1719,7 @@ Inc(LRecord.Count); LCount := LRecord.Count; Inc(LCount); LRecord.Count := LCoun
 | M1 | 核心框架 (Phase 1-3) | 完成|
 | M2 | 完整流程 (Phase 4-6) | 完成|
 | M3 | 生产就绪 (Phase 7-8) | 完成|
-| P2 | 可选增强?(Audit/Metrics/Skills/Editor) | 完成|
+| P2 | 可选增强(Audit/Metrics/Skills/Editor) | 完成|
 | P3 | 维护任务 (SQLite/WebSocket/CI/Docs) | 完成|
 | P4-A | DeepBase 集成 | 完成|
 | P4-B | 中文文档 | 完成|

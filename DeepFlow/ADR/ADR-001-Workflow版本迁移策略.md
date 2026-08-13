@@ -59,27 +59,27 @@ CREATE TABLE workflow_definitions (
 CREATE TABLE workflow_instances (
     id TEXT PRIMARY KEY,
     workflow_def_id TEXT NOT NULL,          -- 关联的定义ID
-     workflow_version TEXT NOT NULL,         -- 冗余存储版本号?
+     workflow_version TEXT NOT NULL,         -- 冗余存储版本号
     state TEXT NOT NULL DEFAULT 'pending',
-     context TEXT,                           -- JSON 运行上下文?
+     context TEXT,                           -- JSON 运行上下文
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (workflow_def_id) REFERENCES workflow_definitions(id)
 );
 ```
 
-### 生命周期状态?
+ ### 生命周期状态
 
 ```
 draft ──────→?published ──────→?deprecated ──────→?archived
   →?              →?                 →?
-  └── 可修复?     └── 不可修改        └── 停止创建新实例?
-                      运行中实例继续执行?  历史数据保留
+   └── 可修复     └── 不可修改        └── 停止创建新实例
+                       运行中实例继续执行  历史数据保留
 ```
 
 ### 迁移流程
 
-#### 场景 1: 发布新版本?
+ #### 场景 1: 发布新版本
 
 ```
 1. 创建新版本定义（status=draft）?
@@ -93,8 +93,8 @@ draft ──────→?published ──────→?deprecated ───
 #### 场景 2: 回滚
 
 ```
-1. 将新版本标记为?deprecated
-2. 将旧版本重新标记为?published
+ 1. 将新版本标记为 deprecated
+ 2. 将旧版本重新标记为 published
 3. 新实例使用旧版本
 4. 已创建的新版本实例继续执行（不中断）
 ```
@@ -104,7 +104,7 @@ draft ──────→?published ──────→?deprecated ───
 ```
 前提条件：?
 - 新旧版本步骤兼容（仅添加可选步骤）
-- 实例当前游标位置在两个版本中都存在?
+ - 实例当前游标位置在两个版本中都存在
 
 步骤2
 1. 暂停实例执行
@@ -173,22 +173,22 @@ type
 
 - 清晰的版本追踪，便于审计
 - 运行中实例不受升级影响
-- 支持灰度发布和回滚?
+- 支持灰度发布和回滚
 - 历史数据完整保留
 
 ### 负面
 
 - 多版本共存增加维护复杂度
-- 需要定期清理废弃版本?
-- 强制迁移场景需要人工介入?
+- 需要定期清理废弃版本
+- 强制迁移场景需要人工介入
 
 ### 风险缓解
 
-1. **版本膨胀**: 设置自动归档策略，超过?N 个版本自动归档最旧的
-2. **遗留实例**: 监控旧版本运行中实例数，超时未完成发出告警?
-3. **兼容性错误*: 提供兼容性检查工具，上线前强制验证?
+1. **版本膨胀**: 设置自动归档策略，超过 N 个版本自动归档最旧的
+2. **遗留实例**: 监控旧版本运行中实例数，超时未完成发出告警
+3. **兼容性错误*: 提供兼容性检查工具，上线前强制验证
 
-## 替代方案（已否决?
+## 替代方案（已否决）
 
 ### 方案 A: 原地升级
 - 描述: 直接修改 Workflow 定义，所有实例使用最新版
@@ -196,7 +196,7 @@ type
 
 ### 方案 B: 完全隔离
 - 描述: 不同版本完全独立，无共享
-- 否决原因: 资源浪费，历史数据难以关联?
+- 否决原因: 资源浪费，历史数据难以关联
 
 ## 相关文档
 
