@@ -1,4 +1,4 @@
-﻿# API Reference
+# API Reference
 
 Complete API documentation for DeepFlow Workflow Engine.
 
@@ -529,7 +529,7 @@ end;
 ### Pre-defined Metrics
 
 ```pascal
-TUniFlowMetrics = class
+TDeepFlowMetrics = class
   // Workflow metrics
   class procedure WorkflowStarted(const WorkflowId: string);
   class procedure WorkflowCompleted(const WorkflowId: string; Duration: Double);
@@ -558,12 +558,12 @@ end;
 
 ## Diagnostics
 
-### TUniFlowDiagnostics
+### TDeepFlowDiagnostics
 
 Debugging and tracing support.
 
 ```pascal
-TUniFlowDiagnostics = class
+TDeepFlowDiagnostics = class
   // Logging
   procedure Trace(const Msg: string; Args: array of const);
   procedure Debug(const Msg: string; Args: array of const);
@@ -735,13 +735,13 @@ ERateLimitExceededError = class(EWorkflowException);
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `UNIFLOW_LOG_LEVEL` | Logging level (debug/info/warning/error) | `info` |
-| `UNIFLOW_TRACE_ENABLED` | Enable execution tracing | `false` |
-| `UNIFLOW_METRICS_ENABLED` | Enable Prometheus metrics | `true` |
-| `UNIFLOW_SKILL_TIMEOUT` | Skill call timeout (ms) | `30000` |
-| `UNIFLOW_LLM_TIMEOUT` | LLM call timeout (ms) | `60000` |
-| `UNIFLOW_SESSION_TTL` | Session TTL (seconds) | `3600` |
-| `UNIFLOW_AUDIT_RETENTION` | Audit log retention (days) | `90` |
+| `DEEPFLOW_LOG_LEVEL` | Logging level (debug/info/warning/error) | `info` |
+| `DEEPFLOW_TRACE_ENABLED` | Enable execution tracing | `false` |
+| `DEEPFLOW_METRICS_ENABLED` | Enable Prometheus metrics | `true` |
+| `DEEPFLOW_SKILL_TIMEOUT` | Skill call timeout (ms) | `30000` |
+| `DEEPFLOW_LLM_TIMEOUT` | LLM call timeout (ms) | `60000` |
+| `DEEPFLOW_SESSION_TTL` | Session TTL (seconds) | `3600` |
+| `DEEPFLOW_AUDIT_RETENTION` | Audit log retention (days) | `90` |
 
 ---
 

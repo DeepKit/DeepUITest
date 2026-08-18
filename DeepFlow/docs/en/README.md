@@ -1,4 +1,4 @@
-﻿# DeepFlow Workflow Engine
+# DeepFlow Workflow Engine
 
 > A powerful, extensible workflow engine for building AI-powered applications in Delphi/Pascal
 
@@ -56,9 +56,9 @@ DeepFlow is a complete workflow engine designed for enterprise Delphi applicatio
 
 ```pascal
 uses
-  UniFlow.Workflow.Definition,
-  UniFlow.Workflow.Executor,
-  UniFlow.Workflow.Context;
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Executor,
+  DeepFlow.Workflow.Context;
 
 var
   Definition: TWorkflowDefinition;
@@ -87,7 +87,7 @@ end;
 
 ```pascal
 uses
-  UniFlow.Session.Manager;
+  DeepFlow.Session.Manager;
 
 var
   Session: TWorkflowSession;
@@ -110,7 +110,7 @@ end;
 
 ```pascal
 uses
-  UniFlow.Skill.Client;
+  DeepFlow.Skill.Client;
 
 var
   Client: TSkillClient;
@@ -138,7 +138,7 @@ end;
 | `TSessionManager` | Multi-turn conversation management |
 | `TAuditManager` | Structured audit logging |
 | `TMetricsRegistry` | Prometheus-compatible metrics |
-| `TUniFlowDiagnostics` | Debugging and tracing |
+| `TDeepFlowDiagnostics` | Debugging and tracing |
 
 ## Node Types
 

@@ -1,31 +1,30 @@
-﻿# 生产部署指南
+# 生产部署指南
+使用 Docker、Kubernetes 和云平台部署 DeepFlow 到生产环境中。
 
-使用 Docker、Kubernetes 和云平台部署 DeepFlow 到生产环境中？
 
 ## 架构概览
 
 ```
-                    ┌─────────────────────┐
-                    │   负载均衡│      │
-                    │  (nginx/traefik)   │
-                    └─────────┬───────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                    │                    │
-        │                    │                    │
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│  DeepBase     │   │   Python     │   │  Node.js     │
-│  (Delphi)    │   │   Skills     │   │   Skills     │
-└───────┬───────┘   └───────┬───────┘   └───────┬───────┘
-        │                    │                    │
-        └─────────────────────┼─────────────────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │     数据│        │
-                    │ (SQLite/Postgres)  │
-                    └─────────────────────┘
+          ┌─────────────────────┐
+          │    负载均衡         │
+          │  (nginx/traefik)    │
+          └─────────┬───────────┘
+                    │
+   ┌────────────────┼────────────────┐
+   │                │                │
+   │                │                │
+┌──┴───────┐  ┌─────┴──────┐  ┌──────┴─────┐
+│ DeepBase │  │  Python    │  │  Node.js   │
+│ (Delphi) │  │  Skills    │  │  Skills    │
+└──┬───────┘  └─────┬──────┘  └──────┬─────┘
+   │                │                │
+   └────────────────┼────────────────┘
+                    │
+          ┌─────────▼───────────┐
+          │    数据库           │
+          │  (SQLite/Postgres) │
+          └─────────────────────┘
 ```
-
 ---
 
 ## 前置条件
@@ -664,13 +663,14 @@ containers:
 
 ```python
 # Python FastAPI 使用 API 密钥认证
+import secrets
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 api_key_header = APIKeyHeader(name="X-API-Key")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != os.environ.get("API_KEY"):
+    if not secrets.compare_digest(api_key, os.environ.get("API_KEY", "")):
         raise HTTPException(status_code=403, detail="无效的 API 密钥")
     return api_key
 
@@ -839,7 +839,7 @@ def cached(ttl=300):
 
 ## 检查清单
 
-### 部署步骤
+### 部署前检查
 
 - [ ] 所有环境变量已配置
 - [ ] SSL 证书已安装
@@ -849,8 +849,7 @@ def cached(ttl=300):
 - [ ] 日志已配置
 - [ ] 监控已启用
 
-### 部署步骤
-
+### 部署后检查
 - [ ] 服务在端点正常响应
 - [ ] 指标正在收集
 - [ ] 告警已配置

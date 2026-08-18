@@ -1,4 +1,4 @@
-﻿# UniFlow 复用 DeepBase 模块策略
+# DeepFlow 复用 DeepBase 模块策略
 
 > 版本: 1.0  
 > 更新日期: 2025-01-XX  
@@ -6,7 +6,7 @@
 
 ## 1. 背景
 
-UniFlow 作为 DeepBase 生态系统的工作流引擎，应最大化复用 DeepBase Core 已有的成熟模块，避免重复造轮子，确保架构一致性和维护效率。
+DeepFlow 作为 DeepBase 生态系统的工作流引擎，应最大化复用 DeepBase Core 已有的成熟模块，避免重复造轮子，确保架构一致性和维护效率。
 
 ## 2. 可复用的 DeepBase 核心模块
 
@@ -34,7 +34,7 @@ UniFlow 作为 DeepBase 生态系统的工作流引擎，应最大化复用 Deep
 - BoundQuery 上下文注解
 - 测试支持
 
-**UniFlow 集成方式？**
+**DeepFlow 集成方式？**
 ```pascal
 // 不要创建新的 LLM 客户端，直接使用 DeepBase.LLM
 uses DeepBase.LLM, DeepBase.LLM.Manager;
@@ -73,7 +73,7 @@ end;
 - 同步/异步分发
 - 单次订阅 (SubscribeOnce)
 
-**UniFlow 使用场景：**
+**DeepFlow 使用场景：**
 - 工作流状态变更通知
 - 步骤执行事件广播
 - 跨工作流通信
@@ -115,7 +115,7 @@ EventBus.Subscribe<TWorkflowEvent>(
 - 层级状态支持
 - 状态变更事件
 
-**UniFlow 使用场景**
+**DeepFlow 使用场景**
 - 工作流实例状态管理(Created → Running → Paused → Completed)
 - 步骤执行状态追踪
 - 审批流程状态控制
@@ -154,7 +154,7 @@ FSM.Configure(wsRunning)
 - 批量验证
 - 本地化错误消息
 
-**UniFlow 使用场景**
+**DeepFlow 使用场景**
 - 工作流输入参数验证
 - 步骤输出数据校验
 - LLM 响应格式验证
@@ -191,14 +191,14 @@ if not Result.IsValid then
 - 日志轮转
 - 聚合器设置
 
-**UniFlow 使用方式**
+**DeepFlow 使用方式**
 ```pascal
 uses DeepBase.Logging;
 
 // 直接使用全局 Logger
-Logger.Info('Workflow started', 'UniFlow.Executor');
-Logger.Debug('Step executing: ' + StepName, 'UniFlow.Step');
-Logger.Error('Step failed: ' + ErrMsg, 'UniFlow.Error');
+Logger.Info('Workflow started', 'DeepFlow.Executor');
+Logger.Debug('Step executing: ' + StepName, 'DeepFlow.Step');
+Logger.Error('Step failed: ' + ErrMsg, 'DeepFlow.Error');
 ```
 
 ---
@@ -216,14 +216,14 @@ Logger.Error('Step failed: ' + ErrMsg, 'UniFlow.Error');
 - 分类管理
 - 变更事件
 
-**UniFlow 使用方式**
+**DeepFlow 使用方式**
 ```pascal
 uses DeepBase.Config;
 
-// 读取 UniFlow 配置
-var MaxRetries := GetConfigInt('UniFlow.MaxRetries', 3);
-var DefaultTimeout := GetConfigInt('UniFlow.DefaultTimeoutMs', 30000);
-var LLMProvider := GetConfig('UniFlow.LLM.DefaultProvider', 'openai');
+// 读取 DeepFlow 配置
+var MaxRetries := GetConfigInt('DeepFlow.MaxRetries', 3);
+var DefaultTimeout := GetConfigInt('DeepFlow.DefaultTimeoutMs', 30000);
+var LLMProvider := GetConfig('DeepFlow.LLM.DefaultProvider', 'openai');
 ```
 
 ---
@@ -242,7 +242,7 @@ var LLMProvider := GetConfig('UniFlow.LLM.DefaultProvider', 'openai');
 - 任务优先级和依赖
 - 线程池执行
 
-**UniFlow 潜在使用场景？**
+**DeepFlow 潜在使用场景？**
 - 定时触发工作流
 - 延迟步骤执行
 - 超时检测
@@ -262,7 +262,7 @@ var LLMProvider := GetConfig('UniFlow.LLM.DefaultProvider', 'openai');
 
 ---
 
-## 3. 需要删除或重构的UniFlow重复文件
+## 3. 需要删除或重构的DeepFlow重复文件
 
 以下文件与DeepBase Core功能重复，应该删除或重构。
 
@@ -270,16 +270,16 @@ var LLMProvider := GetConfig('UniFlow.LLM.DefaultProvider', 'openai');
 
 | 文件 | 行数 | 重复内容 | 处理方式 |
 |------|------|----------|----------|
-| `Source/AI/UniFlow.AI.Types.pas` | ~1198 | 重复 DeepBase.LLM 类型定义 | **删除** |
-| `Source/AI/UniFlow.AI.LLMClient.pas` | ~707 | 重复 DeepBase.LLM 客户端| **删除** |
+| `Source/AI/DeepFlow.AI.Types.pas` | ~1198 | 重复 DeepBase.LLM 类型定义 | **删除** |
+| `Source/AI/DeepFlow.AI.LLMClient.pas` | ~707 | 重复 DeepBase.LLM 客户端| **删除** |
 
 ### 3.2 需要创建的适配器
 
-为了让UniFlow Workflow能优雅调用DeepBase.LLM，创建轻量级适配器：
+为了让DeepFlow Workflow能优雅调用DeepBase.LLM，创建轻量级适配器：
 
 ```
-Source/AI/UniFlow.AI.Adapter.pas  (~200行)
-  - TUniFlowLLMAdapter
+Source/AI/DeepFlow.AI.Adapter.pas  (~200行)
+  - TDeepFlowLLMAdapter
     - 封装 DeepBase.LLM 调用
 - 将Workflow Context 变量映射到LLM 参数
 - 处理响应并写入Context
@@ -291,9 +291,9 @@ Source/AI/UniFlow.AI.Adapter.pas  (~200行)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         UniFlow                                │
+│                         DeepFlow                                │
 ├─────────────────────────────────────────────────────────────────┤
-│ UniFlow.Workflow.*          UniFlow.AI.Adapter                 │
+│ DeepFlow.Workflow.*          DeepFlow.AI.Adapter                 │
 │ (工作流引擎)                  (轻量适配器)                       │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │调用
@@ -312,9 +312,9 @@ Source/AI/UniFlow.AI.Adapter.pas  (~200行)
 ## 5. 迁移步骤
 
 ### Phase 3.1: 清理重复代码
-1. 直接删除 `UniFlow.AI.Types.pas`
-2. 直接删除 `UniFlow.AI.LLMClient.pas`
-3. 直接创建 `UniFlow.AI.Adapter.pas`
+1. 直接删除 `DeepFlow.AI.Types.pas`
+2. 直接删除 `DeepFlow.AI.LLMClient.pas`
+3. 直接创建 `DeepFlow.AI.Adapter.pas`
 
 ### Phase 3.2: 集成 DeepBase 模块
 1. 直接Workflow Executor 中集成`DeepBase.EventBus`
@@ -331,22 +331,22 @@ Source/AI/UniFlow.AI.Adapter.pas  (~200行)
 ## 6. 注意事项
 
 ### 6.1 命名空间
-- UniFlow 专属模块使用 `UniFlow.*` 命名空间
+- DeepFlow 专属模块使用 `DeepFlow.*` 命名空间
 - 复用 DeepBase 模块时直接`uses DeepBase.*`
 
 ### 6.2 依赖管理
-- UniFlow 依赖 DeepBase Core，反之不成立
+- DeepFlow 依赖 DeepBase Core，反之不成立
 - 避免循环依赖
 
 ### 6.3 版本兼容
-- 确保 UniFlow 与DeepBase Core 版本兼容
+- 确保 DeepFlow 与DeepBase Core 版本兼容
 - 重大更新时同步更新两者
 
 ---
 
 ## 7. 附录：DeepBase Core 模块完整列表
 
-以下模块DeepBase Core 可能对UniFlow 有用的其他模块（按需评估）：
+以下模块DeepBase Core 可能对DeepFlow 有用的其他模块（按需评估）：
 
 - `DeepBase.Security.pas` - 安全相关（DPAPI 加密等）
 - `DeepBase.Crypto.pas` - 加密算法

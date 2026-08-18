@@ -1,29 +1,29 @@
-﻿# Production Deployment Guide
+# Production Deployment Guide
 
 Deploy DeepFlow in production environments with Docker, Kubernetes, and cloud platforms.
 
 ## Architecture Overview
 
 ```
-                     ┌─────────────────────┐
-│  Load Balancer     │
-│  (nginx/traefik)   │
-                     └─────────┬───────────┘
-                               │
-         ┌─────────────────────┼─────────────────────┐
-         │                    │                    │
-         │                    │                    │
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│ DeepBase      │   │  Python      │   │  Node.js     │
-│ (Delphi)     │   │  Skills      │   │  Skills      │
-└───────┬───────┘   └───────┬───────┘   └───────┬───────┘
-         │                    │                    │
-         └─────────────────────┼─────────────────────┘
-                               │
-                     ┌─────────▼───────────┐
-                     │  Database          │
-                     │  (SQLite/Postgres) │
-                     └─────────────────────┘
+          ┌─────────────────────┐
+          │  Load Balancer      │
+          │  (nginx/traefik)    │
+          └─────────┬───────────┘
+                    │
+   ┌────────────────┼────────────────┐
+   │                │                │
+   │                │                │
+┌──┴───────┐  ┌─────┴──────┐  ┌──────┴─────┐
+│ DeepBase │  │  Python    │  │  Node.js   │
+│ (Delphi) │  │  Skills    │  │  Skills    │
+└──┬───────┘  └─────┬──────┘  └──────┬─────┘
+   │                │                │
+   └────────────────┼────────────────┘
+                    │
+          ┌─────────▼───────────┐
+          │  Database          │
+          │  (SQLite/Postgres) │
+          └─────────────────────┘
 ```
 
 ---
@@ -664,13 +664,14 @@ containers:
 
 ```python
 # Python FastAPI with API key auth
+import secrets
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 api_key_header = APIKeyHeader(name="X-API-Key")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != os.environ.get("API_KEY"):
+    if not secrets.compare_digest(api_key, os.environ.get("API_KEY", "")):
         raise HTTPException(status_code=403, detail="Invalid API key")
     return api_key
 

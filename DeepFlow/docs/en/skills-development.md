@@ -1,4 +1,4 @@
-﻿# Skills Development Guide
+# Skills Development Guide
 
 Create custom skills to extend DeepFlow capabilities.
 
@@ -353,7 +353,7 @@ Response (error):
 
 ### Configuration
 
-Add skill to `uniflow.config.json`:
+Add skill to `deepflow.config.json`:
 
 ```json
 {
