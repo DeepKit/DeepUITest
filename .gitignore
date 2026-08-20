@@ -64,3 +64,7 @@ DeepFrames_keys_backup/
 # === 顶层散落 ===
 nul
 progee2/
+
+BetterCiv/goodmem.cn/backend/.env
+DeepForgeLite/Backend/.env
+odd-hub/auto-publish/.env
