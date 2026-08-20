@@ -1,7 +1,7 @@
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{3F48A1A7-413F-4DF8-933C-8E1FAB06CBF5}</ProjectGuid>
-        <ProjectVersion>20.4</ProjectVersion>
+        <ProjectVersion>12.0</ProjectVersion>
         <FrameworkType>FMX</FrameworkType>
         <MainSource>DeepDevLite.dpr</MainSource>
         <Base>True</Base>
@@ -55,7 +55,7 @@
         <VerInfo_Keys>CompanyName=DevDirector;FileDescription=DeepDevLite;FileVersion=1.0.0.0;InternalName=DeepDevLite;LegalCopyright=Copyright (c) 2026 DevDirector;LegalTrademarks=;OriginalFilename=DeepDevLite.exe;ProductName=DeepDevLite;ProductVersion=1.0.0.0;Comments=DeepDevLite - AI Native Software Factory</VerInfo_Keys>
         <VerInfo_Locale>1033</VerInfo_Locale>
         <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
-        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
+        <Icon_MainIcon>DeepDevLite.ico</Icon_MainIcon>
         <AppEnableRuntimeThemes>true</AppEnableRuntimeThemes>
         <AppEnableHighDPI>true</AppEnableHighDPI>
     </PropertyGroup>

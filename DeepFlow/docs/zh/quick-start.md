@@ -1,65 +1,65 @@
-﻿# 快速入门指�?
+# 快速入门指南
 
-5 分钟内在你的 Delphi 应用程序中运�?UniFlow�?
+5 分钟内在你的 Delphi 应用程序中运行 DeepFlow
 
 ## 前置条件
 
-- Delphi 10.4+ �?RAD Studio 11+
-- DeepBase 框架（用�?LLM 集成�?
-- Python 3.10+（用�?Python Skills，可选）
-- Node.js 18+（用�?Node.js Skills，可选）
+- Delphi 10.4+ 或 RAD Studio 11+
+- DeepBase 框架（支持LLM 集成平台）
+- Python 3.10+（用于 Python Skills，可选）
+- Node.js 18+（用于 Node.js Skills，可选）
 
 ## 安装
 
-### 1. 添加源文�?
+### 1. 添加源文件
 
-�?UniFlow 源文件复制到你的项目中：
+将 DeepFlow 源文件复制到你的项目中：
 
 ```
 Source/
 ├── Workflow/
-�?  ├── UniFlow.Workflow.Definition.pas
-�?  ├── UniFlow.Workflow.Context.pas
-�?  ├── UniFlow.Workflow.Executor.pas
-�?  └── UniFlow.Workflow.State.pas
+│  ├── DeepFlow.Workflow.Definition.pas
+│  ├── DeepFlow.Workflow.Context.pas
+│  ├── DeepFlow.Workflow.Executor.pas
+│  └── DeepFlow.Workflow.State.pas
 ├── AI/
-�?  └── UniFlow.AI.Adapter.pas
+│  └── DeepFlow.AI.Adapter.pas
 ├── Session/
-�?  ├── UniFlow.Session.Types.pas
-�?  └── UniFlow.Session.Manager.pas
+│  ├── DeepFlow.Session.Types.pas
+│  └── DeepFlow.Session.Manager.pas
 ├── Skill/
-�?  ├── UniFlow.Skill.Types.pas
-�?  ├── UniFlow.Skill.Client.pas
-�?  └── UniFlow.Skill.Executor.pas
+│  ├── DeepFlow.Skill.Types.pas
+│  ├── DeepFlow.Skill.Client.pas
+│  └── DeepFlow.Skill.Executor.pas
 └── Diagnostics/
-    └── UniFlow.Diagnostics.pas
+    └── DeepFlow.Diagnostics.pas
 ```
 
-### 2. 添加�?Uses 子句
+### 2. 添加 Uses 子句
 
 ```pascal
 uses
-  UniFlow.Workflow.Definition,
-  UniFlow.Workflow.Executor,
-  UniFlow.Workflow.Context;
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Executor,
+  DeepFlow.Workflow.Context;
 ```
 
 ## 你的第一个工作流
 
-### �?1 步：创建工作流定�?
+### 第1 步：创建工作流定义
 
-创建文件 `my_workflow.json`�?
+ 创建文件 `my_workflow.json`完成
 
 ```json
 {
   "id": "hello-workflow",
-  "name": "Hello World 工作�?,
+   "name": "Hello World 工作流",
   "version": "1.0.0",
   "steps": [
     {
       "id": "start",
       "type": "action",
-      "name": "开�?,
+       "name": "开始",
       "action": {
         "type": "log",
         "message": "工作流已启动"
@@ -69,7 +69,7 @@ uses
     {
       "id": "greet",
       "type": "action",
-      "name": "问候用�?,
+       "name": "问候用户",
       "action": {
         "type": "assign",
         "assignments": [
@@ -90,7 +90,7 @@ uses
 }
 ```
 
-### �?2 步：执行工作�?
+### 第2 步：执行工作流
 
 ```pascal
 procedure TForm1.RunWorkflow;
@@ -99,10 +99,10 @@ var
   Executor: TWorkflowExecutor;
   Context: TWorkflowContext;
 begin
-  // 从文件加载定�?
+   // 从文件加载定义
   Definition := TWorkflowDefinition.FromFile('my_workflow.json');
   try
-    // 创建执行�?
+     // 创建执行器
     Executor := TWorkflowExecutor.Create(Definition);
     try
       // 创建带有输入变量的上下文
@@ -131,12 +131,12 @@ end;
 
 ## 添加 LLM 集成
 
-### �?1 步：更新工作�?
+### 第1 步：更新工作流
 
 ```json
 {
   "id": "ai-workflow",
-  "name": "AI 助手工作�?,
+  "name": "AI 助手工作流,"
   "version": "1.0.0",
   "steps": [
     {
@@ -160,7 +160,7 @@ end;
         "provider": "openai",
         "model": "gpt-4",
         "prompt": "{{ vars.user_input }}",
-        "system_prompt": "你是一个有帮助的助手�?,
+        "system_prompt": "你是一个有帮助的助手,"
         "temperature": 0.7
       },
       "output": {
@@ -176,15 +176,15 @@ end;
 }
 ```
 
-### �?2 步：注册 LLM 执行�?
+### 第2 步：注册 LLM 执行器
 
 ```pascal
 uses
-  UniFlow.AI.Adapter;
+  DeepFlow.AI.Adapter;
 
 procedure TForm1.InitializeWorkflow;
 begin
-  // 注册 LLM 动作执行�?
+   // 注册 LLM 动作执行器
   RegisterLLMExecutor(Executor, LLMClient);
 end;
 ```
@@ -195,7 +195,7 @@ end;
 {
   "id": "check_sentiment",
   "type": "condition",
-  "name": "检查情�?,
+"name": "检查情况",
   "condition": {
     "expression": "{{ vars.sentiment }} == 'positive'"
   },
@@ -244,11 +244,11 @@ uvicorn src.main:app --port 8000
 }
 ```
 
-### �?Delphi 调用
+### Delphi 调用
 
 ```pascal
 uses
-  UniFlow.Skill.Client;
+  DeepFlow.Skill.Client;
 
 var
   Client: TSkillClient;
@@ -271,12 +271,12 @@ end;
 
 ## 会话管理
 
-用于多轮对话�?
+用于多轮对话，
 
 ```pascal
 uses
-  UniFlow.Session.Manager,
-  UniFlow.Session.Types;
+  DeepFlow.Session.Manager,
+  DeepFlow.Session.Types;
 
 var
   Manager: TSessionManager;
@@ -284,15 +284,15 @@ var
 begin
   Manager := TSessionManager.Create;
   try
-    // 创建新会�?
+    // 创建新会话，
     Session := Manager.CreateSession('user-123', 'chat-workflow');
     
-    // 第一�?
-    Session.AddMessage(TSessionMessage.CreateUser('什么是机器学习�?));
+    // 第一轮，
+    Session.AddMessage(TSessionMessage.CreateUser('什么是机器学习？'));
     Executor.ExecuteWithSession(Session);
     
     // 第二轮（保持上下文）
-    Session.AddMessage(TSessionMessage.CreateUser('给我一个例子�?));
+    Session.AddMessage(TSessionMessage.CreateUser('给我一个例子？'));
     Executor.ExecuteWithSession(Session);
     
     // 获取对话历史
@@ -309,7 +309,7 @@ end;
 
 ```pascal
 uses
-  UniFlow.Workflow.Executor;
+  DeepFlow.Workflow.Executor;
 
 try
   Executor.Execute(Context);
@@ -317,17 +317,17 @@ except
   on E: EWorkflowValidationError do
     ShowMessage('验证失败: ' + E.Message);
   on E: EWorkflowExecutionError do
-    ShowMessage('执行失败于步�? ' + E.StepId);
+    ShowMessage('执行失败于步骤: ' + E.StepId);
   on E: ESkillExecutionError do
     ShowMessage('Skill 错误: ' + E.Message);
 end;
 ```
 
-## 日志和诊�?
+## 日志和诊断
 
 ```pascal
 uses
-  UniFlow.Diagnostics;
+  DeepFlow.Diagnostics;
 
 begin
   // 启用追踪
@@ -337,7 +337,7 @@ begin
   // 设置关联 ID 用于请求追踪
   Diagnostics.CorrelationId := 'req-' + TGUID.NewGuid.ToString;
   
-  // 执行并追�?
+  // 执行并追踪，
   Executor.Execute(Context);
   
   // 导出追踪用于调试
@@ -345,9 +345,9 @@ begin
 end;
 ```
 
-## 下一�?
+## 下一步
 
 - [API 参考](api-reference.md) - 完整 API 文档
 - [工作流定义](workflow-definition.md) - 完整 JSON Schema
-- [Skill 开发](skills-development.md) - 创建自定�?Skills
+- [Skill 开发](skills-development.md) - 创建自定义 Skills
 - [部署指南](deployment.md) - 生产环境部署

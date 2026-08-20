@@ -1,9 +1,9 @@
 {
   "id": "simple-qa-workflow",
   "name": "简单问答工作流",
-  "description": "演示基本的输入验�?�?LLM 调用 �?输出验证流程",
+  "description": "演示基本的输入验证→LLM 调用 →输出验证流程",
   "version": "1.0.0",
-  "author": "UniFlow Team",
+  "author": "DeepFlow Team",
   "tags": ["qa", "llm", "demo"],
   
   "input": {
@@ -16,12 +16,12 @@
       },
       "context": {
         "type": "string",
-        "description": "可选的上下文信�?,
+        "description": "可选的上下文信息",
         "default": ""
       },
       "maxTokens": {
         "type": "integer",
-        "description": "最大输�?token �?,
+        "description": "最大输出token 数",
         "default": 1000,
         "minimum": 100,
         "maximum": 4000
@@ -41,11 +41,11 @@
     "properties": {
       "answer": {
         "type": "string",
-        "description": "AI 生成的回�?
+        "description": "AI 生成的回答"
       },
       "confidence": {
         "type": "number",
-        "description": "置信度分�?
+        "description": "置信度分数"
       },
       "processingTime": {
         "type": "integer",
@@ -56,7 +56,7 @@
   },
   
   "variables": {
-    "systemPrompt": "你是一个专业的AI助手，请根据用户的问题提供准确、简洁的回答�?,
+    "systemPrompt": "你是一个专业的AI助手，请根据用户的问题提供准确、简洁的回答。",
     "maxRetries": 3,
     "timeoutSeconds": 30
   },
@@ -64,13 +64,13 @@
   "steps": [
     {
       "id": "log-start",
-      "name": "记录开�?,
+      "name": "记录开始",
       "type": "action",
       "action": {
         "type": "log",
         "config": {
           "level": "info",
-          "message": "开始处理问答请�? {{ input.question | truncate(50) }}"
+          "message": "开始处理问答请求 {{ input.question | truncate(50) }}"
         }
       }
     },
@@ -120,7 +120,7 @@
     
     {
       "id": "build-prompt-with-context",
-      "name": "构建带上下文的提�?,
+      "name": "构建带上下文的提示",
       "type": "action",
       "action": {
         "type": "assign",
@@ -138,7 +138,7 @@
     
     {
       "id": "build-prompt-simple",
-      "name": "构建简单提�?,
+      "name": "构建简单提示",
       "type": "action",
       "action": {
         "type": "assign",
@@ -216,7 +216,7 @@
               "field": "{{ steps.call-llm.output.rawAnswer | length }}",
               "operator": "gt",
               "value": 10,
-              "message": "回答内容过短，可能存在问�?
+              "message": "回答内容过短，可能存在问風"
             }
           ]
         }
@@ -229,7 +229,7 @@
     
     {
       "id": "calculate-confidence",
-      "name": "计算置信�?,
+      "name": "计算置信度",
       "type": "action",
       "action": {
         "type": "script",
@@ -278,7 +278,7 @@
         "type": "log",
         "config": {
           "level": "info",
-          "message": "问答完成，回答长�? {{ output.answer | length }}字符，置信度: {{ output.confidence }}"
+          "message": "问答完成，回答长度 {{ output.answer | length }}字符，置信度: {{ output.confidence }}"
         }
       }
     },
@@ -315,7 +315,7 @@
           "assignments": [
             {
               "target": "output.answer",
-              "value": "抱歉，AI 服务暂时不可用，请稍后再试�?
+              "value": "抱歉，AI 服务暂时不可用，请稍后再试。"
             },
             {
               "target": "output.confidence",
@@ -349,14 +349,14 @@
         "type": "log",
         "config": {
           "level": "warn",
-          "message": "输出验证失败，尝试使用备选回�?
+          "message": "输出验证失败，尝试使用备选回答"
         }
       }
     },
     
     {
       "id": "fallback-response",
-      "name": "备选响�?,
+      "name": "备选响应",
       "type": "action",
       "action": {
         "type": "assign",
@@ -364,7 +364,7 @@
           "assignments": [
             {
               "target": "output.answer",
-              "value": "抱歉，我无法为这个问题生成满意的回答，请尝试重新描述您的问题�?
+              "value": "抱歉，我无法为这个问题生成满意的回答，请尝试重新描述您的问题。"
             },
             {
               "target": "output.confidence",
@@ -381,7 +381,7 @@
     
     {
       "id": "end-fallback",
-      "name": "备选结�?,
+      "name": "备选结束",
       "type": "end",
       "endConfig": {
         "status": "completed"
@@ -396,7 +396,7 @@
           "type": "log",
           "config": {
             "level": "debug",
-            "message": "工作流开�? {{ ctx.workflowId }} / {{ ctx.instanceId }}"
+            "message": "工作流开始 {{ ctx.workflowId }} / {{ ctx.instanceId }}"
           }
         }
       ]
@@ -418,7 +418,7 @@
           "type": "log",
           "config": {
             "level": "error",
-            "message": "工作流错�? {{ ctx.lastError.code }} - {{ ctx.lastError.message }}"
+            "message": "工作流错误 {{ ctx.lastError.code }} - {{ ctx.lastError.message }}"
           }
         }
       ]
@@ -430,6 +430,6 @@
     "complexity": "simple",
     "estimatedDuration": "5-30s",
     "requiredSkills": ["llm-service"],
-    "documentation": "https://docs.uniflow.ai/workflows/simple-qa"
+    "documentation": "https://docs.deepflow.ai/workflows/simple-qa"
   }
 }

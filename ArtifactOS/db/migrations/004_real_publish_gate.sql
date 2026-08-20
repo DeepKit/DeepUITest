@@ -61,6 +61,9 @@ begin
 end $$;
 
 -- 4. Guard trigger: publication_package must pass RealPublishGate before queued/submitting/published
+-- NOTE: publication_package table is created in migration 006. The trigger is
+-- created here only if the table already exists; otherwise migration 006 will
+-- bind the trigger via its own CREATE TRIGGER (see 006_publication_package.sql).
 create or replace function artifactos.fn_guard_publish_requires_gate()
 returns trigger language plpgsql as $$
 declare
@@ -78,10 +81,14 @@ begin
   return new;
 end $$;
 
-drop trigger if exists trg_real_publish_gate_required on artifactos.publication_package;
-create trigger trg_real_publish_gate_required
-before insert or update on artifactos.publication_package
-for each row
-execute function artifactos.fn_guard_publish_requires_gate();
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'artifactos' and table_name = 'publication_package') then
+    execute 'drop trigger if exists trg_real_publish_gate_required on artifactos.publication_package';
+    execute 'create trigger trg_real_publish_gate_required
+      before insert or update on artifactos.publication_package
+      for each row execute function artifactos.fn_guard_publish_requires_gate()';
+  end if;
+end $$;
 
 commit;

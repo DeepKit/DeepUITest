@@ -1,4 +1,4 @@
-{ ============================================================================
+﻿{ ============================================================================
   DeepSpec.Providers.Inspector
 
   Inspector provider - shows properties of the selected node in the

@@ -1,0 +1,531 @@
+﻿unit DeepAxis.UI.SetupForm;
+
+interface
+
+uses
+  System.SysUtils, System.Classes, System.IOUtils, System.Win.Registry,
+  System.Generics.Collections,
+  Winapi.Windows, Winapi.ShlObj,
+  Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls,
+  Vcl.FileCtrl, Vcl.Dialogs, Vcl.Graphics,
+  DeepAxis.Core.Base, DeepAxis.Core.Config,
+  DeepAxis.Core.i18n;  // BUG-045: 恢复 i18n (原 syntax issue 已修复)
+
+type
+  /// <summary>
+  ///   初始设置向导 — 引导用户选择微信数据目录。
+  ///   首次启动自动弹出，也可通过菜单手动打开。
+  /// </summary>
+  TDeepAxisSetupForm = class(TForm)
+  private
+    FPathEdit: TEdit;
+    FStatusLabel: TLabel;
+    FDetailMemo: TMemo;
+    FAutoDetectBtn: TButton;
+    FBrowseBtn: TButton;
+    FValidateBtn: TButton;
+    FStatusImage: TLabel;
+    procedure InitUI;
+    procedure DoAutoDetect(Sender: TObject);
+    procedure DoBrowse(Sender: TObject);
+    procedure DoValidate(Sender: TObject);
+    procedure DoOk(Sender: TObject);
+    procedure DoCancel(Sender: TObject);
+    procedure DoPathChange(Sender: TObject);
+    procedure ValidatePath;
+    function FindWeChatDataDirAuto: string;
+    function CheckDatabaseFiles(const ADir: string): TArray<string>;
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
+implementation
+
+{ TDeepAxisSetupForm }
+
+constructor TDeepAxisSetupForm.Create(AOwner: TComponent);
+begin
+  inherited CreateNew(AOwner);
+  BorderStyle := bsDialog;
+  BorderIcons := [biSystemMenu];
+  Position := poMainFormCenter;
+  Width := 560;
+  Height := 420;
+  Caption := I18nStr('SETUP_TITLE') + ' — 序枢';
+  InitUI;
+end;
+
+procedure TDeepAxisSetupForm.InitUI;
+var
+  LTopLabel, LDetailLabel: TLabel;
+  LPanel: TPanel;
+  LBtnPanel: TPanel;
+  LOkBtn, LCancelBtn: TButton;
+  LLeft: Integer;
+begin
+  // ── Title ──
+  LTopLabel := TLabel.Create(Self);
+  LTopLabel.Parent := Self;
+  LTopLabel.Top := 12;
+  LTopLabel.Left := 16;
+  LTopLabel.Caption := I18nStr('SETUP_WELCOME');
+  LTopLabel.Font.Size := 12;
+  LTopLabel.Font.Style := [fsBold];
+
+  // ── Path row ──
+  LPanel := TPanel.Create(Self);
+  LPanel.Parent := Self;
+  LPanel.Top := 44;
+  LPanel.Left := 12;
+  LPanel.Width := 520;
+  LPanel.Height := 36;
+  LPanel.BevelOuter := bvNone;
+
+  FPathEdit := TEdit.Create(LPanel);
+  FPathEdit.Parent := LPanel;
+  FPathEdit.Top := 4;
+  FPathEdit.Left := 4;
+  FPathEdit.Width := 390;
+  FPathEdit.ReadOnly := True;
+  FPathEdit.OnChange := DoPathChange;
+  // Pre-fill with current config
+  FPathEdit.Text := TDeepAxisConfig.GetWeChatDataPath;
+
+  FBrowseBtn := TButton.Create(LPanel);
+  FBrowseBtn.Parent := LPanel;
+  FBrowseBtn.Top := 2;
+  FBrowseBtn.Left := 400;
+  FBrowseBtn.Width := 80;
+  FBrowseBtn.Height := 30;
+  FBrowseBtn.Caption := I18nStr('SETUP_BROWSE');
+  FBrowseBtn.OnClick := DoBrowse;
+
+  FAutoDetectBtn := TButton.Create(LPanel);
+  FAutoDetectBtn.Parent := LPanel;
+  FAutoDetectBtn.Top := 2;
+  FAutoDetectBtn.Left := 486;
+  FAutoDetectBtn.Width := 30;
+  FAutoDetectBtn.Height := 30;
+  FAutoDetectBtn.Caption := '🔍';
+  FAutoDetectBtn.Hint := '自动检测微信数据目录';
+  FAutoDetectBtn.ShowHint := True;
+  FAutoDetectBtn.OnClick := DoAutoDetect;
+
+  // ── Status row ──
+  FStatusImage := TLabel.Create(Self);
+  FStatusImage.Parent := Self;
+  FStatusImage.Top := 88;
+  FStatusImage.Left := 16;
+  FStatusImage.Caption := '';
+  FStatusImage.Font.Size := 11;
+
+  FStatusLabel := TLabel.Create(Self);
+  FStatusLabel.Parent := Self;
+  FStatusLabel.Top := 88;
+  FStatusLabel.Left := 36;
+  FStatusLabel.Width := 500;
+  FStatusLabel.Caption := '请浏览或自动检测微信数据目录';
+  FStatusLabel.Font.Size := 10;
+
+  // ── Detail section ──
+  FValidateBtn := TButton.Create(Self);
+  FValidateBtn.Parent := Self;
+  FValidateBtn.Top := 116;
+  FValidateBtn.Left := 16;
+  FValidateBtn.Width := 90;
+  FValidateBtn.Height := 28;
+  FValidateBtn.Caption := I18nStr('SETUP_VALIDATE');
+  FValidateBtn.OnClick := DoValidate;
+
+  LDetailLabel := TLabel.Create(Self);
+  LDetailLabel.Parent := Self;
+  LDetailLabel.Top := 152;
+  LDetailLabel.Left := 16;
+  LDetailLabel.Caption := '── 检测详情 ──';
+  LDetailLabel.Font.Color := clGray;
+
+  FDetailMemo := TMemo.Create(Self);
+  FDetailMemo.Parent := Self;
+  FDetailMemo.Top := 172;
+  FDetailMemo.Left := 16;
+  FDetailMemo.Width := 512;
+  FDetailMemo.Height := 150;
+  FDetailMemo.ReadOnly := True;
+  FDetailMemo.ScrollBars := ssVertical;
+  FDetailMemo.Color := clBtnFace;
+  FDetailMemo.Lines.Add('点击 "验证目录" 或 "自动检测" 查看详情');
+
+  // ── Button row ──
+  LBtnPanel := TPanel.Create(Self);
+  LBtnPanel.Parent := Self;
+  LBtnPanel.Top := 336;
+  LBtnPanel.Left := 12;
+  LBtnPanel.Width := 520;
+  LBtnPanel.Height := 44;
+  LBtnPanel.BevelOuter := bvNone;
+
+  LCancelBtn := TButton.Create(LBtnPanel);
+  LCancelBtn.Parent := LBtnPanel;
+  LCancelBtn.Top := 6;
+  LCancelBtn.Left := 330;
+  LCancelBtn.Width := 80;
+  LCancelBtn.Height := 32;
+  LCancelBtn.Caption := I18nStr('SETUP_CANCEL');
+  LCancelBtn.ModalResult := mrCancel;
+  LCancelBtn.OnClick := DoCancel;
+
+  LOkBtn := TButton.Create(LBtnPanel);
+  LOkBtn.Parent := LBtnPanel;
+  LOkBtn.Top := 6;
+  LOkBtn.Left := 420;
+  LOkBtn.Width := 80;
+  LOkBtn.Height := 32;
+  LOkBtn.Caption := I18nStr('SETUP_OK');
+  LOkBtn.Default := True;
+  LOkBtn.ModalResult := mrOk;
+  LOkBtn.OnClick := DoOk;
+
+  // Initial validation if path is pre-filled
+  if FPathEdit.Text <> '' then
+    ValidatePath;
+end;
+
+// ── Auto-detect ────────────────────────────────────────────────────
+
+function TDeepAxisSetupForm.FindWeChatDataDirAuto: string;
+var
+  LBase, LDir, LMsgDir, LSearchPath: string;
+  LDirs: TArray<string>;
+  LReg: TRegistry;
+  LDriveRoots: TArray<string>;
+  LDriveRoot: string;
+  LUserInfo: string;
+
+  // 在指定根目录下查找 db_storage\message 结构，命中返回该 db_storage 路径。
+  function FindDbStorage(const ARoot: string): string;
+  var
+    LSub: string;
+    LFound: TArray<string>;
+    LChild: string;
+  begin
+    Result := '';
+    if (ARoot = '') or not TDirectory.Exists(ARoot) then Exit;
+    LFound := TDirectory.GetDirectories(ARoot, 'db_storage', TSearchOption.soAllDirectories);
+    for LChild in LFound do
+    begin
+      LSub := TPath.Combine(LChild, 'message');
+      if TDirectory.Exists(LSub) then
+        Exit(LChild);
+    end;
+  end;
+
+  // 用 GetLogicalDriveStrings 枚举所有盘符根路径（如 C:\ D:\ ...），
+  // 替代原先硬编码的 ['C','D','E','F','G']，H 盘及以上也能命中 (BUG-031)。
+  function ListLogicalDriveRoots: TArray<string>;
+  var
+    LBuf: array[0..511] of Char;
+    LLen, I, LStart: Integer;
+    LRaw: string;
+    LList: TList<string>;
+  begin
+    Result := nil;
+    LLen := GetLogicalDriveStrings(Length(LBuf), @LBuf[0]);
+    if LLen = 0 then Exit;
+    SetString(LRaw, PChar(@LBuf[0]), LLen);
+    LList := TList<string>.Create;
+    try
+      LStart := 1;
+      for I := 1 to LLen do
+      begin
+        if (LRaw[I] = #0) and (I > LStart) then
+        begin
+          LList.Add(Copy(LRaw, LStart, I - LStart));
+          LStart := I + 1;
+        end;
+      end;
+      Result := LList.ToArray;
+    finally
+      LList.Free;
+    end;
+  end;
+
+begin
+  Result := '';
+
+  // 1. Check current config
+  Result := TDeepAxisConfig.GetWeChatDataPath;
+  if (Result <> '') and TDirectory.Exists(Result) then Exit;
+
+  // 2. Check registry
+  try
+    LReg := TRegistry.Create(KEY_READ or KEY_WOW64_64KEY);
+    try
+      LReg.RootKey := HKEY_CURRENT_USER;
+      if LReg.OpenKeyReadOnly('Software\Tencent\WeChat') then
+      begin
+        if LReg.ValueExists('FileSavePath') then
+        begin
+          LBase := LReg.ReadString('FileSavePath');
+          if LBase <> '' then
+          begin
+            // FileSavePath might be the parent, look for db_storage inside
+            if TDirectory.Exists(LBase) then
+            begin
+              Result := FindDbStorage(LBase);
+              if Result <> '' then Exit;
+            end;
+          end;
+        end;
+        LReg.CloseKey;
+      end;
+    finally
+      LReg.Free;
+    end;
+  except
+    // Registry access failed, continue
+  end;
+
+  // 3. Check user home paths (Documents / home root)
+  LUserInfo := TPath.GetHomePath;
+  for LDir in [TPath.Combine(LUserInfo, 'Documents'), LUserInfo] do
+  begin
+    LSearchPath := TPath.Combine(LDir, 'xwechat_files');
+    Result := FindDbStorage(LSearchPath);
+    if Result <> '' then Exit;
+  end;
+
+  // 4. Enumerate ALL logical drives (BUG-031: no longer hard-coded C-G)
+  LDriveRoots := ListLogicalDriveRoots;
+  for LDriveRoot in LDriveRoots do
+  begin
+    LSearchPath := TPath.Combine(LDriveRoot, 'xwechat_files');
+    Result := FindDbStorage(LSearchPath);
+    if Result <> '' then Exit;
+  end;
+end;
+
+// ── Database file check ────────────────────────────────────────────
+
+function TDeepAxisSetupForm.CheckDatabaseFiles(const ADir: string): TArray<string>;
+var
+  LResults: TStrings;
+  LPath: string;
+begin
+  LResults := TStringList.Create;
+  try
+    // Contact DB
+    LPath := TPath.Combine(ADir, 'contact.db');
+    if TFile.Exists(LPath) then
+      LResults.Add('✅ 联系人数据库: contact.db')
+    else
+    begin
+      LPath := TPath.Combine(ADir, 'contact_contact.db');
+      if TFile.Exists(LPath) then
+        LResults.Add('✅ 联系人数据库: contact_contact.db')
+      else
+        LResults.Add('❌ 联系人数据库: 未找到 contact.db');
+    end;
+
+    // Message DB (in message/ subdirectory or root)
+    LPath := TPath.Combine(ADir, 'message');
+    if TDirectory.Exists(LPath) then
+    begin
+      var LMsgFile := TPath.Combine(LPath, 'message_0.db');
+      if TFile.Exists(LMsgFile) then
+        LResults.Add('✅ 消息数据库: message/message_0.db')
+      else
+        LResults.Add('❌ 消息数据库: 未找到 message/message_0.db');
+    end
+    else
+    begin
+      LPath := TPath.Combine(ADir, 'message_0.db');
+      if TFile.Exists(LPath) then
+        LResults.Add('✅ 消息数据库: message_0.db')
+      else
+        LResults.Add('❌ 消息数据库: 未找到 message_0.db');
+    end;
+
+    // Session DB
+    LPath := TPath.Combine(ADir, 'session.db');
+    if TFile.Exists(LPath) then
+      LResults.Add('✅ 会话数据库: session.db')
+    else
+    begin
+      LPath := TPath.Combine(ADir, 'session_session.db');
+      if TFile.Exists(LPath) then
+        LResults.Add('✅ 会话数据库: session_session.db')
+      else
+        LResults.Add('❌ 会话数据库: 未找到 session.db');
+    end;
+
+    // Key file — query the single source of truth (BUG-030 fix).
+    // TWeChatScanner.FindSavedKeysPath now delegates here too, so the
+    // wizard's status check matches the actual connection path.
+    LPath := TDeepAxisConfig.GetKeysFilePath;
+    if LPath <> '' then
+      LResults.Add('✅ 密钥文件: ' + LPath)
+    else
+      LResults.Add('❌ 密钥文件: 未找到 all_keys.json（需先扫描密钥）');
+
+    Result := LResults.ToStringArray;
+  finally
+    LResults.Free;
+  end;
+end;
+
+// ── Event handlers ─────────────────────────────────────────────────
+
+procedure TDeepAxisSetupForm.DoAutoDetect(Sender: TObject);
+var
+  LDetected: string;
+begin
+  FStatusLabel.Caption := '正在自动检测...';
+  FStatusImage.Caption := '⏳';
+  Application.ProcessMessages;
+
+  LDetected := FindWeChatDataDirAuto;
+  if LDetected <> '' then
+  begin
+    FPathEdit.Text := LDetected;
+    ValidatePath;
+  end
+  else
+  begin
+    FStatusLabel.Caption := '未自动找到微信数据目录，请手动浏览';
+    FStatusImage.Caption := '❌';
+    FDetailMemo.Lines.Clear;
+    FDetailMemo.Lines.Add('自动检测未找到微信数据目录。');
+    FDetailMemo.Lines.Add('');
+    FDetailMemo.Lines.Add('支持的目录格式: .../db_storage');
+    FDetailMemo.Lines.Add('搜索范围: 注册表、用户文档、D盘 xwechat_files');
+    FDetailMemo.Lines.Add('');
+    FDetailMemo.Lines.Add('请确保微信已安装并至少登录过一次。');
+  end;
+end;
+
+procedure TDeepAxisSetupForm.DoBrowse(Sender: TObject);
+var
+  LDialog: TFileOpenDialog;
+  LPath: string;
+begin
+  LDialog := TFileOpenDialog.Create(Self);
+  try
+    LDialog.Title := '选择微信数据目录 (db_storage)';
+    LDialog.Options := [fdoPickFolders, fdoPathMustExist, fdoForceFileSystem];
+    LPath := FPathEdit.Text;
+    if (LPath <> '') and TDirectory.Exists(LPath) then
+      LDialog.DefaultFolder := LPath
+    else
+    begin
+      LPath := TDeepAxisConfig.GetWeChatDataPath;
+      if TDirectory.Exists(LPath) then
+        LDialog.DefaultFolder := LPath;
+    end;
+    if LDialog.Execute then
+    begin
+      FPathEdit.Text := LDialog.FileName;
+      ValidatePath;
+    end;
+  finally
+    LDialog.Free;
+  end;
+end;
+
+procedure TDeepAxisSetupForm.DoValidate(Sender: TObject);
+begin
+  ValidatePath;
+end;
+
+procedure TDeepAxisSetupForm.DoPathChange(Sender: TObject);
+begin
+  // Light validation on path change
+  if FPathEdit.Text = '' then
+  begin
+    FStatusLabel.Caption := '请浏览或自动检测微信数据目录';
+    FStatusImage.Caption := '';
+  end;
+end;
+
+procedure TDeepAxisSetupForm.ValidatePath;
+var
+  LPath: string;
+  LDetails: TArray<string>;
+  LDetail: string;
+  LGoodCount: Integer;
+begin
+  LPath := FPathEdit.Text;
+  FDetailMemo.Lines.Clear;
+
+  if LPath = '' then
+  begin
+    FStatusLabel.Caption := '请选择目录';
+    FStatusImage.Caption := '';
+    Exit;
+  end;
+
+  if not TDirectory.Exists(LPath) then
+  begin
+    FStatusLabel.Caption := '目录不存在: ' + LPath;
+    FStatusImage.Caption := '❌';
+    FDetailMemo.Lines.Add('路径无效，请重新选择');
+    Exit;
+  end;
+
+  LDetails := CheckDatabaseFiles(LPath);
+  LGoodCount := 0;
+  for LDetail in LDetails do
+  begin
+    FDetailMemo.Lines.Add(LDetail);
+    if LDetail.StartsWith('✅') then
+      Inc(LGoodCount);
+  end;
+
+  FDetailMemo.Lines.Add('');
+  FDetailMemo.Lines.Add(Format('检测完成: %d/4 项通过', [LGoodCount]));
+
+  if LGoodCount >= 3 then
+  begin
+    FStatusLabel.Caption := '✅ 有效 — 找到 ' + IntToStr(LGoodCount) + ' 个数据库';
+    FStatusImage.Caption := '✅';
+    FStatusLabel.Font.Color := clGreen;
+  end
+  else if LGoodCount >= 1 then
+  begin
+    FStatusLabel.Caption := '⚠️ 部分数据库缺失 (' + IntToStr(LGoodCount) + '/4)';
+    FStatusImage.Caption := '⚠️';
+    FStatusLabel.Font.Color := clOlive;
+  end
+  else
+  begin
+    FStatusLabel.Caption := '❌ 目录中未找到微信数据库';
+    FStatusImage.Caption := '❌';
+    FStatusLabel.Font.Color := clRed;
+  end;
+end;
+
+procedure TDeepAxisSetupForm.DoOk(Sender: TObject);
+begin
+  if FPathEdit.Text = '' then
+  begin
+    MessageDlg('请先选择微信数据目录', mtWarning, [mbOK], 0);
+    ModalResult := mrNone;
+    Exit;
+  end;
+
+  if not TDirectory.Exists(FPathEdit.Text) then
+  begin
+    MessageDlg('所选目录不存在，请重新选择', mtWarning, [mbOK], 0);
+    ModalResult := mrNone;
+    Exit;
+  end;
+
+  // Save to config
+  TDeepAxisConfig.SetWeChatDataPath(FPathEdit.Text);
+end;
+
+procedure TDeepAxisSetupForm.DoCancel(Sender: TObject);
+begin
+  // Allow cancel
+end;
+
+end.

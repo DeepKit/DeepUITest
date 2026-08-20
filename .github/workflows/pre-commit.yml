@@ -1,0 +1,23 @@
+# 编码门禁 CI — 增量检查本次改动的文件
+#
+# 与本地 pre-commit install 等效但不可绕过（--no-verify 绕不过 CI）。
+# 只查 origin/main..HEAD 的增量改动，历史污染不阻塞新提交。
+# 全量扫描用：pre-commit run --all-files（本地自查，会暴露全仓库残留）。
+name: pre-commit
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+      - name: Run pre-commit on changed files
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --from-ref origin/main --to-ref HEAD --show-diff-on-failure

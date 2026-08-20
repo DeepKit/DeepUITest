@@ -1,17 +1,17 @@
-unit UniFlow.Performance.Pool;
+unit DeepFlow.Performance.Pool;
 (*
-  UniFlow Performance - Object Pool
+  DeepFlow Performance - Object Pool
   ==================================
-  高性能对象池实现，减少频繁创建/销毁对象的开销�?
+  高性能对象池实现，减少频繁创建/销毁对象的开销�?
   
   特性：
   - 泛型对象池，支持任意类型
   - 线程安全
-  - 预分�?+ 动态扩�?
+  - 预分�?+ 动态扩�?
   - 对象重置机制
   - 统计信息
   
-  Author: UniFlow Team
+  Author: DeepFlow Team
   Date: 2025-12-05
 *)
 
@@ -26,17 +26,17 @@ type
   // 池化对象接口
   // ============================================================================
   
-  /// <summary>可池化对象接�?/summary>
+  /// <summary>可池化对象接�?/summary>
   IPoolable = interface
     ['{8A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C5D}']
     /// <summary>重置对象状态，准备重用</summary>
     procedure Reset;
-    /// <summary>对象是否可重�?/summary>
+    /// <summary>对象是否可重�?/summary>
     function IsReusable: Boolean;
   end;
   
   // ============================================================================
-  // 对象池统�?
+  // 对象池统�?
   // ============================================================================
   
   TPoolStats = record
@@ -44,27 +44,27 @@ type
     TotalAcquired: Int64;     // 总获取数
     TotalReleased: Int64;     // 总释放数
     TotalReset: Int64;        // 总重置数
-    CurrentPoolSize: Integer; // 当前池大�?
-    CurrentInUse: Integer;    // 当前使用�?
-    PeakInUse: Integer;       // 峰值使�?
-    HitRate: Double;          // 命中�?
+    CurrentPoolSize: Integer; // 当前池大�?
+    CurrentInUse: Integer;    // 当前使用�?
+    PeakInUse: Integer;       // 峰值使�?
+    HitRate: Double;          // 命中�?
     
     procedure Reset;
     function ToJSON: TJSONObject;
   end;
   
   // ============================================================================
-  // 对象池配�?
+  // 对象池配�?
   // ============================================================================
   
   TPoolConfig = record
-    InitialSize: Integer;     // 初始池大�?
-    MaxSize: Integer;         // 最大池大小 (0 = 无限�?
+    InitialSize: Integer;     // 初始池大�?
+    MaxSize: Integer;         // 最大池大小 (0 = 无限�?
     GrowthFactor: Double;     // 扩容因子
-    ShrinkThreshold: Double;  // 收缩阈�?
-    MaxIdleTimeMs: Int64;     // 最大空闲时�?(ms)
+    ShrinkThreshold: Double;  // 收缩阈�?
+    MaxIdleTimeMs: Int64;     // 最大空闲时�?(ms)
     
-    class function Default: TPoolConfig; static;
+    class function GetDefault: TPoolConfig; static;
     class function Small: TPoolConfig; static;
     class function Large: TPoolConfig; static;
   end;
@@ -91,7 +91,7 @@ type
   end;
   
   // ============================================================================
-  // 泛型对象�?
+  // 泛型对象�?
   // ============================================================================
   
   /// <summary>对象工厂函数类型</summary>
@@ -125,10 +125,10 @@ type
     constructor Create(AFactory: TObjectFactory<T>); overload;
     destructor Destroy; override;
     
-    /// <summary>设置对象重置�?/summary>
+    /// <summary>设置对象重置�?/summary>
     procedure SetResetter(AResetter: TObjectResetter<T>);
     
-    /// <summary>设置对象验证�?/summary>
+    /// <summary>设置对象验证�?/summary>
     procedure SetValidator(AValidator: TObjectValidator<T>);
     
     /// <summary>获取对象</summary>
@@ -140,7 +140,7 @@ type
     /// <summary>预热池（预创建对象）</summary>
     procedure Warmup(ACount: Integer = 0);
     
-    /// <summary>清空�?/summary>
+    /// <summary>清空�?/summary>
     procedure Clear;
     
     /// <summary>收缩池到指定大小</summary>
@@ -155,7 +155,7 @@ type
   end;
   
   // ============================================================================
-  // 专用对象池：TJSONObject �?
+  // 专用对象池：TJSONObject �?
   // ============================================================================
   
   TJSONObjectPool = class
@@ -175,7 +175,7 @@ type
   end;
   
   // ============================================================================
-  // 专用对象池：TStringBuilder �?
+  // 专用对象池：TStringBuilder �?
   // ============================================================================
   
   TStringBuilderPool = class
@@ -195,7 +195,7 @@ type
   end;
   
   // ============================================================================
-  // 专用对象池：TStringList �?
+  // 专用对象池：TStringList �?
   // ============================================================================
   
   TStringListPool = class
@@ -215,16 +215,16 @@ type
   end;
   
   // ============================================================================
-  // CODE-002: 循环变量对象�?(轻量�?
+  // CODE-002: 循环变量对象�?(轻量�?
   // ============================================================================
   
-  /// <summary>池化循环变量（不依赖 TVariableValue�?/summary>
+  /// <summary>池化循环变量（不依赖 TVariableValue�?/summary>
   TPooledLoopVar = class
   private
     FValueType: string;
     FStringValue: string;
     FIntValue: Int64;
-    FJsonValue: TJSONValue;  // 不拥�?
+    FJsonValue: TJSONValue;  // 不拥�?
     FIsNull: Boolean;
     FPooled: Boolean;
   public
@@ -236,7 +236,7 @@ type
     
     function AsString: string;
     function AsInteger: Int64;
-    function AsJSON: TJSONValue;  // 可能创建新对象，调用者负责释�?
+    function AsJSON: TJSONValue;  // 可能创建新对象，调用者负责释�?
     
     property ValueType: string read FValueType;
     property IsPooled: Boolean read FPooled write FPooled;
@@ -250,18 +250,18 @@ type
     FLock: TCriticalSection;
     FStats: TPoolStats;
     class var FInstance: TVariableValuePool;
-    class var FLock: TCriticalSection;
+    class var FClassLock: TCriticalSection;
   public
     constructor Create;
     destructor Destroy; override;
     
-    /// <summary>获取整数值包�?/summary>
+    /// <summary>获取整数值包�?/summary>
     function AcquireInt(AValue: Int64): TPooledLoopVar;
-    /// <summary>获取字符串值包�?/summary>
+    /// <summary>获取字符串值包�?/summary>
     function AcquireStr(const AValue: string): TPooledLoopVar;
-    /// <summary>获取 JSON 值包�?/summary>
+    /// <summary>获取 JSON 值包�?/summary>
     function AcquireJson(AValue: TJSONValue): TPooledLoopVar;
-    /// <summary>释放值回�?/summary>
+    /// <summary>释放值回�?/summary>
     procedure Release(AValue: TPooledLoopVar);
     /// <summary>获取统计</summary>
     function GetStats: TPoolStats;
@@ -283,10 +283,10 @@ type
     constructor Create;
     destructor Destroy; override;
     
-    /// <summary>注册�?/summary>
+    /// <summary>注册�?/summary>
     procedure RegisterPool(const AName: string; APool: TObject);
     
-    /// <summary>获取�?/summary>
+    /// <summary>获取�?/summary>
     function GetPool<T: class>(const AName: string): TObjectPool<T>;
     
     /// <summary>获取所有池统计</summary>
@@ -318,19 +318,19 @@ type
 // 全局便捷函数
 // ============================================================================
 
-/// <summary>获取 TJSONObject 池实�?/summary>
+/// <summary>获取 TJSONObject 池实�?/summary>
 function JSONPool: TJSONObjectPool;
 
-/// <summary>获取 TStringBuilder 池实�?/summary>
+/// <summary>获取 TStringBuilder 池实�?/summary>
 function StringBuilderPool: TStringBuilderPool;
 
-/// <summary>获取 TStringList 池实�?/summary>
+/// <summary>获取 TStringList 池实�?/summary>
 function StringListPool: TStringListPool;
 
 /// <summary>获取池管理器实例</summary>
 function PoolManager: TPoolManager;
 
-/// <summary>CODE-002: 获取 TVariableValue 池实�?/summary>
+/// <summary>CODE-002: 获取 TVariableValue 池实�?/summary>
 function VariableValuePool: TVariableValuePool;
 
 implementation
@@ -372,7 +372,7 @@ end;
 // TPoolConfig
 // ============================================================================
 
-class function TPoolConfig.Default: TPoolConfig;
+class function TPoolConfig.GetDefault: TPoolConfig;
 begin
   Result.InitialSize := 16;
   Result.MaxSize := 256;
@@ -452,7 +452,7 @@ end;
 
 constructor TObjectPool<T>.Create(AFactory: TObjectFactory<T>);
 begin
-  Create(AFactory, TPoolConfig.Default);
+  Create(AFactory, TPoolConfig.GetDefault);
 end;
 
 destructor TObjectPool<T>.Destroy;
@@ -488,7 +488,7 @@ begin
   end
   else if Supports(AInstance, IPoolable) then
   begin
-    (AInstance as IPoolable).Reset;
+    IPoolable(AInstance).Reset;
     Inc(FStats.TotalReset);
   end;
 end;
@@ -498,7 +498,7 @@ begin
   if Assigned(FValidator) then
     Result := FValidator(AInstance)
   else if Supports(AInstance, IPoolable) then
-    Result := (AInstance as IPoolable).IsReusable
+    Result := IPoolable(AInstance).IsReusable
   else
     Result := True;
 end;
@@ -507,12 +507,12 @@ procedure TObjectPool<T>.GrowPool;
 var
   NewSize, i: Integer;
 begin
-  // 计算新大�?
+  // 计算新大�?
   NewSize := Round(FPool.Count * FConfig.GrowthFactor);
   if NewSize < FPool.Count + 1 then
     NewSize := FPool.Count + 1;
   
-  // 限制最大大�?
+  // 限制最大大�?
   if (FConfig.MaxSize > 0) and (NewSize > FConfig.MaxSize) then
     NewSize := FConfig.MaxSize;
   
@@ -574,7 +574,7 @@ begin
     // 清理过期对象
     CleanExpired;
     
-    // 从池中获�?
+    // 从池中获�?
     for i := FPool.Count - 1 downto 0 do
     begin
       Item := FPool[i];
@@ -593,7 +593,7 @@ begin
         
         FStats.CurrentPoolSize := FPool.Count;
         
-        // 计算命中�?(保护除零)
+        // 计算命中�?(保护除零)
         if FStats.TotalAcquired > 0 then
           FStats.HitRate := (FStats.TotalAcquired - FStats.TotalCreated) / FStats.TotalAcquired
         else
@@ -609,7 +609,7 @@ begin
     if FStats.CurrentInUse > FStats.PeakInUse then
       FStats.PeakInUse := FStats.CurrentInUse;
     
-    // 计算命中�?
+    // 计算命中�?
     if FStats.TotalAcquired > 0 then
       FStats.HitRate := (FStats.TotalAcquired - FStats.TotalCreated) / FStats.TotalAcquired;
   finally
@@ -624,7 +624,7 @@ begin
   if AInstance = nil then
     Exit;
     
-  // 如果禁用池化，直接销�?
+  // 如果禁用池化，直接销�?
   if not FEnabled then
   begin
     AInstance.Free;
@@ -636,7 +636,7 @@ begin
     Inc(FStats.TotalReleased);
     Dec(FStats.CurrentInUse);
     
-    // 检查是否超过最大大�?
+    // 检查是否超过最大大�?
     if (FConfig.MaxSize > 0) and (FPool.Count >= FConfig.MaxSize) then
     begin
       AInstance.Free;
@@ -673,7 +673,7 @@ begin
     else
       TargetCount := ACount;
       
-    // 限制最大大�?
+    // 限制最大大�?
     if (FConfig.MaxSize > 0) and (TargetCount > FConfig.MaxSize) then
       TargetCount := FConfig.MaxSize;
     
@@ -724,15 +724,18 @@ end;
 // ============================================================================
 
 constructor TJSONObjectPool.Create;
+var
+  LFactory: TObjectFactory<TJSONObject>;
+  LConfig: TPoolConfig;
 begin
   inherited Create;
-  FPool := TObjectPool<TJSONObject>.Create(
+  LFactory :=
     function: TJSONObject
     begin
       Result := TJSONObject.Create;
-    end,
-    TPoolConfig.Default
-  );
+    end;
+  LConfig := TPoolConfig.GetDefault;
+  FPool := TObjectPool<TJSONObject>.Create(LFactory, LConfig);
   
   FPool.SetResetter(
     procedure(AJson: TJSONObject)
@@ -803,15 +806,18 @@ end;
 // ============================================================================
 
 constructor TStringBuilderPool.Create;
+var
+  LFactory: TObjectFactory<TStringBuilder>;
+  LConfig: TPoolConfig;
 begin
   inherited Create;
-  FPool := TObjectPool<TStringBuilder>.Create(
+  LFactory :=
     function: TStringBuilder
     begin
       Result := TStringBuilder.Create(256);
-    end,
-    TPoolConfig.Default
-  );
+    end;
+  LConfig := TPoolConfig.GetDefault;
+  FPool := TObjectPool<TStringBuilder>.Create(LFactory, LConfig);
   
   FPool.SetResetter(
     procedure(ASB: TStringBuilder)
@@ -873,15 +879,18 @@ end;
 // ============================================================================
 
 constructor TStringListPool.Create;
+var
+  LFactory: TObjectFactory<TStringList>;
+  LConfig: TPoolConfig;
 begin
   inherited Create;
-  FPool := TObjectPool<TStringList>.Create(
+  LFactory :=
     function: TStringList
     begin
       Result := TStringList.Create;
-    end,
-    TPoolConfig.Default
-  );
+    end;
+  LConfig := TPoolConfig.GetDefault;
+  FPool := TObjectPool<TStringList>.Create(LFactory, LConfig);
   
   FPool.SetResetter(
     procedure(ASL: TStringList)
@@ -1000,7 +1009,7 @@ begin
   try
     for Pair in FPools do
     begin
-      // 尝试获取统计信息 - 简化处�?
+      // 尝试获取统计信息 - 简化处�?
       PoolStats := TJSONObject.Create;
       PoolStats.AddPair('registered', TJSONBool.Create(True));
       Result.AddPair(Pair.Key, PoolStats);
@@ -1086,7 +1095,7 @@ end;
 
 // ============================================================================
 // TVariableValuePool - CODE-002
-// 使用轻量级循环变量包装类，包含完整字�?
+// 使用轻量级循环变量包装类，包含完整字�?
 // ============================================================================
 
 constructor TPooledLoopVar.Create;
@@ -1102,7 +1111,7 @@ begin
   FValueType := 'null';
   FStringValue := '';
   FIntValue := 0;
-  FJsonValue := nil;  // 不拥有，不释�?
+  FJsonValue := nil;  // 不拥有，不释�?
   FIsNull := True;
 end;
 
@@ -1123,7 +1132,7 @@ end;
 procedure TPooledLoopVar.SetJson(AValue: TJSONValue);
 begin
   FValueType := 'json';
-  FJsonValue := AValue;  // 不拥�?
+  FJsonValue := AValue;  // 不拥�?
   FIsNull := (AValue = nil);
 end;
 
@@ -1170,7 +1179,7 @@ begin
   FLock := TCriticalSection.Create;
   FStats.Reset;
   
-  // 预热：循环常�?16 个整数和 8 个字符串
+  // 预热：循环常�?16 个整数和 8 个字符串
   for var I := 0 to 15 do
   begin
     var V := TPooledLoopVar.Create;
@@ -1290,7 +1299,7 @@ procedure TVariableValuePool.Release(AValue: TPooledLoopVar);
 begin
   if (AValue = nil) or (not AValue.FPooled) then
   begin
-    AValue.Free;  // 非池化对象直接释�?
+    AValue.Free;  // 非池化对象直接释�?
     Exit;
   end;
   
@@ -1300,7 +1309,7 @@ begin
     Dec(FStats.CurrentInUse);
     Inc(FStats.TotalReset);
     
-    // 按原类型放回对应�?
+    // 按原类型放回对应�?
     if AValue.FValueType = 'integer' then
     begin
       AValue.Reset;
@@ -1334,14 +1343,14 @@ class function TVariableValuePool.GetInstance: TVariableValuePool;
 begin
   if FInstance = nil then
   begin
-    if FLock = nil then
-      FLock := TCriticalSection.Create;
-    FLock.Enter;
+    if FClassLock = nil then
+      FClassLock := TCriticalSection.Create;
+    FClassLock.Enter;
     try
       if FInstance = nil then
         FInstance := TVariableValuePool.Create;
     finally
-      FLock.Leave;
+      FClassLock.Leave;
     end;
   end;
   Result := FInstance;
@@ -1349,15 +1358,15 @@ end;
 
 class procedure TVariableValuePool.ReleaseInstance;
 begin
-  if FLock <> nil then
+  if FClassLock <> nil then
   begin
-    FLock.Enter;
+    FClassLock.Enter;
     try
       FreeAndNil(FInstance);
     finally
-      FLock.Leave;
+      FClassLock.Leave;
     end;
-    FreeAndNil(FLock);
+    FreeAndNil(FClassLock);
   end;
 end;
 

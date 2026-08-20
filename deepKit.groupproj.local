@@ -1,9 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
-	<Transactions>
-    <Transaction>2026/05/12 22:14:30.000.707,D:\_Progs\02Business\deepKit.groupproj=D:\_Progs\02Business\ProjectGroup1.groupproj</Transaction>
-  </Transactions>
+	<Transactions/>
 	<Default.Personality>
-		<Projects ActiveProject="D:\_Progs\02Business\DeepSpec\DeepSpec.dproj"/>
+		<Projects ActiveProject="D:\_Progs\02Business\DeepInput\src\DeepInput.dproj"/>
 	</Default.Personality>
 </BorlandProject>

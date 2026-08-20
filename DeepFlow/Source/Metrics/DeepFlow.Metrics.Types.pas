@@ -1,6 +1,6 @@
 {******************************************************************************}
 {                                                                              }
-{  UniFlow Metrics Types                                                       }
+{  DeepFlow Metrics Types                                                       }
 {  Prometheus-style metrics type definitions                                   }
 {                                                                              }
 {  Features:                                                                   }
@@ -11,7 +11,7 @@
 {                                                                              }
 {******************************************************************************}
 
-unit UniFlow.Metrics.Types;
+unit DeepFlow.Metrics.Types;
 
 interface
 

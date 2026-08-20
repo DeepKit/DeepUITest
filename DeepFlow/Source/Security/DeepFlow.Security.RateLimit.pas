@@ -1,5 +1,5 @@
 (* ============================================================================
-  UniFlow.Security.RateLimit - Rate Limiting and Quota Management
+  DeepFlow.Security.RateLimit - Rate Limiting and Quota Management
 
   Version: 1.0
   Description: Controls request rates and resource quotas
@@ -20,7 +20,7 @@
       // Rate limited
   ============================================================================ *)
 
-unit UniFlow.Security.RateLimit;
+unit DeepFlow.Security.RateLimit;
 
 interface
 

@@ -1,0 +1,191 @@
+package DeepFlow;
+
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION OFF}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES ON}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE DEBUG}
+{$ENDIF IMPLICITBUILDING}
+{$IMPLICITBUILD OFF}
+
+{$DESCRIPTION 'DeepFlow Workflow Engine Runtime Package'}
+{$RUNONLY}
+{$LIBPREFIX 'df'}
+{$LIBSUFFIX ''}
+
+requires
+  DeepBaseCore;
+
+contains
+  // ============================================================
+  // Core
+  // ============================================================
+  DeepFlow.Constants,
+  DeepFlow.DI,
+  DeepFlow.Tenant,
+
+  // ============================================================
+  // Workflow Engine
+  // ============================================================
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Context,
+  DeepFlow.Workflow.Executor,
+  DeepFlow.Workflow.State,
+  DeepFlow.Workflow.Errors,
+  DeepFlow.Workflow.Version,
+  DeepFlow.Workflow.Version.API,
+  DeepFlow.Workflow.ImportExport,
+
+  // ============================================================
+  // Session Management
+  // ============================================================
+  DeepFlow.Session.Types,
+  DeepFlow.Session.Manager,
+
+  // ============================================================
+  // Roles (Commander)
+  // ============================================================
+  DeepFlow.Roles.Commander,
+
+  // ============================================================
+  // AI Integration
+  // ============================================================
+  DeepFlow.AI.Adapter,
+  DeepFlow.AI.Recommendation,
+  DeepFlow.AI.NLWorkflowGen,
+  DeepFlow.AI.AnomalyDetection,
+  DeepFlow.AI.SmartRetry,
+
+  // ============================================================
+  // Skill Service
+  // ============================================================
+  DeepFlow.Skill.Types,
+  DeepFlow.Skill.Client,
+  DeepFlow.Skill.Executor,
+
+  // ============================================================
+  // Security
+  // ============================================================
+  DeepFlow.Security.Sanitizer,
+  DeepFlow.Security.Filter,
+  DeepFlow.Security.RateLimit,
+
+  // ============================================================
+  // Validation
+  // ============================================================
+  DeepFlow.Validation.Schema,
+
+  // ============================================================
+  // Audit
+  // ============================================================
+  DeepFlow.Audit.Types,
+  DeepFlow.Audit.Store,
+  DeepFlow.Audit.Manager,
+
+  // ============================================================
+  // Metrics
+  // ============================================================
+  DeepFlow.Metrics.Types,
+  DeepFlow.Metrics.Collector,
+
+  // ============================================================
+  // Diagnostics
+  // ============================================================
+  DeepFlow.Diagnostics,
+  DeepFlow.Diagnostics.Integration,
+  DeepFlow.Diagnostics.ErrorCollector,
+  DeepFlow.Diagnostics.TraceExporter,
+  DeepFlow.Diagnostics.Debugger,
+
+  // ============================================================
+  // Event Sourcing
+  // ============================================================
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store,
+  DeepFlow.EventSourcing.Instance,
+  DeepFlow.EventSourcing.Replay,
+
+  // ============================================================
+  // MCP Protocol
+  // ============================================================
+  DeepFlow.MCP.Types,
+  DeepFlow.MCP.Server,
+  DeepFlow.MCP.Client,
+
+  // ============================================================
+  // Performance Optimization
+  // ============================================================
+  DeepFlow.Performance.Pool,
+  DeepFlow.Performance.Cache,
+  DeepFlow.Performance.JSON,
+  DeepFlow.Performance.Concurrent,
+
+  // ============================================================
+  // Plugin System
+  // ============================================================
+  DeepFlow.Plugin.Intf,
+  DeepFlow.Plugin.Loader,
+  DeepFlow.Plugin.Registry,
+  DeepFlow.Plugin.Examples,
+
+  // ============================================================
+  // Queue Integration
+  // ============================================================
+  DeepFlow.Queue.Types,
+  DeepFlow.Queue.RabbitMQ,
+  DeepFlow.Queue.Kafka,
+
+  // ============================================================
+  // Storage Backend
+  // ============================================================
+  DeepFlow.Storage.Types,
+  DeepFlow.Storage.PostgreSQL,
+  DeepFlow.Storage.SQLite,
+
+  // ============================================================
+  // Realtime Communication
+  // ============================================================
+  DeepFlow.Realtime.WebSocket,
+
+  // ============================================================
+  // Cloud/Telemetry
+  // ============================================================
+  DeepFlow.Cloud.Telemetry.Types,
+  DeepFlow.Cloud.Telemetry.SDK,
+
+  // ============================================================
+  // Analytics
+  // ============================================================
+  DeepFlow.Analytics,
+
+  // ============================================================
+  // Facade
+  // ============================================================
+  DeepBase.DeepFlow,
+
+  // ============================================================
+  // Tests
+  // ============================================================
+  DeepFlow.Tests.Executor,
+  DeepFlow.Tests.Benchmark,
+  DeepFlow.Tests.E2E;
+
+end.

@@ -1,7 +1,0 @@
-ZhihuPoster             ExitCode=0  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\ZhihuPoster.log
-ZhihuPosterPro          ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\ZhihuPosterPro.log
-ConfigEditor            ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\ConfigEditor.log
-ConvertFilesToUTF8      ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\ConvertFilesToUTF8.log
-DeepConfig              ExitCode=0  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\DeepConfig.log
-FixAccess               ExitCode=1  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\FixAccess.log
-DeepInput               ExitCode=0  log=d:\_Progs\02Business\.kiro\specs\aierrorhandler-rollout\exec-log\_g3_compile\DeepInput.log

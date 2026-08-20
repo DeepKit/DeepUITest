@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>可鉴 · 决策操作系统</title>
+<link rel="stylesheet" href="css/kejian.css">
+</head>
+<body>
+
+<!-- 品牌栏 -->
+<header class="brand-bar">
+  <div class="brand-left">
+    <span class="brand-logo">可鉴</span>
+    <span class="brand-slogan">每个决策，可见，可鉴。</span>
+  </div>
+  <div class="brand-right">
+    <span class="brand-en">AUDITA</span>
+    <span class="brand-badge">决策操作系统</span>
+  </div>
+</header>
+
+<!-- 主区 -->
+<main class="container">
+
+  <!-- 输入区 -->
+  <section id="input-section" class="panel">
+    <h2 class="panel-title">开始一次治理</h2>
+    <p class="panel-sub">输入您正在面对的决策，六位 AI 角色将并行推演，产出可鉴的思维胶片。</p>
+
+    <!-- T19c: 树洞模式入口 -->
+    <div class="mode-switch" style="margin-bottom: 12px; text-align: right;">
+      <button id="treehole-toggle" class="btn-secondary" title="轻量陪伴倾诉，可随时生成 X 光片自我觉察">🎋 树洞模式</button>
+    </div>
+    <textarea id="problem-input" rows="3" placeholder="例如：直营门店要不要从 50 家扩到 80 家？预算 8000 万，周期两年。"></textarea>
+
+    <div class="template-row">
+      <span class="template-label">治理模板</span>
+      <div id="template-list" class="template-list">
+        <button class="template-chip active" data-template="strategic">战略决策</button>
+        <button class="template-chip" data-template="investment">投资决策</button>
+        <button class="template-chip" data-template="personnel">人事决策</button>
+        <button class="template-chip" data-template="procurement">采购决策</button>
+        <button class="template-chip" data-template="medical">医疗健康</button>
+        <button class="template-chip" data-template="legal">法律纠纷</button>
+        <button class="template-chip" data-template="education">教育升学</button>
+        <button class="template-chip" data-template="family">家庭重大</button>
+      </div>
+    </div>
+    <p id="template-hint" class="template-hint">扩张/新市场/产品线 — 聚焦机会成本、执行能力与可逆性</p>
+
+    <div class="action-row">
+      <button id="start-btn" class="btn-primary">开始治理</button>
+      <span id="status-hint" class="status-hint"></span>
+    </div>
+  </section>
+
+  <!-- T14: 决策历史（可复盘） -->
+  <section id="history-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">决策历史 <span class="panel-tag">可复盘 · 服务端存储 · 本机缓存</span></h2>
+      <div class="film-actions">
+        <button id="history-export" class="btn-secondary" title="导出 JSON 备份">导出</button>
+        <button id="history-import" class="btn-secondary" title="从 JSON 备份导入">导入</button>
+        <button id="history-clear" class="btn-secondary">清空</button>
+        <input type="file" id="history-import-file" accept=".json,application/json" hidden>
+      </div>
+    </div>
+    <div id="history-list" class="history-list"></div>
+  </section>
+
+  <!-- 六角色状态面板 -->
+  <section id="roles-section" class="panel hidden">
+    <h2 class="panel-title">六角色推演 <span class="panel-tag" id="roles-tag">可见 · 实时</span></h2>
+    <div id="role-grid" class="role-grid">
+      <!-- 角色卡片由 JS 渲染 -->
+    </div>
+  </section>
+
+  <!-- 聚合区 -->
+  <section id="aggregate-section" class="panel hidden">
+    <h2 class="panel-title">聚合共识 <span class="panel-tag" id="aggregate-tag"></span></h2>
+    <div id="aggregate-body" class="aggregate-body"></div>
+  </section>
+
+  <!-- 胶片区 -->
+  <section id="film-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">决策思维胶片</h2>
+      <div class="film-actions">
+        <button id="generate-xray-btn" class="btn-secondary" style="display:none;">生成脑内 X 光片</button>
+        <button id="share-btn" class="btn-secondary">生成分享卡片</button>
+        <button id="copy-btn" class="btn-secondary">复制胶片</button>
+      </div>
+    </div>
+    <div id="film-body" class="film-body"></div>
+    <!-- 品牌水印 -->
+    <div class="watermark">
+      <span class="watermark-name">由可鉴生成</span>
+      <span class="watermark-slogan">每个决策，可见，可鉴。</span>
+      <span class="watermark-link">kejian.app 邀请你体验决策操作系统</span>
+    </div>
+    
+    <!-- T19b: 脑内 X 光片显示区 -->
+    <section id="xray-section" class="panel hidden">
+      <div class="film-header">
+        <h2 class="panel-title">脑内 X 光片</h2>
+        <div class="status-badge">温和 · 诚实 · 第三人称</div>
+      </div>
+      <div id="xray-content"></div>
+      <div id="xray-narrative" class="xray-summary" style="margin-top: 14px;"></div>
+    </section>
+  </section>
+
+  <!-- 继续追问区 -->
+  <section id="followup-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">脑内 X 光片</h2>
+      <div class="status-badge">温和 · 诚实 · 第三人称</div>
+    </div>
+    <div id="xray-content"></div>
+    <div id="xray-narrative" class="xray-summary" style="margin-top: 14px;"></div>
+  </section>
+  
+  <section id="xray-section" class="panel hidden">
+    <div class="film-header">
+      <h2 class="panel-title">脑内 X 光片</h2>
+      <div class="status-badge">温和 · 诚实 · 第三人称</div>
+    </div>
+    <div id="xray-content"></div>
+    <div id="xray-narrative" class="xray-summary" style="margin-top: 14px;"></div>
+  </section>
+  
+  <section id="followup-section" class="panel hidden">
+    <h2 class="panel-title">继续追问 <span class="panel-tag">对话式 · 即时</span></h2>
+    <p class="panel-sub">对胶片有疑问？直接追问，可鉴会结合本次治理上下文继续回答。</p>
+    <div id="chat-log" class="chat-log"></div>
+    <div class="chat-input-row">
+      <textarea id="followup-input" rows="2" placeholder="例如：如果扩店，最大的三个风险是什么？"></textarea>
+      <button id="followup-btn" class="btn-primary">追问</button>
+    </div>
+  </section>
+
+  <!-- 分享卡片弹层 -->
+  <div id="share-overlay" class="overlay hidden">
+    <div class="share-card" id="share-card">
+      <div class="share-card-head">
+        <span class="share-card-logo">可鉴</span>
+        <span class="share-card-tag">决策操作系统</span>
+      </div>
+      <div class="share-card-title" id="share-card-title">决策思维胶片</div>
+      <div class="share-card-problem" id="share-card-problem"></div>
+      <div class="share-card-insights" id="share-card-insights"></div>
+      <div class="share-card-roles" id="share-card-roles"></div>
+      <div class="share-card-foot">
+        <span>每个决策，可见，可鉴。</span>
+        <span class="share-card-cta">点击体验 →</span>
+      </div>
+    </div>
+    <div class="overlay-actions">
+      <button id="close-share" class="btn-secondary">关闭</button>
+      <button id="download-share" class="btn-primary">下载卡片</button>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  <span>黑盒决策的时代结束了。从今天起，每一个决定——可见、可鉴、可复盘。</span>
+</footer>
+
+<script src="js/kejian.js"></script>
+</body>
+</html>

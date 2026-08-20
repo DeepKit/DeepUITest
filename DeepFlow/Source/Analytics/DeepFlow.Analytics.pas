@@ -1,24 +1,24 @@
-unit UniFlow.Analytics;
+unit DeepFlow.Analytics;
 (*
-  UniFlow Analytics
+  DeepFlow Analytics
   =================
   
-  工作流执行统计、聚合和报告生成�?
+  工作流执行统计、聚合和报告生成�?
   
   功能:
-  - 执行统计聚合（按时间/工作�?步骤�?
+  - 执行统计聚合（按时间/工作�?步骤�?
   - 趋势分析
-  - 异常检�?
-  - 报告生成（JSON/HTML�?
+  - 异常检�?
+  - 报告生成（JSON/HTML�?
 *)
 
 interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
-  System.DateUtils, System.Math,
-  UniFlow.EventSourcing.Types,
-  UniFlow.EventSourcing.Store;
+  System.Generics.Defaults, System.DateUtils, System.Math,
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store;
 
 type
   // ============================================================================
@@ -69,7 +69,7 @@ type
     function ToJSON: TJSONObject;
   end;
   
-  /// <summary>工作流统�?/summary>
+  /// <summary>工作流统�?/summary>
   TWorkflowStats = record
     WorkflowName: string;
     TotalExecutions: Int64;
@@ -99,7 +99,7 @@ type
     function ToJSON: TJSONObject;
   end;
   
-  /// <summary>时间桶统�?/summary>
+  /// <summary>时间桶统�?/summary>
   TTimeBucketStats = record
     BucketStart: TDateTime;
     BucketEnd: TDateTime;
@@ -157,7 +157,7 @@ type
     function ToJSON: TJSONObject;
   end;
   
-  /// <summary>趋势数据�?/summary>
+  /// <summary>趋势数据�?/summary>
   TTrendPoint = record
     Timestamp: TDateTime;
     Value: Double;
@@ -188,7 +188,7 @@ type
   end;
   
   /// <summary>
-  /// 分析引擎 - 工作流执行分�?
+  /// 分析引擎 - 工作流执行分�?
   /// </summary>
   TAnalyticsEngine = class
   private
@@ -201,9 +201,9 @@ type
     function TryGetFromCache(const AKey: string; out AValue: TJSONObject): Boolean;
     procedure AddToCache(const AKey: string; AValue: TJSONObject);
     
-    function CollectFlowEvents(const AFlowId: string): TArray<TUniFlowEvent>;
-    function CalculateDuration(AEvents: TArray<TUniFlowEvent>): Double;
-    function GetFlowStatus(AEvents: TArray<TUniFlowEvent>): TUniFlowStatus;
+    function CollectFlowEvents(const AFlowId: string): TArray<TDeepFlowEvent>;
+    function CalculateDuration(AEvents: TArray<TDeepFlowEvent>): Double;
+    function GetFlowStatus(AEvents: TArray<TDeepFlowEvent>): TDeepFlowStatus;
     function GetBucketStart(ATime: TDateTime; AGranularity: TTimeGranularity): TDateTime;
   public
     constructor Create(AStore: IEventStore; AConfig: TAnalyticsConfig);
@@ -212,7 +212,7 @@ type
     /// <summary>获取执行摘要</summary>
     function GetExecutionSummary(ARange: TTimeRange): TExecutionSummary;
     
-    /// <summary>获取工作流统计列�?/summary>
+    /// <summary>获取工作流统计列�?/summary>
     function GetWorkflowStats(ARange: TTimeRange): TArray<TWorkflowStats>;
     
     /// <summary>获取单个工作流的详细统计</summary>
@@ -232,11 +232,11 @@ type
     function GetTrendReport(const AMetricName: string; ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
-    /// <summary>获取成功率趋�?/summary>
+    /// <summary>获取成功率趋�?/summary>
     function GetSuccessRateTrend(ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
-    /// <summary>获取执行量趋�?/summary>
+    /// <summary>获取执行量趋�?/summary>
     function GetExecutionCountTrend(ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
@@ -244,13 +244,13 @@ type
     function GetLatencyTrend(ARange: TTimeRange;
       AGranularity: TTimeGranularity): TTrendReport;
     
-    /// <summary>获取热点步骤（最耗时�?/summary>
+    /// <summary>获取热点步骤（最耗时�?/summary>
     function GetHotspotSteps(ARange: TTimeRange; ATopN: Integer = 10): TArray<TStepStats>;
     
     /// <summary>获取失败热点（最常失败）</summary>
     function GetFailureHotspots(ARange: TTimeRange; ATopN: Integer = 10): TArray<TStepStats>;
     
-    /// <summary>检测异�?/summary>
+    /// <summary>检测异�?/summary>
     function DetectAnomalies(ARange: TTimeRange): TJSONArray;
     
     /// <summary>导出完整报告</summary>
@@ -282,7 +282,7 @@ type
     /// <summary>处理 API 请求</summary>
     function HandleRequest(const APath: string; AParams: TJSONObject): TJSONObject;
     
-    // 预定义端�?
+    // 预定义端�?
     function GetOverview(ARange: TTimeRange): TJSONObject;
     function GetWorkflows(ARange: TTimeRange): TJSONObject;
     function GetTimeline(ARange: TTimeRange; AGranularity: TTimeGranularity): TJSONObject;
@@ -633,7 +633,7 @@ begin
   FCacheTimestamps.AddOrSetValue(AKey, Now);
 end;
 
-function TAnalyticsEngine.CollectFlowEvents(const AFlowId: string): TArray<TUniFlowEvent>;
+function TAnalyticsEngine.CollectFlowEvents(const AFlowId: string): TArray<TDeepFlowEvent>;
 var
   Query: TEventQuery;
 begin
@@ -641,7 +641,7 @@ begin
   Result := FStore.ReadEvents(Query);
 end;
 
-function TAnalyticsEngine.CalculateDuration(AEvents: TArray<TUniFlowEvent>): Double;
+function TAnalyticsEngine.CalculateDuration(AEvents: TArray<TDeepFlowEvent>): Double;
 var
   FirstTime, LastTime: TDateTime;
 begin
@@ -653,9 +653,9 @@ begin
   Result := MilliSecondsBetween(LastTime, FirstTime);
 end;
 
-function TAnalyticsEngine.GetFlowStatus(AEvents: TArray<TUniFlowEvent>): TUniFlowStatus;
+function TAnalyticsEngine.GetFlowStatus(AEvents: TArray<TDeepFlowEvent>): TDeepFlowStatus;
 var
-  Event: TUniFlowEvent;
+  Event: TDeepFlowEvent;
   StatusStr: string;
 begin
   Result := ufsCreated;
@@ -695,12 +695,12 @@ end;
 function TAnalyticsEngine.GetExecutionSummary(ARange: TTimeRange): TExecutionSummary;
 var
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
-  Status: TUniFlowStatus;
+  Events: TArray<TDeepFlowEvent>;
+  Status: TDeepFlowStatus;
   Duration: Double;
   TotalDuration: Double;
   UniqueNames: TDictionary<string, Boolean>;
-  FirstEvent: TUniFlowEvent;
+  FirstEvent: TDeepFlowEvent;
 begin
   Result := Default(TExecutionSummary);
   Result.TimeRange := ARange;
@@ -718,7 +718,7 @@ begin
       try
         FirstEvent := Events[0];
         
-        // 检查是否在时间范围�?
+        // 检查是否在时间范围�?
         if not ARange.Contains(FirstEvent.Timestamp) then
         begin
           for var E in Events do E.Free;
@@ -728,12 +728,12 @@ begin
         Inc(Result.TotalFlows);
         Result.TotalEvents := Result.TotalEvents + Length(Events);
         
-        // 获取工作流名�?
+        // 获取工作流名�?
         var WFName: string;
         if FirstEvent.Payload.TryGetValue<string>('workflowName', WFName) then
           UniqueNames.TryAdd(WFName, True);
           
-        // 获取状�?
+        // 获取状�?
         Status := GetFlowStatus(Events);
         case Status of
           ufsSucceeded: Inc(Result.CompletedFlows);
@@ -766,8 +766,8 @@ function TAnalyticsEngine.GetWorkflowStats(ARange: TTimeRange): TArray<TWorkflow
 var
   StatsMap: TDictionary<string, TWorkflowStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
-  Status: TUniFlowStatus;
+  Events: TArray<TDeepFlowEvent>;
+  Status: TDeepFlowStatus;
   Duration: Double;
   WFName: string;
   Stats: TWorkflowStats;
@@ -792,12 +792,12 @@ begin
           Continue;
         end;
         
-        // 获取工作流名�?
+        // 获取工作流名�?
         WFName := '';
         if not Events[0].Payload.TryGetValue<string>('workflowName', WFName) then
           WFName := 'unknown';
           
-        // 获取或创建统�?
+        // 获取或创建统�?
         if not StatsMap.TryGetValue(WFName, Stats) then
         begin
           Stats := Default(TWorkflowStats);
@@ -828,7 +828,7 @@ begin
       end;
     end;
     
-    // 计算平均值和成功�?
+    // 计算平均值和成功�?
     SetLength(Result, StatsMap.Count);
     var I := 0;
     for var Pair in StatsMap do
@@ -868,10 +868,10 @@ function TAnalyticsEngine.GetStepStats(ARange: TTimeRange): TArray<TStepStats>;
 var
   StatsMap: TDictionary<string, TStepStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
   Stats: TStepStats;
   StepKey: string;
-  PrevEvent: TUniFlowEvent;
+  PrevEvent: TDeepFlowEvent;
   Duration: Double;
 begin
   StatsMap := TDictionary<string, TStepStats>.Create;
@@ -950,10 +950,10 @@ function TAnalyticsEngine.GetTimeSeriesStats(ARange: TTimeRange;
 var
   BucketMap: TDictionary<TDateTime, TTimeBucketStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
   BucketStart: TDateTime;
   Stats: TTimeBucketStats;
-  Status: TUniFlowStatus;
+  Status: TDeepFlowStatus;
   Duration: Double;
   SortedKeys: TList<TDateTime>;
 begin
@@ -1002,7 +1002,7 @@ begin
       end;
     end;
     
-    // 按时间排�?
+    // 按时间排�?
     SortedKeys := TList<TDateTime>.Create;
     try
       for var K in BucketMap.Keys do
@@ -1024,7 +1024,7 @@ function TAnalyticsEngine.GetErrorStats(ARange: TTimeRange): TArray<TErrorStats>
 var
   ErrorMap: TDictionary<string, TErrorStats>;
   FlowIds: TArray<string>;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
   Stats: TErrorStats;
   AffectedList: TDictionary<string, TList<string>>;
   WFName: string;
@@ -1260,7 +1260,7 @@ begin
     Result.Add(Anomaly);
   end;
   
-  // 高延迟警�?
+  // 高延迟警�?
   if Summary.AvgDurationMs > 5000 then
   begin
     Anomaly := TJSONObject.Create;
@@ -1271,7 +1271,7 @@ begin
     Result.Add(Anomaly);
   end;
   
-  // 运行中流程过�?
+  // 运行中流程过�?
   if Summary.RunningFlows > 100 then
   begin
     Anomaly := TJSONObject.Create;
@@ -1298,7 +1298,7 @@ begin
   Summary := GetExecutionSummary(ARange);
   Result.AddPair('summary', Summary.ToJSON);
   
-  // 工作流统�?
+  // 工作流统�?
   WorkflowStats := GetWorkflowStats(ARange);
   Arr := TJSONArray.Create;
   for var S in WorkflowStats do
@@ -1344,7 +1344,7 @@ begin
     SB.AppendLine('<html lang="en">');
     SB.AppendLine('<head>');
     SB.AppendLine('  <meta charset="UTF-8">');
-    SB.AppendLine('  <title>UniFlow Analytics Report</title>');
+    SB.AppendLine('  <title>DeepFlow Analytics Report</title>');
     SB.AppendLine('  <style>');
     SB.AppendLine('    body { font-family: Arial, sans-serif; margin: 20px; background: #1e1e2e; color: #cdd6f4; }');
     SB.AppendLine('    .card { background: #313244; border-radius: 8px; padding: 20px; margin: 10px 0; }');
@@ -1357,7 +1357,7 @@ begin
     SB.AppendLine('  </style>');
     SB.AppendLine('</head>');
     SB.AppendLine('<body>');
-    SB.AppendLine('  <h1>UniFlow Analytics Report</h1>');
+    SB.AppendLine('  <h1>DeepFlow Analytics Report</h1>');
     SB.AppendFormat('  <p>Generated: %s</p>', [FormatDateTime('yyyy-mm-dd hh:nn:ss', Now)]);
     SB.AppendLine;
     

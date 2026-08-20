@@ -1,3 +1,4 @@
+/// ShadowRun tests — uses ExecuteScalar for safe UUID queries backed by auto-generated values
 unit ArtifactOS.Tests.ShadowRun;
 
 interface
@@ -14,13 +15,10 @@ type
   public
     [Test]
     procedure ShadowRun_CreateStartComplete_ValidLifecycle;
-
     [Test]
     procedure ShadowRun_CreateDayAndObservation;
-
     [Test]
     procedure ShadowRun_AbortPreservesState;
-
     [Test]
     procedure DailyReport_CreateAndNotify;
   end;
@@ -33,7 +31,7 @@ uses
 procedure TShadowRunTests.ShadowRun_CreateStartComplete_ValidLifecycle;
 var
   DB: TArtifactDB;
-  RunId: string;
+  RunId, Status: string;
 begin
   DB := ArtifactOS_DB;
   DB.Connect;
@@ -42,7 +40,7 @@ begin
     RunId := TShadowRunService.CreateRun(RunCode, '2026-06-01', '2026-06-07', 'zhihu');
     Assert.IsNotEmpty(RunId);
 
-    var Status := DB.ExecuteScalar('SELECT status FROM artifactos.shadow_run WHERE id=''' + RunId + '''');
+    Status := DB.ExecuteScalar('SELECT status FROM artifactos.shadow_run WHERE id=''' + RunId + '''');
     Assert.AreEqual('planned', Status);
 
     TShadowRunService.StartRun(RunId);
@@ -91,7 +89,7 @@ end;
 procedure TShadowRunTests.ShadowRun_AbortPreservesState;
 var
   DB: TArtifactDB;
-  RunId, DayId: string;
+  RunId, DayId, Status, DayStatus: string;
 begin
   DB := ArtifactOS_DB;
   DB.Connect;
@@ -101,10 +99,10 @@ begin
     DayId := TShadowRunService.CreateDay(RunId, '2026-06-01', 1);
     TShadowRunService.AbortRun(RunId, 'Test aborted by human');
 
-    var Status := DB.ExecuteScalar('SELECT status FROM artifactos.shadow_run WHERE id=''' + RunId + '''');
+    Status := DB.ExecuteScalar('SELECT status FROM artifactos.shadow_run WHERE id=''' + RunId + '''');
     Assert.AreEqual('aborted', Status);
 
-    var DayStatus := DB.ExecuteScalar('SELECT status FROM artifactos.shadow_run_day WHERE id=''' + DayId + '''');
+    DayStatus := DB.ExecuteScalar('SELECT status FROM artifactos.shadow_run_day WHERE id=''' + DayId + '''');
     Assert.AreEqual('planned', DayStatus, 'Day should remain planned after run abort');
 
     DB.Execute('DELETE FROM artifactos.shadow_run_observation WHERE shadow_run_id=''' + RunId + '''');
@@ -118,16 +116,18 @@ end;
 procedure TShadowRunTests.DailyReport_CreateAndNotify;
 var
   DB: TArtifactDB;
+  ReportId, Status: string;
 begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
+    // Static query — no user input
     var CaseId := DB.ExecuteScalar('SELECT id::text FROM artifactos.case_record WHERE case_type=''day'' LIMIT 1');
-    var ReportId := TNotificationService.SendDailyReport(CaseId, '2026-06-01',
+    ReportId := TNotificationService.SendDailyReport(CaseId, '2026-06-01',
       'Shadow run day 1 complete', '{}', '{}', 'Day 2 plan');
     Assert.IsNotEmpty(ReportId);
 
-    var Status := DB.ExecuteScalar('SELECT status FROM artifactos.daily_report WHERE id=''' + ReportId + '''');
+    Status := DB.ExecuteScalar('SELECT status FROM artifactos.daily_report WHERE id=''' + ReportId + '''');
     Assert.AreEqual('prepared', Status);
 
     TNotificationService.MarkNotified(ReportId);
@@ -150,5 +150,5 @@ begin
 end;
 
 initialization
-
+  TDUnitX.RegisterTestFixture(TShadowRunTests);
 end.

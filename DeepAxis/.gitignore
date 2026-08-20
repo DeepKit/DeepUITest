@@ -1,0 +1,71 @@
+# Build artifacts
+*.exe
+*.drc
+*.map
+*.res
+*.rsm
+*.otares
+*.dcu
+*.dsk
+*.local
+*.stat
+*.identcache
+__history/
+*.tvsconfig
+*.dproj.local
+
+# Build output directories
+dcu/
+bin/*.exe
+bin/*.map
+bin/*.drc
+
+# Application data
+DeepAxis.ini
+DeepAxis.log
+DeepAxis.Data.db
+*.db.journal
+
+# DeCrypt - keys and databases (sensitive)
+DeCrypt/keys/
+DeCrypt/dbs/
+
+# Tools and probe binaries
+tools/*.exe
+tools/*.drc
+probe/*.exe
+probe/*.drc
+
+# IDE
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Backup files
+*.bak
+
+# Python cache (probe scripts)
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Research - 微信 MCP 研究项目（忽略 node_modules 和构建产物）
+research/wechat-mcp/*/node_modules/
+research/wechat-mcp/*/dist/
+research/wechat-mcp/*/.idea/
+research/wechat-mcp/*/package-lock.json
+research/wechat-mcp/*/pnpm-lock.yaml
+research/wechat-mcp/wxauto/*.egg-info/
+research/wechat-mcp/wxauto/__pycache__/
+research/wechat-mcp/wxauto/**/__pycache__/
+
+# Third-party cloned repos under research (have their own upstreams)
+research/wechat-mcp/openclaw-wechat-community/
+research/wechat-mcp/tencent-openclaw-weixin/
+research/wechat-mcp/weixin-mcp-standalone/

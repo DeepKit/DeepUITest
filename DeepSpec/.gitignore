@@ -9,6 +9,26 @@ __history/
 *.~*
 *.~~*
 
+# Compiled binaries (regenerable via dcc64)
+*.exe
+*.dll
+*.bpl
+*.dcu
+*.res
+
+# Test run output (regenerable)
+tests/dunitx-results.xml
+
+# Temporary debug projects in tests/ (ad-hoc scratch programs)
+tests/_debug*.dpr
+tests/_debug_parser.dpr
+
+# External article copies (copyright — keep local, not in repo)
+docs/refs/
+
+# Tool edit-boundary state (per-session constraint, not a project asset)
+boundary.json
+
 # Generated build logs (regenerable)
 compile_log.txt
 compile_output.txt
@@ -28,3 +48,8 @@ Plugins/
 
 __pycache__/
 *.pyc
+
+# CLI/test build logs (regenerable)
+cli/cli_build.txt
+tests/test_build.txt
+tests/test_run.txt

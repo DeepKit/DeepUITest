@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Services.SpecStore
 
@@ -14,7 +15,8 @@ uses
   System.Classes,
   System.Generics.Collections,
   DeepSpec.Services.Scan,
-  DeepSpec.Models;
+  DeepSpec.Models,
+  DeepSpec.Yaml.Parser;
 
 type
   TDeepSpecStoreService = class(TInterfacedObject)
@@ -22,6 +24,10 @@ type
     FBasePath: string;
     procedure EnsureDirectory(const ARelPath: string);
     procedure WriteYamlFile(const ARelPath, AContent: string);
+    /// <summary>Before overwriting a tree YAML, copy the existing file to
+    /// snapshots/ so user edits or prior agent output are never silently
+    /// lost (bugfix.md BUG-5b). Keeps the most recent backup per tree.</summary>
+    procedure BackupTreeFileIfExisting(const ARelPath: string);
   public
     constructor Create;
     procedure Initialize(const AProjectPath: string);
@@ -43,11 +49,37 @@ type
     /// </summary>
     function ReadTreeFile(const ARelPath: string): TList<TSpecNode>;
 
+    /// <summary>
+    /// Parse a single tree document (a parsed YAML root map with `tree`
+    /// and `nodes` keys) into a node list. Extracted from ReadTreeFile so
+    /// the candidate-ingest sandbox (Services.CandidateIngest) can reuse
+    /// the exact same field mapping without re-implementing it. Caller
+    /// owns the returned list. ADefaultTree is used when a node omits
+    /// its own `tree` field.
+    /// </summary>
+    function ParseTreeNodes(ARoot: DeepSpec.Yaml.Parser.TYamlNode;
+      ADefaultTree: DeepSpec.Models.TTreeType): TList<TSpecNode>;
+
     /// <summary>Write bundles.yaml</summary>
     procedure WriteBundlesFile(const ARelPath: string;
       ABundles: TList<TSemanticBundle>);
     /// <summary>Read bundles.yaml</summary>
     function ReadBundlesFile(const ARelPath: string): TList<TSemanticBundle>;
+
+    /// <summary>Write issues/doc-issues.yaml (BUG-11: persists exploration
+    /// tickets alongside ordinary issues — tickets are issues whose type is
+    /// research_ticket/prototype_ticket/grilling_ticket/fog_unknown).</summary>
+    procedure WriteIssuesFile(const ARelPath: string;
+      AIssues: TList<TSpecIssue>);
+    /// <summary>Read issues/doc-issues.yaml. Caller owns the returned list.</summary>
+    function ReadIssuesFile(const ARelPath: string): TList<TSpecIssue>;
+
+    /// <summary>Atomic text-file write (bugfix.md BUG-5): write to a .tmp
+    /// sibling, then TFile.Replace (atomic on NTFS) or TFile.Move on first
+    /// write. Shared by SpecStore itself and by callers that must not bypass
+    /// the crash-safe path (Decisions.Save, JS Bridge pending-decisions).
+    /// Class method: works on any full path, no instance state needed.</summary>
+    class procedure AtomicWriteTextFile(const AFullPath, AContent: string); static;
 
     property BasePath: string read FBasePath;
   end;
@@ -57,8 +89,8 @@ implementation
 uses
   System.IOUtils,
   System.DateUtils,
-  DeepSpec.Yaml.Writer,
-  DeepSpec.Yaml.Parser;
+  Winapi.Windows,
+  DeepSpec.Yaml.Writer;
 
 constructor TDeepSpecStoreService.Create;
 begin
@@ -79,11 +111,83 @@ end;
 
 procedure TDeepSpecStoreService.WriteYamlFile(const ARelPath, AContent: string);
 begin
+  // Atomic write: write to a temp file, then replace the target.
+  // Prevents half-written files if the process crashes mid-write
+  // (bugfix.md BUG-5). TFile.Replace is atomic on NTFS and preserves
+  // the destination file's attributes; on first write (no destination)
+  // we rename the temp file into place.
   var LFullPath := TPath.Combine(FBasePath, ARelPath);
   var LDir := TPath.GetDirectoryName(LFullPath);
   if not TDirectory.Exists(LDir) then
     TDirectory.CreateDirectory(LDir);
-  TFile.WriteAllText(LFullPath, AContent, TEncoding.UTF8);
+  AtomicWriteTextFile(LFullPath, AContent);
+end;
+
+class procedure TDeepSpecStoreService.AtomicWriteTextFile(
+  const AFullPath, AContent: string);
+begin
+  var LDir := TPath.GetDirectoryName(AFullPath);
+  if not TDirectory.Exists(LDir) then
+    TDirectory.CreateDirectory(LDir);
+
+  // Unique temp name: fixed ".tmp" suffixes collide under concurrency and
+  // trip some AV heuristics (multi-LLM review finding).
+  var LTempPath := AFullPath + '.tmp-' + TGuid.NewGuid.ToString.Substring(1, 8);
+  TFile.WriteAllText(LTempPath, AContent, TEncoding.UTF8);
+
+  if TFile.Exists(AFullPath) then
+  begin
+    // Atomic replace on NTFS via ReplaceFileW with NO backup (nil).
+    // NOTE: TFile.Replace(..., '') is broken here — the RTL runs
+    // TPath.DoGetFullPath('') on the backup name and raises
+    // EInOutArgumentException "Path is empty". First scans always took
+    // the TFile.Move branch, so re-scans of an existing project crashed
+    // (observed headless via DeepSpec.CLI scan; GUI re-scan hit the same).
+    if not Winapi.Windows.ReplaceFile(PChar(AFullPath), PChar(LTempPath),
+      nil, REPLACEFILE_WRITE_THROUGH or REPLACEFILE_IGNORE_MERGE_ERRORS,
+      nil, nil) then
+    begin
+      // Fallback: MoveFileExW REPLACE_EXISTING — never delete the target
+      // first (a failed delete+move would lose the original file;
+      // multi-LLM review HIGH finding).
+      if not Winapi.Windows.MoveFileExW(PChar(LTempPath), PChar(AFullPath),
+        MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
+      begin
+        // Last resort: in-place move; keep original intact on failure.
+        TFile.Move(LTempPath, AFullPath);
+      end;
+    end;
+  end
+  else
+    TFile.Move(LTempPath, AFullPath);
+end;
+
+procedure TDeepSpecStoreService.BackupTreeFileIfExisting(const ARelPath: string);
+var
+  LFullPath, LBackupPath, LBaseName: string;
+begin
+  // Keep the most recent prior version under snapshots/ so overwriting a
+  // tree never silently discards user edits or prior agent output.
+  LFullPath := TPath.Combine(FBasePath, ARelPath);
+  if not TFile.Exists(LFullPath) then Exit;
+
+  // Snapshots dir is normally created by CreateDirectoryStructure, but an
+  // existing .deepspec from an older version may lack it — never crash on
+  // a missing backup target (backup is best-effort).
+  try
+    var LSnapshotDir := TPath.Combine(FBasePath, 'snapshots');
+    if not TDirectory.Exists(LSnapshotDir) then
+      TDirectory.CreateDirectory(LSnapshotDir);
+
+    LBaseName := TPath.GetFileNameWithoutExtension(ARelPath);
+    LBackupPath := TPath.Combine(LSnapshotDir, LBaseName + '.bak.yaml');
+    // Copy (overwrite previous backup) — single rolling backup per tree.
+    // Isolated: a failing backup (disk full / ACL / locked) must NOT abort
+    // the real atomic write below (multi-LLM review finding).
+    TFile.Copy(LFullPath, LBackupPath, True);
+  except
+    // Backup is best-effort; the caller's write must still proceed.
+  end;
 end;
 
 procedure TDeepSpecStoreService.CreateDirectoryStructure;
@@ -98,6 +202,7 @@ begin
   EnsureDirectory('html');
   EnsureDirectory('llm');
   EnsureDirectory('logs');
+  EnsureDirectory('snapshots');
 end;
 
 procedure TDeepSpecStoreService.WriteScanReport(AScanService: TDeepSpecScanService);
@@ -260,6 +365,7 @@ begin
   var LWriter := TYamlWriter.Create;
   try
     LWriter.WriteTreeFile(ATree, 'deepspec-treebuilder', ANodes);
+    BackupTreeFileIfExisting(ARelPath);
     WriteYamlFile(ARelPath, LWriter.ToString);
   finally
     LWriter.Free;
@@ -278,7 +384,8 @@ begin
   end;
 end;
 
-function TDeepSpecStoreService.ReadTreeFile(const ARelPath: string): TList<TSpecNode>;
+function TDeepSpecStoreService.ParseTreeNodes(ARoot: TYamlNode;
+  ADefaultTree: TTreeType): TList<TSpecNode>;
 
   function StringList(ANode: TYamlNode): TArray<string>;
   begin
@@ -309,12 +416,130 @@ function TDeepSpecStoreService.ReadTreeFile(const ARelPath: string): TList<TSpec
   end;
 
 var
-  LParser: TYamlParser;
-  LRoot, LNodesSeq, LItem: TYamlNode;
-  LFullPath: string;
+  LNodesSeq, LItem: TYamlNode;
   LNode: TSpecNode;
-  LDefaultTree: TTreeType;
 begin
+  Result := TList<TSpecNode>.Create;
+  if ARoot = nil then Exit;
+
+  LNodesSeq := ARoot.GetSeq('nodes');
+  if LNodesSeq = nil then Exit;
+
+  for var I := 0 to LNodesSeq.SeqCount - 1 do
+  begin
+    LItem := LNodesSeq.SeqItem(I);
+    if (LItem = nil) or (LItem.Kind <> ykMap) then Continue;
+
+    LNode := Default(TSpecNode);
+    LNode.Id := LItem.GetString('id', '');
+    if LNode.Id = '' then Continue;
+    LNode.Tree := TSpecEnums.TreeTypeFromStr(LItem.GetString('tree', ''),
+      ADefaultTree);
+    LNode.Title := LItem.GetString('title', '');
+    LNode.Kind := LItem.GetString('kind', '');
+    LNode.ParentId := LItem.GetString('parent_id', '');
+    LNode.SlugOverride := LItem.GetString('slug_override', '');
+    LNode.ContentHash := LItem.GetString('content_hash', '');
+    LNode.RelationHash := LItem.GetString('relation_hash', '');
+    LNode.Revision := LItem.GetInteger('revision', 0);
+    LNode.Summary := LItem.GetString('summary', '');
+    LNode.Status := TSpecEnums.NodeStatusFromStr(LItem.GetString('status', ''));
+    LNode.GenStatus := TSpecEnums.GenStatusFromStr(LItem.GetString('gen_status', ''));
+    LNode.ReviewStatus := TSpecEnums.ReviewStatusFromStr(LItem.GetString('review_status', ''));
+
+    // Backward compatibility: derive gen_status/review_status from old status
+    // if the new fields were not present in the YAML file.
+    if not LItem.Has('gen_status') then
+      case LNode.Status of
+        nsConfirmed:  LNode.GenStatus := gsConfirmed;
+        nsRejected,
+        nsSuperseded: LNode.GenStatus := gsSkipped;
+      end;
+    if not LItem.Has('review_status') then
+      case LNode.Status of
+        nsConfirmed:  LNode.ReviewStatus := rsAccepted;
+        nsRejected:   LNode.ReviewStatus := rsRejected;
+        nsSuperseded: LNode.ReviewStatus := rsDeferred;
+      end;
+    LNode.Confidence := TSpecEnums.ConfidenceFromStr(LItem.GetString('confidence', ''));
+    // fog_state: parse if present so round-trip survives reload (otherwise
+    // Render's fog badges and Fog Map always show empty — see bugfix.md #1).
+    if LItem.Has('fog_state') then
+    begin
+      LNode.FogState := TSpecEnums.FogStateFromStr(
+        LItem.GetString('fog_state', ''), fsClear);
+      LNode.HasFogState := True;
+    end;
+    LNode.SourceLayer := TSpecEnums.SourceLayerFromStr(
+      LItem.GetString('source_layer', ''));
+    LNode.SourceRefs := ReadSourceRefs(LItem.Get('source_refs'));
+    LNode.DecisionRefs := StringList(LItem.Get('decision_refs'));
+    LNode.IssueRefs := StringList(LItem.Get('issue_refs'));
+    LNode.RelatedFunctions := StringList(LItem.Get('related_functions'));
+    LNode.RelatedModules := StringList(LItem.Get('related_modules'));
+    LNode.RelatedViews := StringList(LItem.Get('related_views'));
+    LNode.Children := StringList(LItem.Get('children'));
+    LNode.Tags := StringList(LItem.Get('tags'));
+    LNode.AcceptanceCriteria := StringList(LItem.Get('acceptance_criteria'));
+    LNode.NotDoing := StringList(LItem.Get('not_doing'));
+    LNode.RelatedData := StringList(LItem.Get('related_data'));
+
+    // data-tree specific fields
+    if LNode.Tree = ttData then
+    begin
+      var LRisk := LItem.GetString('risk_score', '');
+      if LRisk <> '' then
+      begin
+        LNode.HasRiskScore := True;
+        LNode.RiskScore := TSpecEnums.RiskLevelFromStr(LRisk);
+      end;
+      LNode.DataType := LItem.GetString('data_type', '');
+      LNode.Nullable := LItem.GetBoolean('nullable', False);
+      LNode.HasNullable := LItem.Has('nullable');
+      LNode.DefaultValue := LItem.GetString('default_value', '');
+      LNode.FieldConstraints := StringList(LItem.Get('field_constraints'));
+      LNode.Persistence := LItem.GetString('persistence', '');
+      LNode.SourceEntity := LItem.GetString('source_entity', '');
+      LNode.TargetEntity := LItem.GetString('target_entity', '');
+      LNode.Cardinality := LItem.GetString('cardinality', '');
+      LNode.Cascade := LItem.GetString('cascade', '');
+      LNode.ValidStates := StringList(LItem.Get('valid_states'));
+
+      var LTrans := LItem.Get('transitions');
+      if (LTrans <> nil) and (LTrans.Kind = ykSequence) then
+      begin
+        SetLength(LNode.Transitions, LTrans.SeqCount);
+        for var TJ := 0 to LTrans.SeqCount - 1 do
+        begin
+          var TItem := LTrans.SeqItem(TJ);
+          if TItem <> nil then
+            LNode.Transitions[TJ] := TPair<string, string>.Create(
+              TItem.GetString('from', ''),
+              TItem.GetString('to', ''));
+        end;
+      end;
+
+      LNode.BackwardCompatible := LItem.GetBoolean('backward_compatible', False);
+      LNode.HasBackwardCompatible := LItem.Has('backward_compatible');
+      LNode.HasRollback := LItem.GetBoolean('has_rollback', False);
+      LNode.HasHasRollback := LItem.Has('has_rollback');
+      LNode.Scope := LItem.GetString('scope', '');
+      LNode.Enforcement := LItem.GetString('enforcement', '');
+    end;
+
+    Result.Add(LNode);
+  end;
+end;
+
+function TDeepSpecStoreService.ReadTreeFile(const ARelPath: string): TList<TSpecNode>;
+var
+  LParser: TYamlParser;
+  LRoot: TYamlNode;
+  LFullPath: string;
+  LDefaultTree: TTreeType;
+  LParsed: TList<TSpecNode>;
+begin
+  // Start with an empty list; replaced by ParseTreeNodes on success.
   Result := TList<TSpecNode>.Create;
   LFullPath := TPath.Combine(FBasePath, ARelPath);
   if not TFile.Exists(LFullPath) then Exit;
@@ -325,105 +550,10 @@ begin
     if LRoot = nil then Exit;
     try
       LDefaultTree := TSpecEnums.TreeTypeFromStr(LRoot.GetString('tree', ''));
-      LNodesSeq := LRoot.GetSeq('nodes');
-      if LNodesSeq = nil then Exit;
-
-      for var I := 0 to LNodesSeq.SeqCount - 1 do
-      begin
-        LItem := LNodesSeq.SeqItem(I);
-        if (LItem = nil) or (LItem.Kind <> ykMap) then Continue;
-
-        LNode := Default(TSpecNode);
-        LNode.Id := LItem.GetString('id', '');
-        if LNode.Id = '' then Continue;
-        LNode.Tree := TSpecEnums.TreeTypeFromStr(LItem.GetString('tree', ''),
-          LDefaultTree);
-        LNode.Title := LItem.GetString('title', '');
-        LNode.Kind := LItem.GetString('kind', '');
-        LNode.ParentId := LItem.GetString('parent_id', '');
-        LNode.SlugOverride := LItem.GetString('slug_override', '');
-        LNode.ContentHash := LItem.GetString('content_hash', '');
-        LNode.RelationHash := LItem.GetString('relation_hash', '');
-        LNode.Revision := LItem.GetInteger('revision', 0);
-        LNode.Summary := LItem.GetString('summary', '');
-        LNode.Status := TSpecEnums.NodeStatusFromStr(LItem.GetString('status', ''));
-        LNode.GenStatus := TSpecEnums.GenStatusFromStr(LItem.GetString('gen_status', ''));
-        LNode.ReviewStatus := TSpecEnums.ReviewStatusFromStr(LItem.GetString('review_status', ''));
-
-        // Backward compatibility: derive gen_status/review_status from old status
-        // if the new fields were not present in the YAML file.
-        if not LItem.Has('gen_status') then
-          case LNode.Status of
-            nsConfirmed:  LNode.GenStatus := gsConfirmed;
-            nsRejected,
-            nsSuperseded: LNode.GenStatus := gsSkipped;
-          end;
-        if not LItem.Has('review_status') then
-          case LNode.Status of
-            nsConfirmed:  LNode.ReviewStatus := rsAccepted;
-            nsRejected:   LNode.ReviewStatus := rsRejected;
-            nsSuperseded: LNode.ReviewStatus := rsDeferred;
-          end;
-        LNode.Confidence := TSpecEnums.ConfidenceFromStr(LItem.GetString('confidence', ''));
-        LNode.SourceLayer := TSpecEnums.SourceLayerFromStr(
-          LItem.GetString('source_layer', ''));
-        LNode.SourceRefs := ReadSourceRefs(LItem.Get('source_refs'));
-        LNode.DecisionRefs := StringList(LItem.Get('decision_refs'));
-        LNode.IssueRefs := StringList(LItem.Get('issue_refs'));
-        LNode.RelatedFunctions := StringList(LItem.Get('related_functions'));
-        LNode.RelatedModules := StringList(LItem.Get('related_modules'));
-        LNode.RelatedViews := StringList(LItem.Get('related_views'));
-        LNode.Children := StringList(LItem.Get('children'));
-        LNode.Tags := StringList(LItem.Get('tags'));
-        LNode.AcceptanceCriteria := StringList(LItem.Get('acceptance_criteria'));
-        LNode.NotDoing := StringList(LItem.Get('not_doing'));
-        LNode.RelatedData := StringList(LItem.Get('related_data'));
-
-        // data-tree specific fields
-        if LNode.Tree = ttData then
-        begin
-          var LRisk := LItem.GetString('risk_score', '');
-          if LRisk <> '' then
-          begin
-            LNode.HasRiskScore := True;
-            LNode.RiskScore := TSpecEnums.RiskLevelFromStr(LRisk);
-          end;
-          LNode.DataType := LItem.GetString('data_type', '');
-          LNode.Nullable := LItem.GetBoolean('nullable', False);
-          LNode.HasNullable := LItem.Has('nullable');
-          LNode.DefaultValue := LItem.GetString('default_value', '');
-          LNode.FieldConstraints := StringList(LItem.Get('field_constraints'));
-          LNode.Persistence := LItem.GetString('persistence', '');
-          LNode.SourceEntity := LItem.GetString('source_entity', '');
-          LNode.TargetEntity := LItem.GetString('target_entity', '');
-          LNode.Cardinality := LItem.GetString('cardinality', '');
-          LNode.Cascade := LItem.GetString('cascade', '');
-          LNode.ValidStates := StringList(LItem.Get('valid_states'));
-
-          var LTrans := LItem.Get('transitions');
-          if (LTrans <> nil) and (LTrans.Kind = ykSequence) then
-          begin
-            SetLength(LNode.Transitions, LTrans.SeqCount);
-            for var TJ := 0 to LTrans.SeqCount - 1 do
-            begin
-              var TItem := LTrans.SeqItem(TJ);
-              if TItem <> nil then
-                LNode.Transitions[TJ] := TPair<string, string>.Create(
-                  TItem.GetString('from', ''),
-                  TItem.GetString('to', ''));
-            end;
-          end;
-
-          LNode.BackwardCompatible := LItem.GetBoolean('backward_compatible', False);
-          LNode.HasBackwardCompatible := LItem.Has('backward_compatible');
-          LNode.HasRollback := LItem.GetBoolean('has_rollback', False);
-          LNode.HasHasRollback := LItem.Has('has_rollback');
-          LNode.Scope := LItem.GetString('scope', '');
-          LNode.Enforcement := LItem.GetString('enforcement', '');
-        end;
-
-        Result.Add(LNode);
-      end;
+      LParsed := ParseTreeNodes(LRoot, LDefaultTree);
+      // Swap in the parsed list and free the placeholder we created above.
+      Result.Free;
+      Result := LParsed;
     finally
       LRoot.Free;
     end;
@@ -488,6 +618,103 @@ begin
             LB.NodeIds[J] := LNodes.SeqItem(J).AsString;
         end;
         Result.Add(LB);
+      end;
+    finally
+      LRoot.Free;
+    end;
+  finally
+    LParser.Free;
+  end;
+end;
+
+procedure TDeepSpecStoreService.WriteIssuesFile(const ARelPath: string;
+  AIssues: TList<TSpecIssue>);
+var
+  LWriter: TYamlWriter;
+begin
+  LWriter := TYamlWriter.Create;
+  try
+    LWriter.WriteIssuesFile(AIssues);
+    WriteYamlFile(ARelPath, LWriter.ToString);
+  finally
+    LWriter.Free;
+  end;
+end;
+
+function TDeepSpecStoreService.ReadIssuesFile(
+  const ARelPath: string): TList<TSpecIssue>;
+
+  function StringList(ANode: TYamlNode): TArray<string>;
+  begin
+    Result := nil;
+    if (ANode = nil) or (ANode.Kind <> ykSequence) then Exit;
+    SetLength(Result, ANode.SeqCount);
+    for var I := 0 to ANode.SeqCount - 1 do
+    begin
+      var LItem := ANode.SeqItem(I);
+      if LItem <> nil then
+        Result[I] := LItem.AsString;
+    end;
+  end;
+
+  function ReadSourceRefs(ANode: TYamlNode): TSourceRefArray;
+  begin
+    Result := nil;
+    if (ANode = nil) or (ANode.Kind <> ykSequence) then Exit;
+    SetLength(Result, ANode.SeqCount);
+    for var I := 0 to ANode.SeqCount - 1 do
+    begin
+      var LItem := ANode.SeqItem(I);
+      if LItem = nil then Continue;
+      Result[I].RefId := LItem.GetString('ref_id', '');
+      Result[I].Relevance := LItem.GetString('relevance', '');
+      Result[I].Note := LItem.GetString('note', '');
+    end;
+  end;
+
+var
+  LParser: TYamlParser;
+  LRoot, LSeq: TYamlNode;
+begin
+  Result := TList<TSpecIssue>.Create;
+  var LPath := TPath.Combine(FBasePath, ARelPath);
+  if not TFile.Exists(LPath) then Exit;
+
+  LParser := TYamlParser.Create;
+  try
+    LRoot := LParser.ParseFile(LPath);
+    try
+      LSeq := LRoot.GetSeq('issues');
+      if LSeq = nil then Exit;
+      for var I := 0 to LSeq.SeqCount - 1 do
+      begin
+        var LItem := LSeq.SeqItem(I);
+        if (LItem = nil) or (LItem.Kind <> ykMap) then Continue;
+
+        var LIssue: TSpecIssue;
+        LIssue := Default(TSpecIssue);
+        LIssue.Id := LItem.GetString('id', '');
+        if LIssue.Id = '' then Continue;
+        LIssue.Severity := TSpecEnums.IssueSeverityFromStr(
+          LItem.GetString('severity', ''));
+        LIssue.IssueType := TSpecEnums.IssueTypeFromStr(
+          LItem.GetString('type', ''));
+        LIssue.Title := LItem.GetString('title', '');
+        LIssue.Description := LItem.GetString('description', '');
+        LIssue.AffectedNodes := StringList(LItem.Get('affected_nodes'));
+        LIssue.SourceRefs := ReadSourceRefs(LItem.Get('source_refs'));
+        LIssue.SuggestedAction := LItem.GetString('suggested_action', '');
+        LIssue.SuggestedPrompt := LItem.GetString('suggested_prompt', '');
+        LIssue.Status := TSpecEnums.IssueStatusFromStr(
+          LItem.GetString('status', ''));
+        LIssue.ResolvedBy := LItem.GetString('resolved_by', '');
+        // requires_human: optional HITL/AFK flag for exploration tickets.
+        if LItem.Has('requires_human') then
+        begin
+          LIssue.HasRequiresHuman := True;
+          LIssue.RequiresHuman := LItem.GetBoolean('requires_human', False);
+        end;
+        Result.Add(LIssue);
       end;
     finally
       LRoot.Free;

@@ -205,3 +205,14 @@ YAML 是 B 的机器事实数据，HTML/DeepShell 原生控件是审阅界面；
 4. `DeepSpec-文档优化审查报告-2026-05-20.md`：本轮文档问题和修正记录。
 
 旧文档中“三棵树”的说法保留历史意义；新协议目标口径为四投影：function-tree、module-tree、view-tree、data-tree。
+
+## 2026-07-08 更新：Fog 探索模型
+
+落地《雾中寻路》启发，承认需求终点可能在"雾里"。改动：
+
+- **协议主文档** `DeepSpec-三棵树通用协议-v1.md` 新增 §8.2 Fog 探索模型：节点 `fog_state`（`clear | misty | foggy | unknown_unknowns`，单向收敛）+ 三类探索 ticket（`research_ticket / prototype_ticket / grilling_ticket`）+ `fog_unknown` 雾区标记 + "一次只解一个 ticket"建议流程。
+- **Schema** `protocol/schemas/issues.schema.json` issue_type 枚举追加上述 4 值；`protocol/schemas/tree.schema.json` 新增 `fog_state` 定义并挂到 node。
+- **代码** `Models.pas`（`TIssueType` +4、`TFogState` 新枚举、`FogStateToStr/FromStr`、`CanTransitionFog`、`TSpecNode.FogState/HasFogState`）；`Validation.pas`（`ValidateFogState`）；`Render.pas`（节点 fog 徽章 + problems 页 Fog Map 分区 + ScanNodes fog 探测）。
+- **定位升级文档** §7.2 能力表新增"Fog 探索"行。
+
+Fog 探索为第一层（基础）能力，无需额外配置即可使用。

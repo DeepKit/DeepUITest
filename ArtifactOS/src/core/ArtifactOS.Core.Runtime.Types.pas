@@ -72,6 +72,10 @@ type
     ErrorMessage: string;
     ResultJson: string;
     MetadataJson: string;
+    // TD26-004 统一信封字段 (docs/29 §5): fencing_token 防旧Worker回写, attempt_no 尝试计数, correlation_id 链路追踪
+    FencingToken: Int64;
+    AttemptNo: Integer;
+    CorrelationId: string;
   end;
 
 function RuntimeHasCommand(const ACommand: TRuntimeCommandInfo): Boolean;

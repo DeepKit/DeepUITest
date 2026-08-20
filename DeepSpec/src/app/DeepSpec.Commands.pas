@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Commands
 
@@ -35,7 +36,8 @@ var
 begin
   LForm := AForm as TDeepSpecMainForm;
 
-  LCmd := TShellCommand.Make('deepspec.project.open', 'Open Project');
+  LCmd := TShellCommand.Make('deepspec.project.open',
+    LForm.ShellText('deepspec.cmd.open', 'Open Project'));
   LCmd.Category := 'File';
   LCmd.ShortcutText := 'Ctrl+O';
   LCmd.RiskLevel := rlLow;
@@ -53,7 +55,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.scan.run', 'Run Scan');
+  LCmd := TShellCommand.Make('deepspec.scan.run',
+    LForm.ShellText('deepspec.cmd.scan', 'Run Scan'));
   LCmd.Category := 'Run';
   LCmd.ShortcutText := 'F5';
   LCmd.RiskLevel := rlLow;
@@ -63,7 +66,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.spec.generate', 'Generate B');
+  LCmd := TShellCommand.Make('deepspec.spec.generate',
+    LForm.ShellText('deepspec.cmd.generate', 'Generate B'));
   LCmd.Category := 'Run';
   LCmd.RiskLevel := rlMedium;
   LCmd.Handler := procedure
@@ -72,7 +76,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.html.render', 'Render HTML');
+  LCmd := TShellCommand.Make('deepspec.html.render',
+    LForm.ShellText('deepspec.cmd.render', 'Render HTML'));
   LCmd.Category := 'View';
   LCmd.RiskLevel := rlLow;
   LCmd.Handler := procedure
@@ -81,7 +86,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.html.refresh-from-yaml', 'Refresh HTML from YAML');
+  LCmd := TShellCommand.Make('deepspec.html.refresh-from-yaml',
+    LForm.ShellText('deepspec.cmd.refresh', 'Refresh HTML from YAML'));
   LCmd.Category := 'View';
   LCmd.RiskLevel := rlLow;
   LCmd.Handler := procedure
@@ -90,7 +96,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.decisions.promote', 'Promote Pending Decisions');
+  LCmd := TShellCommand.Make('deepspec.decisions.promote',
+    LForm.ShellText('deepspec.cmd.promote', 'Promote Pending Decisions'));
   LCmd.Category := 'Tools';
   LCmd.RiskLevel := rlLow;
   LCmd.Handler := procedure
@@ -99,7 +106,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.prompt.export', 'Export Prompt');
+  LCmd := TShellCommand.Make('deepspec.prompt.export',
+    LForm.ShellText('deepspec.cmd.export', 'Export Prompt'));
   LCmd.Category := 'Tools';
   LCmd.RiskLevel := rlLow;
   LCmd.Handler := procedure
@@ -108,7 +116,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.data.render', 'Render Data Tree');
+  LCmd := TShellCommand.Make('deepspec.data.render',
+    LForm.ShellText('deepspec.cmd.renderdata', 'Render Data Tree'));
   LCmd.Category := 'View';
   LCmd.RiskLevel := rlLow;
   LCmd.Handler := procedure
@@ -117,7 +126,8 @@ begin
     end;
   ACommands.RegisterCommand(LCmd);
 
-  LCmd := TShellCommand.Make('deepspec.llm.setup', 'Setup LLM (ModelScope)');
+  LCmd := TShellCommand.Make('deepspec.llm.setup',
+    LForm.ShellText('deepspec.cmd.llmsetup', 'Setup LLM (ModelScope)'));
   LCmd.Category := 'Tools';
   LCmd.RiskLevel := rlLow;
   LCmd.Handler := procedure
@@ -126,14 +136,16 @@ begin
       LDeepBaseLLM: TDeepBaseLLM;
     begin
       LApiKey := '';
-      if not InputQuery('LLM Setup',
-        'Enter ModelScope API Key (will be stored securely):', LApiKey) then
+      if not InputQuery(LForm.ShellText('deepspec.llm.title', 'LLM Setup'),
+        LForm.ShellText('deepspec.llm.apikey',
+          'Enter ModelScope API Key (will be stored securely):'), LApiKey) then
         Exit;
       if LApiKey.Trim = '' then Exit;
 
       LModel := 'Qwen/Qwen2.5-72B-Instruct';
-      if not InputQuery('LLM Setup',
-        'Model name (default: Qwen/Qwen2.5-72B-Instruct):', LModel) then
+      if not InputQuery(LForm.ShellText('deepspec.llm.title', 'LLM Setup'),
+        LForm.ShellText('deepspec.llm.model',
+          'Model name (default: Qwen/Qwen2.5-72B-Instruct):'), LModel) then
         Exit;
       if LModel.Trim = '' then
         LModel := 'Qwen/Qwen2.5-72B-Instruct';
@@ -141,17 +153,20 @@ begin
       LDeepBaseLLM := LForm.LLMInstance as TDeepBaseLLM;
       if LDeepBaseLLM = nil then
       begin
-        ShowMessage('DeepBase LLM not initialized. Check root.txt and DB1.');
+        ShowMessage(LForm.ShellText('deepspec.llm.notinit',
+          'DeepBase LLM not initialized. Check root.txt and DB1.'));
         Exit;
       end;
 
       try
         TDeepSpecLLMConfigHelper.SaveModelScopeConfig(
           LDeepBaseLLM, LApiKey.Trim, LModel.Trim);
-        ShowMessage('LLM configured successfully. Use Generate B to call it.');
+        ShowMessage(LForm.ShellText('deepspec.llm.configured',
+          'LLM configured successfully. Use Generate B to call it.'));
       except
         on E: Exception do
-          ShowMessage('Failed to save LLM config: ' + E.Message);
+          ShowMessage(LForm.ShellText('deepspec.llm.savefail',
+            'Failed to save LLM config: ') + E.Message);
       end;
     end;
   ACommands.RegisterCommand(LCmd);

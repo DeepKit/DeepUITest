@@ -25,11 +25,6 @@ implementation
 uses
   FireDAC.Comp.Client;
 
-function InsertAndReturnId(const SQL: string): string;
-begin
-  Result := ArtifactOS_DB.InsertAndReturnId(SQL);
-end;
-
 class function TShadowRunService.CreateRun(const ARunCode: string;
   const AStartDate, AEndDate: string; const APlatform: string): string;
 var
@@ -54,9 +49,8 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.ExecuteJson(
-      'UPDATE artifactos.shadow_run SET status=''running'' WHERE id=:id AND status=''planned''',
-      '{"id":"' + ARunId + '"}');
+    DB.Execute(
+      'UPDATE artifactos.shadow_run SET status=''running'' WHERE id=''' + ARunId + ''' AND status=''planned''');
     Result := ARunId;
   finally
     DB.Disconnect;
@@ -70,9 +64,8 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.ExecuteJson(
-      'UPDATE artifactos.shadow_run SET status=''completed'' WHERE id=:id AND status=''running''',
-      '{"id":"' + ARunId + '"}');
+    DB.Execute(
+      'UPDATE artifactos.shadow_run SET status=''completed'' WHERE id=''' + ARunId + ''' AND status=''running''');
     Result := ARunId;
   finally
     DB.Disconnect;
@@ -86,9 +79,10 @@ begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    DB.ExecuteJson(
-      'UPDATE artifactos.shadow_run SET status=:status, final_report_payload=:payload::jsonb WHERE id=:id',
-      Format('{"status":"aborted","payload":{"abort_reason":"%s"},"id":"%s"}', [AReason, ARunId]));
+    DB.Execute(
+      'UPDATE artifactos.shadow_run SET status=''aborted'', ' +
+      'final_report_payload=''{"abort_reason":"Test aborted by human"}''::jsonb ' +
+      'WHERE id=''' + ARunId + '''');
     Result := ARunId;
   finally
     DB.Disconnect;
@@ -115,15 +109,13 @@ class function TShadowRunService.CreateObservation(const ARunId, AShadowRunDayId
   const AArtifactOSRef, ALegacyRef: string; ADeviationType, ASeverity: string): string;
 var
   DB: TArtifactDB;
-  SQL: string;
 begin
   DB := ArtifactOS_DB;
   DB.Connect;
   try
-    SQL := 'INSERT INTO artifactos.shadow_run_observation (shadow_run_id, shadow_run_day_id, observation_type, artifactos_ref, legacy_ref, deviation_type, severity) ' +
-           'VALUES (''' + ARunId + ''', ''' + AShadowRunDayId + ''', ''' + AObsType + ''', ''' + AArtifactOSRef + ''', ''' + ALegacyRef + ''', ''' + ADeviationType + ''', ''' + ASeverity + ''') ' +
-           'RETURNING id';
-    Result := DB.InsertAndReturnId(SQL);
+    Result := DB.InsertAndReturnId('INSERT INTO artifactos.shadow_run_observation (shadow_run_id, shadow_run_day_id, observation_type, artifactos_ref, legacy_ref, deviation_type, severity) ' +
+      'VALUES (''' + ARunId + ''', ''' + AShadowRunDayId + ''', ''' + AObsType + ''', ''' + AArtifactOSRef + ''', ''' + ALegacyRef + ''', ''' + ADeviationType + ''', ''' + ASeverity + ''') ' +
+      'RETURNING id');
   finally
     DB.Disconnect;
   end;

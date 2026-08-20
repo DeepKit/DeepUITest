@@ -1,24 +1,33 @@
 ﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
-        <ProjectGuid>{C5829433-B906-4BC3-83E0-70C57B9B642A}</ProjectGuid>
+        <ProjectGuid>{C3A55570-5830-4EE5-B966-86A3C1AA0979}</ProjectGuid>
     </PropertyGroup>
     <ItemGroup>
-        <Projects Include="DeepInput\src\DeepInput.dproj">
-            <Dependencies/>
-        </Projects>
-        <Projects Include="DeepCompare\delphi\DeepCompareU.dproj">
-            <Dependencies/>
-        </Projects>
-        <Projects Include="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj">
-            <Dependencies/>
-        </Projects>
-        <Projects Include="DeepCharset\DeepCharset.dproj">
+        <Projects Include="ArtifactOS\src\ArtifactOS.dproj">
             <Dependencies/>
         </Projects>
         <Projects Include="DeepLaunch\DeepLaunch.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="DeepSpec\DeepSpec.dproj">
+        <Projects Include="DeepSync\DeepSync.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="DeepFrames\DeepFrames.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="DeepAxis\DeepAxis.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="DeepCompare\delphi\DeepCompare.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Assayer\src\plugins\core\Router\Router.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="DeepInput\src\DeepInput.dproj">
             <Dependencies/>
         </Projects>
     </ItemGroup>
@@ -29,41 +38,14 @@
             <Default.Personality/>
         </BorlandProject>
     </ProjectExtensions>
-    <Target Name="DeepInput">
-        <MSBuild Projects="DeepInput\src\DeepInput.dproj"/>
+    <Target Name="ArtifactOS">
+        <MSBuild Projects="ArtifactOS\src\ArtifactOS.dproj"/>
     </Target>
-    <Target Name="DeepInput:Clean">
-        <MSBuild Projects="DeepInput\src\DeepInput.dproj" Targets="Clean"/>
+    <Target Name="ArtifactOS:Clean">
+        <MSBuild Projects="ArtifactOS\src\ArtifactOS.dproj" Targets="Clean"/>
     </Target>
-    <Target Name="DeepInput:Make">
-        <MSBuild Projects="DeepInput\src\DeepInput.dproj" Targets="Make"/>
-    </Target>
-    <Target Name="DeepCompareU">
-        <MSBuild Projects="DeepCompare\delphi\DeepCompareU.dproj"/>
-    </Target>
-    <Target Name="DeepCompareU:Clean">
-        <MSBuild Projects="DeepCompare\delphi\DeepCompareU.dproj" Targets="Clean"/>
-    </Target>
-    <Target Name="DeepCompareU:Make">
-        <MSBuild Projects="DeepCompare\delphi\DeepCompareU.dproj" Targets="Make"/>
-    </Target>
-    <Target Name="DeepShineConfig">
-        <MSBuild Projects="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj"/>
-    </Target>
-    <Target Name="DeepShineConfig:Clean">
-        <MSBuild Projects="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj" Targets="Clean"/>
-    </Target>
-    <Target Name="DeepShineConfig:Make">
-        <MSBuild Projects="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj" Targets="Make"/>
-    </Target>
-    <Target Name="DeepCharset">
-        <MSBuild Projects="DeepCharset\DeepCharset.dproj"/>
-    </Target>
-    <Target Name="DeepCharset:Clean">
-        <MSBuild Projects="DeepCharset\DeepCharset.dproj" Targets="Clean"/>
-    </Target>
-    <Target Name="DeepCharset:Make">
-        <MSBuild Projects="DeepCharset\DeepCharset.dproj" Targets="Make"/>
+    <Target Name="ArtifactOS:Make">
+        <MSBuild Projects="ArtifactOS\src\ArtifactOS.dproj" Targets="Make"/>
     </Target>
     <Target Name="DeepLaunch">
         <MSBuild Projects="DeepLaunch\DeepLaunch.dproj"/>
@@ -74,23 +56,77 @@
     <Target Name="DeepLaunch:Make">
         <MSBuild Projects="DeepLaunch\DeepLaunch.dproj" Targets="Make"/>
     </Target>
-    <Target Name="DeepSpec">
-        <MSBuild Projects="DeepSpec\DeepSpec.dproj"/>
+    <Target Name="DeepSync">
+        <MSBuild Projects="DeepSync\DeepSync.dproj"/>
     </Target>
-    <Target Name="DeepSpec:Clean">
-        <MSBuild Projects="DeepSpec\DeepSpec.dproj" Targets="Clean"/>
+    <Target Name="DeepSync:Clean">
+        <MSBuild Projects="DeepSync\DeepSync.dproj" Targets="Clean"/>
     </Target>
-    <Target Name="DeepSpec:Make">
-        <MSBuild Projects="DeepSpec\DeepSpec.dproj" Targets="Make"/>
+    <Target Name="DeepSync:Make">
+        <MSBuild Projects="DeepSync\DeepSync.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="DeepFrames">
+        <MSBuild Projects="DeepFrames\DeepFrames.dproj"/>
+    </Target>
+    <Target Name="DeepFrames:Clean">
+        <MSBuild Projects="DeepFrames\DeepFrames.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DeepFrames:Make">
+        <MSBuild Projects="DeepFrames\DeepFrames.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="DeepAxis">
+        <MSBuild Projects="DeepAxis\DeepAxis.dproj"/>
+    </Target>
+    <Target Name="DeepAxis:Clean">
+        <MSBuild Projects="DeepAxis\DeepAxis.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DeepAxis:Make">
+        <MSBuild Projects="DeepAxis\DeepAxis.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="DeepCompare">
+        <MSBuild Projects="DeepCompare\delphi\DeepCompare.dproj"/>
+    </Target>
+    <Target Name="DeepCompare:Clean">
+        <MSBuild Projects="DeepCompare\delphi\DeepCompare.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DeepCompare:Make">
+        <MSBuild Projects="DeepCompare\delphi\DeepCompare.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Router">
+        <MSBuild Projects="Assayer\src\plugins\core\Router\Router.dproj"/>
+    </Target>
+    <Target Name="Router:Clean">
+        <MSBuild Projects="Assayer\src\plugins\core\Router\Router.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Router:Make">
+        <MSBuild Projects="Assayer\src\plugins\core\Router\Router.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="DeepShineConfig">
+        <MSBuild Projects="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj"/>
+    </Target>
+    <Target Name="DeepShineConfig:Clean">
+        <MSBuild Projects="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DeepShineConfig:Make">
+        <MSBuild Projects="DeepShine\Apps\DeepShineConfig\DeepShineConfig.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="DeepInput">
+        <MSBuild Projects="DeepInput\src\DeepInput.dproj"/>
+    </Target>
+    <Target Name="DeepInput:Clean">
+        <MSBuild Projects="DeepInput\src\DeepInput.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DeepInput:Make">
+        <MSBuild Projects="DeepInput\src\DeepInput.dproj" Targets="Make"/>
     </Target>
     <Target Name="Build">
-        <CallTarget Targets="DeepInput;DeepCompareU;DeepShineConfig;DeepCharset;DeepLaunch;DeepSpec"/>
+        <CallTarget Targets="ArtifactOS;DeepLaunch;DeepSync;DeepFrames;DeepAxis;DeepCompare;Router;DeepShineConfig;DeepInput"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="DeepInput:Clean;DeepCompareU:Clean;DeepShineConfig:Clean;DeepCharset:Clean;DeepLaunch:Clean;DeepSpec:Clean"/>
+        <CallTarget Targets="ArtifactOS:Clean;DeepLaunch:Clean;DeepSync:Clean;DeepFrames:Clean;DeepAxis:Clean;DeepCompare:Clean;Router:Clean;DeepShineConfig:Clean;DeepInput:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="DeepInput:Make;DeepCompareU:Make;DeepShineConfig:Make;DeepCharset:Make;DeepLaunch:Make;DeepSpec:Make"/>
+        <CallTarget Targets="ArtifactOS:Make;DeepLaunch:Make;DeepSync:Make;DeepFrames:Make;DeepAxis:Make;DeepCompare:Make;Router:Make;DeepShineConfig:Make;DeepInput:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

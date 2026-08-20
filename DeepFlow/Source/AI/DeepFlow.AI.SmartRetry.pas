@@ -1,16 +1,16 @@
-﻿unit UniFlow.AI.SmartRetry;
+﻿unit DeepFlow.AI.SmartRetry;
 
 {*******************************************************************************
-  UniFlow 智能重试策略引擎
+  DeepFlow 智能重试策略引擎
   
   功能:
   - 动态重试策略选择
   - 错误分类学习
   - 重试参数自适应
-  - 熔断器集�?
+  - 熔断器集成
   - 历史分析优化
   
-  作�? UniFlow Team
+  作者: DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -26,24 +26,24 @@ type
   
   /// <summary>错误类别</summary>
   TErrorCategory = (
-    ecTransient,          // 瞬态错�?(网络抖动, 临时过载)
+    ecTransient,          // 瞬态错误(网络抖动, 临时过载)
     ecRateLimited,        // 限流错误
     ecResourceExhausted,  // 资源耗尽
     ecTimeout,            // 超时
-    ecServiceUnavailable, // 服务不可�?
+    ecServiceUnavailable, // 服务不可用
     ecBadRequest,         // 请求错误 (不应重试)
     ecAuthentication,     // 认证错误 (不应重试)
     ecPermission,         // 权限错误 (不应重试)
-    ecDataIntegrity,      // 数据完整性错�?
+    ecDataIntegrity,      // 数据完整性错误
     ecCircuitOpen,        // 熔断器打开
     ecUnknown             // 未知
   );
   
   /// <summary>错误严重程度</summary>
   TErrorSeverity = (
-    esLow,       // �?- 可安全重�?
-    esMedium,    // �?- 谨慎重试
-    esHigh,      // �?- 限制重试
+    esLow,       // 低 - 可安全重试
+    esMedium,    // 中 - 谨慎重试
+    esHigh,      // 高 - 限制重试
     esCritical   // 严重 - 不应重试
   );
   
@@ -70,7 +70,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '错误分类�?}
+  {$REGION '错误分类器'}
   
   /// <summary>错误模式</summary>
   TErrorPattern = record
@@ -81,7 +81,7 @@ type
     BaseWaitMs: Integer;
   end;
   
-  /// <summary>错误分类�?/summary>
+  /// <summary>错误分类器</summary>
   TErrorClassifier = class
   private
     FPatterns: TList<TErrorPattern>;
@@ -111,17 +111,17 @@ type
   
   {$REGION '重试策略'}
   
-  /// <summary>退避策略类�?/summary>
+  /// <summary>退避策略类型</summary>
   TBackoffType = (
     btFixed,              // 固定延迟
-    btLinear,             // 线性退�?
-    btExponential,        // 指数退�?
-    btExponentialJitter,  // 指数退�?+ 抖动
-    btFibonacci,          // 斐波那契退�?
-    btDecorrelated        // 去相关抖�?
+    btLinear,             // 线性退避
+    btExponential,        // 指数退避
+    btExponentialJitter,  // 指数退避 + 抖动
+    btFibonacci,          // 斐波那契退避
+    btDecorrelated        // 去相关抖动
   );
   
-  /// <summary>退避配�?/summary>
+  /// <summary>退避配置</summary>
   TBackoffConfig = record
     BackoffType: TBackoffType;
     InitialDelayMs: Integer;
@@ -167,7 +167,7 @@ type
     procedure RecordFailure(const AError: TErrorInfo; AAttempt: Integer);
   end;
   
-  /// <summary>指数退避策�?/summary>
+  /// <summary>指数退避策略</summary>
   TExponentialBackoffStrategy = class(TInterfacedObject, IRetryStrategy)
   private
     FConfig: TBackoffConfig;
@@ -215,26 +215,26 @@ type
   
   {$ENDREGION}
   
-  {$REGION '熔断�?}
+  {$REGION '熔断器'}
   
-  /// <summary>熔断器状�?/summary>
+  /// <summary>熔断器状态</summary>
   TCircuitState = (
     csClosed,     // 关闭 - 正常运行
     csOpen,       // 打开 - 拒绝请求
     csHalfOpen    // 半开 - 测试恢复
   );
   
-  /// <summary>熔断器配�?/summary>
+  /// <summary>熔断器配置</summary>
   TCircuitBreakerConfig = record
-    FailureThreshold: Integer;      // 触发熔断的失败次�?
-    SuccessThreshold: Integer;      // 关闭熔断的成功次�?
+    FailureThreshold: Integer;      // 触发熔断的失败次数
+    SuccessThreshold: Integer;      // 关闭熔断的成功次数
     TimeoutMs: Integer;             // 熔断超时时间
     SamplingWindowMs: Integer;      // 采样窗口
     MinimumRequests: Integer;       // 最小请求数
-    FailureRateThreshold: Double;   // 失败率阈�?
+    FailureRateThreshold: Double;   // 失败率阈值
   end;
   
-  /// <summary>熔断器事�?/summary>
+  /// <summary>熔断器事件</summary>
   TCircuitBreakerEvent = (
     cbeStateChanged,
     cbeRequestRejected,
@@ -246,7 +246,7 @@ type
   TCircuitBreakerEventHandler = reference to procedure(
     AEvent: TCircuitBreakerEvent; AState: TCircuitState);
   
-  /// <summary>熔断�?/summary>
+  /// <summary>熔断器</summary>
   TCircuitBreaker = class
   private
     FName: string;
@@ -301,7 +301,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '重试执行�?}
+  {$REGION '重试执行器'}
   
   /// <summary>重试尝试记录</summary>
   TRetryAttempt = record
@@ -324,13 +324,13 @@ type
     FinalError: TErrorInfo;
   end;
   
-  /// <summary>可重试操�?/summary>
+  /// <summary>可重试操作</summary>
   TRetryableOperation<T> = reference to function: T;
   
-  /// <summary>错误提取�?/summary>
+  /// <summary>错误提取器</summary>
   TErrorExtractor = reference to function(E: Exception): TErrorInfo;
   
-  /// <summary>重试执行�?/summary>
+  /// <summary>重试执行器</summary>
   TRetryExecutor = class
   private
     FStrategy: IRetryStrategy;
@@ -351,7 +351,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '策略选择�?}
+  {$REGION '策略选择器'}
   
   /// <summary>服务特征</summary>
   TServiceCharacteristics = record
@@ -373,7 +373,7 @@ type
     Reasoning: string;
   end;
   
-  /// <summary>智能策略选择�?/summary>
+  /// <summary>智能策略选择器</summary>
   TSmartStrategySelector = class
   private
     FHistoricalData: TDictionary<string, TList<TRetryAttempt>>;
@@ -455,9 +455,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '重试策略构建�?}
+  {$REGION '重试策略构建器'}
   
-  /// <summary>重试策略构建�?/summary>
+  /// <summary>重试策略构建器</summary>
   TRetryStrategyBuilder = class
   private
     FMaxRetries: Integer;
@@ -517,7 +517,7 @@ procedure TErrorClassifier.InitializePatterns;
 var
   Pattern: TErrorPattern;
 begin
-  // 瞬态错误模�?
+  // 瞬态错误模式
   Pattern.Pattern := '(connection|connect|network|socket).*(refused|reset|timeout|failed)';
   Pattern.Category := ecTransient;
   Pattern.Severity := esLow;
@@ -548,7 +548,7 @@ begin
   Pattern.BaseWaitMs := 2000;
   FPatterns.Add(Pattern);
   
-  // 服务不可用模�?
+  // 服务不可用模式
   Pattern.Pattern := '(service.?unavailable|server.?error|internal.?error|503|502|500)';
   Pattern.Category := ecServiceUnavailable;
   Pattern.Severity := esMedium;
@@ -593,7 +593,7 @@ procedure TErrorClassifier.InitializeHttpStatusMapping;
 var
   Classification: TErrorClassification;
 begin
-  // 4xx 客户端错�?
+  // 4xx 客户端错误
   Classification.Category := ecBadRequest;
   Classification.Severity := esCritical;
   Classification.Retryable := False;
@@ -618,7 +618,7 @@ begin
   Classification.SuggestedWaitMs := 5000;
   FHttpStatusMapping.Add(429, Classification);
   
-  // 5xx 服务器错�?
+  // 5xx 服务器错误
   Classification.Category := ecServiceUnavailable;
   Classification.Severity := esMedium;
   Classification.Retryable := True;
@@ -697,7 +697,7 @@ var
   LearnedClass: TErrorClassification;
   Key: string;
 begin
-  // 优先检查学习到的模�?
+  // 优先检查学习到的模式
   Key := AError.ExceptionType + ':' + IntToStr(AError.HttpStatus);
   if FLearnedPatterns.TryGetValue(Key, LearnedClass) then
   begin
@@ -726,11 +726,11 @@ begin
     ecTransient:
       Result.Reason := '瞬态网络或连接错误';
     ecRateLimited:
-      Result.Reason := '请求被限�?;
+      Result.Reason := '请求被限流';
     ecTimeout:
       Result.Reason := '请求超时';
     ecServiceUnavailable:
-      Result.Reason := '服务暂时不可�?;
+      Result.Reason := '服务暂时不可用';
     ecResourceExhausted:
       Result.Reason := '资源耗尽';
     ecBadRequest:
@@ -777,7 +777,7 @@ begin
   end
   else if ARetrySucceeded then
   begin
-    // 添加新的可重试分�?
+    // 添加新的可重试分类
     Classification := Classify(AError);
     Classification.Retryable := True;
     Classification.Confidence := 0.6;
@@ -821,12 +821,12 @@ end;
 
 procedure TFixedDelayStrategy.RecordSuccess(AAttempt: Integer; AElapsedMs: Integer);
 begin
-  // 固定策略不需要记�?
+  // 固定策略不需要记忆
 end;
 
 procedure TFixedDelayStrategy.RecordFailure(const AError: TErrorInfo; AAttempt: Integer);
 begin
-  // 固定策略不需要记�?
+  // 固定策略不需要记忆
 end;
 
 {$ENDREGION}
@@ -868,7 +868,7 @@ begin
       end;
     btDecorrelated:
       begin
-        // 去相关抖�? delay = random_between(base, previous_delay * 3)
+        // 去相关抖动 delay = random_between(base, previous_delay * 3)
         if AAttempt = 0 then
           Delay := FConfig.InitialDelayMs
         else
@@ -989,13 +989,13 @@ begin
   
   FLock.Enter;
   try
-    // 根据成功率调�?
+    // 根据成功率调整
     if FSuccessRates.TryGetValue(ServiceKey, SuccessRate) then
     begin
       if SuccessRate < 0.3 then
-        BaseDelay := BaseDelay * 2  // 成功率低，增加延�?
+        BaseDelay := BaseDelay * 2  // 成功率低，增加延迟
       else if SuccessRate > 0.8 then
-        BaseDelay := BaseDelay * 0.7;  // 成功率高，减少延�?
+        BaseDelay := BaseDelay * 0.7;  // 成功率高，减少延迟
     end;
     
     // 根据历史平均延迟调整
@@ -1012,7 +1012,7 @@ begin
   if Classification.SuggestedWaitMs > 0 then
     BaseDelay := Max(BaseDelay, Classification.SuggestedWaitMs);
   
-  // 限制最大延�?
+  // 限制最大延迟
   Result := Round(Min(BaseDelay, FBaseConfig.Backoff.MaxDelayMs));
 end;
 
@@ -1045,7 +1045,7 @@ var
   CurrentRate: Double;
   Alpha: Double;
 begin
-  Alpha := 0.1;  // 学习�?
+  Alpha := 0.1;  // 学习率
   
   FLock.Enter;
   try
@@ -1077,7 +1077,7 @@ begin
   
   Classification := FClassifier.Classify(AError);
   
-  // 检查是否在不可重试列表�?
+  // 检查是否在不可重试列表中
   for Category in FBaseConfig.NonRetryableCategories do
   begin
     if Classification.Category = Category then
@@ -1267,7 +1267,7 @@ begin
         end;
         
       csHalfOpen:
-        // 半开状态只允许有限的测试请�?
+        // 半开状态只允许有限的测试请求
         Result := FSuccessCount < FConfig.SuccessThreshold;
     else
       Result := True;
@@ -1623,12 +1623,12 @@ begin
     SuccessRate := SuccessAttempts / TotalAttempts;
     AvgDelay := TotalDelay / TotalAttempts;
     
-    // 根据成功率调整策�?
+    // 根据成功率调整策略
     if SuccessRate > 0.9 then
     begin
       Result.MaxRetries := 5;
       Result.InitialDelayMs := Round(AvgDelay * 0.8);
-      Result.Reasoning := '高成功率，增加重试次�?;
+      Result.Reasoning := '高成功率，增加重试次数';
     end
     else if SuccessRate < 0.3 then
     begin
@@ -1658,7 +1658,7 @@ begin
   // 根据服务特征调整
   if ACharacteristics.AverageLatencyMs > 5000 then
   begin
-    // 慢速服务：更长的延迟，更少的重�?
+    // 慢速服务：更长的延迟，更少的重试
     Result.InitialDelayMs := Round(ACharacteristics.AverageLatencyMs * 0.5);
     Result.MaxRetries := 2;
     Result.Reasoning := '慢速服务，减少重试';
@@ -1681,9 +1681,9 @@ begin
   
   if ACharacteristics.HasSideEffects then
   begin
-    // 有副作用的操作：更谨�?
+    // 有副作用的操作：更谨慎
     Result.MaxRetries := Min(2, Result.MaxRetries);
-    Result.Reasoning := '有副作用，谨慎重�?;
+      Result.Reasoning := '有副作用，谨慎重试';
   end;
   
   if ACharacteristics.CriticalityLevel > 3 then
@@ -1711,7 +1711,7 @@ begin
     
     History.Add(AAttempt);
     
-    // 保留最�?1000 条记�?
+    // 保留最多 1000 条记录
     while History.Count > 1000 do
       History.Delete(0);
   finally
@@ -1736,10 +1736,10 @@ var
   Characteristics: TServiceCharacteristics;
   HistoricalRec, HeuristicRec: TStrategyRecommendation;
 begin
-  // 基于历史数据的推�?
+  // 基于历史数据的推荐
   HistoricalRec := AnalyzeHistoricalData(AServiceName);
   
-  // 基于服务特征的推�?
+  // 基于服务特征的推荐
   FLock.Enter;
   try
     if FServiceCharacteristics.TryGetValue(AServiceName, Characteristics) then
@@ -1891,7 +1891,7 @@ begin
     
     Result := Executor.Execute<T>(AOperation);
     
-    // 记录最终结�?
+    // 记录最终结果
     for Attempt in Result.Attempts do
       FStrategySelector.RecordAttempt(AServiceName, Attempt);
   finally

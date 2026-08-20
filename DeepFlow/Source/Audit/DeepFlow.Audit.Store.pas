@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Audit Store                                                          
+  DeepFlow Audit Store                                                          
   SQLite-based persistent audit log storage                                    
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Audit.Store;
+unit DeepFlow.Audit.Store;
 
 interface
 
@@ -21,7 +21,7 @@ uses
   System.Generics.Collections,
   System.JSON,
   System.SyncObjs,
-  UniFlow.Audit.Types;
+  DeepFlow.Audit.Types;
 
 type
   //----------------------------------------------------------------------------

@@ -1,10 +1,10 @@
-unit UniFlow.Storage.Types;
+unit DeepFlow.Storage.Types;
 
 {*******************************************************}
 {                                                       }
-{       UniFlow 存储后端类型定义                        }
+{       DeepFlow 存储后端类型定义                        }
 {                                                       }
-{       版权所�?(C) 2024 UniFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -410,7 +410,7 @@ begin
   inherited Create;
   FHost := 'localhost';
   FPort := 5432;
-  FDatabase := 'uniflow';
+  FDatabase := 'deepflow';
   FUsername := 'postgres';
   FPassword := '';
   FSchema := 'public';
@@ -470,7 +470,7 @@ end;
 constructor TPostgreSQLConfig.Create;
 begin
   inherited Create;
-  FApplicationName := 'UniFlow';
+  FApplicationName := 'DeepFlow';
   FSearchPath := 'public';
   FStatementCacheSize := 100;
 end;

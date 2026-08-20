@@ -67,12 +67,52 @@ def main():
         conn.rollback()
         conn.set_session(autocommit=False)
 
+        # Create a legal hierarchy: year → quarter → month → week → day → day_sub
+        cur.execute(
+            "select id from artifactos.case_record where case_code='yearcase_2026'"
+        )
+        row = cur.fetchone()
+        if row:
+            year_id = row[0]
+        else:
+            cur.execute(
+                "insert into artifactos.case_record (case_code, case_type, title, status, planning_nature) "
+                "values ('yearcase_2026', 'year', 'Smoke Year 2026', 'active', 'strategic_execution') returning id",
+            )
+            year_id = cur.fetchone()[0]
+
         cur.execute(
             "insert into artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
-            "values (%s, 'day_sub', %s, 'active', 'tactical_execution', "
-            "(select id from artifactos.case_record where case_code='yearcase_2026'), "
-            "(select id from artifactos.case_record where case_code='yearcase_2026')) returning id",
-            (f'smoke_{chain}', f'Smoke Chain {chain}')
+            "values (%s, 'quarter', %s, 'active', 'strategic_arrangement', %s, %s) returning id",
+            (f'smoke_q_{chain}', f'Smoke Q {chain}', year_id, year_id)
+        )
+        quarter_id = cur.fetchone()[0]
+
+        cur.execute(
+            "insert into artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "values (%s, 'month', %s, 'active', 'strategic_landing', %s, %s) returning id",
+            (f'smoke_month_{chain}', f'Smoke Month {chain}', quarter_id, year_id)
+        )
+        month_id = cur.fetchone()[0]
+
+        cur.execute(
+            "insert into artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "values (%s, 'week', %s, 'active', 'tactical_arrangement', %s, %s) returning id",
+            (f'smoke_week_{chain}', f'Smoke Week {chain}', month_id, year_id)
+        )
+        week_id = cur.fetchone()[0]
+
+        cur.execute(
+            "insert into artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "values (%s, 'day', %s, 'active', 'tactical_execution', %s, %s) returning id",
+            (f'smoke_day_{chain}', f'Smoke Day {chain}', week_id, year_id)
+        )
+        day_id = cur.fetchone()[0]
+
+        cur.execute(
+            "insert into artifactos.case_record (case_code, case_type, title, status, planning_nature, parent_case_id, root_case_id) "
+            "values (%s, 'day_sub', %s, 'active', 'tactical_execution', %s, %s) returning id",
+            (f'smoke_{chain}', f'Smoke Chain {chain}', day_id, year_id)
         )
         case_id = cur.fetchone()[0]
         cur.execute(
@@ -263,6 +303,10 @@ def main():
             cur.execute("delete from artifactos.artifact_plan where id=%s", (plan_id,))
             cur.execute("delete from artifactos.studio where id=%s", (studio_id,))
             cur.execute("delete from artifactos.case_record where id=%s", (case_id,))
+            cur.execute("delete from artifactos.case_record where id=%s", (day_id,))
+            cur.execute("delete from artifactos.case_record where id=%s", (week_id,))
+            cur.execute("delete from artifactos.case_record where id=%s", (month_id,))
+            cur.execute("delete from artifactos.case_record where id=%s", (quarter_id,))
             cur.execute("delete from artifactos.shadow_run_observation where shadow_run_id=%s", (sr_id,))
             cur.execute("delete from artifactos.shadow_run_day where shadow_run_id=%s", (sr_id,))
             cur.execute("delete from artifactos.shadow_run where id=%s", (sr_id,))

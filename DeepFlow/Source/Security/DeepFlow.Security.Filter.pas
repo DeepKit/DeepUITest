@@ -1,5 +1,5 @@
 (* ============================================================================
-  UniFlow.Security.Filter - Sensitive Information Filter
+  DeepFlow.Security.Filter - Sensitive Information Filter
 
   Version: 1.0
   Description: Filters and masks sensitive information in text content
@@ -17,7 +17,7 @@
     var Masked := Filter.Mask(Content);
   ============================================================================ *)
 
-unit UniFlow.Security.Filter;
+unit DeepFlow.Security.Filter;
 
 interface
 

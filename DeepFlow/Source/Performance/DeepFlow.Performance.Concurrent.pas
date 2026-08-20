@@ -1,6 +1,6 @@
-unit UniFlow.Performance.Concurrent;
+unit DeepFlow.Performance.Concurrent;
 (*
-  UniFlow Performance - Concurrent Execution
+  DeepFlow Performance - Concurrent Execution
   ==========================================
   高性能并发执行模块，提供：
   - 工作窃取队列
@@ -8,7 +8,7 @@ unit UniFlow.Performance.Concurrent;
   - 并行执行�?
   - 异步工作流执�?
 
-  Author: UniFlow Team
+  Author: DeepFlow Team
   Date: 2025-12-05
 *)
 

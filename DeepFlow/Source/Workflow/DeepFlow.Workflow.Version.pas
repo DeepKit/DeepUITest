@@ -1,6 +1,6 @@
-﻿unit UniFlow.Workflow.Version;
+﻿unit DeepFlow.Workflow.Version;
 (*
-  UniFlow Workflow Version Control
+  DeepFlow Workflow Version Control
   =================================
   TASK-2010: 工作流版本控�?
   
@@ -18,7 +18,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.RegularExpressions, System.Hash,
-  UniFlow.Workflow.Definition;
+  System.StrUtils, System.Math, System.Generics.Defaults,
+  DeepFlow.Workflow.Definition;
 
 type
   // ============================================================================
@@ -178,7 +179,7 @@ type
   // ============================================================================
   
   IVersionStore = interface
-    ['{F1E2D3C4-B5A6-4789-8012-3456789ABCDEF}']
+    ['{F1E2D3C4-B5A6-4789-8012-3456789ABCDE}']
     function SaveVersion(AVersion: TWorkflowVersion): Boolean;
     function GetVersion(const AVersionId: string): TWorkflowVersion;
     function GetVersionByNumber(const AWorkflowId: string; const AVersion: TSemVer): TWorkflowVersion;
@@ -643,7 +644,10 @@ begin
   end;
   
   if AJson.TryGetValue<TJSONObject>('definition', LDefJson) then
-    Result.FDefinition := TWorkflowDefinition.FromJSON(LDefJson);
+  begin
+    Result.FDefinition := TWorkflowDefinition.Create;
+    Result.FDefinition.LoadFromJSON(LDefJson);
+  end;
 end;
 
 // ============================================================================
@@ -1005,6 +1009,7 @@ end;
 function TVersionManager.CreateDraft(const AWorkflowId: string; ADefinition: TWorkflowDefinition): TWorkflowVersion;
 var
   LLatest: TWorkflowVersion;
+  LVer: TSemVer;
 begin
   Result := TWorkflowVersion.Create;
   Result.WorkflowId := AWorkflowId;
@@ -1015,13 +1020,16 @@ begin
   if Assigned(LLatest) then
   begin
     Result.Version := LLatest.Version.IncrementPatch;
-    Result.Version.PreRelease := 'draft';
+    LVer := Result.Version;
+    LVer.PreRelease := 'draft';
+    Result.Version := LVer;
     Result.ParentVersionId := LLatest.VersionId;
   end
   else
   begin
-    Result.Version := TSemVer.Create(1, 0, 0);
-    Result.Version.PreRelease := 'draft';
+    LVer := TSemVer.Create(1, 0, 0);
+    LVer.PreRelease := 'draft';
+    Result.Version := LVer;
   end;
   
   Result.CalculateHash;
@@ -1037,7 +1045,10 @@ begin
   if not Assigned(LDraft) or (LDraft.Status <> vsDraft) then Exit;
   
   // Remove pre-release tag
-  LDraft.Version.PreRelease := '';
+  var LRelVer: TSemVer;
+  LRelVer := LDraft.Version;
+  LRelVer.PreRelease := '';
+  LDraft.Version := LRelVer;
   LDraft.Status := vsActive;
   LDraft.Comment := AComment;
   

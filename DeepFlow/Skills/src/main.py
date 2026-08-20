@@ -12,21 +12,34 @@ Features:
 """
 
 import asyncio
+import json
 import os
+import sqlite3
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import structlog
 
 from .skills.base import SkillRegistry, SkillResult, SkillStatus
 from .skills.code_executor import CodeExecutorSkill
+from .skills.insight import (
+    DecisionCoachSkill,
+    DecisionCriticSkill,
+    DecisionMirrorSkill,
+    DecisionObserverSkill,
+    DecisionAggregatorSkill,
+    FilmGeneratorSkill,
+    MindXraySkill,
+)
 from .llm.client import LLMClient, LLMConfig
+from .llm.multi_llm import call_by_name, build_llm_pool, list_families, close_all as close_multi_llm
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -65,7 +78,7 @@ class SkillRequest(BaseModel):
     skill_name: str = Field(..., description="Name of the Skill to execute")
     params: Dict[str, Any] = Field(default_factory=dict, description="Skill parameters")
     context: Dict[str, Any] = Field(default_factory=dict, description="Execution context")
-    timeout_ms: int = Field(default=30000, ge=100, le=300000, description="Timeout in milliseconds")
+    timeout_ms: int = Field(default=120000, ge=100, le=300000, description="Timeout in milliseconds")
     
 class SkillResponse(BaseModel):
     """Response model for Skill execution."""
@@ -121,12 +134,13 @@ class AppState:
         """Initialize application components."""
         logger.info("Initializing application state")
         
-        # Initialize LLM client
+        # Initialize LLM client (WiseGateway 127.0.0.1:8000)
         llm_config = LLMConfig(
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-            default_model=os.getenv("DEFAULT_LLM_MODEL", "gpt-4o-mini"),
-            timeout=30.0,
-            max_retries=3
+            api_key=os.getenv("KIRO_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+            default_model=os.getenv("DEFAULT_LLM_MODEL", "claude-qoder-glm-5-2"),
+            base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1"),
+            timeout=float(os.getenv("LLM_TIMEOUT", "90")),  # T9: 实测单角色调用可达 50-60s，40s 会随机超时降级
+            max_retries=int(os.getenv("LLM_MAX_RETRIES", "2"))
         )
         self.llm_client = LLMClient(llm_config)
         
@@ -146,11 +160,26 @@ class AppState:
         
         logger.info(f"Registered built-in skill: {code_executor.name}")
         
+        # DeepInsight decision skills (洞察金路径六角色)
+        insight_skills = [
+            DecisionCoachSkill(llm_client=self.llm_client),
+            DecisionCriticSkill(llm_client=self.llm_client),
+            DecisionMirrorSkill(llm_client=self.llm_client),
+            DecisionObserverSkill(llm_client=self.llm_client),
+            DecisionAggregatorSkill(llm_client=self.llm_client),
+            FilmGeneratorSkill(llm_client=self.llm_client),
+            MindXraySkill(llm_client=self.llm_client),
+        ]
+        for skill in insight_skills:
+            self.skill_registry.register(skill)
+            logger.info(f"Registered insight skill: {skill.name}")
+        
     async def shutdown(self):
         """Cleanup on shutdown."""
         logger.info("Shutting down application")
         if self.llm_client:
             await self.llm_client.close()
+        await close_multi_llm()
 
 app_state = AppState()
 
@@ -358,6 +387,220 @@ async def llm_chat(request: LLMRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM call failed: {str(e)}"
         )
+
+
+@app.get("/llm/families", tags=["LLM"])
+async def llm_families():
+    """T20: 返回多家族 LLM 映射表（call_by_name 可用名称）。"""
+    return {"families": list_families(), "count": len(list_families())}
+
+
+@app.post("/llm/chat/by-name", response_model=LLMResponse, tags=["LLM"])
+async def llm_chat_by_name(request: LLMRequest):
+    """T20: 按名称调用指定家族 LLM（支持家族短名/完整别名/model id）。"""
+    try:
+        client = call_by_name(request.model)
+        response = await client.chat(
+            messages=request.messages,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+        return LLMResponse(
+            content=response.content,
+            model=response.model,
+            usage=response.usage,
+            finish_reason=response.finish_reason,
+        )
+    except Exception as e:
+        logger.error("llm_chat_by_name error", model=request.model, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"call_by_name({request.model}) failed: {str(e)}",
+        )
+
+
+@app.post("/llm/chat/stream", tags=["LLM"])
+async def llm_chat_stream(request: LLMRequest):
+    """T13: SSE 流式聊天完成（追问区逐字显影）。
+
+    事件格式（每行 data: JSON）：
+      {"type":"delta","content":"增量文本"}
+      {"type":"done","finish_reason":"stop"}
+      {"type":"error","message":"..."}  流式失败（前端可据此降级到非流式）
+    """
+    if not app_state.llm_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LLM client not initialized"
+        )
+
+    logger.info(
+        "LLM stream chat request",
+        model=request.model,
+        messages_count=len(request.messages)
+    )
+
+    async def event_generator():
+        sent_any = False
+        try:
+            async for chunk in app_state.llm_client.stream(
+                messages=request.messages,
+                model=request.model,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            ):
+                if chunk.delta:
+                    sent_any = True
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk.delta}, ensure_ascii=False)}\n\n"
+                if chunk.finish_reason:
+                    yield f"data: {json.dumps({'type': 'done', 'finish_reason': chunk.finish_reason})}\n\n"
+            if not sent_any:
+                # 流式未产出任何内容：显式告知前端，便于降级或提示
+                yield f"data: {json.dumps({'type': 'error', 'message': 'stream produced no content'})}\n\n"
+        except Exception as e:
+            logger.error("LLM stream error", error=str(e))
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲，保证逐块推送
+        },
+    )
+
+# -----------------------------------------------------------------------------
+# Mind X-Ray (T19b/T19d: 脑内 X 光片 + 跨会话成长对比)
+# -----------------------------------------------------------------------------
+
+class XrayRequest(BaseModel):
+    """X 光片请求：决策后照见或树洞倾诉后分析。"""
+    problem: str = Field(..., description="本次问题或倾诉主题")
+    material: str = Field(default="", description="素材：胶片摘要（decision）或倾诉对话内容（treehole）")
+    history_summary: str = Field(default="", description="历史会话摘要（跨会话成长对比用），可空")
+    mode: str = Field(default="decision", description="decision 或 treehole")
+
+
+@app.post("/llm/xray", tags=["LLM"])
+async def generate_xray(request: XrayRequest):
+    """生成脑内 X 光片（第三人称自我觉察，含跨会话成长对比）。"""
+    skill = app_state.skill_registry.get("mind_xray")
+    if skill is None:
+        raise HTTPException(status_code=500, detail="mind_xray skill not registered")
+    result = await skill.execute(
+        {
+            "problem": request.problem,
+            "material": request.material,
+            "history_summary": request.history_summary,
+            "mode": request.mode,
+        },
+        {},
+    )
+    if result.status != SkillStatus.SUCCESS:
+        raise HTTPException(status_code=502, detail=result.error or "xray generation failed")
+    return result.data
+
+
+# -----------------------------------------------------------------------------
+# Governance History (T19a: 个人决策数据持久化，SQLite 存储)
+# -----------------------------------------------------------------------------
+
+HISTORY_DB_PATH = Path(os.getenv(
+    "KEJIAN_HISTORY_DB",
+    str(Path(__file__).resolve().parent.parent / "data" / "kejian_history.db"),
+))
+
+
+def _history_conn() -> sqlite3.Connection:
+    """短连接 + WAL，每次请求独立连接避免跨线程问题。"""
+    HISTORY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(HISTORY_DB_PATH), timeout=5)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS governance_history (
+            id TEXT PRIMARY KEY,
+            ts INTEGER NOT NULL,
+            problem TEXT NOT NULL DEFAULT '',
+            template TEXT NOT NULL DEFAULT '',
+            payload TEXT NOT NULL DEFAULT '{}'
+        )"""
+    )
+    return conn
+
+
+class GovernanceRecord(BaseModel):
+    """单条治理记录（前端 localStorage 结构的服务端镜像）。"""
+    id: str = Field(..., description="客户端生成的唯一 id（h<ts>）")
+    ts: int = Field(..., description="毫秒时间戳")
+    problem: str = Field(default="")
+    template: str = Field(default="")
+    # 其余字段（degraded/totalSec/aggregated/film/filmHtml）整体存 payload
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+@app.get("/governance/history", tags=["Governance"])
+async def list_governance_history(limit: int = 200):
+    """按时间倒序返回治理历史，供前端跨浏览器/设备查阅。"""
+    try:
+        with _history_conn() as conn:
+            rows = conn.execute(
+                "SELECT id, ts, problem, template, payload FROM governance_history "
+                "ORDER BY ts DESC LIMIT ?",
+                (max(1, min(limit, 1000)),),
+            ).fetchall()
+        items = []
+        for rid, ts, problem, template, payload in rows:
+            rec = json.loads(payload or "{}")
+            rec.update({"id": rid, "ts": ts, "problem": problem, "template": template})
+            items.append(rec)
+        return {"items": items, "count": len(items)}
+    except Exception as e:  # 防假绿：存储故障不伪装成功
+        logger.error("governance_history_list_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/governance/history", tags=["Governance"])
+async def save_governance_record(record: GovernanceRecord):
+    """写入/覆盖单条记录（同 id 幂等，支持前端重试与合并同步）。"""
+    try:
+        payload = record.payload
+        with _history_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO governance_history (id, ts, problem, template, payload) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    record.id,
+                    record.ts,
+                    record.problem,
+                    record.template,
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+        return {"status": "saved", "id": record.id}
+    except Exception as e:
+        logger.error("governance_history_save_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/governance/history/{record_id}", tags=["Governance"])
+async def delete_governance_record(record_id: str):
+    """删除单条记录。"""
+    with _history_conn() as conn:
+        cur = conn.execute("DELETE FROM governance_history WHERE id = ?", (record_id,))
+        deleted = cur.rowcount
+    return {"status": "deleted", "id": record_id, "deleted": deleted}
+
+
+@app.delete("/governance/history", tags=["Governance"])
+async def clear_governance_history():
+    """清空全部记录（前端清空确认后调用）。"""
+    with _history_conn() as conn:
+        cur = conn.execute("DELETE FROM governance_history")
+        deleted = cur.rowcount
+    return {"status": "cleared", "deleted": deleted}
+
 
 @app.get("/metrics", tags=["System"])
 async def get_metrics():

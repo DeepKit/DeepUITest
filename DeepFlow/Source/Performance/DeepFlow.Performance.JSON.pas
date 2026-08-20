@@ -1,14 +1,14 @@
-unit UniFlow.Performance.JSON;
+unit DeepFlow.Performance.JSON;
 (*
-  UniFlow Performance - JSON Optimization
+  DeepFlow Performance - JSON Optimization
   ========================================
   高性能 JSON 处理模块，提供：
-  - 流式解析（大文件支持�?
+  - 流式解析（大文件支持�?
   - 路径提取优化
   - 解析结果缓存
   - 高效 JSON 构建
 
-  Author: UniFlow Team
+  Author: DeepFlow Team
   Date: 2025-12-05
 *)
 
@@ -20,7 +20,7 @@ uses
 
 type
   // ============================================================================
-  // JSON 流式读取�?
+  // JSON 流式读取�?
   // ============================================================================
 
   /// <summary>JSON 解析事件</summary>
@@ -52,7 +52,7 @@ type
   /// <summary>流式 JSON 解析回调</summary>
   TJSONTokenCallback = reference to procedure(const AToken: TJSONToken; var AContinue: Boolean);
 
-  /// <summary>流式 JSON 读取�?/summary>
+  /// <summary>流式 JSON 读取�?/summary>
   TJSONStreamReader = class
   private
     FStream: TStream;
@@ -78,10 +78,10 @@ type
     constructor Create(AStream: TStream; AOwnsStream: Boolean = False; ABufferSize: Integer = 65536);
     destructor Destroy; override;
 
-    /// <summary>解析下一�?Token</summary>
+    /// <summary>解析下一�?Token</summary>
     function ReadToken(out AToken: TJSONToken): Boolean;
 
-    /// <summary>遍历所�?Token</summary>
+    /// <summary>遍历所�?Token</summary>
     procedure ForEach(ACallback: TJSONTokenCallback);
 
     /// <summary>跳过当前值（对象或数组）</summary>
@@ -96,10 +96,10 @@ type
   end;
 
   // ============================================================================
-  // JSON Lines 读取�?
+  // JSON Lines 读取�?
   // ============================================================================
 
-  /// <summary>JSON Lines 格式读取�?/summary>
+  /// <summary>JSON Lines 格式读取�?/summary>
   TJSONLinesReader = class
   private
     FStream: TStream;
@@ -111,7 +111,7 @@ type
     constructor Create(AStream: TStream; AOwnsStream: Boolean = False; AEncoding: TEncoding = nil);
     destructor Destroy; override;
 
-    /// <summary>读取下一�?JSON</summary>
+    /// <summary>读取下一�?JSON</summary>
     function ReadNext(out AJson: TJSONValue): Boolean;
 
     /// <summary>读取下一行为对象</summary>
@@ -125,10 +125,10 @@ type
   end;
 
   // ============================================================================
-  // JSON 路径提取�?
+  // JSON 路径提取�?
   // ============================================================================
 
-  /// <summary>JSON 路径段类�?/summary>
+  /// <summary>JSON 路径段类�?/summary>
   TPathSegmentType = (
     pstProperty,  // .propertyName
     pstIndex,     // [0]
@@ -136,14 +136,14 @@ type
     pstRecursive  // ..
   );
 
-  /// <summary>JSON 路径�?/summary>
+  /// <summary>JSON 路径�?/summary>
   TPathSegment = record
     SegmentType: TPathSegmentType;
     Name: string;
     Index: Integer;
   end;
 
-  /// <summary>JSON 路径提取�?/summary>
+  /// <summary>JSON 路径提取�?/summary>
   TJSONPathExtractor = class
   private
     FPath: string;
@@ -155,25 +155,25 @@ type
     constructor Create(const APath: string);
     destructor Destroy; override;
 
-    /// <summary>�?JSON 值提�?/summary>
+    /// <summary>�?JSON 值提�?/summary>
     function Extract(ARoot: TJSONValue): TJSONValue;
 
     /// <summary>提取所有匹配项</summary>
     function ExtractAll(ARoot: TJSONValue): TArray<TJSONValue>;
 
-    /// <summary>提取字符串�?/summary>
+    /// <summary>提取字符串�?/summary>
     function ExtractString(ARoot: TJSONValue; const ADefault: string = ''): string;
 
-    /// <summary>提取整数�?/summary>
+    /// <summary>提取整数�?/summary>
     function ExtractInteger(ARoot: TJSONValue; ADefault: Integer = 0): Integer;
 
-    /// <summary>提取布尔�?/summary>
+    /// <summary>提取布尔�?/summary>
     function ExtractBoolean(ARoot: TJSONValue; ADefault: Boolean = False): Boolean;
 
-    /// <summary>检查路径是否存�?/summary>
+    /// <summary>检查路径是否存�?/summary>
     function Exists(ARoot: TJSONValue): Boolean;
 
-    /// <summary>路径字符�?/summary>
+    /// <summary>路径字符�?/summary>
     property Path: string read FPath;
 
     /// <summary>快速提取（静态方法）</summary>
@@ -187,7 +187,7 @@ type
   // JSON 解析缓存
   // ============================================================================
 
-  /// <summary>缓存�?/summary>
+  /// <summary>缓存�?/summary>
   TJSONCacheItem = class
   private
     FValue: TJSONValue;
@@ -230,13 +230,13 @@ type
       ATTLSeconds: Integer = 300);
     destructor Destroy; override;
 
-    /// <summary>获取缓存�?JSON（返回克隆）</summary>
+    /// <summary>获取缓存�?JSON（返回克隆）</summary>
     function Get(const AContent: string): TJSONValue;
 
-    /// <summary>添加到缓�?/summary>
+    /// <summary>添加到缓�?/summary>
     procedure Put(const AContent: string; AValue: TJSONValue);
 
-    /// <summary>解析并缓�?/summary>
+    /// <summary>解析并缓�?/summary>
     function ParseAndCache(const AContent: string): TJSONValue;
 
     /// <summary>清空缓存</summary>
@@ -248,14 +248,15 @@ type
     property MaxItems: Integer read FMaxItems write FMaxItems;
     property MaxSizeBytes: Int64 read FMaxSizeBytes write FMaxSizeBytes;
     property TTLSeconds: Integer read FTTLSeconds write FTTLSeconds;
-    property HitRate: Double read FHits;
+    function GetHitRate: Double;
+    property HitRate: Double read GetHitRate;
   end;
 
   // ============================================================================
-  // 高效 JSON 构建�?
+  // 高效 JSON 构建�?
   // ============================================================================
 
-  /// <summary>JSON 构建器状�?/summary>
+  /// <summary>JSON 构建器状�?/summary>
   TJSONBuilderState = (
     jbsInitial,
     jbsObject,
@@ -263,7 +264,7 @@ type
     jbsValue
   );
 
-  /// <summary>高效 JSON 构建�?/summary>
+  /// <summary>高效 JSON 构建�?/summary>
   TJSONBuilder = class
   private
     FBuffer: TStringBuilder;
@@ -282,13 +283,13 @@ type
     constructor Create(AInitialCapacity: Integer = 4096; APrettyPrint: Boolean = False);
     destructor Destroy; override;
 
-    /// <summary>开始对�?/summary>
+    /// <summary>开始对�?/summary>
     function BeginObject: TJSONBuilder;
 
     /// <summary>结束对象</summary>
     function EndObject: TJSONBuilder;
 
-    /// <summary>开始数�?/summary>
+    /// <summary>开始数�?/summary>
     function BeginArray: TJSONBuilder;
 
     /// <summary>结束数组</summary>
@@ -297,19 +298,19 @@ type
     /// <summary>写入属性名</summary>
     function WriteProperty(const AName: string): TJSONBuilder;
 
-    /// <summary>写入字符串�?/summary>
+    /// <summary>写入字符串�?/summary>
     function WriteString(const AValue: string): TJSONBuilder; overload;
     function WriteString(const AName, AValue: string): TJSONBuilder; overload;
 
-    /// <summary>写入整数�?/summary>
+    /// <summary>写入整数�?/summary>
     function WriteInteger(AValue: Int64): TJSONBuilder; overload;
     function WriteInteger(const AName: string; AValue: Int64): TJSONBuilder; overload;
 
-    /// <summary>写入浮点�?/summary>
+    /// <summary>写入浮点�?/summary>
     function WriteFloat(AValue: Double): TJSONBuilder; overload;
     function WriteFloat(const AName: string; AValue: Double): TJSONBuilder; overload;
 
-    /// <summary>写入布尔�?/summary>
+    /// <summary>写入布尔�?/summary>
     function WriteBoolean(AValue: Boolean): TJSONBuilder; overload;
     function WriteBoolean(const AName: string; AValue: Boolean): TJSONBuilder; overload;
 
@@ -324,33 +325,34 @@ type
     function WriteJSON(AValue: TJSONValue): TJSONBuilder; overload;
     function WriteJSON(const AName: string; AValue: TJSONValue): TJSONBuilder; overload;
 
-    /// <summary>重置构建�?/summary>
+    /// <summary>重置构建�?/summary>
     procedure Reset;
 
-    /// <summary>获取结果字符�?/summary>
+    /// <summary>获取结果字符�?/summary>
     function ToString: string; override;
 
-    /// <summary>获取结果�?TJSONValue</summary>
+    /// <summary>获取结果�?TJSONValue</summary>
     function ToJSON: TJSONValue;
 
     /// <summary>当前长度</summary>
-    property Length: Integer read FBuffer.Length;
+    function GetCurrentLength: Integer;
+    property CurrentLength: Integer read GetCurrentLength;
   end;
 
   // ============================================================================
   // JSON 工具函数
   // ============================================================================
 
-  /// <summary>快�?JSON 字符串转�?/summary>
+  /// <summary>快�?JSON 字符串转�?/summary>
   function EscapeJSONString(const S: string): string;
 
-  /// <summary>快�?JSON 字符串反转义</summary>
+  /// <summary>快�?JSON 字符串反转义</summary>
   function UnescapeJSONString(const S: string): string;
 
   /// <summary>计算 JSON 值的近似大小（字节）</summary>
   function EstimateJSONSize(AValue: TJSONValue): Integer;
 
-  /// <summary>深度克隆 JSON �?/summary>
+  /// <summary>深度克隆 JSON �?/summary>
   function CloneJSON(AValue: TJSONValue): TJSONValue;
 
   /// <summary>合并两个 JSON 对象</summary>
@@ -1188,6 +1190,11 @@ begin
   inherited;
 end;
 
+function TJSONCache.GetHitRate: Double;
+begin
+  Result := FHits;
+end;
+
 function TJSONCache.ComputeHash(const AContent: string): string;
 begin
   Result := THashMD5.GetHashString(AContent);
@@ -1601,6 +1608,11 @@ end;
 function TJSONBuilder.ToJSON: TJSONValue;
 begin
   Result := TJSONObject.ParseJSONValue(ToString);
+end;
+
+function TJSONBuilder.GetCurrentLength: Integer;
+begin
+  Result := FBuffer.Length;
 end;
 
 // ============================================================================

@@ -1,6 +1,6 @@
 ﻿{******************************************************************************}
 {                                                                              }
-{  UniFlow WebSocket Real-time Push                                            }
+{  DeepFlow WebSocket Real-time Push                                            }
 {  Real-time workflow status notifications via WebSocket                       }
 {                                                                              }
 {  Features:                                                                   }
@@ -30,7 +30,7 @@
 {                                                                              }
 {******************************************************************************}
 
-unit UniFlow.Realtime.WebSocket;
+unit DeepFlow.Realtime.WebSocket;
 
 interface
 

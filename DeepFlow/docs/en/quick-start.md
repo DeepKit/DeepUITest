@@ -1,6 +1,6 @@
-﻿# Quick Start Guide
+# Quick Start Guide
 
-Get UniFlow running in your Delphi application in 5 minutes.
+Get DeepFlow running in your Delphi application in 5 minutes.
 
 ## Prerequisites
 
@@ -13,35 +13,35 @@ Get UniFlow running in your Delphi application in 5 minutes.
 
 ### 1. Add Source Files
 
-Copy the UniFlow source files to your project:
+Copy the DeepFlow source files to your project:
 
 ```
 Source/
 ├── Workflow/
-�?  ├── UniFlow.Workflow.Definition.pas
-�?  ├── UniFlow.Workflow.Context.pas
-�?  ├── UniFlow.Workflow.Executor.pas
-�?  └── UniFlow.Workflow.State.pas
+│  ├── DeepFlow.Workflow.Definition.pas
+│  ├── DeepFlow.Workflow.Context.pas
+│  ├── DeepFlow.Workflow.Executor.pas
+│  └── DeepFlow.Workflow.State.pas
 ├── AI/
-�?  └── UniFlow.AI.Adapter.pas
+│  └── DeepFlow.AI.Adapter.pas
 ├── Session/
-�?  ├── UniFlow.Session.Types.pas
-�?  └── UniFlow.Session.Manager.pas
+│  ├── DeepFlow.Session.Types.pas
+│  └── DeepFlow.Session.Manager.pas
 ├── Skill/
-�?  ├── UniFlow.Skill.Types.pas
-�?  ├── UniFlow.Skill.Client.pas
-�?  └── UniFlow.Skill.Executor.pas
+│  ├── DeepFlow.Skill.Types.pas
+│  ├── DeepFlow.Skill.Client.pas
+│  └── DeepFlow.Skill.Executor.pas
 └── Diagnostics/
-    └── UniFlow.Diagnostics.pas
+    └── DeepFlow.Diagnostics.pas
 ```
 
 ### 2. Add to Uses Clause
 
 ```pascal
 uses
-  UniFlow.Workflow.Definition,
-  UniFlow.Workflow.Executor,
-  UniFlow.Workflow.Context;
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Executor,
+  DeepFlow.Workflow.Context;
 ```
 
 ## Your First Workflow
@@ -180,7 +180,7 @@ end;
 
 ```pascal
 uses
-  UniFlow.AI.Adapter;
+  DeepFlow.AI.Adapter;
 
 procedure TForm1.InitializeWorkflow;
 begin
@@ -248,7 +248,7 @@ uvicorn src.main:app --port 8000
 
 ```pascal
 uses
-  UniFlow.Skill.Client;
+  DeepFlow.Skill.Client;
 
 var
   Client: TSkillClient;
@@ -275,8 +275,8 @@ For multi-turn conversations:
 
 ```pascal
 uses
-  UniFlow.Session.Manager,
-  UniFlow.Session.Types;
+  DeepFlow.Session.Manager,
+  DeepFlow.Session.Types;
 
 var
   Manager: TSessionManager;
@@ -295,7 +295,7 @@ begin
     Session.AddMessage(TSessionMessage.CreateUser('Give me an example.'));
     Executor.ExecuteWithSession(Session);
     
-    // Get conversation hiDeepDeepDeepDeepDeepStory
+    // Get conversation history
     for var Msg in Session.Messages do
       Memo1.Lines.Add(Msg.Role + ': ' + Msg.Content);
       
@@ -309,7 +309,7 @@ end;
 
 ```pascal
 uses
-  UniFlow.Workflow.Executor;
+  DeepFlow.Workflow.Executor;
 
 try
   Executor.Execute(Context);
@@ -327,7 +327,7 @@ end;
 
 ```pascal
 uses
-  UniFlow.Diagnostics;
+  DeepFlow.Diagnostics;
 
 begin
   // Enable tracing

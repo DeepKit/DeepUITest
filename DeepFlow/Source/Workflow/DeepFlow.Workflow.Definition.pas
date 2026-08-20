@@ -1,15 +1,15 @@
-unit UniFlow.Workflow.Definition;
+unit DeepFlow.Workflow.Definition;
 {
-  UniFlow Workflow Definition
+  DeepFlow Workflow Definition
   ===========================
-  工作流定义数据结构，支持 JSON 配置解析�?
+  工作流定义数据结构，支持 JSON 配置解析�?
   
   核心概念:
   - Workflow: 工作流定义，包含步骤序列
-  - Step: 执行单元，支持多种类型（action/condition/loop/parallel�?
-  - Action: 具体动作（skill/llm/guard/log/assign/http/script�?
+  - Step: 执行单元，支持多种类型（action/condition/loop/parallel�?
+  - Action: 具体动作（skill/llm/guard/log/assign/http/script�?
   
-  参�? 05.03.API-UniFlow-Workflow定义规范-v1.0.md
+  参�? 05.03.API-DeepFlow-Workflow定义规范-v1.0.md
 }
 
 interface
@@ -30,7 +30,7 @@ type
     stLoop,         // 循环
     stParallel,     // 并行执行
     stSubWorkflow,  // 子工作流
-    stWait,         // 等待（人�?事件�?
+    stWait,         // 等待（人�?事件�?
     stEnd           // 结束
   );
   
@@ -40,7 +40,7 @@ type
     atLLM,          // 调用 LLM (AgentTask)
     atGuard,        // 调用 Guard 验证
     atLog,          // 日志记录
-    atAssign,       // 变量赋�?
+    atAssign,       // 变量赋�?
     atHttp,         // HTTP 调用
     atScript        // 脚本执行
   );
@@ -49,41 +49,41 @@ type
   TLoopMode = (
     lmForEach,      // 遍历集合
     lmWhile,        // 条件循环
-    lmRepeat        // 重复 N �?
+    lmRepeat        // 重复 N �?
   );
   
   /// <summary>等待策略（并行）</summary>
   TWaitStrategy = (
     wsAll,          // 等待全部完成
     wsAny,          // 任一完成即可
-    wsN             // 等待 N 个完�?
+    wsN             // 等待 N 个完�?
   );
   
   /// <summary>失败策略</summary>
   TFailureStrategy = (
-    fsFailFast,     // 快速失�?
+    fsFailFast,     // 快速失�?
     fsContinue,     // 继续执行
     fsRollback      // 回滚
   );
   
-  /// <summary>条件操作�?/summary>
+  /// <summary>条件操作�?/summary>
   TConditionOperator = (
     coEq,           // 等于
-    coNe,           // 不等�?
+    coNe,           // 不等�?
     coGt,           // 大于
     coLt,           // 小于
     coGe,           // 大于等于
     coLe,           // 小于等于
     coContains,     // 包含
-    coStartsWith,   // �?..开�?
-    coEndsWith,     // �?..结尾
+    coStartsWith,   // �?..开�?
+    coEndsWith,     // �?..结尾
     coMatches,      // 正则匹配
     coIsEmpty,      // 为空
-    coIsNotEmpty,   // 不为�?
+    coIsNotEmpty,   // 不为�?
     coIn,           // 在列表中
-    coAnd,          // 逻辑�?
-    coOr,           // 逻辑�?
-    coNot           // 逻辑�?
+    coAnd,          // 逻辑�?
+    coOr,           // 逻辑�?
+    coNot           // 逻辑�?
   );
   
   // ============================================================================
@@ -137,14 +137,14 @@ type
   end;
   
   // ============================================================================
-  // 条件表达�?
+  // 条件表达�?
   // ============================================================================
   
   TConditionExpression = class
   private
     FOperator: TConditionOperator;
-    FLeftExpr: string;           // 左操作数表达�?(�?"{{ vars.status }}")
-    FRightExpr: string;          // 右操作数表达�?
+    FLeftExpr: string;           // 左操作数表达�?(�?"{{ vars.status }}")
+    FRightExpr: string;          // 右操作数表达�?
     FSubConditions: TObjectList<TConditionExpression>;  // 用于 And/Or/Not
   public
     constructor Create;
@@ -154,7 +154,7 @@ type
     function ToJSON: TJSONValue;
     function Clone: TConditionExpression;
     
-    /// <summary>从简单表达式解析 (�?"vars.count > 10")</summary>
+    /// <summary>从简单表达式解析 (�?"vars.count > 10")</summary>
     class function ParseSimple(const AExpr: string): TConditionExpression;
     
     property Operator: TConditionOperator read FOperator write FOperator;
@@ -169,8 +169,8 @@ type
   
   TOutputConfig = class
   private
-    FVariable: string;           // 存储到的变量�?
-    FTransform: string;          // 转换表达�?
+    FVariable: string;           // 存储到的变量�?
+    FTransform: string;          // 转换表达�?
     FCollect: Boolean;           // 是否收集（用于循环）
     FMerge: string;              // 合并方式 ('object' | 'array')
   public
@@ -194,7 +194,7 @@ type
   private
     FActionType: TActionType;
     FSkillId: string;            // Skill ID (atSkill)
-    FParams: TJSONObject;        // 参数（支持表达式�?
+    FParams: TJSONObject;        // 参数（支持表达式�?
     FTimeoutMs: Integer;
     FRetryPolicy: TRetryPolicy;
     FOutput: TOutputConfig;
@@ -275,8 +275,8 @@ type
   TConditionBranch = class
   private
     FId: string;
-    FWhenValue: TJSONValue;      // 匹配�?
-    FMatchExpr: string;          // 匹配表达式（�?">= 0.9"�?
+    FWhenValue: TJSONValue;      // 匹配�?
+    FMatchExpr: string;          // 匹配表达式（�?">= 0.9"�?
     FIsDefault: Boolean;
     FCondition: TConditionExpression;
     FSteps: TObjectList<TWorkflowStep>;
@@ -303,12 +303,12 @@ type
   TLoopConfig = class
   private
     FMode: TLoopMode;
-    FCollection: string;         // 集合表达�?(forEach)
+    FCollection: string;         // 集合表达�?(forEach)
     FItemVariable: string;       // 当前项变量名
-    FIndexVariable: string;      // 索引变量�?
+    FIndexVariable: string;      // 索引变量�?
     FCondition: TConditionExpression;  // while 条件
     FMaxIterations: Integer;
-    FParallelism: Integer;       // 并行度（0 = 串行�?
+    FParallelism: Integer;       // 并行度（0 = 串行�?
   public
     constructor Create;
     destructor Destroy; override;
@@ -333,7 +333,7 @@ type
   TParallelConfig = class
   private
     FWaitStrategy: TWaitStrategy;
-    FWaitCount: Integer;         // �?wsN 时使�?
+    FWaitCount: Integer;         // �?wsN 时使�?
     FFailureStrategy: TFailureStrategy;
   public
     constructor Create;
@@ -381,7 +381,7 @@ type
   
   TErrorHandler = class
   private
-    FMatchPattern: string;       // 错误码匹配模式（支持 *�?
+    FMatchPattern: string;       // 错误码匹配模式（支持 *�?
     FAction: string;             // 'retry' | 'fallback' | 'fail' | 'goto' | 'circuitBreak'
     FFallbackStepId: string;
     FGotoStepId: string;
@@ -408,7 +408,7 @@ type
   end;
   
   // ============================================================================
-  // 工作流步�?
+  // 工作流步�?
   // ============================================================================
   
   TWorkflowStep = class
@@ -423,7 +423,7 @@ type
     FAction: TActionDefinition;
     
     // Condition 步骤
-    FExpression: string;         // 条件表达�?
+    FExpression: string;         // 条件表达�?
     FBranches: TObjectList<TConditionBranch>;
     
     // Loop 步骤
@@ -534,15 +534,15 @@ type
   end;
   
   // ============================================================================
-  // 触发器配�?
+  // 触发器配�?
   // ============================================================================
   
   TTriggerConfig = class
   private
     FTriggerType: string;        // 'api' | 'schedule' | 'event'
     FEndpoint: string;           // API 端点
-    FCron: string;               // Cron 表达�?
-    FEventName: string;          // 事件�?
+    FCron: string;               // Cron 表达�?
+    FEventName: string;          // 事件�?
     FConfig: TJSONObject;        // 其他配置
   public
     constructor Create;
@@ -560,7 +560,7 @@ type
   end;
   
   // ============================================================================
-  // 工作流定�?
+  // 工作流定�?
   // ============================================================================
   
   TWorkflowDefinition = class
@@ -584,25 +584,25 @@ type
     constructor Create;
     destructor Destroy; override;
     
-    /// <summary>�?JSON 对象加载</summary>
+    /// <summary>�?JSON 对象加载</summary>
     procedure LoadFromJSON(AJson: TJSONObject);
     
-    /// <summary>�?JSON 字符串加�?/summary>
+    /// <summary>�?JSON 字符串加�?/summary>
     procedure LoadFromString(const AJsonStr: string);
     
-    /// <summary>从文件加�?/summary>
+    /// <summary>从文件加�?/summary>
     procedure LoadFromFile(const AFilePath: string);
     
-    /// <summary>导出�?JSON 对象</summary>
+    /// <summary>导出�?JSON 对象</summary>
     function ToJSON: TJSONObject;
     
-    /// <summary>导出�?JSON 字符�?/summary>
+    /// <summary>导出�?JSON 字符�?/summary>
     function ToJSONString(APretty: Boolean = True): string;
     
-    /// <summary>保存到文�?/summary>
+    /// <summary>保存到文�?/summary>
     procedure SaveToFile(const AFilePath: string; APretty: Boolean = True);
     
-    /// <summary>验证定义有效�?/summary>
+    /// <summary>验证定义有效�?/summary>
     function Validate(out AErrors: TArray<string>): Boolean;
     
     /// <summary>根据 ID 查找步骤</summary>
@@ -661,7 +661,7 @@ begin
   else if (LowerS = 'subworkflow') or (LowerS = 'sub_workflow') then Result := stSubWorkflow
   else if (LowerS = 'wait') or (LowerS = 'humantask') then Result := stWait
   else if LowerS = 'end' then Result := stEnd
-  // 兼容规范中的类型�?
+  // 兼容规范中的类型�?
   else if LowerS = 'skilltask' then Result := stAction
   else if LowerS = 'agenttask' then Result := stAction
   else
@@ -871,7 +871,7 @@ var
 begin
   if AJson is TJSONString then
   begin
-    // 简单字符串表达�?
+    // 简单字符串表达�?
     FLeftExpr := AJson.Value;
     FOperator := coEq;
     FRightExpr := 'true';
@@ -947,7 +947,7 @@ var
 begin
   Result := TConditionExpression.Create;
   
-  // 尝试解析简单表达式�?"vars.count > 10"
+  // 尝试解析简单表达式�?"vars.count > 10"
   Match := TRegEx.Match(AExpr, '^\s*(.+?)\s*(==|!=|>=|<=|>|<|contains|startsWith|endsWith)\s*(.+?)\s*$');
   if Match.Success then
   begin
@@ -957,7 +957,7 @@ begin
   end
   else
   begin
-    // 作为布尔表达�?
+    // 作为布尔表达�?
     Result.FLeftExpr := AExpr;
     Result.FOperator := coEq;
     Result.FRightExpr := 'true';
@@ -1049,7 +1049,7 @@ begin
     FActionType := StrToActionType(ActionStr)
   else if AJson.TryGetValue<string>('action', ActionStr) then
   begin
-    // 兼容 AgentTask �?action 字段
+    // 兼容 AgentTask �?action 字段
     if (ActionStr = 'understand') or (ActionStr = 'generate') or (ActionStr = 'diagnose') then
     begin
       FActionType := atLLM;
@@ -1587,7 +1587,7 @@ begin
   if FMatchPattern = '*' then
     Exit(True);
   
-  // 支持简单通配�?
+  // 支持简单通配�?
   Pattern := '^' + TRegEx.Escape(FMatchPattern).Replace('\*', '.*') + '$';
   Result := TRegEx.IsMatch(AErrorCode, Pattern, [roIgnoreCase]);
 end;
@@ -2119,7 +2119,9 @@ var
   Step: TWorkflowStep;
   Handler: TErrorHandler;
 begin
-  if AJson = nil then Exit;
+  // 参数校验：nil 输入视为非法
+  if AJson = nil then
+    raise EArgumentException.Create('LoadFromJSON: JSON input is nil');
   
   // 基本信息
   if AJson.TryGetValue<string>('id', FId) then;
@@ -2127,7 +2129,15 @@ begin
   if AJson.TryGetValue<string>('version', FVersion) then;
   if AJson.TryGetValue<string>('description', FDescription) then;
   
-  // 触发�?
+  // 必需字段校验（与 Validate 一致：id/name/version 必填）
+  if FId = '' then
+    raise EArgumentException.Create('LoadFromJSON: required field "id" is missing');
+  if FName = '' then
+    raise EArgumentException.Create('LoadFromJSON: required field "name" is missing');
+  if FVersion = '' then
+    raise EArgumentException.Create('LoadFromJSON: required field "version" is missing');
+  
+  // 触发�?
   if AJson.TryGetValue<TJSONObject>('trigger', TriggerObj) then
     FTrigger.LoadFromJSON(TriggerObj);
   
@@ -2167,7 +2177,7 @@ begin
   if AJson.TryGetValue<TJSONObject>('hooks', HooksObj) then
     FHooks.LoadFromJSON(HooksObj);
   
-  // 元信�?
+  // 元信�?
   if AJson.TryGetValue<TJSONObject>('metadata', FMetadata) then
     FMetadata := TJSONObject(FMetadata.Clone);
 end;
@@ -2276,15 +2286,14 @@ begin
   Errors := TList<string>.Create;
   StepIds := TDictionary<string, Boolean>.Create;
   try
-    // 检查必填字�?
+    // 检查必填字�?
     if FId = '' then
       Errors.Add('FlowDefinition id is required');
     if FName = '' then
       Errors.Add('FlowDefinition name is required');
-    if FSteps.Count = 0 then
-      Errors.Add('FlowDefinition must have at least one step');
+    // NOTE: steps 为选填字段（文档契约），空工作流合法（Executor 返回成功）
     
-    // 检查步�?ID 唯一�?
+    // 检查步�?ID 唯一�?
     for I := 0 to FSteps.Count - 1 do
     begin
       Step := FSteps[I];
@@ -2297,9 +2306,9 @@ begin
     end;
     
     // TODO: 更多验证
-    // - 变量引用有效�?
-    // - 循环依赖检�?
-    // - 表达式语法检�?
+    // - 变量引用有效�?
+    // - 循环依赖检�?
+    // - 表达式语法检�?
     
     AErrors := Errors.ToArray;
     Result := Errors.Count = 0;

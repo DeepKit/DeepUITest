@@ -1,6 +1,6 @@
-program UniFlowE2ETest;
+program DeepFlowE2ETest;
 (*
-  UniFlow End-to-End Test
+  DeepFlow End-to-End Test
   =======================
   
   端到端测试：验证完整工作流执行链�?
@@ -22,7 +22,7 @@ uses
   System.JSON,
   System.Classes,
   System.Diagnostics,
-  DeepBase.UniFlow;
+  DeepBase.DeepFlow;
 
 type
   TTestResult = record
@@ -33,7 +33,7 @@ type
   end;
 
 var
-  Engine: TUniFlowEngine;
+  Engine: TDeepFlowEngine;
   TestResults: array of TTestResult;
   TotalPassed: Integer;
   TotalFailed: Integer;
@@ -353,12 +353,12 @@ procedure Test_SimpleQA_ValidInput;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
   try
-    Input.AddPair('question', 'What is UniFlow?');
+    Input.AddPair('question', 'What is DeepFlow?');
     Result := Engine.ExecuteWorkflow('e2e-simple-qa', 'test-session-1', Input);
     try
       if Result.Success then
@@ -377,7 +377,7 @@ procedure Test_SimpleQA_EmptyInput;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
@@ -402,7 +402,7 @@ procedure Test_Conditional_Greeting;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
@@ -425,7 +425,7 @@ procedure Test_Conditional_Question;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
@@ -448,7 +448,7 @@ procedure Test_Conditional_Unknown;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
@@ -471,7 +471,7 @@ procedure Test_ErrorHandling_Success;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
@@ -493,7 +493,7 @@ procedure Test_ErrorHandling_Fallback;
 var
   SW: TStopwatch;
   Input: TJSONObject;
-  Result: TUniFlowStepResult;
+  Result: TDeepFlowStepResult;
 begin
   SW := TStopwatch.StartNew;
   Input := TJSONObject.Create;
@@ -514,7 +514,7 @@ end;
 procedure Test_Commander_IntentRecognition;
 var
   SW: TStopwatch;
-  Response: TUniFlowResponse;
+  Response: TDeepFlowResponse;
 begin
   SW := TStopwatch.StartNew;
   Response := Engine.ProcessRequest('test-session-8', 'Hello!', 'test-user');
@@ -529,7 +529,7 @@ end;
 procedure Test_Session_Persistence;
 var
   SW: TStopwatch;
-  Session1, Session2: TUniFlowSession;
+  Session1, Session2: TDeepFlowSession;
   Passed: Boolean;
 begin
   SW := TStopwatch.StartNew;
@@ -552,8 +552,8 @@ end;
 procedure Test_MultiTurn_Conversation;
 var
   SW: TStopwatch;
-  Response1, Response2, Response3: TUniFlowResponse;
-  Session: TUniFlowSession;
+  Response1, Response2, Response3: TDeepFlowResponse;
+  Session: TDeepFlowSession;
   Passed: Boolean;
 begin
   SW := TStopwatch.StartNew;
@@ -604,7 +604,7 @@ end;
 procedure Test_Diagnostics_Available;
 var
   SW: TStopwatch;
-  Diag: TUniFlowDiagnostics;
+  Diag: TDeepFlowDiagnostics;
 begin
   SW := TStopwatch.StartNew;
   
@@ -635,12 +635,12 @@ begin
   
   Writeln('');
   Writeln('============================================');
-  Writeln('     UniFlow End-to-End Tests');
+  Writeln('     DeepFlow End-to-End Tests');
   Writeln('============================================');
   Writeln('');
   
   // Initialize
-  Engine := TUniFlowEngine.Create;
+  Engine := TDeepFlowEngine.Create;
   try
     Engine.Config.EnableAudit := True;
     Engine.Config.EnableMetrics := True;

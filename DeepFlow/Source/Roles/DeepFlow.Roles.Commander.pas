@@ -1,5 +1,5 @@
 (* ============================================================================
-  UniFlow.Roles.Commander - Request Entry Point and Workflow Router
+  DeepFlow.Roles.Commander - Request Entry Point and Workflow Router
 
   Version: 1.0
   Description: Commander role handles incoming requests, recognizes intent,
@@ -18,7 +18,7 @@
     var Response := Commander.ProcessRequest(Request);
   ============================================================================ *)
 
-unit UniFlow.Roles.Commander;
+unit DeepFlow.Roles.Commander;
 
 interface
 
@@ -31,11 +31,11 @@ uses
   System.Generics.Collections,
   System.RegularExpressions,
   System.SyncObjs,
-  UniFlow.Session.Types,
-  UniFlow.Session.Manager,
-  UniFlow.Workflow.Definition,
-  UniFlow.Workflow.Context,
-  UniFlow.Workflow.Executor,
+  DeepFlow.Session.Types,
+  DeepFlow.Session.Manager,
+  DeepFlow.Workflow.Definition,
+  DeepFlow.Workflow.Context,
+  DeepFlow.Workflow.Executor,
   DeepBase.Exceptions;
 
 type

@@ -1,0 +1,10 @@
+{
+  "@noAutoFix": true,
+  "plan": "Create POC 3e Delphi integration test to validate Worker Protocol v0 end-to-end.",
+  "files_to_create": [
+    {
+      "path": "D:/_Progs/02Business/DeepFrames/tests/DeepFrames.Tests.WorkerE2E.pas",
+      "purpose": "Delphi test that launches Node.js worker, writes request.json, monitors progress, reads result.json, and updates DB2 job_steps — full Worker Protocol v0 e2e validation"
+    }
+  ]
+}

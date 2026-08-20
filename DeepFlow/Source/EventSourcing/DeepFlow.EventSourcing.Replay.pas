@@ -1,6 +1,6 @@
-﻿unit UniFlow.EventSourcing.Replay;
+﻿unit DeepFlow.EventSourcing.Replay;
 (*
-  UniFlow Event Sourcing - Event Replay & Fork
+  DeepFlow Event Sourcing - Event Replay & Fork
   =============================================
   
   事件重放和分叉能力�?
@@ -27,9 +27,9 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.StrUtils, System.Math,
-  UniFlow.EventSourcing.Types,
-  UniFlow.EventSourcing.Store,
-  UniFlow.EventSourcing.Instance;
+  DeepFlow.EventSourcing.Types,
+  DeepFlow.EventSourcing.Store,
+  DeepFlow.EventSourcing.Instance;
 
 type
   // ============================================================================
@@ -43,13 +43,13 @@ type
     ['{B2C3D4E5-F6A7-5B6C-9D0E-1F2A3B4C5D6E}']
     
     /// <summary>应用单个事件到当前状�?/summary>
-    procedure ApplyEvent(AEvent: TUniFlowEvent);
+    procedure ApplyEvent(AEvent: TDeepFlowEvent);
     
     /// <summary>获取当前聚合状�?/summary>
     function GetState: TJSONObject;
     
     /// <summary>从快照恢复状�?/summary>
-    procedure LoadFromSnapshot(ASnapshot: TUniFlowSnapshot);
+    procedure LoadFromSnapshot(ASnapshot: TDeepFlowSnapshot);
     
     /// <summary>重置状�?/summary>
     procedure Reset;
@@ -69,16 +69,16 @@ type
   private
     FState: TJSONObject;
     FStepHistory: TJSONArray;
-    FLastEvent: TUniFlowEvent;
+    FLastEvent: TDeepFlowEvent;
     FEventCount: Int64;
   public
     constructor Create;
     destructor Destroy; override;
     
     // IStateAggregator
-    procedure ApplyEvent(AEvent: TUniFlowEvent);
+    procedure ApplyEvent(AEvent: TDeepFlowEvent);
     function GetState: TJSONObject;
-    procedure LoadFromSnapshot(ASnapshot: TUniFlowSnapshot);
+    procedure LoadFromSnapshot(ASnapshot: TDeepFlowSnapshot);
     procedure Reset;
     function Clone: IStateAggregator;
     
@@ -88,7 +88,7 @@ type
   /// <summary>
   /// 自定义状态聚合器 - 支持自定义聚合逻辑
   /// </summary>
-  TEventApplyFunc = reference to procedure(AEvent: TUniFlowEvent; AState: TJSONObject);
+  TEventApplyFunc = reference to procedure(AEvent: TDeepFlowEvent; AState: TJSONObject);
   
   TCustomStateAggregator = class(TInterfacedObject, IStateAggregator)
   private
@@ -100,9 +100,9 @@ type
     destructor Destroy; override;
     
     // IStateAggregator
-    procedure ApplyEvent(AEvent: TUniFlowEvent);
+    procedure ApplyEvent(AEvent: TDeepFlowEvent);
     function GetState: TJSONObject;
-    procedure LoadFromSnapshot(ASnapshot: TUniFlowSnapshot);
+    procedure LoadFromSnapshot(ASnapshot: TDeepFlowSnapshot);
     procedure Reset;
     function Clone: IStateAggregator;
   end;
@@ -117,13 +117,13 @@ type
     FlowId: string;
     FinalSequence: Int64;
     EventsReplayed: Int64;
-    FinalStatus: TUniFlowStatus;
+    FinalStatus: TDeepFlowStatus;
     State: TJSONObject;  // 调用者负责释�?
     Duration: TDateTime;
     ErrorMessage: string;
     
     class function Ok(const AFlowId: string; AFinalSeq, ACount: Int64;
-      AStatus: TUniFlowStatus; AState: TJSONObject): TReplayResult; static;
+      AStatus: TDeepFlowStatus; AState: TJSONObject): TReplayResult; static;
     class function Fail(const AMessage: string): TReplayResult; static;
   end;
   
@@ -161,7 +161,7 @@ type
     
     /// <summary>从快照开始重�?/summary>
     function ReplayFromSnapshot(const AFlowId: string;
-      ASnapshot: TUniFlowSnapshot = nil): TReplayResult;
+      ASnapshot: TDeepFlowSnapshot = nil): TReplayResult;
     
     /// <summary>重放指定范围的事�?/summary>
     function ReplayRange(const AFlowId: string; AFromSeq, AToSeq: Int64): TReplayResult;
@@ -184,7 +184,7 @@ type
   TForkOptions = record
     ForkPoint: Int64;         // 分叉点序列号�? 表示从最新状态分�?
     CopyMetadata: Boolean;    // 是否复制元数�?
-    NewFlowType: TUniFlowType;// 新流程类型，uftCustom 表示继承父流程类�?
+    NewFlowType: TDeepFlowType;// 新流程类型，uftCustom 表示继承父流程类�?
     Source: string;           // 分叉来源
     
     class function Default: TForkOptions; static;
@@ -233,7 +233,7 @@ type
     Timestamp: TDateTime;
     Step: string;
     Status: TEventStatus;
-    FlowStatus: TUniFlowStatus;
+    FlowStatus: TDeepFlowStatus;
     Summary: string;
   end;
   
@@ -308,7 +308,7 @@ type
     function JumpTo(ASequence: Int64): TJSONObject;
     
     /// <summary>获取当前事件</summary>
-    function GetCurrentEvent: TUniFlowEvent;
+    function GetCurrentEvent: TDeepFlowEvent;
     
     /// <summary>获取当前状�?/summary>
     function GetCurrentState: TJSONObject;
@@ -372,7 +372,7 @@ begin
   inherited;
 end;
 
-procedure TDefaultStateAggregator.ApplyEvent(AEvent: TUniFlowEvent);
+procedure TDefaultStateAggregator.ApplyEvent(AEvent: TDeepFlowEvent);
 var
   StepInfo: TJSONObject;
 begin
@@ -418,7 +418,7 @@ begin
   Result := FState.Clone as TJSONObject;
 end;
 
-procedure TDefaultStateAggregator.LoadFromSnapshot(ASnapshot: TUniFlowSnapshot);
+procedure TDefaultStateAggregator.LoadFromSnapshot(ASnapshot: TDeepFlowSnapshot);
 begin
   Reset;
   
@@ -485,7 +485,7 @@ begin
   inherited;
 end;
 
-procedure TCustomStateAggregator.ApplyEvent(AEvent: TUniFlowEvent);
+procedure TCustomStateAggregator.ApplyEvent(AEvent: TDeepFlowEvent);
 begin
   Inc(FEventCount);
   if Assigned(FApplyFunc) then
@@ -497,7 +497,7 @@ begin
   Result := FState.Clone as TJSONObject;
 end;
 
-procedure TCustomStateAggregator.LoadFromSnapshot(ASnapshot: TUniFlowSnapshot);
+procedure TCustomStateAggregator.LoadFromSnapshot(ASnapshot: TDeepFlowSnapshot);
 begin
   Reset;
   if (ASnapshot <> nil) and (ASnapshot.StateJson.Count > 0) then
@@ -531,7 +531,7 @@ end;
 // ============================================================================
 
 class function TReplayResult.Ok(const AFlowId: string; AFinalSeq, ACount: Int64;
-  AStatus: TUniFlowStatus; AState: TJSONObject): TReplayResult;
+  AStatus: TDeepFlowStatus; AState: TJSONObject): TReplayResult;
 begin
   Result.Success := True;
   Result.FlowId := AFlowId;
@@ -599,12 +599,12 @@ function TEventReplayer.ReplayTo(const AFlowId: string;
   ATargetSequence: Int64): TReplayResult;
 var
   Query: TEventQuery;
-  Events: TArray<TUniFlowEvent>;
-  Event: TUniFlowEvent;
+  Events: TArray<TDeepFlowEvent>;
+  Event: TDeepFlowEvent;
   StartTime: TDateTime;
   FinalSeq: Int64;
   Count: Int64;
-  LastStatus: TUniFlowStatus;
+  LastStatus: TDeepFlowStatus;
 begin
   StartTime := Now;
   FAggregator.Reset;
@@ -641,16 +641,16 @@ begin
 end;
 
 function TEventReplayer.ReplayFromSnapshot(const AFlowId: string;
-  ASnapshot: TUniFlowSnapshot): TReplayResult;
+  ASnapshot: TDeepFlowSnapshot): TReplayResult;
 var
-  Snapshot: TUniFlowSnapshot;
+  Snapshot: TDeepFlowSnapshot;
   Query: TEventQuery;
-  Events: TArray<TUniFlowEvent>;
-  Event: TUniFlowEvent;
+  Events: TArray<TDeepFlowEvent>;
+  Event: TDeepFlowEvent;
   StartTime: TDateTime;
   FinalSeq: Int64;
   Count: Int64;
-  LastStatus: TUniFlowStatus;
+  LastStatus: TDeepFlowStatus;
   OwnSnapshot: Boolean;
 begin
   StartTime := Now;
@@ -717,12 +717,12 @@ function TEventReplayer.ReplayRange(const AFlowId: string;
   AFromSeq, AToSeq: Int64): TReplayResult;
 var
   Query: TEventQuery;
-  Events: TArray<TUniFlowEvent>;
-  Event: TUniFlowEvent;
+  Events: TArray<TDeepFlowEvent>;
+  Event: TDeepFlowEvent;
   StartTime: TDateTime;
   FinalSeq: Int64;
   Count: Int64;
-  LastStatus: TUniFlowStatus;
+  LastStatus: TDeepFlowStatus;
 begin
   StartTime := Now;
   FAggregator.Reset;
@@ -813,7 +813,7 @@ var
   ReplayResult: TReplayResult;
   NewFlow: TFlowInstance;
   Params: TCreateFlowParams;
-  ForkEvent: TUniFlowEvent;
+  ForkEvent: TDeepFlowEvent;
   ForkPoint: Int64;
 begin
   // 获取父流�?
@@ -839,7 +839,7 @@ begin
   try
     // 创建新流�?
     Params := TCreateFlowParams.Create(
-      TUniFlowType(IfThen(Ord(AOptions.NewFlowType) = Ord(uftCustom), Ord(ParentInstance.FlowType), Ord(AOptions.NewFlowType))),
+      TDeepFlowType(IfThen(Ord(AOptions.NewFlowType) = Ord(uftCustom), Ord(ParentInstance.FlowType), Ord(AOptions.NewFlowType))),
       AOptions.Source
     );
     
@@ -850,7 +850,7 @@ begin
     NewFlow.ParentFlowId := AParentFlowId;
     
     // 发布分叉事件
-    ForkEvent := TUniFlowEvent.Create;
+    ForkEvent := TDeepFlowEvent.Create;
     try
       ForkEvent.FlowId := NewFlow.Id;
       ForkEvent.Step := '_flow_forked';
@@ -931,10 +931,10 @@ end;
 procedure THistoryBrowser.LoadHistory;
 var
   Query: TEventQuery;
-  Events: TArray<TUniFlowEvent>;
-  Event: TUniFlowEvent;
+  Events: TArray<TDeepFlowEvent>;
+  Event: TDeepFlowEvent;
   Point: THistoryPoint;
-  CurrentStatus: TUniFlowStatus;
+  CurrentStatus: TDeepFlowStatus;
 begin
   if FLoaded then Exit;
   
@@ -1101,10 +1101,10 @@ begin
   Result := FCurrentState;
 end;
 
-function TTimeTravelDebugger.GetCurrentEvent: TUniFlowEvent;
+function TTimeTravelDebugger.GetCurrentEvent: TDeepFlowEvent;
 var
   Query: TEventQuery;
-  Events: TArray<TUniFlowEvent>;
+  Events: TArray<TDeepFlowEvent>;
 begin
   Result := nil;
   
@@ -1276,7 +1276,7 @@ begin
 end;
 
 // Helper function
-function IfThen(ACondition: Boolean; ATrue, AFalse: TUniFlowType): TUniFlowType;
+function IfThen(ACondition: Boolean; ATrue, AFalse: TDeepFlowType): TDeepFlowType;
 begin
   if ACondition then
     Result := ATrue

@@ -1,10 +1,10 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Interface                                                     
-  Plugin system interface definitions for UniFlow                              
+  DeepFlow Plugin Interface                                                     
+  Plugin system interface definitions for DeepFlow                              
                                                                                
   Features:                                                                    
-  - IUniFlowPlugin: Main plugin interface                                      
+  - IDeepFlowPlugin: Main plugin interface                                      
   - IPluginActionExecutor: Custom action executor extension                    
   - IPluginValidator: Custom validator extension                               
   - IPluginEventHandler: Event handler extension                               
@@ -19,7 +19,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Intf;
+unit DeepFlow.Plugin.Intf;
 
 interface
 
@@ -32,10 +32,10 @@ uses
 
 const
   /// <summary>Plugin interface version - used for compatibility checks</summary>
-  UNIFLOW_PLUGIN_VERSION = 1;
+  DEEPFLOW_PLUGIN_VERSION = 1;
   
   /// <summary>Minimum supported plugin interface version</summary>
-  UNIFLOW_PLUGIN_MIN_VERSION = 1;
+  DEEPFLOW_PLUGIN_MIN_VERSION = 1;
 
 type
   //----------------------------------------------------------------------------
@@ -46,7 +46,7 @@ type
   IPluginLogger = interface;
   IPluginConfig = interface;
   IPluginServices = interface;
-  IUniFlowPlugin = interface;
+  IDeepFlowPlugin = interface;
   IPluginActionExecutor = interface;
   IPluginValidator = interface;
   IPluginEventHandler = interface;
@@ -207,10 +207,10 @@ type
   end;
   
   //----------------------------------------------------------------------------
-  // IUniFlowPlugin - Main plugin interface
+  // IDeepFlowPlugin - Main plugin interface
   //----------------------------------------------------------------------------
   
-  IUniFlowPlugin = interface
+  IDeepFlowPlugin = interface
     ['{D4E5F6A7-B8C9-4012-3DEF-456789012345}']
     /// <summary>Get plugin information</summary>
     function GetInfo: TPluginInfo;
@@ -410,16 +410,16 @@ type
   
   /// <summary>
   /// Plugin export function signature for DLL plugins.
-  /// DLL must export a function named 'GetUniFlowPlugin' with this signature.
+  /// DLL must export a function named 'GetDeepFlowPlugin' with this signature.
   /// </summary>
-  TGetUniFlowPluginFunc = function: IUniFlowPlugin; stdcall;
+  TGetDeepFlowPluginFunc = function: IDeepFlowPlugin; stdcall;
 
   //----------------------------------------------------------------------------
   // Base implementation helpers
   //----------------------------------------------------------------------------
   
   /// <summary>Base class for plugin implementations</summary>
-  TBaseUniFlowPlugin = class(TInterfacedObject, IUniFlowPlugin)
+  TBaseDeepFlowPlugin = class(TInterfacedObject, IDeepFlowPlugin)
   protected
     FInfo: TPluginInfo;
     FContext: IPluginContext;
@@ -431,7 +431,7 @@ type
     constructor Create(const AId, AName, AVersion: string);
     destructor Destroy; override;
     
-    // IUniFlowPlugin
+    // IDeepFlowPlugin
     function GetInfo: TPluginInfo;
     function GetInterfaceVersion: Integer;
     function Initialize(Context: IPluginContext): Boolean; virtual;
@@ -547,7 +547,7 @@ begin
   Result.Id := AId;
   Result.Name := AName;
   Result.Version := AVersion;
-  Result.InterfaceVersion := UNIFLOW_PLUGIN_VERSION;
+  Result.InterfaceVersion := DEEPFLOW_PLUGIN_VERSION;
   Result.Status := psUnloaded;
 end;
 
@@ -738,10 +738,10 @@ begin
 end;
 
 //------------------------------------------------------------------------------
-// TBaseUniFlowPlugin
+// TBaseDeepFlowPlugin
 //------------------------------------------------------------------------------
 
-constructor TBaseUniFlowPlugin.Create(const AId, AName, AVersion: string);
+constructor TBaseDeepFlowPlugin.Create(const AId, AName, AVersion: string);
 begin
   inherited Create;
   FInfo := TPluginInfo.Create(AId, AName, AVersion);
@@ -751,7 +751,7 @@ begin
   FTransformers := TList<IPluginTransformer>.Create;
 end;
 
-destructor TBaseUniFlowPlugin.Destroy;
+destructor TBaseDeepFlowPlugin.Destroy;
 begin
   FTransformers.Free;
   FEventHandlers.Free;
@@ -760,68 +760,68 @@ begin
   inherited;
 end;
 
-function TBaseUniFlowPlugin.GetInfo: TPluginInfo;
+function TBaseDeepFlowPlugin.GetInfo: TPluginInfo;
 begin
   Result := FInfo;
 end;
 
-function TBaseUniFlowPlugin.GetInterfaceVersion: Integer;
+function TBaseDeepFlowPlugin.GetInterfaceVersion: Integer;
 begin
-  Result := UNIFLOW_PLUGIN_VERSION;
+  Result := DEEPFLOW_PLUGIN_VERSION;
 end;
 
-function TBaseUniFlowPlugin.Initialize(Context: IPluginContext): Boolean;
+function TBaseDeepFlowPlugin.Initialize(Context: IPluginContext): Boolean;
 begin
   FContext := Context;
   FInfo.Status := psActive;
   Result := True;
 end;
 
-procedure TBaseUniFlowPlugin.Finalize;
+procedure TBaseDeepFlowPlugin.Finalize;
 begin
   FInfo.Status := psUnloaded;
   FContext := nil;
 end;
 
-function TBaseUniFlowPlugin.GetActionExecutors: TArray<IPluginActionExecutor>;
+function TBaseDeepFlowPlugin.GetActionExecutors: TArray<IPluginActionExecutor>;
 begin
   Result := FActionExecutors.ToArray;
 end;
 
-function TBaseUniFlowPlugin.GetValidators: TArray<IPluginValidator>;
+function TBaseDeepFlowPlugin.GetValidators: TArray<IPluginValidator>;
 begin
   Result := FValidators.ToArray;
 end;
 
-function TBaseUniFlowPlugin.GetEventHandlers: TArray<IPluginEventHandler>;
+function TBaseDeepFlowPlugin.GetEventHandlers: TArray<IPluginEventHandler>;
 begin
   Result := FEventHandlers.ToArray;
 end;
 
-function TBaseUniFlowPlugin.GetTransformers: TArray<IPluginTransformer>;
+function TBaseDeepFlowPlugin.GetTransformers: TArray<IPluginTransformer>;
 begin
   Result := FTransformers.ToArray;
 end;
 
-procedure TBaseUniFlowPlugin.RegisterActionExecutor(Executor: IPluginActionExecutor);
+procedure TBaseDeepFlowPlugin.RegisterActionExecutor(Executor: IPluginActionExecutor);
 begin
   FActionExecutors.Add(Executor);
   Include(FInfo.Capabilities, pcActionExecutor);
 end;
 
-procedure TBaseUniFlowPlugin.RegisterValidator(Validator: IPluginValidator);
+procedure TBaseDeepFlowPlugin.RegisterValidator(Validator: IPluginValidator);
 begin
   FValidators.Add(Validator);
   Include(FInfo.Capabilities, pcValidator);
 end;
 
-procedure TBaseUniFlowPlugin.RegisterEventHandler(Handler: IPluginEventHandler);
+procedure TBaseDeepFlowPlugin.RegisterEventHandler(Handler: IPluginEventHandler);
 begin
   FEventHandlers.Add(Handler);
   Include(FInfo.Capabilities, pcEventHandler);
 end;
 
-procedure TBaseUniFlowPlugin.RegisterTransformer(Transformer: IPluginTransformer);
+procedure TBaseDeepFlowPlugin.RegisterTransformer(Transformer: IPluginTransformer);
 begin
   FTransformers.Add(Transformer);
   Include(FInfo.Capabilities, pcTransformer);

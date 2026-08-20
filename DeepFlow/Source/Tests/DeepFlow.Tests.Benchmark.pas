@@ -1,15 +1,15 @@
-unit UniFlow.Tests.Benchmark;
+unit DeepFlow.Tests.Benchmark;
 (*
-  UniFlow Benchmark and Stress Tests
+  DeepFlow Benchmark and Stress Tests
   ==================================
-  TASK-2002: 压力测试与基�?
+  TASK-2002: 压力测试与基�?
   
   测试覆盖:
   - 工作流执行吞吐量基准
   - 并发执行压力测试 (10/50/100 并发)
   - 内存使用监控
-  - 长时间运行稳定性测�?
-  - 对象池效率验�?
+  - 长时间运行稳定性测�?
+  - 对象池效率验�?
   - 基准结果输出 (JSON 报告)
 *)
 
@@ -17,10 +17,10 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
-  System.SyncObjs, System.DateUtils, System.Diagnostics, System.Threading,
+  System.SyncObjs, System.DateUtils, System.Diagnostics, System.Threading, System.IOUtils, System.Math,
   DUnitX.TestFramework,
-  UniFlow.Workflow.Definition, UniFlow.Workflow.Context, UniFlow.Workflow.Executor,
-  UniFlow.Performance.Pool;
+  DeepFlow.Workflow.Definition, DeepFlow.Workflow.Context, DeepFlow.Workflow.Executor,
+  DeepFlow.Performance.Pool;
 
 type
   // ============================================================================
@@ -486,13 +486,13 @@ begin
   // Create worker tasks
   for I := 0 to AConcurrency - 1 do
   begin
-    LTasks[I] := TTask.Create(procedure
+    LTasks[I] := TTask.Create(TProc(procedure
     var
       J: Integer;
     begin
       for J := 1 to LIterPerWorker do
         AProc();
-    end);
+    end));
     LTasks[I].Start;
   end;
   
@@ -564,6 +564,9 @@ begin
       Sleep(FInterval);
     end;
   end);
+  // 匿名线程默认 FreeOnTerminate=True（结束后自我释放）；置 False 以便
+  // Stop 中 WaitFor 后手动 Free，避免访问悬垂线程对象（"Thread Error: 无效句柄"）
+  FThread.FreeOnTerminate := False;
   FThread.Start;
 end;
 
@@ -575,6 +578,7 @@ begin
   if Assigned(FThread) then
   begin
     FThread.WaitFor;
+    FThread.Free;
     FThread := nil;
   end;
 end;
@@ -642,7 +646,6 @@ end;
 function TThroughputBenchmarkTests.CreateSimpleWorkflow: TWorkflowDefinition;
 var
   LStep: TWorkflowStep;
-  LAction: TActionDefinition;
 begin
   Result := TWorkflowDefinition.Create;
   Result.Id := 'benchmark-simple';
@@ -652,18 +655,15 @@ begin
   LStep := TWorkflowStep.Create;
   LStep.Id := 'log-step';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atLog;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('message', 'Benchmark test');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atLog;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('message', 'Benchmark test');
   Result.Steps.Add(LStep);
 end;
 
 function TThroughputBenchmarkTests.CreateComplexWorkflow: TWorkflowDefinition;
 var
   LStep: TWorkflowStep;
-  LAction: TActionDefinition;
   LBranch: TConditionBranch;
   I: Integer;
 begin
@@ -677,12 +677,10 @@ begin
     LStep := TWorkflowStep.Create;
     LStep.Id := 'step-' + IntToStr(I);
     LStep.StepType := stAction;
-    LAction := TActionDefinition.Create;
-    LAction.ActionType := atAssign;
-    LAction.Config := TJSONObject.Create;
-    LAction.Config.AddPair('variable', 'var_' + IntToStr(I));
-    LAction.Config.AddPair('value', IntToStr(I * 10));
-    LStep.Action := LAction;
+    LStep.Action.ActionType := atAssign;
+    LStep.Action.Params := TJSONObject.Create;
+    LStep.Action.Params.AddPair('variable', 'var_' + IntToStr(I));
+    LStep.Action.Params.AddPair('value', IntToStr(I * 10));
     Result.Steps.Add(LStep);
   end;
   
@@ -690,25 +688,20 @@ begin
   LStep := TWorkflowStep.Create;
   LStep.Id := 'condition-step';
   LStep.StepType := stCondition;
-  LStep.Condition := TConditionExpression.Create;
-  LStep.Condition.Expression := '{{ vars.var_1 }}';
+  LStep.Expression := '{{ vars.var_1 }}';
   LBranch := TConditionBranch.Create;
-  LBranch.Operator := coGt;
-  LBranch.Value := '5';
-  LBranch.NextStep := 'final-step';
-  LStep.Condition.Branches.Add(LBranch);
-  LStep.Condition.DefaultStep := 'final-step';
+  LBranch.MatchExpr := '> 5';
+  LBranch.IsDefault := True;
+  LStep.Branches.Add(LBranch);
   Result.Steps.Add(LStep);
   
   // Final step
   LStep := TWorkflowStep.Create;
   LStep.Id := 'final-step';
   LStep.StepType := stAction;
-  LAction := TActionDefinition.Create;
-  LAction.ActionType := atLog;
-  LAction.Config := TJSONObject.Create;
-  LAction.Config.AddPair('message', 'Completed');
-  LStep.Action := LAction;
+  LStep.Action.ActionType := atLog;
+  LStep.Action.Params := TJSONObject.Create;
+  LStep.Action.Params.AddPair('message', 'Completed');
   Result.Steps.Add(LStep);
 end;
 
@@ -718,7 +711,7 @@ var
   LExecutor: TWorkflowExecutor;
   LResult: TStepResult;
 begin
-  LContext := TWorkflowContext.Create;
+  LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
   try
     LExecutor := TWorkflowExecutor.Create(AWorkflow, LContext);
     try
@@ -791,7 +784,7 @@ var
   LContext: TWorkflowContext;
   LResult: TBenchmarkResult;
 begin
-  LContext := TWorkflowContext.Create;
+  LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
   try
     LResult := FRunner.RunBenchmark('ContextOps_100000', 100000, procedure
     begin
@@ -881,7 +874,7 @@ begin
   var
     LContext: TWorkflowContext;
   begin
-    LContext := TWorkflowContext.Create;
+    LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
     try
       LContext.SetVariable('test', TJSONNumber.Create(Random(1000)));
       IncrementSuccess;
@@ -906,7 +899,7 @@ begin
   var
     LContext: TWorkflowContext;
   begin
-    LContext := TWorkflowContext.Create;
+    LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
     try
       LContext.SetVariable('test', TJSONNumber.Create(Random(1000)));
       IncrementSuccess;
@@ -931,7 +924,7 @@ begin
   var
     LContext: TWorkflowContext;
   begin
-    LContext := TWorkflowContext.Create;
+    LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
     try
       LContext.SetVariable('test', TJSONNumber.Create(Random(1000)));
       IncrementSuccess;
@@ -962,7 +955,7 @@ begin
     var
       LContext: TWorkflowContext;
     begin
-      LContext := TWorkflowContext.Create;
+      LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
       try
         LContext.SetVariable('test', TJSONNumber.Create(Random(1000)));
         IncrementSuccess;
@@ -1008,7 +1001,7 @@ begin
       LStepResult: TStepResult;
     begin
       LWorkflow := TWorkflowDefinition.Create;
-      LContext := TWorkflowContext.Create;
+      LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
       try
         LExecutor := TWorkflowExecutor.Create(LWorkflow, LContext);
         try
@@ -1038,14 +1031,23 @@ var
   LResult: TBenchmarkResult;
   LContext: TWorkflowContext;
 begin
-  LContext := TWorkflowContext.Create;
+  LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
   try
     LResult := FRunner.RunBenchmark('Memory_LargeContext', 1000, procedure
     var
       I: Integer;
+      LJson: TJSONString;
     begin
       for I := 1 to 100 do
-        LContext.SetVariable('var_' + IntToStr(I), TJSONString.Create(StringOfChar('x', 1000)));
+      begin
+        LJson := TJSONString.Create(StringOfChar('x', 1000));
+        try
+          // SetVariable(TJSONValue) 内部 Clone 存值，原对象由调用方释放
+          LContext.SetVariable('var_' + IntToStr(I), LJson);
+        finally
+          LJson.Free;
+        end;
+      end;
     end);
     
     Assert.IsTrue(LResult.MemoryUsedBytes < 200 * 1024 * 1024, 'Large context should use < 200MB');
@@ -1075,9 +1077,9 @@ begin
   for I := 1 to 1000 do
   begin
     var LWorkflow := TWorkflowDefinition.Create;
-    var LContext := TWorkflowContext.Create;
+    var LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
     try
-      LContext.SetVariable('test', TJSONString.Create('value'));
+      LContext.SetVariable('test', 'value');  // string 重载：直接存值，无 JSON clone 开销
     finally
       LContext.Free;
       LWorkflow.Free;
@@ -1129,7 +1131,7 @@ begin
     LContext: TWorkflowContext;
   begin
     LWorkflow := TWorkflowDefinition.Create;
-    LContext := TWorkflowContext.Create;
+    LContext := TWorkflowContext.Create('benchmark', TGUID.NewGuid.ToString);
     try
       LContext.SetVariable('iteration', TJSONNumber.Create(Random(10000)));
       // Simulate some work

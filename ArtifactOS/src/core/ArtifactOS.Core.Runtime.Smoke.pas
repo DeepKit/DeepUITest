@@ -84,7 +84,9 @@ begin
       Exit;
     end;
 
-    if TRuntimeRepository.MarkCommandSucceeded(CommandId, InstanceId, '{"smoke":"passed"}') <> 1 then
+    // TD26-004-R: 冒烟终态回写走 fencing 强校验, 与 Engine 主循环一致.
+    // token 取自 ClaimNextCommand 返回的 Claimed.FencingToken(claim 时由 PG 递增).
+    if TRuntimeRepository.CompleteCommandWithFencing(CommandId, Claimed.FencingToken, 'succeeded', '{"smoke":"passed"}') <> 1 then
     begin
       AMessage := 'runtime command was not marked succeeded';
       Exit;

@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Loader                                                        
+  DeepFlow Plugin Loader                                                        
   Dynamic plugin loading for BPL and DLL plugins                               
                                                                                
   Features:                                                                    
@@ -17,7 +17,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Loader;
+unit DeepFlow.Plugin.Loader;
 
 interface
 
@@ -31,7 +31,7 @@ uses
   {$IFDEF MSWINDOWS}
   Winapi.Windows,
   {$ENDIF}
-  UniFlow.Plugin.Intf;
+  DeepFlow.Plugin.Intf;
 
 type
   //----------------------------------------------------------------------------
@@ -40,11 +40,11 @@ type
   
   TPluginLoadResult = record
     Success: Boolean;
-    Plugin: IUniFlowPlugin;
+    Plugin: IDeepFlowPlugin;
     FilePath: string;
     ErrorMessage: string;
     
-    class function OK(APlugin: IUniFlowPlugin; const APath: string): TPluginLoadResult; static;
+    class function OK(APlugin: IDeepFlowPlugin; const APath: string): TPluginLoadResult; static;
     class function Fail(const APath, AError: string): TPluginLoadResult; static;
   end;
   
@@ -169,18 +169,18 @@ type
   
   TLoadedPlugin = class
   private
-    FPlugin: IUniFlowPlugin;
+    FPlugin: IDeepFlowPlugin;
     FFilePath: string;
     FHandle: THandle;  // BPL/DLL handle
     FLoadType: string; // 'bpl' or 'dll'
     FContext: IPluginContext;
     FLoadTime: TDateTime;
   public
-    constructor Create(APlugin: IUniFlowPlugin; const APath: string; 
+    constructor Create(APlugin: IDeepFlowPlugin; const APath: string; 
       AHandle: THandle; const ALoadType: string);
     destructor Destroy; override;
     
-    property Plugin: IUniFlowPlugin read FPlugin;
+    property Plugin: IDeepFlowPlugin read FPlugin;
     property FilePath: string read FFilePath;
     property Handle: THandle read FHandle;
     property LoadType: string read FLoadType;
@@ -219,7 +219,7 @@ type
     FLoadedDLLs: TDictionary<string, THandle>;
     FLock: TCriticalSection;
     
-    const EXPORT_FUNC_NAME = 'GetUniFlowPlugin';
+    const EXPORT_FUNC_NAME = 'GetDeepFlowPlugin';
   public
     constructor Create;
     destructor Destroy; override;
@@ -272,7 +272,7 @@ type
     
     function CreateContextForPlugin(const PluginId, PluginPath: string): IPluginContext;
     function GetPluginFileType(const FilePath: string): string;
-    function CheckInterfaceVersion(APlugin: IUniFlowPlugin): Boolean;
+    function CheckInterfaceVersion(APlugin: IDeepFlowPlugin): Boolean;
     procedure DoPluginLoaded(const PluginId: string);
     procedure DoPluginUnloaded(const PluginId: string);
     procedure DoPluginError(const PluginId, ErrorMessage: string);
@@ -293,9 +293,9 @@ type
     function DiscoverPlugins: Integer;
     
     /// <summary>Get loaded plugin by ID</summary>
-    function GetPlugin(const PluginId: string): IUniFlowPlugin;
+    function GetPlugin(const PluginId: string): IDeepFlowPlugin;
     /// <summary>Get all loaded plugins</summary>
-    function GetAllPlugins: TArray<IUniFlowPlugin>;
+    function GetAllPlugins: TArray<IDeepFlowPlugin>;
     /// <summary>Get plugin info list</summary>
     function GetPluginInfoList: TArray<TPluginInfo>;
     /// <summary>Check if plugin is loaded</summary>
@@ -336,7 +336,7 @@ uses
 // TPluginLoadResult
 //------------------------------------------------------------------------------
 
-class function TPluginLoadResult.OK(APlugin: IUniFlowPlugin; const APath: string): TPluginLoadResult;
+class function TPluginLoadResult.OK(APlugin: IDeepFlowPlugin; const APath: string): TPluginLoadResult;
 begin
   Result := Default(TPluginLoadResult);
   Result.Success := True;
@@ -698,7 +698,7 @@ end;
 // TLoadedPlugin
 //------------------------------------------------------------------------------
 
-constructor TLoadedPlugin.Create(APlugin: IUniFlowPlugin; const APath: string;
+constructor TLoadedPlugin.Create(APlugin: IDeepFlowPlugin; const APath: string;
   AHandle: THandle; const ALoadType: string);
 begin
   inherited Create;
@@ -737,11 +737,11 @@ begin
     begin
       {$IFDEF MSWINDOWS}
       try
-        UnloadPackage(Handle);
+        FreeLibrary(Handle);
       except
         on E: Exception do
         begin
-          // ENTROPY-011: 记录卸载错误（析构时允许继续�?
+          // ENTROPY-011: 记录卸载错误（析构时允许继续�?
           {$IFDEF DEBUG}
           OutputDebugString(PChar(Format('[PluginLoader] Package unload error: %s', [E.Message])));
           {$ENDIF}
@@ -762,8 +762,8 @@ function TBPLPluginLoader.LoadPackage(const PackagePath: string): TPluginLoadRes
 {$IFDEF MSWINDOWS}
 var
   Handle: THandle;
-  GetPluginFunc: TGetUniFlowPluginFunc;
-  Plugin: IUniFlowPlugin;
+  GetPluginFunc: TGetDeepFlowPluginFunc;
+  Plugin: IDeepFlowPlugin;
   NormalizedPath: string;
 begin
   NormalizedPath := TPath.GetFullPath(PackagePath);
@@ -797,11 +797,11 @@ begin
     end;
     
     // Get the export function
-    @GetPluginFunc := GetProcAddress(Handle, 'GetUniFlowPlugin');
+    @GetPluginFunc := GetProcAddress(Handle, 'GetDeepFlowPlugin');
     if not Assigned(GetPluginFunc) then
     begin
-      UnloadPackage(Handle);
-      Result := TPluginLoadResult.Fail(NormalizedPath, 'GetUniFlowPlugin function not found');
+      FreeLibrary(Handle);
+      Result := TPluginLoadResult.Fail(NormalizedPath, 'GetDeepFlowPlugin function not found');
       Exit;
     end;
     
@@ -810,15 +810,15 @@ begin
       Plugin := GetPluginFunc();
       if Plugin = nil then
       begin
-        UnloadPackage(Handle);
-        Result := TPluginLoadResult.Fail(NormalizedPath, 'GetUniFlowPlugin returned nil');
+        FreeLibrary(Handle);
+        Result := TPluginLoadResult.Fail(NormalizedPath, 'GetDeepFlowPlugin returned nil');
         Exit;
       end;
     except
       on E: Exception do
       begin
-        UnloadPackage(Handle);
-        Result := TPluginLoadResult.Fail(NormalizedPath, 'Error calling GetUniFlowPlugin: ' + E.Message);
+        FreeLibrary(Handle);
+        Result := TPluginLoadResult.Fail(NormalizedPath, 'Error calling GetDeepFlowPlugin: ' + E.Message);
         Exit;
       end;
     end;
@@ -940,8 +940,8 @@ function TDLLPluginLoader.LoadDLL(const DLLPath: string): TPluginLoadResult;
 {$IFDEF MSWINDOWS}
 var
   Handle: THandle;
-  GetPluginFunc: TGetUniFlowPluginFunc;
-  Plugin: IUniFlowPlugin;
+  GetPluginFunc: TGetDeepFlowPluginFunc;
+  Plugin: IDeepFlowPlugin;
   NormalizedPath: string;
 begin
   NormalizedPath := TPath.GetFullPath(DLLPath);
@@ -991,14 +991,14 @@ begin
       if Plugin = nil then
       begin
         FreeLibrary(Handle);
-        Result := TPluginLoadResult.Fail(NormalizedPath, 'GetUniFlowPlugin returned nil');
+        Result := TPluginLoadResult.Fail(NormalizedPath, 'GetDeepFlowPlugin returned nil');
         Exit;
       end;
     except
       on E: Exception do
       begin
         FreeLibrary(Handle);
-        Result := TPluginLoadResult.Fail(NormalizedPath, 'Error calling GetUniFlowPlugin: ' + E.Message);
+        Result := TPluginLoadResult.Fail(NormalizedPath, 'Error calling GetDeepFlowPlugin: ' + E.Message);
         Exit;
       end;
     end;
@@ -1086,12 +1086,12 @@ end;
 
 class function TPluginLoaderConfig.Default: TPluginLoaderConfig;
 begin
-  Result := Default(TPluginLoaderConfig);
+  Result := System.Default(TPluginLoaderConfig);
   Result.PluginDir := TPath.Combine(ExtractFilePath(ParamStr(0)), 'Plugins');
   Result.DataDir := TPath.Combine(ExtractFilePath(ParamStr(0)), 'PluginData');
   Result.AutoDiscover := True;
   Result.FilePatterns := ['*.bpl', '*.dll'];
-  Result.MinInterfaceVersion := UNIFLOW_PLUGIN_MIN_VERSION;
+  Result.MinInterfaceVersion := DEEPFLOW_PLUGIN_MIN_VERSION;
 end;
 
 //------------------------------------------------------------------------------
@@ -1145,7 +1145,7 @@ begin
   // Load plugin config if exists
   ConfigFile := TPath.Combine(PluginDataDir, 'config.json');
   if TFile.Exists(ConfigFile) then
-    (Context.Config as TPluginConfig).LoadFromFile(ConfigFile);
+    (Context.GetConfig as TPluginConfig).LoadFromFile(ConfigFile);
   
   Result := Context;
 end;
@@ -1163,12 +1163,12 @@ begin
     Result := '';
 end;
 
-function TPluginLoader.CheckInterfaceVersion(APlugin: IUniFlowPlugin): Boolean;
+function TPluginLoader.CheckInterfaceVersion(APlugin: IDeepFlowPlugin): Boolean;
 var
   Version: Integer;
 begin
   Version := APlugin.GetInterfaceVersion;
-  Result := (Version >= FConfig.MinInterfaceVersion) and (Version <= UNIFLOW_PLUGIN_VERSION);
+  Result := (Version >= FConfig.MinInterfaceVersion) and (Version <= DEEPFLOW_PLUGIN_VERSION);
 end;
 
 procedure TPluginLoader.DoPluginLoaded(const PluginId: string);
@@ -1235,7 +1235,7 @@ begin
     
     Result := TPluginLoadResult.Fail(FilePath, Format(
       'Incompatible interface version: %d (required: %d-%d)',
-      [LoadResult.Plugin.GetInterfaceVersion, FConfig.MinInterfaceVersion, UNIFLOW_PLUGIN_VERSION]
+      [LoadResult.Plugin.GetInterfaceVersion, FConfig.MinInterfaceVersion, DEEPFLOW_PLUGIN_VERSION]
     ));
     DoPluginError('', Result.ErrorMessage);
     Exit;
@@ -1341,11 +1341,12 @@ procedure TPluginLoader.UnloadAll;
 var
   PluginIds: TArray<string>;
   PluginId: string;
+  I: Integer;
 begin
   FLock.Enter;
   try
     SetLength(PluginIds, FLoadedPlugins.Count);
-    var I := 0;
+    I := 0;
     for PluginId in FLoadedPlugins.Keys do
     begin
       PluginIds[I] := PluginId;
@@ -1364,7 +1365,7 @@ function TPluginLoader.ScanDirectory(const Directory: string): TArray<TPluginLoa
 var
   SearchDir: string;
   Pattern: string;
-  Files: TStringDynArray;
+  Files: TArray<string>;
   FilePath: string;
   ResultList: TList<TPluginLoadResult>;
 begin
@@ -1406,7 +1407,7 @@ begin
       Inc(Result);
 end;
 
-function TPluginLoader.GetPlugin(const PluginId: string): IUniFlowPlugin;
+function TPluginLoader.GetPlugin(const PluginId: string): IDeepFlowPlugin;
 var
   LoadedPlugin: TLoadedPlugin;
 begin
@@ -1421,7 +1422,7 @@ begin
   end;
 end;
 
-function TPluginLoader.GetAllPlugins: TArray<IUniFlowPlugin>;
+function TPluginLoader.GetAllPlugins: TArray<IDeepFlowPlugin>;
 var
   LoadedPlugin: TLoadedPlugin;
   I: Integer;

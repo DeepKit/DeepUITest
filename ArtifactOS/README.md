@@ -23,6 +23,44 @@
 |------|------|
 | `DEVELOPMENT.md` | 开发前准备：环境、数据库、测试、发布边界、可认领任务和裁决事项 |
 
+## 与 BCW / DeepFrames 的职责边界
+
+```text
+老板 / BCW
+裁定目标、账号身份、SourcePack边界、实验命题、授权与停止条件
+        ↓ 版本化 decision package
+ArtifactOS
+编译契约、排程、质量门禁、发布、留证、反馈和治理候选
+        ↓ production contract
+DeepFrames
+生产视频、图文、封面、字幕、配音和候选资产包
+```
+
+这是个人单用户系统：ArtifactOS 在已应用策略范围内自动运行，但不得自行修改账号使命、理论法源、唯一主平台和重大资源比例。需要改变这些内容时，在结果摘要中提示老板。
+
+ArtifactOS 不直接读取会议纪要，只导入Amy从BCW active决议生成的简洁YAML `decision_package`。导入时显示变更摘要，确认后应用，并保留上一版快照用于回退。
+
+配置完成后，BCW/Amy通过ArtifactOS CLI继续安排运营和生产：
+
+```text
+artifactos bcw apply
+artifactos config show|set
+artifactos cycle plan
+artifactos batch create
+artifactos guide set
+artifactos production run
+artifactos schedule show
+artifactos status
+artifactos report
+```
+
+CLI负责把BCW的周期安排和生产指导转成ArtifactOS运行对象及DeepFrames内容契约。所有写命令应支持`--dry-run`，所有命令应支持`--json`，供Amy稳定调用。
+
+详细接口规格：
+
+- ArtifactOS侧：`docs/27.[协议]-BCW决议接入与治理回流-BCW-Interface.md`
+- BCW侧：`D:/_Progs/.BetterCiv/08_元管理/BCW/protocols/bcw-artifactos-interface.md`
+
 ## 文档入口
 
 ### 蓝图（01-03）
@@ -100,3 +138,28 @@
 | 编号 | 文件 | 说明 |
 |------|------|------|
 | 26 | `26.[技术]-技术选型与运行时架构-Stack-Decision.md` | VCL Desk、Delphi Engine、PG 直连、DeepBase 复用、AutoFix 和 Python 诊断层决策 |
+| 27 | `27.[协议]-BCW决议接入与治理回流-BCW-Interface.md` | BCW decision package、Amy运营CLI与result summary简化协议 |
+| 28 | `28.[审计]-Amy自主运营对象与CLI缺口-Amy-Operations-Audit.md` | 十个运营对象映射、CLI实测、P0缺口和首个合同级dry-run |
+| 29 | `29.[架构]-PG中心化运行真相源优化方案-PG-Centered-Runtime.md` | PG唯一运行真相源、JSONB、受控Skill、Worker、fencing和跨机资产协议 |
+
+## 运行配置库恢复
+
+`ArtifactOSConfig.db`（SQLite，DB1）不在 git 跟踪中——它含运行时 Secrets（PG 密码，DPAPI 用户级加密）和 Logs，每次运行都会变。仓库只跟踪脱敏的 **`ArtifactOSConfig.seed.db`**（纯结构 + 静态种子数据，Secrets 置空）。
+
+**数据库损坏/丢失时恢复：**
+
+```bash
+# 1. 从种子重建结构 + 静态数据（Settings/I18n/Languages/Themes/Categories 等）
+cp ArtifactOSConfig.seed.db ArtifactOSConfig.db
+
+# 2. 写入 PG 凭据（DPAPI 加密落 Secrets 表）
+ArtifactOS.exe --set-secret ArtifactOS.DB.User fuyi01
+ArtifactOS.exe --set-secret ArtifactOS.DB.Pass <your-pg-password>
+
+# 3. 或用环境变量作 dev fallback（不落库）
+export ARTIFACTOS_DB_USER=fuyi01
+export ARTIFACTOS_DB_PASS=<your-pg-password>
+```
+
+凭据经 `LoadSecret`（首选，DeepBase DPAPI）→ 环境变量（dev fallback）→ `GetConfig`（明文 Settings，不推荐）三级解析（见 `ArtifactOS.Core.DB.Connection.pas`）。测试用 `ArtifactOSTestsConfig.db` 同理，由测试 runner 生成、已忽略。
+

@@ -1,4 +1,4 @@
-{ ============================================================================
+﻿{ ============================================================================
   DeepSpec.Yaml.Parser
 
   Lightweight YAML parser for DeepSpec data files. Supports the subset used

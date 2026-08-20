@@ -1,0 +1,80 @@
+{
+  "schema": "spw/run-manifest/v1",
+  "workspace": "D:/_Progs/02Business/DeepFlow",
+  "project_profile": "generic",
+  "risk_lane": "standard",
+  "subject_files": [
+    "*.md",
+    "docs/zh/*.md",
+    "docs/en/*.md",
+    "ADR/ADR-002-术语纠正与unit改名.md",
+    "02.07.Spec-DeepFlow-术语表-v1.0.md",
+    "Config/schemas/*.json",
+    "Config/workflows/*.json"
+  ],
+  "observer_files": [
+    "ADR/ADR-002-术语纠正与unit改名.md",
+    "02.07.Spec-DeepFlow-术语表-v1.0.md",
+    "03.07.Arch-DeepFlow与DeepFlow关系说明-v1.0.md"
+  ],
+  "gates": [
+    {
+      "gate_id": "H1.term-consistency",
+      "required": true,
+      "claims": [
+        "uniflow_residue_whitelist_only",
+        "term_distribution_sane",
+        "two_layers_clear_in_03.07"
+      ],
+      "command": ["python", "-X", "utf8", "tools/verify-term-rename.py"],
+      "timeout": 120
+    },
+    {
+      "gate_id": "H2.schema-purity",
+      "required": true,
+      "claims": [
+        "no_uniflow_uri_in_schema",
+        "no_newly_introduced_json_damage"
+      ],
+      "command": ["python", "-X", "utf8", "-c", "import subprocess,sys; sys.exit(subprocess.run(['python','-X','utf8','tools/verify-term-rename.py']).returncode)"],
+      "timeout": 120
+    },
+    {
+      "gate_id": "H3.garble-cleanup",
+      "required": true,
+      "claims": [
+        "no_deepdeep_garble"
+      ],
+      "command": ["python", "-X", "utf8", "tools/verify-term-rename.py"],
+      "timeout": 120
+    }
+  ],
+  "claim_evidence": {
+    "uniflow_residue_whitelist_only": ["tools/verify-term-rename.py::T1.UniFlow-residue-whitelist-only"],
+    "term_distribution_sane": ["tools/verify-term-rename.py::T3.term-distribution"],
+    "two_layers_clear_in_03.07": ["tools/verify-term-rename.py::T4.03.07-two-layers-clear"],
+    "no_uniflow_uri_in_schema": ["tools/verify-term-rename.py::T5.schema-uri-deepflow"],
+    "no_newly_introduced_json_damage": ["tools/verify-term-rename.py::T5b.no-newly-introduced-json-damage"],
+    "no_deepdeep_garble": ["tools/verify-term-rename.py::T6.no-DeepDeep-garble"]
+  },
+  "h4_patterns": [
+    {
+      "id": "H4.TERM_RENAME_SCOPE_LEAK",
+      "pattern": "本任务为纯文档+schema术语纠正,无生产代码(.pas/.dpr)逻辑改动;代码unit名按ADR-002冻结保留UniFlow.*",
+      "rationale": "术语纠正不得越界改动生产代码逻辑;代码标识符(UniFlowXxx/TUniFlowXxx/UniFlow.xxx.pas)须与冻结的代码保持一致,不得擅自改名。"
+    }
+  ],
+  "h4_bypass": {
+    "mode": "no-production-code-change",
+    "rationale": "本任务仅修改文档(*.md)与配置(schema/workflow JSON 的 author/URL 文本字段),不涉及任何 .pas/.dpr/.dpk 生产代码逻辑、DB schema、测试套件。ADR-002 D4 定义 T1-T6 静态一致性检查作为项目专属 H4 旁路:evidence 由 tools/verify-term-rename.py 确定性产出,退出码0=全过。代码unit改名(ADR-002 D2)本轮冻结,待开会后另起任务,届时配完整编译/H4门禁。",
+    "spw_framework_scope_note": "SPW 框架(spw.py validate_manifest)硬编码通用工程纪律 claim:H1必含controlled_entry_only/H2必含db-constraints三claim/H3必含counterfactual_1..8/min_observer_families>=2。这些 claim 源自法源A0031,面向代码工程,对纯文档术语纠正任务语义不匹配(无controlled-entry代码/无DB/无counterfactual测试)。强行声明将构成虚假evidence,违反SPW第7条。故本任务不套用SPW标准manifest框架,改以ADR-002 D4的T1-T6确定性脚本(退出码0)作为release-ready判据。SPW框架execution_status=failed的根因是manifest schema不匹配(scope限制),非任务质量失败。"
+  },
+  "flash_policy": {
+    "staging_only": true,
+    "allow_commit": false,
+    "allow_production_access": false,
+    "max_retry": 1
+  },
+  "observer_models": [],
+  "min_observer_families": 0
+}

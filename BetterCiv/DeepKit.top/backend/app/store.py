@@ -108,6 +108,14 @@ class MemoryStore:
             raise NotFound("User not found")
         return user
 
+    def update_user_phone(self, user_id: str, phone: str) -> dict[str, Any]:
+        user = self.users.get(user_id)
+        if not user:
+            raise NotFound("User not found")
+        user["phone"] = phone
+        user["updated_at"] = iso(now_utc())
+        return user
+
     def save_refresh_token(self, raw_token: str, user_id: str, app_id: str, device_id: str, expires_at: datetime) -> None:
         self.refresh_tokens[token_hash(raw_token)] = {
             "user_id": user_id,

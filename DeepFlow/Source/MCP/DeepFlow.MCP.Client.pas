@@ -1,6 +1,6 @@
-unit UniFlow.MCP.Client;
+unit DeepFlow.MCP.Client;
 (*
-  UniFlow MCP Client
+  DeepFlow MCP Client
   ==================
   TASK-2020: MCP 协议完整支持
   
@@ -19,7 +19,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.SyncObjs, System.Net.HttpClient, System.Net.URLClient,
-  UniFlow.MCP.Types,
+  DeepFlow.MCP.Types,
   DeepBase.Exceptions;
 
 type
@@ -188,7 +188,7 @@ class function TMCPClientConfig.Default: TMCPClientConfig;
 begin
   Result.ServerUrl := '';
   Result.TransportType := ttHttp;
-  Result.ClientName := 'UniFlow MCP Client';
+  Result.ClientName := 'DeepFlow MCP Client';
   Result.ClientVersion := '1.0.0';
   Result.ConnectTimeoutMs := 10000;
   Result.RequestTimeoutMs := 30000;

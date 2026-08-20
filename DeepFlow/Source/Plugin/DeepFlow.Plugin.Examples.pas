@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Examples                                                      
+  DeepFlow Plugin Examples                                                      
   Example plugins demonstrating how to create custom extensions                
                                                                                
   Features:                                                                    
@@ -14,17 +14,17 @@
   Usage:                                                                       
   To export as BPL plugin, add this function to your package:                  
                                                                                
-    function GetUniFlowPlugin: IUniFlowPlugin; stdcall;                        
+    function GetDeepFlowPlugin: IDeepFlowPlugin; stdcall;                        
     begin                                                                      
       Result := TCustomActionsPlugin.Create;                                   
     end;                                                                       
                                                                                
     exports                                                                    
-      GetUniFlowPlugin;                                                        
+      GetDeepFlowPlugin;                                                        
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Examples;
+unit DeepFlow.Plugin.Examples;
 
 interface
 
@@ -35,7 +35,7 @@ uses
   System.RegularExpressions,
   System.DateUtils,
   System.Generics.Collections,
-  UniFlow.Plugin.Intf;
+  DeepFlow.Plugin.Intf;
 
 type
   //============================================================================
@@ -140,21 +140,21 @@ type
   //============================================================================
   
   /// <summary>Custom Actions Plugin - provides delay and email actions</summary>
-  TCustomActionsPlugin = class(TBaseUniFlowPlugin)
+  TCustomActionsPlugin = class(TBaseDeepFlowPlugin)
   public
     constructor Create;
     function Initialize(Context: IPluginContext): Boolean; override;
   end;
   
   /// <summary>Custom Validators Plugin - provides china_phone and id_card validators</summary>
-  TCustomValidatorsPlugin = class(TBaseUniFlowPlugin)
+  TCustomValidatorsPlugin = class(TBaseDeepFlowPlugin)
   public
     constructor Create;
     function Initialize(Context: IPluginContext): Boolean; override;
   end;
   
   /// <summary>Combined Plugin - provides all custom actions and validators</summary>
-  TCombinedExamplePlugin = class(TBaseUniFlowPlugin)
+  TCombinedExamplePlugin = class(TBaseDeepFlowPlugin)
   public
     constructor Create;
     function Initialize(Context: IPluginContext): Boolean; override;
@@ -165,11 +165,11 @@ type
   //============================================================================
   
   /// <summary>Create a custom actions plugin instance</summary>
-  function CreateCustomActionsPlugin: IUniFlowPlugin;
+  function CreateCustomActionsPlugin: IDeepFlowPlugin;
   /// <summary>Create a custom validators plugin instance</summary>
-  function CreateCustomValidatorsPlugin: IUniFlowPlugin;
+  function CreateCustomValidatorsPlugin: IDeepFlowPlugin;
   /// <summary>Create a combined example plugin instance</summary>
-  function CreateCombinedExamplePlugin: IUniFlowPlugin;
+  function CreateCombinedExamplePlugin: IDeepFlowPlugin;
 
 implementation
 
@@ -447,7 +447,7 @@ begin
       Output := TJSONObject.Create;
       Output.AddPair('status_code', TJSONNumber.Create(Response.StatusCode));
       Output.AddPair('status_text', Response.StatusText);
-      Output.AddPair('content_type', Response.ContentType);
+      Output.AddPair('content_type', Response.MimeType);
       Output.AddPair('body', Response.ContentAsString);
       
       if Response.StatusCode >= 400 then
@@ -774,8 +774,8 @@ end;
 
 constructor TCustomActionsPlugin.Create;
 begin
-  inherited Create('uniflow.actions.custom', 'Custom Actions Plugin', '1.0.0');
-  FInfo.Author := 'UniFlow Team';
+  inherited Create('deepflow.actions.custom', 'Custom Actions Plugin', '1.0.0');
+  FInfo.Author := 'DeepFlow Team';
   FInfo.Description := 'Provides custom action executors: delay, email, http_get';
 end;
 
@@ -800,8 +800,8 @@ end;
 
 constructor TCustomValidatorsPlugin.Create;
 begin
-  inherited Create('uniflow.validators.custom', 'Custom Validators Plugin', '1.0.0');
-  FInfo.Author := 'UniFlow Team';
+  inherited Create('deepflow.validators.custom', 'Custom Validators Plugin', '1.0.0');
+  FInfo.Author := 'DeepFlow Team';
   FInfo.Description := 'Provides custom validators: china_phone, id_card, email';
 end;
 
@@ -826,8 +826,8 @@ end;
 
 constructor TCombinedExamplePlugin.Create;
 begin
-  inherited Create('uniflow.examples.combined', 'Combined Example Plugin', '1.0.0');
-  FInfo.Author := 'UniFlow Team';
+  inherited Create('deepflow.examples.combined', 'Combined Example Plugin', '1.0.0');
+  FInfo.Author := 'DeepFlow Team';
   FInfo.Description := 'Combined plugin with all custom actions and validators';
 end;
 
@@ -855,17 +855,17 @@ end;
 // Helper functions
 //==============================================================================
 
-function CreateCustomActionsPlugin: IUniFlowPlugin;
+function CreateCustomActionsPlugin: IDeepFlowPlugin;
 begin
   Result := TCustomActionsPlugin.Create;
 end;
 
-function CreateCustomValidatorsPlugin: IUniFlowPlugin;
+function CreateCustomValidatorsPlugin: IDeepFlowPlugin;
 begin
   Result := TCustomValidatorsPlugin.Create;
 end;
 
-function CreateCombinedExamplePlugin: IUniFlowPlugin;
+function CreateCombinedExamplePlugin: IDeepFlowPlugin;
 begin
   Result := TCombinedExamplePlugin.Create;
 end;

@@ -1,5 +1,5 @@
 { ============================================================================
-  UniFlow.Session.Manager - Session Lifecycle Manager
+  DeepFlow.Session.Manager - Session Lifecycle Manager
 
   Version: 1.0
   Description: Manages session lifecycle including creation, lookup, expiry
@@ -19,7 +19,7 @@
     Session := Manager.GetSession(SessionId);
   ============================================================================ }
 
-unit UniFlow.Session.Manager;
+unit DeepFlow.Session.Manager;
 
 interface
 
@@ -31,7 +31,7 @@ uses
   System.SyncObjs,
   System.IOUtils,
   System.Threading,
-  UniFlow.Session.Types,
+  DeepFlow.Session.Types,
   DeepBase.Exceptions;
 
 type
@@ -402,10 +402,18 @@ procedure TSessionManager.StartCleanupTimer;
 begin
   FCleanupTimer := TThread.CreateAnonymousThread(
     procedure
+    var
+      Remaining: Integer;
     begin
       while not TThread.Current.CheckTerminated do
       begin
-        Sleep(FConfig.CleanupIntervalMinutes * 60 * 1000);
+        // 小步等待：及时响应 Terminate，避免 Destroy 时 WaitFor 长时间阻塞
+        Remaining := FConfig.CleanupIntervalMinutes * 60 * 1000;
+        while (Remaining > 0) and not TThread.Current.CheckTerminated do
+        begin
+          Sleep(100);
+          Dec(Remaining, 100);
+        end;
         if not TThread.Current.CheckTerminated then
           DoCleanup;
       end;

@@ -1,3 +1,4 @@
+﻿
 { ============================================================================
   DeepSpec.Providers.MainView
 
@@ -32,6 +33,25 @@ uses
   DeepSpec.Services.Project;
 
 type
+  /// <summary>JS Bridge callback for creating an exploration ticket from a
+  /// fog node (BUG-11 step 2). The host (Controller.CreateTicket) defogs the
+  /// node one step, validates, and persists the ticket.</summary>
+  TCreateTicketProc = reference to procedure(
+    const ANodeId, ANodeTitle: string);
+
+  /// <summary>JS Bridge callback for exporting an optimization prompt
+  /// from the index dashboard (BUG-9 §2.3.4). No args — the host
+  /// (Controller.ExportOptimizationPrompt) computes metrics + writes file.</summary>
+  TExportOptPromptProc = reference to procedure;
+
+  /// <summary>JS Bridge callback for batch bundle review (Accept All /
+  /// Reject All on bundles.html). AAction is 'bundle-accept' or
+  /// 'bundle-reject'; ABundleId is the bundle id. The host
+  /// (Controller.ApplyBundleDecisions) records one formal decision and
+  /// applies state transitions to all anchored nodes.</summary>
+  TBundleActionProc = reference to procedure(
+    const AAction, ABundleId: string);
+
   /// <summary>
   /// Holds a target URL and navigates the browser when it becomes ready.
   /// Also handles incoming postMessage events from the page (JS Bridge).
@@ -41,6 +61,9 @@ type
   private
     FTargetUrl: string;
     FProjectService: TDeepSpecProjectService;
+    FOnCreateTicket: TCreateTicketProc;
+    FOnExportOptPrompt: TExportOptPromptProc;
+    FOnBundleAction: TBundleActionProc;
     procedure HandleCreated(Sender: TCustomEdgeBrowser; AResult: HResult);
     procedure HandleWebMessage(Sender: TCustomEdgeBrowser;
       Args: TWebMessageReceivedEventArgs);
@@ -48,15 +71,24 @@ type
     function YamlEscape(const S: string): string;
   public
     constructor CreateFor(AOwner: TComponent; const ATargetUrl: string;
-      AProjectService: TDeepSpecProjectService);
+      AProjectService: TDeepSpecProjectService;
+      AOnCreateTicket: TCreateTicketProc;
+      AOnExportOptPrompt: TExportOptPromptProc;
+      AOnBundleAction: TBundleActionProc);
   end;
 
   TDeepSpecMainViewProvider = class(TInterfacedObject, IShellMainViewProvider)
   private
     FProjectService: TDeepSpecProjectService;
+    FOnCreateTicket: TCreateTicketProc;
+    FOnExportOptPrompt: TExportOptPromptProc;
+    FOnBundleAction: TBundleActionProc;
     function GetIndexHtmlPath: string;
   public
-    constructor Create(AProjectService: TDeepSpecProjectService);
+    constructor Create(AProjectService: TDeepSpecProjectService;
+      AOnCreateTicket: TCreateTicketProc;
+      AOnExportOptPrompt: TExportOptPromptProc;
+      AOnBundleAction: TBundleActionProc);
     function ProviderId: string;
     function CanOpen(const ARef: TShellObjectRef): Boolean;
     function GetViewForObject(const ARef: TShellObjectRef): TShellViewInfo;
@@ -70,16 +102,23 @@ uses
   System.IOUtils,
   System.DateUtils,
   Winapi.ActiveX,
-  Winapi.WebView2;
+  Winapi.WebView2,
+  DeepSpec.Services.SpecStore;
 
 { TBrowserNavigator }
 
-constructor TBrowserNavigator.CreateFor(AOwner: TComponent;
-  const ATargetUrl: string; AProjectService: TDeepSpecProjectService);
+constructor TBrowserNavigator.CreateFor(AOwner: TComponent; const ATargetUrl: string;
+  AProjectService: TDeepSpecProjectService;
+  AOnCreateTicket: TCreateTicketProc;
+  AOnExportOptPrompt: TExportOptPromptProc;
+  AOnBundleAction: TBundleActionProc);
 begin
   inherited Create(AOwner);
   FTargetUrl := ATargetUrl;
   FProjectService := AProjectService;
+  FOnCreateTicket := AOnCreateTicket;
+  FOnExportOptPrompt := AOnExportOptPrompt;
+  FOnBundleAction := AOnBundleAction;
 end;
 
 procedure TBrowserNavigator.HandleCreated(Sender: TCustomEdgeBrowser; AResult: HResult);
@@ -94,7 +133,7 @@ procedure TBrowserNavigator.HandleWebMessage(Sender: TCustomEdgeBrowser;
 var
   LArgsIntf: ICoreWebView2WebMessageReceivedEventArgs;
   LRaw: PWideChar;
-  LMessage, LAction, LNodeId, LNodeTitle: string;
+  LMessage, LAction, LNodeId, LNodeTitle, LBundleId: string;
   LJson: TJSONValue;
   LObj: TJSONObject;
 begin
@@ -124,9 +163,29 @@ begin
     LAction := LObj.GetValue<string>('action', '');
     LNodeId := LObj.GetValue<string>('node_id', '');
     LNodeTitle := LObj.GetValue<string>('node_title', '');
+    LBundleId := LObj.GetValue<string>('bundle_id', '');
 
     if (LAction = 'node-confirm') or (LAction = 'node-reject') then
-      AppendPendingDecision(LAction, LNodeId, LNodeTitle);
+      AppendPendingDecision(LAction, LNodeId, LNodeTitle)
+    else if LAction = 'ticket-create' then
+    begin
+      // BUG-11 step 2: open an exploration ticket for the fog node.
+      if Assigned(FOnCreateTicket) then
+        FOnCreateTicket(LNodeId, LNodeTitle);
+    end
+    else if LAction = 'export-optimization-prompt' then
+    begin
+      // BUG-9 §2.3.4: host computes health metrics + writes a prompt file.
+      if Assigned(FOnExportOptPrompt) then
+        FOnExportOptPrompt;
+    end
+    else if (LAction = 'bundle-accept') or (LAction = 'bundle-reject') then
+    begin
+      // Batch bundle review: record one formal decision for all anchored
+      // nodes and apply state transitions (dead-button fix, bundles.html).
+      if Assigned(FOnBundleAction) then
+        FOnBundleAction(LAction, LBundleId);
+    end;
   finally
     LJson.Free;
   end;
@@ -163,18 +222,25 @@ begin
     '    node_id: ' + YamlEscape(ANodeId) + sLineBreak +
     '    node_title: ' + YamlEscape(ANodeTitle) + sLineBreak;
 
-  if LIsNew then
-    TFile.WriteAllText(LPath, LBlock, TEncoding.UTF8)
-  else
-    TFile.AppendAllText(LPath, LBlock, TEncoding.UTF8);
+  // Atomic read-modify-write (bugfix.md BUG-5 path): never bare-append to
+  // the pending file — a crash mid-append would leave a truncated block.
+  var LFullContent := '';
+  if TFile.Exists(LPath) then
+    LFullContent := TFile.ReadAllText(LPath, TEncoding.UTF8);
+  TDeepSpecStoreService.AtomicWriteTextFile(LPath, LFullContent + LBlock);
 end;
 
 { TDeepSpecMainViewProvider }
 
-constructor TDeepSpecMainViewProvider.Create(AProjectService: TDeepSpecProjectService);
+constructor TDeepSpecMainViewProvider.Create(AProjectService: TDeepSpecProjectService;
+  AOnCreateTicket: TCreateTicketProc; AOnExportOptPrompt: TExportOptPromptProc;
+  AOnBundleAction: TBundleActionProc);
 begin
   inherited Create;
   FProjectService := AProjectService;
+  FOnCreateTicket := AOnCreateTicket;
+  FOnExportOptPrompt := AOnExportOptPrompt;
+  FOnBundleAction := AOnBundleAction;
 end;
 
 function TDeepSpecMainViewProvider.ProviderId: string;
@@ -222,7 +288,8 @@ begin
       LUrl := 'about:blank';
 
     // Navigator gets owned by the browser, freed automatically.
-    LNavigator := TBrowserNavigator.CreateFor(LBrowser, LUrl, FProjectService);
+    LNavigator := TBrowserNavigator.CreateFor(LBrowser, LUrl, FProjectService,
+      FOnCreateTicket, FOnExportOptPrompt, FOnBundleAction);
     LBrowser.OnCreateWebViewCompleted := LNavigator.HandleCreated;
     LBrowser.OnWebMessageReceived := LNavigator.HandleWebMessage;
 

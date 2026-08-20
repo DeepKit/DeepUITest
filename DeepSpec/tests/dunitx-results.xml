@@ -1,14 +1,117 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
-<test-results name="D:\_Progs\02Business\DeepSpec\tests\DeepSpec.Tests.exe" total="48" errors="0" failures="0" ignored="0" inconclusive="0" not-run="0" skipped="0" invalid="0" date="2026-05-24" time="21:24:27">
+<test-results name="D:\_Progs\02Business\DeepSpec\tests\DeepSpec.Tests.exe" total="113" errors="0" failures="0" ignored="0" inconclusive="0" not-run="0" skipped="0" invalid="0" date="2026-08-10" time="20:14:59">
   <culture-info current-culture="en" current-uiculture="en" />
-  <test-suite type="Assembly" name="DeepSpec.Tests.exe" executed="true" result="Success" success="True" time="21:24:27" asserts="0">
+  <test-suite type="Assembly" name="DeepSpec.Tests.exe" executed="true" result="Success" success="True" time="20:14:59" asserts="0">
     <results>
-        <test-suite type="Namespace" name="Test" executed="true" result="Success" success="True" time="0.001" asserts="0" >
+        <test-suite type="Namespace" name="Test" executed="true" result="Success" success="True" time="0.845" asserts="0" >
           <results>
-              <test-suite type="Namespace" name="DeepSpec" executed="true" result="Success" success="True" time="0.001" asserts="0" >
+              <test-suite type="Namespace" name="DeepSpec" executed="true" result="Success" success="True" time="0.845" asserts="0" >
                 <results>
+                    <test-suite type="Fixture" name="TCandidateIngestTests" executed="True" result="Success" success="True" time="0.001" >
+                      <results>
+                        <test-case name="Split_ThreeDocs_ReturnsThree" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Split_LeadingMarker_NoEmptyFirst" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Split_SingleDoc_NoMarkers_ReturnsOne" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Split_EmptyInput_ReturnsEmpty" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_ValidFunctionNode_Accepted" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_BadIdPrefix_Rejected" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_ParentIdUnknown_Rejected" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_ParentIdKnown_Accepted" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_SourceLayerHuman_ForcedToAiInferred" executed="True" result="Success" success="True" time="0.001" asserts="0" />
+                        <test-case name="Ingest_GenStatusConfirmed_ForcedToGenerated" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_ReviewStatusNonUnreviewed_ForcedToUnreviewed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Ingest_DataTree_DroppedWithWarning" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Merge_ExistingId_OverwritesMutableFields" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Merge_ExistingId_PreservesReviewStatus" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Merge_ExistingId_AdvancesGenStatusToGenerated" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Merge_FunctionRootSummaryChanged_ConvergesFogToFoggy" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Merge_FunctionRootSummaryUnchanged_NoFogChange" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Merge_NewId_Appended" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                      </results>
+                    </test-suite>
+                    <test-suite type="Fixture" name="TTestDeepSpecController" executed="True" result="Success" success="True" time="0.767" >
+                      <results>
+                        <test-case name="Test_OpenAndScan_BuildsEverything" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Test_OpenAndScan_PublishesProjectOpened" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Test_RenderAll_ProducesDashboardHtml" executed="True" result="Success" success="True" time="0.004" asserts="0" />
+                        <test-case name="Test_HealthMetrics_Numbers" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                        <test-case name="Test_CreateTicket_DefogsAndPersists" executed="True" result="Success" success="True" time="0.017" asserts="0" />
+                        <test-case name="Test_ApplyBundleDecisions_Accept" executed="True" result="Success" success="True" time="0.032" asserts="0" />
+                        <test-case name="Test_ApplyBundleDecisions_Reject" executed="True" result="Success" success="True" time="0.031" asserts="0" />
+                        <test-case name="Test_Restart_KeepsDecisions" executed="True" result="Success" success="True" time="0.033" asserts="0" />
+                      </results>
+                    </test-suite>
+                    <test-suite type="Fixture" name="TTestDeepSpecDecisions" executed="True" result="Success" success="True" time="0.029" >
+                      <results>
+                        <test-case name="Test_AddDecision_RoundTrip" executed="True" result="Success" success="True" time="0.005" asserts="0" />
+                        <test-case name="Test_ApplyAcceptedDecision_Transitions" executed="True" result="Success" success="True" time="0.009" asserts="0" />
+                        <test-case name="Test_ApplyRejectedDecision_Transitions" executed="True" result="Success" success="True" time="0.008" asserts="0" />
+                        <test-case name="Test_NoTransitionForProposedDecision" executed="True" result="Success" success="True" time="0.006" asserts="0" />
+                      </results>
+                    </test-suite>
+                    <test-suite type="Namespace" name="Models" executed="true" result="Success" success="True" time="0.000" asserts="0" >
+                      <results>
+                          <test-suite type="Fixture" name="TDefogOneStepTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="UnknownUnknowns_StepToFoggy" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Foggy_StepToMisty" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Misty_StepToClear" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Clear_Step_StaysClear" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TFogStateMachineTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="SameState_IsAlwaysAllowed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="UnknownUnknowns_ToFoggy_Allowed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Foggy_ToMisty_Allowed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Misty_ToClear_Allowed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="UnknownUnknowns_ToClear_Allowed_SkipsLevels" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="UnknownUnknowns_ToMisty_Allowed_SkipsLevel" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Foggy_ToClear_Allowed_SkipsLevel" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Clear_ToAnything_Forbidden_Terminal" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Misty_ToFoggy_Forbidden_ReverseDivergence" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Foggy_ToUnknownUnknowns_Forbidden_ReverseDivergence" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Misty_ToUnknownUnknowns_Forbidden_ReverseDivergence" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="TFogStateRoundTripTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="FogStateToStr_FromStr_RoundTrip_AllFourStates" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="FogStateFromStr_UnknownValue_ReturnsDefault" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                          <test-suite type="Fixture" name="THealthMetricsTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="Coverage_Partial" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="AvgConfidence_Mixed" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="FogCount_AcrossTrees" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="Backlog_OpenOnly" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
+                      </results>
+                    </test-suite>
+                    <test-suite type="Fixture" name="TTestDeepSpecSpecStore" executed="True" result="Success" success="True" time="0.046" >
+                      <results>
+                        <test-case name="Test_AtomicWrite_FirstWrite" executed="True" result="Success" success="True" time="0.004" asserts="0" />
+                        <test-case name="Test_AtomicWrite_Overwrite" executed="True" result="Success" success="True" time="0.007" asserts="0" />
+                        <test-case name="Test_WriteTreeFile_Overwrite_RoundTrip" executed="True" result="Success" success="True" time="0.014" asserts="0" />
+                        <test-case name="Test_WriteTreeFile_CreatesSnapshotBackup" executed="True" result="Success" success="True" time="0.020" asserts="0" />
+                      </results>
+                    </test-suite>
                     <test-suite type="Namespace" name="Validation" executed="true" result="Success" success="True" time="0.001" asserts="0" >
                       <results>
+                          <test-suite type="Fixture" name="TValidationIssuesTests" executed="True" result="Success" success="True" time="0.000" >
+                            <results>
+                              <test-case name="ValidIssue_NoErrors" executed="True" result="Success" success="True" time="0.001" asserts="0" />
+                              <test-case name="EmptyId_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidIssueIdPrefix_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidSeverity_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidIssueType_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="EmptyAffectedNodes_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="ResearchTicketWithRequiresHuman_NoError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="NonTicketWithRequiresHuman_ReportedAsWarning" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                            </results>
+                          </test-suite>
                           <test-suite type="Fixture" name="TValidationKindTests" executed="True" result="Success" success="True" time="0.000" >
                             <results>
                               <test-case name="ExtensionKind_NoError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
@@ -69,8 +172,10 @@
                               <test-case name="MissingTree_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
                               <test-case name="InvalidTreeType_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
                               <test-case name="ValidTreeFile_NoErrors" executed="True" result="Success" success="True" time="0.000" asserts="0" />
-                              <test-case name="InvalidNodeStatus_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidNodeStatus_ReportedAsError" executed="True" result="Success" success="True" time="0.001" asserts="0" />
                               <test-case name="InvalidConfidence_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="ValidFogState_NoErrors" executed="True" result="Success" success="True" time="0.000" asserts="0" />
+                              <test-case name="InvalidFogState_ReportedAsError" executed="True" result="Success" success="True" time="0.000" asserts="0" />
                             </results>
                           </test-suite>
                       </results>

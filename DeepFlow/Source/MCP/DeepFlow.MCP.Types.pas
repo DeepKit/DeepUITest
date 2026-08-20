@@ -1,6 +1,6 @@
-unit UniFlow.MCP.Types;
+unit DeepFlow.MCP.Types;
 (*
-  UniFlow MCP Types
+  DeepFlow MCP Types
   =================
   TASK-2020: MCP 协议完整支持
   

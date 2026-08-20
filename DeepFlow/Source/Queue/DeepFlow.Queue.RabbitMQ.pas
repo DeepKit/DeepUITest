@@ -1,10 +1,10 @@
-unit UniFlow.Queue.RabbitMQ;
+unit DeepFlow.Queue.RabbitMQ;
 
 {*******************************************************}
 {                                                       }
-{       UniFlow RabbitMQ 消息队列集成                   }
+{       DeepFlow RabbitMQ 消息队列集成                   }
 {                                                       }
-{       版权所�?(C) 2024 UniFlow                       }
+{       版权所有 (C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -13,28 +13,10 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.DateUtils, System.SyncObjs, System.Threading, System.Net.HttpClient,
-  System.NetEncoding, UniFlow.Queue.Types,
+  System.NetEncoding, DeepFlow.Queue.Types,
   DeepBase.Exceptions;
 
 type
-  {==========================================================================}
-  {  RabbitMQ 连接接口                                                       }
-  {==========================================================================}
-  IRabbitMQConnection = interface
-    ['{E8A1B2C3-D4E5-F6A7-B8C9-D0E1F2A3B4C5}']
-    function GetState: TConnectionState;
-    function GetConfig: TQueueConnectionConfig;
-    
-    procedure Connect;
-    procedure Disconnect;
-    function IsConnected: Boolean;
-    
-    function CreateChannel: IRabbitMQChannel;
-    
-    property State: TConnectionState read GetState;
-    property Config: TQueueConnectionConfig read GetConfig;
-  end;
-
   {==========================================================================}
   {  RabbitMQ 通道接口                                                       }
   {==========================================================================}
@@ -79,6 +61,24 @@ type
     procedure Close;
     
     property ChannelId: Integer read GetChannelId;
+  end;
+
+  {==========================================================================}
+  {  RabbitMQ 连接接口                                                       }
+  {==========================================================================}
+  IRabbitMQConnection = interface
+    ['{E8A1B2C3-D4E5-F6A7-B8C9-D0E1F2A3B4C5}']
+    function GetState: TConnectionState;
+    function GetConfig: TQueueConnectionConfig;
+    
+    procedure Connect;
+    procedure Disconnect;
+    function IsConnected: Boolean;
+    
+    function CreateChannel: IRabbitMQChannel;
+    
+    property State: TConnectionState read GetState;
+    property Config: TQueueConnectionConfig read GetConfig;
   end;
 
   {==========================================================================}
@@ -184,7 +184,7 @@ type
   end;
 
   {==========================================================================}
-  {  RabbitMQ 生产�?                                                        }
+  {  RabbitMQ 生产者                                                        }
   {==========================================================================}
   TRabbitMQProducer = class
   private
@@ -201,13 +201,13 @@ type
     procedure SetDefaultExchange(const AExchange: string);
     procedure SetDefaultRoutingKey(const ARoutingKey: string);
     
-    // 发送消�?
+    // 发送消息
     procedure Publish(const AMessage: TQueueMessage); overload;
     procedure Publish(const AExchange, ARoutingKey: string; const AMessage: TQueueMessage); overload;
     procedure PublishJSON(const ARoutingKey: string; AJSON: TJSONValue);
     procedure PublishString(const ARoutingKey, AContent: string);
     
-    // 批量发�?
+    // 批量发送
     procedure PublishBatch(const AMessages: TArray<TQueueMessage>);
     
     // 延迟消息
@@ -219,7 +219,7 @@ type
   end;
 
   {==========================================================================}
-  {  RabbitMQ 消费�?                                                        }
+  {  RabbitMQ 消费者                                                        }
   {==========================================================================}
   TRabbitMQConsumer = class
   private
@@ -271,7 +271,7 @@ type
     procedure Start;
     procedure Stop;
     
-    // 触发工作�?
+    // 触发工作流
     procedure TriggerWorkflow(const AWorkflowId: string; APayload: TJSONObject = nil);
     procedure ScheduleWorkflow(const AWorkflowId: string; AScheduledTime: TDateTime;
       APayload: TJSONObject = nil);
@@ -281,7 +281,7 @@ type
   end;
 
   {==========================================================================}
-  {  RabbitMQ 连接�?                                                        }
+  {  RabbitMQ 连接器                                                        }
   {==========================================================================}
   TRabbitMQConnectionPool = class
   private
@@ -471,12 +471,12 @@ procedure TRabbitMQConnection.DoReconnect;
 begin
   if FReconnectAttempts >= FConfig.MaxReconnectAttempts then
   begin
-    SetState(csError, '达到最大重连次�?);
+    SetState(csError, '达到最大重连次数');
     Exit;
   end;
   
   Inc(FReconnectAttempts);
-  SetState(csReconnecting, Format('重连�?(%d/%d)...', 
+  SetState(csReconnecting, Format('重连中(%d/%d)...', 
     [FReconnectAttempts, FConfig.MaxReconnectAttempts]));
   
   FReconnectTimer := TThread.CreateAnonymousThread(
@@ -865,7 +865,7 @@ begin
     FLock.Leave;
   end;
   
-  // 创建消费者线�?
+  // 创建消费者线程
   LThread := TThread.CreateAnonymousThread(
     procedure
     var
@@ -891,11 +891,10 @@ begin
             LBody.AddPair('ackmode', 'ack_requeue_true');
             LBody.AddPair('encoding', 'base64');
             
-            LJSON := DoApiRequest('POST', LPath, LBody) as TJSONObject;
-            if Assigned(LJSON) then
+            LMessages := DoApiRequest('POST', LPath, LBody) as TJSONArray;
+            if Assigned(LMessages) then
             begin
               try
-                LMessages := LJSON as TJSONArray;
                 for LItem in LMessages do
                 begin
                   LMsg := LItem as TJSONObject;
@@ -921,7 +920,7 @@ begin
                   end;
                 end;
               finally
-                LJSON.Free;
+                LMessages.Free;
               end;
             end;
           finally
@@ -931,7 +930,7 @@ begin
           Sleep(100); // 轮询间隔
         except
           on E: Exception do
-            Sleep(1000); // 错误后等�?
+            Sleep(1000); // 错误后等待
         end;
       end;
     end);
@@ -1014,23 +1013,23 @@ end;
 
 procedure TRabbitMQChannel.BasicQos(APrefetchSize: Cardinal; APrefetchCount: Word; AGlobal: Boolean);
 begin
-  // Management API 不直接支�?QoS，通过消费时的 count 参数控制
+  // Management API 不直接支持 QoS，通过消费时的 count 参数控制
 end;
 
 procedure TRabbitMQChannel.TxSelect;
 begin
-  // Management API 不支持事�?
-  raise EOperationException.Create('Management API 不支持事务，请使�?AMQP 客户�?);
+  // Management API 不支持事务
+  raise EOperationException.Create('Management API 不支持事务，请使用AMQP 客户端');
 end;
 
 procedure TRabbitMQChannel.TxCommit;
 begin
-  raise EOperationException.Create('Management API 不支持事�?);
+  raise EOperationException.Create('Management API 不支持事务');
 end;
 
 procedure TRabbitMQChannel.TxRollback;
 begin
-  raise EOperationException.Create('Management API 不支持事�?);
+  raise EOperationException.Create('Management API 不支持事务');
 end;
 
 procedure TRabbitMQChannel.Close;
@@ -1226,8 +1225,8 @@ constructor TRabbitMQWorkflowTrigger.Create(AConnection: IRabbitMQConnection);
 begin
   inherited Create;
   FConnection := AConnection;
-  FExchange := 'uniflow.workflow';
-  FQueue := 'uniflow.workflow.trigger';
+  FExchange := 'deepflow.workflow';
+  FQueue := 'deepflow.workflow.trigger';
 end;
 
 destructor TRabbitMQWorkflowTrigger.Destroy;
@@ -1273,7 +1272,7 @@ begin
     LChannel.Close;
   end;
   
-  // 创建生产者和消费�?
+  // 创建生产者和消费者
   FProducer := TRabbitMQProducer.Create(FConnection);
   FProducer.DefaultExchange := FExchange;
   
@@ -1440,7 +1439,7 @@ begin
         raise EOperationException.Create('无法获取连接');
     end
     else
-      raise EOperationException.Create('连接池已�?);
+      raise EOperationException.Create('连接池已满');
   finally
     FLock.Leave;
   end;

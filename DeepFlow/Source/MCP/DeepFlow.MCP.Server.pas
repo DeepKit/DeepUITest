@@ -1,10 +1,10 @@
-unit UniFlow.MCP.Server;
+unit DeepFlow.MCP.Server;
 (*
-  UniFlow MCP Server
+  DeepFlow MCP Server
   ==================
   TASK-2020: MCP 协议完整支持
   
-  实现 MCP Server 端，�?UniFlow 能力暴露给外�?LLM/Agent
+  实现 MCP Server 端，�?DeepFlow 能力暴露给外�?LLM/Agent
   
   功能:
   - JSON-RPC 2.0 消息处理
@@ -18,7 +18,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   System.SyncObjs, System.DateUtils,
-  UniFlow.MCP.Types;
+  DeepFlow.MCP.Types;
 
 type
   // ============================================================================
@@ -203,9 +203,9 @@ implementation
 
 class function TMCPServerConfig.Default: TMCPServerConfig;
 begin
-  Result.ServerName := 'UniFlow MCP Server';
+  Result.ServerName := 'DeepFlow MCP Server';
   Result.ServerVersion := '1.0.0';
-  Result.Instructions := 'UniFlow Workflow Engine MCP Server';
+  Result.Instructions := 'DeepFlow Workflow Engine MCP Server';
   Result.MaxRequestSize := 10 * 1024 * 1024; // 10MB
   Result.RequestTimeoutMs := 30000;
   Result.EnableLogging := True;

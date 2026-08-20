@@ -1,16 +1,16 @@
-﻿unit UniFlow.AI.Recommendation;
+﻿unit DeepFlow.AI.Recommendation;
 
 {*******************************************************************************
-  UniFlow 智能工作流推荐系�?
+  DeepFlow 智能工作流推荐系统
   
   功能:
-  - 基于历史执行数据推荐工作流模�?
+  - 基于历史执行数据推荐工作流模板
   - 基于用户行为分析推荐优化建议
-  - 相似工作流匹�?
+  - 相似工作流匹配
   - 性能优化建议
-  - 错误模式分析与预防建�?
+  - 错误模式分析与预防建议
   
-  作�? UniFlow Team
+  作者: DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -18,22 +18,23 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.Generics.Collections,
-  System.JSON, System.Math, System.DateUtils, System.SyncObjs;
+  System.Generics.Defaults, System.JSON, System.Math, System.DateUtils,
+  System.SyncObjs;
 
 type
   {$REGION '推荐类型定义'}
   
   /// <summary>推荐类型</summary>
   TRecommendationType = (
-    rtWorkflowTemplate,      // 工作流模板推�?
+    rtWorkflowTemplate,      // 工作流模板推荐
     rtSkillSuggestion,       // Skill 建议
     rtOptimization,          // 优化建议
     rtErrorPrevention,       // 错误预防
     rtPerformance,           // 性能优化
-    rtSimilarWorkflow        // 相似工作�?
+    rtSimilarWorkflow        // 相似工作流
   );
   
-  /// <summary>推荐置信�?/summary>
+  /// <summary>推荐置信度</summary>
   TConfidenceLevel = (
     clLow,      // < 50%
     clMedium,   // 50-75%
@@ -41,7 +42,7 @@ type
     clVeryHigh  // > 90%
   );
   
-  /// <summary>推荐�?/summary>
+  /// <summary>推荐器</summary>
   TRecommendation = class
   private
     FId: string;
@@ -83,7 +84,7 @@ type
     Metadata: string;
   end;
   
-  /// <summary>工作流执行统�?/summary>
+  /// <summary>工作流执行统计</summary>
   TWorkflowStats = record
     WorkflowId: string;
     WorkflowName: string;
@@ -123,7 +124,7 @@ type
   
   {$REGION '特征提取'}
   
-  /// <summary>工作流特征向�?/summary>
+  /// <summary>工作流特征向量</summary>
   TWorkflowFeatures = record
     WorkflowId: string;
     SkillCount: Integer;
@@ -139,7 +140,7 @@ type
     function CosineSimilarity(const AOther: TWorkflowFeatures): Double;
   end;
   
-  /// <summary>特征提取�?/summary>
+  /// <summary>特征提取器</summary>
   TFeatureExtractor = class
   private
     FCategoryIndex: TDictionary<string, Integer>;
@@ -160,7 +161,7 @@ type
   
   {$REGION '推荐引擎'}
   
-  /// <summary>协同过滤推荐�?/summary>
+  /// <summary>协同过滤推荐器</summary>
   TCollaborativeFilter = class
   private
     FUserItemMatrix: TDictionary<string, TDictionary<string, Double>>;
@@ -178,7 +179,7 @@ type
     function GetSimilarItems(const AItemId: string; ATopN: Integer): TArray<TPair<string, Double>>;
   end;
   
-  /// <summary>内容推荐�?/summary>
+  /// <summary>内容推荐器</summary>
   TContentBasedRecommender = class
   private
     FFeatureExtractor: TFeatureExtractor;
@@ -194,7 +195,7 @@ type
     function FindByFeatures(const AFeatures: TWorkflowFeatures; ATopN: Integer): TArray<TPair<string, Double>>;
   end;
   
-  /// <summary>混合推荐�?/summary>
+  /// <summary>混合推荐器</summary>
   THybridRecommender = class
   private
     FCollaborative: TCollaborativeFilter;
@@ -211,13 +212,13 @@ type
   
   {$ENDREGION}
   
-  {$REGION '优化建议生成�?}
+  {$REGION '优化建议生成器'}
   
   /// <summary>优化类型</summary>
   TOptimizationType = (
-    otParallelize,        // 并行�?
+    otParallelize,        // 并行化
     otCaching,            // 添加缓存
-    otBatching,           // 批处�?
+    otBatching,           // 批处理
     otErrorHandling,      // 错误处理
     otTimeout,            // 超时设置
     otRetry,              // 重试策略
@@ -235,7 +236,7 @@ type
     AutoApplicable: Boolean;
   end;
   
-  /// <summary>优化分析�?/summary>
+  /// <summary>优化分析器</summary>
   TOptimizationAnalyzer = class
   private
     function AnalyzeParallelization(AWorkflow: TJSONObject): TArray<TOptimizationSuggestion>;
@@ -263,7 +264,7 @@ type
     PreventionTips: TArray<string>;
   end;
   
-  /// <summary>错误模式分析�?/summary>
+  /// <summary>错误模式分析器</summary>
   TErrorPatternAnalyzer = class
   private
     FPatterns: TDictionary<string, TErrorPattern>;
@@ -288,7 +289,7 @@ type
   
   {$REGION '推荐服务'}
   
-  /// <summary>推荐上下�?/summary>
+  /// <summary>推荐上下文</summary>
   TRecommendationContext = record
     UserId: string;
     CurrentWorkflowId: string;
@@ -351,9 +352,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '模板推荐�?}
+  {$REGION '模板推荐器'}
   
-  /// <summary>工作流模�?/summary>
+  /// <summary>工作流模板</summary>
   TWorkflowTemplate = record
     TemplateId: string;
     Name: string;
@@ -366,7 +367,7 @@ type
     Definition: TJSONObject;
   end;
   
-  /// <summary>模板推荐�?/summary>
+  /// <summary>模板推荐器</summary>
   TTemplateRecommender = class
   private
     FTemplates: TDictionary<string, TWorkflowTemplate>;
@@ -568,11 +569,11 @@ function TWorkflowFeatures.ToVector: TArray<Double>;
 var
   BaseLen, TotalLen, I: Integer;
 begin
-  BaseLen := 6; // 基础特征�?
+  BaseLen := 6; // 基础特征数
   TotalLen := BaseLen + Length(CategoryVector) + Length(SkillTypeVector);
   SetLength(Result, TotalLen);
   
-  Result[0] := SkillCount / 20.0; // 归一�?
+  Result[0] := SkillCount / 20.0; // 归一化
   Result[1] := IfThen(HasConditional, 1.0, 0.0);
   Result[2] := IfThen(HasLoop, 1.0, 0.0);
   Result[3] := IfThen(HasParallel, 1.0, 0.0);
@@ -683,7 +684,7 @@ begin
   Result.HasErrorHandler := False;
   Result.AvgSkillComplexity := 0;
   
-  // 初始化向�?
+  // 初始化向量
   SetLength(Result.CategoryVector, FCategoryIndex.Count);
   SetLength(Result.SkillTypeVector, FSkillTypeIndex.Count);
   
@@ -703,7 +704,7 @@ begin
       Step := Steps.Items[I] as TJSONObject;
       StepType := Step.GetValue<string>('type', '');
       
-      // 检测特殊步骤类�?
+      // 检测特殊步骤类型
       if StepType = 'condition' then Result.HasConditional := True
       else if StepType = 'loop' then Result.HasLoop := True
       else if StepType = 'parallel' then Result.HasParallel := True
@@ -714,14 +715,14 @@ begin
       if FSkillTypeIndex.TryGetValue(SkillType, Idx) then
         Result.SkillTypeVector[Idx] := Result.SkillTypeVector[Idx] + 1;
       
-      // 复杂度估�?
+      // 复杂度估算
       TotalComplexity := TotalComplexity + Step.GetValue<Double>('complexity', 1.0);
     end;
     
     if Result.SkillCount > 0 then
       Result.AvgSkillComplexity := TotalComplexity / Result.SkillCount;
       
-    // 归一�?Skill 类型向量
+    // 归一化 Skill 类型向量
     for I := 0 to High(Result.SkillTypeVector) do
       if Result.SkillCount > 0 then
         Result.SkillTypeVector[I] := Result.SkillTypeVector[I] / Result.SkillCount;
@@ -730,7 +731,7 @@ end;
 
 function TFeatureExtractor.ExtractSkillFeatures(ASkill: TJSONObject): TArray<Double>;
 begin
-  // 简化实�?
+  // 简化实现
   SetLength(Result, 10);
   Result[0] := ASkill.GetValue<Double>('complexity', 1.0) / 10.0;
   Result[1] := ASkill.GetValue<Integer>('inputCount', 0) / 10.0;
@@ -821,7 +822,7 @@ var
 begin
   FLock.Enter;
   try
-    // 收集所有物�?
+    // 收集所有物品
     Items := TList<string>.Create;
     try
       for UserItems in FUserItemMatrix.Values do
@@ -829,12 +830,12 @@ begin
           if Items.IndexOf(ItemId) < 0 then
             Items.Add(ItemId);
       
-      // 清空旧的相似度矩�?
+      // 清空旧的相似度矩阵
       for SimilarItems in FItemSimilarity.Values do
         SimilarItems.Free;
       FItemSimilarity.Clear;
       
-      // 计算相似�?
+      // 计算相似度
       for I := 0 to Items.Count - 1 do
       begin
         SimilarItems := TDictionary<string, Double>.Create;
@@ -1127,6 +1128,7 @@ var
   Score: Double;
   SortedResults: TList<TPair<string, Double>>;
   Rec: TRecommendation;
+  Key, WorkflowId: string;
   I: Integer;
 begin
   SetLength(Result, 0);
@@ -1134,9 +1136,9 @@ begin
   // 获取协同过滤结果
   CollabResults := FCollaborative.Recommend(AUserId, ATopN * 2);
   
-  // 获取基于内容的结�?
-  if Assigned(AContext) and AContext.TryGetValue<string>('currentWorkflowId', Score) then
-    ContentResults := FContentBased.FindSimilar(AContext.GetValue<string>('currentWorkflowId'), ATopN * 2)
+  // 获取基于内容的结果
+  if Assigned(AContext) and AContext.TryGetValue<string>('currentWorkflowId', WorkflowId) then
+    ContentResults := FContentBased.FindSimilar(WorkflowId, ATopN * 2)
   else
     SetLength(ContentResults, 0);
   
@@ -1159,11 +1161,11 @@ begin
         CombinedScores.Add(Pair.Key, Pair.Value * FContentWeight);
     end;
     
-    // 排序并生成推�?
+    // 排序并生成推荐
     SortedResults := TList<TPair<string, Double>>.Create;
     try
-      for Pair.Key in CombinedScores.Keys do
-        SortedResults.Add(TPair<string, Double>.Create(Pair.Key, CombinedScores[Pair.Key]));
+      for Key in CombinedScores.Keys do
+        SortedResults.Add(TPair<string, Double>.Create(Key, CombinedScores[Key]));
       
       SortedResults.Sort(TComparer<TPair<string, Double>>.Construct(
         function(const L, R: TPair<string, Double>): Integer
@@ -1223,7 +1225,7 @@ begin
   IndependentSteps := TStringList.Create;
   ResultList := TList<TOptimizationSuggestion>.Create;
   try
-    // 构建依赖�?
+    // 构建依赖图
     for I := 0 to Steps.Count - 1 do
     begin
       Step := Steps.Items[I] as TJSONObject;
@@ -1237,19 +1239,19 @@ begin
       end;
     end;
     
-    // 找出可并行的步骤�?
+    // 找出可并行的步骤
     for StepId in Dependencies.Keys do
     begin
       if Dependencies[StepId].Count = 0 then
         IndependentSteps.Add(StepId);
     end;
     
-    // 如果有多个独立步骤，建议并行�?
+    // 如果有多个独立步骤，建议并行化
     if IndependentSteps.Count > 1 then
     begin
       Suggestion.OptType := otParallelize;
       Suggestion.TargetStepId := '';
-      Suggestion.Description := Format('可并行执�?%d 个独立步骤以提升性能', [IndependentSteps.Count]);
+      Suggestion.Description := Format('可并行执行%d 个独立步骤以提升性能', [IndependentSteps.Count]);
       Suggestion.ExpectedImprovement := (IndependentSteps.Count - 1) * 0.3;
       Suggestion.Priority := 1;
       Suggestion.AutoApplicable := True;
@@ -1299,12 +1301,12 @@ begin
       end;
     end;
     
-    // 如果执行频繁且有可缓存步�?
+    // 如果执行频繁且有可缓存步骤
     if (AStats.TotalExecutions > 100) and (CacheableSkills.Count > 0) then
     begin
       Suggestion.OptType := otCaching;
       Suggestion.TargetStepId := CacheableSkills[0];
-      Suggestion.Description := Format('�?%d 个步骤添加缓存可减少重复计算', [CacheableSkills.Count]);
+      Suggestion.Description := Format('为%d 个步骤添加缓存可减少重复计算', [CacheableSkills.Count]);
       Suggestion.ExpectedImprovement := 0.4;
       Suggestion.Priority := 2;
       Suggestion.AutoApplicable := True;
@@ -1346,7 +1348,7 @@ begin
     begin
       Suggestion.OptType := otErrorHandling;
       Suggestion.TargetStepId := '';
-      Suggestion.Description := Format('%d 个步骤缺少错误处理器，建议添加以提高稳定�?, [StepsWithoutHandler.Count]);
+      Suggestion.Description := Format('%d 个步骤缺少错误处理器，建议添加以提高稳定性', [StepsWithoutHandler.Count]);
       Suggestion.ExpectedImprovement := 0.2;
       Suggestion.Priority := 3;
       Suggestion.AutoApplicable := False;
@@ -1372,7 +1374,7 @@ begin
     begin
       Suggestion.OptType := otTimeout;
       Suggestion.TargetStepId := '';
-      Suggestion.Description := Format('P95 延迟 (%.0fms) 远高于平均�?(%.0fms)，建议添加超时控�?,
+      Suggestion.Description := Format('P95 延迟 (%.0fms) 远高于平均值(%.0fms)，建议添加超时控制',
         [AStats.P95DurationMS, AStats.AvgDurationMS]);
       Suggestion.ExpectedImprovement := 0.3;
       Suggestion.Priority := 2;
@@ -1386,7 +1388,7 @@ begin
     begin
       Suggestion.OptType := otRetry;
       Suggestion.TargetStepId := '';
-      Suggestion.Description := Format('失败�?%.1f%% 较高，建议添加重试策�?,
+      Suggestion.Description := Format('失败率%.1f%% 较高，建议添加重试策略',
         [AStats.FailureCount / AStats.TotalExecutions * 100]);
       Suggestion.ExpectedImprovement := 0.5;
       Suggestion.Priority := 1;
@@ -1632,10 +1634,10 @@ begin
     
     // 生成建议修复方案
     SetLength(Result.SuggestedFixes, 1);
-    Result.SuggestedFixes[0] := '检�?' + Result.ErrorType + ' 相关配置';
+    Result.SuggestedFixes[0] := '检查' + Result.ErrorType + ' 相关配置';
     
     SetLength(Result.PreventionTips, 1);
-    Result.PreventionTips[0] := '添加输入验证和错误处�?;
+    Result.PreventionTips[0] := '添加输入验证和错误处理';
   finally
     Causes.Free;
     StepIds.Free;
@@ -1655,7 +1657,7 @@ begin
     
     for Cluster in Clusters do
     begin
-      if Length(Cluster) >= 3 then // 至少3次才算模�?
+      if Length(Cluster) >= 3 then // 至少3次才算模式
       begin
         Pattern := ExtractPattern(Cluster);
         FPatterns.Add(Pattern.PatternId, Pattern);
@@ -1725,7 +1727,7 @@ begin
     begin
       Rec := TRecommendation.Create;
       Rec.RecommendationType := rtErrorPrevention;
-      Rec.Title := Format('错误预防: %s (出现 %d �?', [Pattern.ErrorType, Pattern.Frequency]);
+      Rec.Title := Format('错误预防: %s (出现 %d 次)', [Pattern.ErrorType, Pattern.Frequency]);
       Rec.Description := '常见原因: ' + String.Join(', ', Pattern.CommonCauses);
       Rec.Score := Min(1.0, Pattern.Frequency / 10);
       Rec.Confidence := clMedium;
@@ -1875,7 +1877,7 @@ end;
 function TRecommendationService.GetSimilarWorkflows(
   const AWorkflowId: string; AMaxResults: Integer): TArray<TRecommendation>;
 begin
-  // 通过内容推荐器获�?
+  // 通过内容推荐器获取
   SetLength(Result, 0);
 end;
 
@@ -1898,7 +1900,7 @@ begin
     Recs := GetErrorPreventionRecommendations(AContext.CurrentWorkflowId, 2);
     for Rec in Recs do AllRecs.Add(Rec);
     
-    // 按分数排�?
+    // 按分数排序
     AllRecs.Sort(TComparer<TRecommendation>.Construct(
       function(const L, R: TRecommendation): Integer
       begin
@@ -1945,7 +1947,7 @@ begin
     else
       Stats.FailureCount := Stats.FailureCount + 1;
     
-    // 更新平均�?
+    // 更新平均值
     Stats.AvgDurationMS := (Stats.AvgDurationMS * (Stats.TotalExecutions - 1) + ADurationMS) / Stats.TotalExecutions;
     Stats.LastExecuted := Now;
     

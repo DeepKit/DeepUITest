@@ -1,18 +1,18 @@
-﻿# Skill 开发指�?
+﻿# Skill 开发指南
 
-创建自定�?Skill 来扩�?UniFlow 功能�?
+创建自定义 Skill 来扩展 DeepFlow 功能
 
 ## 概述
 
-Skill 是提供专门功能的外部服务�?
-- **Python Skill** - 数据处理、ML 推理、文件操�?
-- **Node.js Skill** - 网页抓取、API 集成、文本处�?
+Skill 是提供专门功能的外部服务
+- **Python Skill** - 数据处理、ML 推理、文件操作
+- **Node.js Skill** - 网页抓取、API 集成、文本处理
 
-Skill 通过 HTTP REST API 通信，可以独立部署�?
+Skill 通过 HTTP REST API 通信，可以独立部署
 
 ---
 
-## Python Skill 开�?
+## Python Skill 开发
 
 ### 项目结构
 
@@ -35,7 +35,7 @@ from pydantic import BaseModel
 from typing import Any, Dict, Optional
 import traceback
 
-app = FastAPI(title="我的自定�?Skill")
+app = FastAPI(title="我的自定义 Skill")
 
 class SkillRequest(BaseModel):
     input: Dict[str, Any]
@@ -59,8 +59,8 @@ async def execute(request: SkillRequest):
         return SkillResponse(success=False, error=str(e))
 
 def process(input_data: Dict[str, Any]) -> Any:
-    """在这里实现你�?Skill 逻辑"""
-    # 示例：文本处�?
+    """在这里实现你的 Skill 逻辑"""
+    # 示例：文本处理
     text = input_data.get("text", "")
     return {"word_count": len(text.split())}
 ```
@@ -68,7 +68,7 @@ def process(input_data: Dict[str, Any]) -> Any:
 ### 高级 Python Skill
 
 ```python
-# skill.py - 带验证的结构�?Skill
+# skill.py - 带验证的结构化 Skill
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import asyncio
@@ -88,7 +88,7 @@ class TextAnalysisSkill:
         self.nlp = None  # 延迟加载
     
     async def initialize(self):
-        """启动时加载模�?""
+        """启动时加载模型"""
         import spacy
         self.nlp = spacy.load("zh_core_web_sm")
     
@@ -103,7 +103,7 @@ class TextAnalysisSkill:
             ]
         
         if "sentiment" in input.features:
-            # 占位�?- 使用实际的情感模�?
+            # 占位符 - 使用实际的情感模型
             result.sentiment = {"score": 0.5, "label": "neutral"}
         
         return result
@@ -141,15 +141,15 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ---
 
-## Node.js Skill 开�?
+## Node.js Skill 开发
 
 ### 项目结构
 
 ```
 my_skill/
 ├── src/
-�?  ├── index.js      # Express 应用
-�?  └── skill.js      # Skill 实现
+│  ├── index.js      # Express 应用
+│  └── skill.js      # Skill 实现
 ├── package.json
 ├── Dockerfile
 └── tests/
@@ -166,7 +166,7 @@ const { processSkill } = require('./skill');
 const app = express();
 app.use(express.json());
 
-// 健康检�?
+// 健康检查
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', skill: 'my_node_skill' });
 });
@@ -184,14 +184,14 @@ app.post('/execute', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Skill 运行在端�?${PORT}`);
+  console.log(`Skill 运行在端口${PORT}`);
 });
 ```
 
 ```javascript
 // src/skill.js
 async function processSkill(input, context = {}) {
-  // 示例：网页抓�?Skill
+  // 示例：网页抓取Skill
   const { url, selector } = input;
   
   const axios = require('axios');
@@ -215,7 +215,7 @@ module.exports = { processSkill };
 ### 高级 Node.js Skill
 
 ```javascript
-// src/skill.js - 带验证的结构�?Skill
+// src/skill.js - 带验证的结构化Skill
 const Joi = require('joi');
 
 const inputSchema = Joi.object({
@@ -240,13 +240,13 @@ class WebScraperSkill {
     
     const { url, selectors, options } = value;
     
-    // 检查缓�?
+    // 检查缓存
     const cacheKey = `${url}:${JSON.stringify(selectors)}`;
     if (this.cache.has(cacheKey)) {
       return { ...this.cache.get(cacheKey), cached: true };
     }
     
-    // 获取并解�?
+    // 获取并解析
     const puppeteer = require('puppeteer');
     const browser = await puppeteer.launch({ headless: 'new' });
     
@@ -303,18 +303,18 @@ CMD ["node", "src/index.js"]
 
 ## Skill API 契约
 
-所�?Skill 必须实现以下 HTTP API�?
+所有 Skill 必须实现以下 HTTP API：
 
-### 健康检�?
+### 健康检查
 
 ```
 GET /health
 
-响应�?
+响应：
 {
   "status": "healthy",
   "skill": "skill_name",
-  "version": "1.0.0"  // 可�?
+  "version": "1.0.0"  // 可选
 }
 ```
 
@@ -324,7 +324,7 @@ GET /health
 POST /execute
 Content-Type: application/json
 
-请求�?
+请求：
 {
   "input": { ... },      // Skill 特定输入
   "context": {           // 可选的工作流上下文
@@ -334,13 +334,13 @@ Content-Type: application/json
   }
 }
 
-响应（成功）�?
+响应（成功）：
 {
   "success": true,
   "result": { ... }
 }
 
-响应（错误）�?
+响应（错误）：
 {
   "success": false,
   "error": "错误消息"
@@ -353,7 +353,7 @@ Content-Type: application/json
 
 ### 配置
 
-�?`uniflow.config.json` 中添�?Skill�?
+在`deepflow.config.json` 中添加 Skill 配置
 
 ```json
 {
@@ -370,7 +370,7 @@ Content-Type: application/json
 }
 ```
 
-### 在工作流中使�?
+### 在工作流中使用
 
 ```json
 {
@@ -391,11 +391,11 @@ Content-Type: application/json
 
 ---
 
-## 最佳实�?
+## 最佳实践
 
 ### 1. 输入验证
 
-尽早验证输入�?
+尽早验证输入。
 
 ```python
 from pydantic import BaseModel, validator
@@ -407,7 +407,7 @@ class MyInput(BaseModel):
     @validator('limit')
     def limit_range(cls, v):
         if not 1 <= v <= 100:
-            raise ValueError('limit 必须�?1-100 之间')
+            raise ValueError('limit 必须在1-100 之间')
         return v
 ```
 
@@ -467,7 +467,7 @@ logger = logging.getLogger(__name__)
 
 @app.post("/execute")
 async def execute(request: SkillRequest):
-    logger.info("Skill 执行开�?, extra={
+    logger.info("Skill 执行开始，extra={
         "context": request.context,
         "input_keys": list(request.input.keys())
     })
@@ -483,7 +483,7 @@ async def execute(request: SkillRequest):
 
 ### 5. 资源管理
 
-正确清理资源�?
+正确清理资源。
 
 ```python
 class ResourceManagedSkill:
@@ -491,7 +491,7 @@ class ResourceManagedSkill:
         self.connections = []
     
     async def startup(self):
-        # 初始化连�?
+        # 初始化连接。
         pass
     
     async def shutdown(self):
@@ -655,7 +655,7 @@ spec:
 
 ### 代码执行 Skill
 
-在沙箱环境中执行代码�?
+在沙箱环境中执行代码。
 
 ```python
 # skill.py

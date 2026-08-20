@@ -13,6 +13,7 @@ from .models import (
     AuthLoginRequest,
     AuthLogoutRequest,
     AuthRefreshRequest,
+    BindPhoneRequest,
     ConsumeEntitlementRequest,
     CreateOrderRequest,
     CreatePaymentIntentRequest,
@@ -94,6 +95,41 @@ def wechat_code2session(code: str) -> dict[str, Any]:
     return data
 
 
+def wechat_get_phone_number(code: str) -> str:
+    """用小程序 getPhoneNumber code 换取手机号"""
+    # 先获取 access_token
+    token_response = httpx.get(
+        "https://api.weixin.qq.com/cgi-bin/token",
+        params={
+            "grant_type": "client_credential",
+            "appid": settings.wechat_app_id,
+            "secret": settings.wechat_app_secret,
+        },
+        timeout=15,
+    )
+    token_data = token_response.json()
+    if token_response.status_code >= 400 or not token_data.get("access_token"):
+        raise HTTPException(status_code=503, detail={"wechat_token_error": token_data})
+
+    access_token = token_data["access_token"]
+
+    # 用 code 换取手机号
+    phone_response = httpx.post(
+        f"https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token={access_token}",
+        json={"code": code},
+        timeout=15,
+    )
+    phone_data = phone_response.json()
+    if phone_response.status_code >= 400 or phone_data.get("errcode"):
+        raise HTTPException(status_code=400, detail={"wechat_phone_error": phone_data})
+
+    phone_info = phone_data.get("phone_info", {})
+    phone_number = phone_info.get("purePhoneNumber") or phone_info.get("phoneNumber", "")
+    if not phone_number:
+        raise HTTPException(status_code=400, detail="Failed to get phone number from WeChat")
+    return phone_number
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "service": "deepkit-db4", "env": settings.env}
@@ -135,6 +171,20 @@ def auth_refresh(req: AuthRefreshRequest) -> dict[str, Any]:
 def auth_logout(req: AuthLogoutRequest, _: Annotated[dict[str, Any], Depends(require_auth)]) -> dict[str, Any]:
     store.revoke_refresh_token(req.refresh_token)
     return {"success": True}
+
+
+@app.post("/dk/auth/bind-phone")
+def bind_phone(
+    req: BindPhoneRequest,
+    token: Annotated[dict[str, Any], Depends(require_auth)],
+) -> dict[str, Any]:
+    """绑定手机号到当前用户"""
+    phone_number = wechat_get_phone_number(req.code)
+    try:
+        user = store.update_user_phone(token["sub"], phone_number)
+    except Exception as exc:
+        raise map_store_error(exc)
+    return {"success": True, "phone": phone_number, "user": user}
 
 
 @app.get("/dk/auth/me")

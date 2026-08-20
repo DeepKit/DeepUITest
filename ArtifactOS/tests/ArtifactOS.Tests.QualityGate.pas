@@ -14,16 +14,12 @@ type
   public
     [Test]
     procedure ESGate_RejectsShortBody;
-
     [Test]
     procedure ESGate_PassesValidContent;
-
     [Test]
     procedure StructureGate_RequiresActiveCaseChain;
-
     [Test]
     procedure QualitySnapshot_SealPreventsModification;
-
     [Test]
     procedure PackageBuilder_RejectsUnqualifiedSnapshot;
   end;
@@ -31,25 +27,41 @@ type
 implementation
 
 uses
-  System.SysUtils, System.DateUtils;
+  System.SysUtils,
+  ArtifactOS.Core.EndToEnd;
+
+// BuildArtifact creates a valid artifact with FK chain via E2E, returns (ArtifactId, SnapId, VerId).
+procedure EnsureArtifactWithChain(out ArtId, SnapId, VerId: string);
+var
+  CaseId, StudioId, PkgId, ChainSuffix: string;
+begin
+  // Use a unique chain suffix to avoid studio_code unique constraint violations
+  ChainSuffix := IntToStr(Random(MaxInt));
+  // Override the chain suffix in E2E — E2E uses Random internally so we're fine
+  TArtifactOSEndToEnd.RunCreateChain(CaseId, StudioId, ArtId, SnapId, PkgId);
+  ArtifactOS_DB.Connect;
+  try
+    VerId := ArtifactOS_DB.ExecuteScalar(
+      'SELECT id::text FROM artifactos.artifact_version WHERE artifact_id=''' + ArtId + ''' AND version_no=1');
+  finally
+    ArtifactOS_DB.Disconnect;
+  end;
+end;
 
 procedure TQualityGateTests.ESGate_RejectsShortBody;
+var ArtId: string;
 begin
   ArtifactOS_DB.Connect;
   try
     ArtifactOS_DB.Connection.StartTransaction;
     try
-      // Create minimal artifact with short body
-      var Q := ArtifactOS_DB.Query(
+      ArtId := ArtifactOS_DB.InsertAndReturnId(
         'INSERT INTO artifactos.artifact (sub_studio_id, artifact_plan_id, blueprint_id, title, status) ' +
         'VALUES (NULL, NULL, NULL, ''Short Test'', ''drafting'') RETURNING id');
-      var ArtId := Q.Fields[0].AsString;
-      Q.Free;
 
-      var Result := TQualityGateService.RunESGate(ArtId, '{}');
-
-      Assert.IsFalse(Result.Passed, 'Short body should fail ES gate');
-      Assert.AreEqual('FAIL', Result.GateStatus);
+      var R := TQualityGateService.RunESGate(ArtId, '{}');
+      Assert.IsFalse(R.Passed, 'Short body should fail ES gate');
+      Assert.AreEqual('FAIL', R.GateStatus);
 
       ArtifactOS_DB.Execute('DELETE FROM artifactos.artifact WHERE id=''' + ArtId + '''');
       ArtifactOS_DB.Connection.Commit;
@@ -63,42 +75,31 @@ begin
 end;
 
 procedure TQualityGateTests.ESGate_PassesValidContent;
+var
+  ArtId: string;
 begin
+  // Create artifact+version outside any transaction so RunESGate sees them
+  ArtifactOS_DB.Connect;
+  ArtId := ArtifactOS_DB.InsertAndReturnId(
+    'INSERT INTO artifactos.artifact (sub_studio_id, artifact_plan_id, blueprint_id, title, status) ' +
+    'VALUES (NULL, NULL, NULL, ''Valid Title'', ''drafting'') RETURNING id');
+
+  ArtifactOS_DB.Execute(
+    'INSERT INTO artifactos.artifact_version (artifact_id, version_no, assembled_payload, seal_status) ' +
+    'VALUES (''' + ArtId + ''', 1, ''{"title":"Valid Title","body":"' +
+    'Paragraph one with substantial content.\n' +
+    'Paragraph two with more content here.\n' +
+    'Paragraph three ensuring we pass ES-02.\n' +
+    'Paragraph four for extra word count padding."}'', ''sealed'')');
+
+  var R := TQualityGateService.RunESGate(ArtId, '{}');
+  Assert.IsTrue(R.Passed, 'Valid content should pass ES gate');
+
+  // Clean up — must reconnect because RunESGate called Disconnect
   ArtifactOS_DB.Connect;
   try
-    ArtifactOS_DB.Connection.StartTransaction;
-    try
-      // Create full-chain artifact with valid content
-      var Q := ArtifactOS_DB.Query(
-        'INSERT INTO artifactos.artifact (sub_studio_id, artifact_plan_id, blueprint_id, title, status) ' +
-        'VALUES (NULL, NULL, NULL, ''Valid Title'', ''drafting'') RETURNING id');
-      var ArtId := Q.Fields[0].AsString;
-      Q.Free;
-
-      // Create a sealed version with long body
-      ArtifactOS_DB.Execute(
-        'INSERT INTO artifactos.artifact_version (artifact_id, version_no, assembled_payload, seal_status) ' +
-        'VALUES (''' + ArtId + ''', 1, ''{"title":"Valid Title","body":"' +
-        'This is a substantial body of text that should pass the ES gate. ' +
-        'It contains multiple sentences with adequate length to satisfy the ' +
-        'minimum requirements. The argument is developed across several ' +
-        'coherent paragraphs. This ensures the word count check passes. ' +
-        'Additional sentences here to make sure we have enough content. ' +
-        'And even more words to pad the length beyond 50 characters. ' +
-        'This should be more than sufficient for the gate to pass. ' +
-        'In fact, this paragraph alone is well over fifty characters. ' +
-        'The ES gate checks for minimum thresholds and this content exceeds them."}'', ''sealed'')');
-
-      var Result := TQualityGateService.RunESGate(ArtId, '{}');
-      Assert.IsTrue(Result.Passed, 'Valid content should pass ES gate: ' + string.Join(', ', Result.Issues));
-
-      ArtifactOS_DB.Execute('DELETE FROM artifactos.artifact_version WHERE artifact_id=''' + ArtId + '''');
-      ArtifactOS_DB.Execute('DELETE FROM artifactos.artifact WHERE id=''' + ArtId + '''');
-      ArtifactOS_DB.Connection.Commit;
-    except
-      ArtifactOS_DB.Connection.Rollback;
-      raise;
-    end;
+    ArtifactOS_DB.Execute('DELETE FROM artifactos.artifact_version WHERE artifact_id=''' + ArtId + '''');
+    ArtifactOS_DB.Execute('DELETE FROM artifactos.artifact WHERE id=''' + ArtId + '''');
   finally
     ArtifactOS_DB.Disconnect;
   end;
@@ -110,16 +111,13 @@ begin
   try
     ArtifactOS_DB.Connection.StartTransaction;
     try
-      // Create artifact without case chain
-      var Q := ArtifactOS_DB.Query(
+      var ArtId := ArtifactOS_DB.InsertAndReturnId(
         'INSERT INTO artifactos.artifact (sub_studio_id, artifact_plan_id, blueprint_id, title, status) ' +
         'VALUES (NULL, NULL, NULL, ''Orphan Artifact'', ''drafting'') RETURNING id');
-      var ArtId := Q.Fields[0].AsString;
-      Q.Free;
 
-      var Result := TQualityGateService.RunStructureGate(ArtId);
-      Assert.IsFalse(Result.Passed, 'Orphan artifact should fail structure gate');
-      Assert.AreEqual('FREEZE', Result.GateStatus, 'Should freeze orphan artifacts');
+      var R := TQualityGateService.RunStructureGate(ArtId);
+      Assert.IsFalse(R.Passed, 'Orphan artifact should fail structure gate');
+      Assert.AreEqual('FREEZE', R.GateStatus);
 
       ArtifactOS_DB.Execute('DELETE FROM artifactos.artifact WHERE id=''' + ArtId + '''');
       ArtifactOS_DB.Connection.Commit;
@@ -133,24 +131,25 @@ begin
 end;
 
 procedure TQualityGateTests.QualitySnapshot_SealPreventsModification;
+var ArtId, SnapId, VerId: string;
 begin
+  EnsureArtifactWithChain(ArtId, SnapId, VerId);
   ArtifactOS_DB.Connect;
   try
     ArtifactOS_DB.Connection.StartTransaction;
     try
-      var SnapId := TQualityGateService.CreateQualitySnapshot(
-        (ArtifactOS_DB.ExecuteScalar('SELECT id::text FROM artifactos.artifact LIMIT 1')), '', True);
       TQualityGateService.SealSnapshot(SnapId);
 
-      // Attempt to modify a sealed snapshot
-      Assert.WillRaise(
-        procedure
-        begin
-          ArtifactOS_DB.Execute('UPDATE artifactos.quality_snapshot SET qualified_status=''not_qualified'' WHERE id=''' + SnapId + '''');
-        end,
-        Exception, 'Sealed quality_snapshot must reject modification');
+      var Caught := False;
+      try
+        ArtifactOS_DB.Execute('UPDATE artifactos.quality_snapshot SET qualified_status=''not_qualified'' WHERE id=''' + SnapId + '''');
+        ArtifactOS_DB.Connection.Commit;
+      except
+        Caught := True;
+        ArtifactOS_DB.Connection.Rollback;
+      end;
+      Assert.IsTrue(Caught, 'Sealed snapshot must reject modification');
 
-      ArtifactOS_DB.Execute('DELETE FROM artifactos.quality_snapshot WHERE id=''' + SnapId + '''');
       ArtifactOS_DB.Connection.Commit;
     except
       ArtifactOS_DB.Connection.Rollback;
@@ -162,24 +161,27 @@ begin
 end;
 
 procedure TQualityGateTests.PackageBuilder_RejectsUnqualifiedSnapshot;
+var ArtId, SnapId, VerId: string;
 begin
+  EnsureArtifactWithChain(ArtId, SnapId, VerId);
   ArtifactOS_DB.Connect;
   try
     ArtifactOS_DB.Connection.StartTransaction;
     try
-      // Create a not_qualified snapshot
-      var SnapId := TQualityGateService.CreateQualitySnapshot(
-        (ArtifactOS_DB.ExecuteScalar('SELECT id::text FROM artifactos.artifact LIMIT 1')), '', False);
+      var UnqualId := ArtifactOS_DB.InsertAndReturnId(
+        'INSERT INTO artifactos.quality_snapshot (artifact_id, artifact_version_id, qualified_status, publish_readiness, purpose_fit_status, seal_candidate) ' +
+        'VALUES (''' + ArtId + ''', ''' + VerId + ''', ''not_qualified'', ''not_ready'', ''fail'', false) RETURNING id');
 
-      Assert.WillRaise(
-        procedure
-        begin
-          TPackageBuilder.BuildPackage(
-            ArtifactOS_DB.ExecuteScalar('SELECT id::text FROM artifactos.artifact LIMIT 1'), '', SnapId, 'zhihu', 'test');
-        end,
-        Exception, 'PackageBuilder must reject unqualified snapshots');
+      var Caught := False;
+      try
+        TPackageBuilder.BuildPackage(ArtId, VerId, UnqualId, 'zhihu', 'test');
+      except
+        Caught := True;
+        ArtifactOS_DB.Connection.Rollback;
+      end;
+      Assert.IsTrue(Caught, 'PackageBuilder must reject unqualified snapshots');
 
-      ArtifactOS_DB.Execute('DELETE FROM artifactos.quality_snapshot WHERE id=''' + SnapId + '''');
+      ArtifactOS_DB.Execute('DELETE FROM artifactos.quality_snapshot WHERE id=''' + UnqualId + '''');
       ArtifactOS_DB.Connection.Commit;
     except
       ArtifactOS_DB.Connection.Rollback;
@@ -191,5 +193,5 @@ begin
 end;
 
 initialization
-
+  TDUnitX.RegisterTestFixture(TQualityGateTests);
 end.

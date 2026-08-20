@@ -96,7 +96,10 @@ begin
         if not TFile.Exists(FPath) then Continue;
 
         var Ext := TPath.GetExtension(FPath).ToLower;
-        if not (Ext in ['.py', '.md', '.json', '.yaml', '.yml', '.txt', '.js', '.ts', '.html', '.css', '.csv', '.bat', '.ps1', '.sql']) then
+        var Exts := TArray<string>.Create('.py', '.md', '.json', '.yaml', '.yml', '.txt', '.js', '.ts', '.html', '.css', '.csv', '.bat', '.ps1', '.sql');
+        var Ok := False;
+        for var EE in Exts do if Ext = EE then begin Ok := True; Break; end;
+        if not Ok then
           Continue;
 
         try
@@ -111,7 +114,7 @@ begin
 
           DB.InsertAndReturnId('INSERT INTO legacy_bridge.legacy_external_ref (import_batch_id, ref_type, ref_label, source_path, source_hash, source_mtime, status) ' +
             'VALUES (''' + ABatchId + ''', ''' + ARefType + ''', ''' + SafeStr(TPath.GetFileName(FPath)) + ''', ''' + SafeStr(FPath) + ''', ''' + Hash + ''', ''' + FormatDateTime('yyyy-mm-dd hh:nn:ss', MTime) + ''', ''captured'') ' +
-            'ON CONFLICT DO NOTHING');
+            'ON CONFLICT DO NOTHING RETURNING id::text');
 
           Inc(Result.ImportedRefs);
         except

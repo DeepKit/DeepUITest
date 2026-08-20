@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Skill Executor                                                       
+  DeepFlow Skill Executor                                                       
   Workflow action executor for Skill invocations                               
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Skill.Executor;
+unit DeepFlow.Skill.Executor;
 
 interface
 
@@ -21,8 +21,8 @@ uses
   System.Rtti,
   System.Generics.Collections,
   System.JSON,
-  UniFlow.Skill.Types,
-  UniFlow.Skill.Client;
+  DeepFlow.Skill.Types,
+  DeepFlow.Skill.Client;
 
 type
   //----------------------------------------------------------------------------
@@ -133,7 +133,7 @@ type
     
     /// <summary>�?JSON 加载配置</summary>
     procedure LoadFromJSON(AJson: TJSONObject);
-    /// <summary>从环境变量加�?(前缀 UNIFLOW_SKILL_)</summary>
+    /// <summary>从环境变量加�?(前缀 DEEPFLOW_SKILL_)</summary>
     procedure LoadFromEnvironment;
     /// <summary>从配置文件加�?/summary>
     procedure LoadFromFile(const APath: string);
@@ -277,16 +277,16 @@ var
   EnvVal: string;
 begin
   // ARCH-003: 从环境变量加�?
-  EnvVal := GetEnvironmentVariable('UNIFLOW_SKILL_URL');
+  EnvVal := GetEnvironmentVariable('DEEPFLOW_SKILL_URL');
   if EnvVal <> '' then FBaseURL := EnvVal;
   
-  EnvVal := GetEnvironmentVariable('UNIFLOW_SKILL_TIMEOUT');
+  EnvVal := GetEnvironmentVariable('DEEPFLOW_SKILL_TIMEOUT');
   if EnvVal <> '' then FTimeoutMs := StrToIntDef(EnvVal, FTimeoutMs);
   
-  EnvVal := GetEnvironmentVariable('UNIFLOW_SKILL_RETRY_COUNT');
+  EnvVal := GetEnvironmentVariable('DEEPFLOW_SKILL_RETRY_COUNT');
   if EnvVal <> '' then FRetryCount := StrToIntDef(EnvVal, FRetryCount);
   
-  EnvVal := GetEnvironmentVariable('UNIFLOW_SKILL_RETRY_DELAY');
+  EnvVal := GetEnvironmentVariable('DEEPFLOW_SKILL_RETRY_DELAY');
   if EnvVal <> '' then FRetryDelayMs := StrToIntDef(EnvVal, FRetryDelayMs);
 end;
 

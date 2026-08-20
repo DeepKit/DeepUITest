@@ -1,10 +1,10 @@
-unit UniFlow.Queue.Types;
+unit DeepFlow.Queue.Types;
 
 {*******************************************************}
 {                                                       }
-{       UniFlow 消息队列类型定义                        }
+{       DeepFlow 消息队列类型定义                        }
 {                                                       }
-{       版权所�?(C) 2024 UniFlow                       }
+{       版权所�?(C) 2024 DeepFlow                       }
 {                                                       }
 {*******************************************************}
 
@@ -12,11 +12,11 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
-  System.DateUtils, System.SyncObjs;
+  System.DateUtils, System.SyncObjs, System.NetEncoding;
 
 type
   {==========================================================================}
-  {  消息优先�?                                                             }
+  {  消息优先�?                                                             }
   {==========================================================================}
   TMessagePriority = (
     mpLowest    = 0,
@@ -28,24 +28,24 @@ type
   );
 
   {==========================================================================}
-  {  消息状�?                                                               }
+  {  消息状�?                                                               }
   {==========================================================================}
   TMessageStatus = (
-    msPending,      // 待处�?
-    msProcessing,   // 处理�?
-    msCompleted,    // 已完�?
+    msPending,      // 待处�?
+    msProcessing,   // 处理�?
+    msCompleted,    // 已完�?
     msFailed,       // 失败
     msDeadLetter,   // 死信
-    msExpired,      // 已过�?
-    msRetrying      // 重试�?
+    msExpired,      // 已过�?
+    msRetrying      // 重试�?
   );
 
   {==========================================================================}
-  {  消息投递模�?                                                           }
+  {  消息投递模�?                                                           }
   {==========================================================================}
   TDeliveryMode = (
-    dmAtMostOnce,   // 最多一次（可能丢失�?
-    dmAtLeastOnce,  // 至少一次（可能重复�?
+    dmAtMostOnce,   // 最多一次（可能丢失�?
+    dmAtLeastOnce,  // 至少一次（可能重复�?
     dmExactlyOnce   // 恰好一次（事务性）
   );
 
@@ -56,11 +56,11 @@ type
     etDirect,       // 直连
     etFanout,       // 扇出
     etTopic,        // 主题
-    etHeaders       // 头匹�?
+    etHeaders       // 头匹�?
   );
 
   {==========================================================================}
-  {  消息�?                                                                 }
+  {  消息�?                                                                 }
   {==========================================================================}
   TMessageHeaders = class
   private
@@ -111,18 +111,18 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    // 消息体辅助方�?
+    // 消息体辅助方�?
     procedure SetBodyAsString(const AValue: string; AEncoding: TEncoding = nil);
     function GetBodyAsString(AEncoding: TEncoding = nil): string;
     procedure SetBodyAsJSON(AValue: TJSONValue);
     function GetBodyAsJSON: TJSONValue;
 
-    // 序列�?
+    // 序列�?
     function ToJSON: TJSONObject;
     procedure FromJSON(AJSON: TJSONObject);
     function Clone: TQueueMessage;
 
-    // 属�?
+    // 属�?
     property MessageId: string read FMessageId write FMessageId;
     property CorrelationId: string read FCorrelationId write FCorrelationId;
     property ReplyTo: string read FReplyTo write FReplyTo;
@@ -148,7 +148,7 @@ type
   TQueueConfig = class
   private
     FName: string;
-    FDurable: Boolean;            // 持久�?
+    FDurable: Boolean;            // 持久�?
     FExclusive: Boolean;          // 排他
     FAutoDelete: Boolean;         // 自动删除
     FMaxLength: Integer;          // 最大消息数
@@ -225,7 +225,7 @@ type
   end;
 
   {==========================================================================}
-  {  消费者配�?                                                             }
+  {  消费者配�?                                                             }
   {==========================================================================}
   TConsumerConfig = class
   private
@@ -283,8 +283,8 @@ type
   {==========================================================================}
   TPartitionStrategy = (
     psRoundRobin,     // 轮询
-    psKeyHash,        // 键哈�?
-    psSticky,         // 粘�?
+    psKeyHash,        // 键哈�?
+    psSticky,         // 粘�?
     psManual          // 手动
   );
 
@@ -313,7 +313,7 @@ type
   end;
 
   {==========================================================================}
-  {  Kafka 消费者配�?                                                       }
+  {  Kafka 消费者配�?                                                       }
   {==========================================================================}
   TKafkaConsumerConfig = class
   private
@@ -374,7 +374,7 @@ type
   TMessageProcessResult = (
     mprAck,           // 确认成功
     mprNack,          // 否定确认（重新入队）
-    mprReject,        // 拒绝（不重新入队�?
+    mprReject,        // 拒绝（不重新入队�?
     mprDefer          // 延迟处理
   );
 
@@ -397,7 +397,7 @@ type
     QueueName: string;
     MessageCount: Int64;
     ConsumerCount: Integer;
-    PublishRate: Double;          // 消息/�?
+    PublishRate: Double;          // 消息/�?
     DeliverRate: Double;
     AckRate: Double;
     UnackedCount: Int64;
@@ -408,7 +408,7 @@ type
   end;
 
   {==========================================================================}
-  {  连接状�?                                                               }
+  {  连接状�?                                                               }
   {==========================================================================}
   TConnectionState = (
     csDisconnected,
@@ -433,7 +433,7 @@ type
     const AErrorCode: Integer; const AErrorMessage: string);
 
   {==========================================================================}
-  {  工作流触发消�?                                                         }
+  {  工作流触发消�?                                                         }
   {==========================================================================}
   TWorkflowTriggerMessage = class(TQueueMessage)
   private
@@ -824,8 +824,8 @@ begin
   FName := AName;
   FPartitions := 1;
   FReplicationFactor := 1;
-  FRetentionMs := 604800000;       // 7 �?
-  FRetentionBytes := -1;          // 无限�?
+  FRetentionMs := 604800000;       // 7 �?
+  FRetentionBytes := -1;          // 无限�?
   FCleanupPolicy := 'delete';
   FCompressionType := 'producer';
 end;
@@ -911,7 +911,7 @@ begin
   FContext := TDictionary<string, Variant>.Create;
   FTriggerType := 'manual';
   ContentType := 'application/json';
-  Headers['X-UniFlow-Type'] := 'WorkflowTrigger';
+  Headers['X-DeepFlow-Type'] := 'WorkflowTrigger';
 end;
 
 destructor TWorkflowTriggerMessage.Destroy;

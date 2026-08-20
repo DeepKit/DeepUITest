@@ -1,0 +1,11 @@
+﻿python : Usage: python -m uvicorn [OPTIONS] APP
+所在位置 行:1 字符: 126
++ ... low\Skills; python -X utf8 -m uvicorn src.main:app --host 127.0.0.1 - ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Usage: python -m uvicorn [OPTIONS 
+   ] APP:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Try 'python -m uvicorn --help' for help.
+
+Error: No such option '-v'.

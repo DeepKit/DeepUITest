@@ -1,6 +1,6 @@
-﻿# Skills Development Guide
+# Skills Development Guide
 
-Create custom skills to extend UniFlow capabilities.
+Create custom skills to extend DeepFlow capabilities.
 
 ## Overview
 
@@ -148,8 +148,8 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 my_skill/
 ├── src/
-�?  ├── index.js      # Express application
-�?  └── skill.js      # Skill implementation
+│  ├── index.js      # Express application
+│  └── skill.js      # Skill implementation
 ├── package.json
 ├── Dockerfile
 └── tests/
@@ -353,7 +353,7 @@ Response (error):
 
 ### Configuration
 
-Add skill to `uniflow.config.json`:
+Add skill to `deepflow.config.json`:
 
 ```json
 {

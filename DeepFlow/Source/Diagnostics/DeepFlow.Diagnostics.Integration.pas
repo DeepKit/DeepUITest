@@ -1,6 +1,6 @@
-unit UniFlow.Diagnostics.Integration;
+unit DeepFlow.Diagnostics.Integration;
 (*
-  UniFlow Diagnostics Integration
+  DeepFlow Diagnostics Integration
   ===============================
   诊断集成助手，提�?HTTP/LLM/Skill 调用的简化跟踪接口�?
 *)
@@ -9,7 +9,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.DateUtils, System.JSON, 
-  UniFlow.Diagnostics;
+  DeepFlow.Diagnostics;
 
 type
   // ============================================================================
@@ -18,7 +18,7 @@ type
   
   TWorkflowDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FWorkflowId: string;
     FWorkflowName: string;
     FCorrelationId: string;
@@ -59,7 +59,7 @@ type
   
   THTTPDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FCorrelationId: string;
   public
     constructor Create(const ACorrelationId: string = '');
@@ -84,7 +84,7 @@ type
   
   TLLMDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FCorrelationId: string;
     FStartTime: TDateTime;
     FProvider: string;
@@ -109,7 +109,7 @@ type
   
   TSkillDiagnostics = class
   private
-    FDiagnostics: TUniFlowDiagnostics;
+    FDiagnostics: TDeepFlowDiagnostics;
     FCorrelationId: string;
     FSkillName: string;
     FStartTime: TDateTime;

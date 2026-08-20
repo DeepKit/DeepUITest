@@ -1,0 +1,642 @@
+{
+  "deliberated_at": "2026-08-08",
+  "task": "DeepFlow MVP P0 priority & execution order",
+  "votes": {
+    "GLM": {
+      "family": "GLM",
+      "model": "claude-qoder-glm-5-2",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "{\"choice\":\"A\",\"reason\":\"MVP 明确定义为「最小成本验证架构可行性与端到端闭环」，金路径正是核心价值主张。A 直接验证 Workflow→Delphi→Skills→LLM→聚合→胶片 全链路是否跑得通，这是架构可行性的一票否决项——如果金路径不通，引擎再健壮、平台再宽泛也无意义。B 的持久化/并发和 C 的平台扩展都是建立在「闭环本身成立」前提之上的后续投入，在闭环未被验证前投入属于过早优化。A 的完成还能暴露集成层真实问题（协议契约、超时、降级路径），为 B 的引擎加固提供真实场景驱动而非臆测驱动。\",\"risk\":\"引擎深层机制（SQLite 持久化、崩溃恢复、并发一致性）后置，当前演示可能仅覆盖 happy path；若 LLM 降级模板链路验证不充分，生产环境首次降级可能产出空胶片。建议 A 的验收标准中硬性要求至少触发一次 LLM 回退降级路径并验证降级模板产出，以最小代价覆盖降级链路，避免「绿路径假绿」。\"}",
+      "q2_raw": "```json\n{\"choice\":\"A\",\"reason\":\"MVP 核心目标是验证架构可行性与端到端闭环，金路径是 insight 六角色→聚合→胶片。先跑通真实调用能立即暴露：Skills/LLM 降级/Workflow 定义一致性/Delphi-Skills 桥接等关键风险点，比补测试和文档更直接服务于 MVP 目标。现有 Workflow 定义已存在可直接复用，127.0.0.1:8001 可访问且技能已注册。\",\"risk\":\"无测试/文档情况下冒烟可能遗漏边界缺陷；若发现阻塞性问题（如 LLM 降级未实现）需立即回退到相应子任务修复，但整体仍符合\\\"快速失败、快速修正\\\"的 MVP 原则。\"}\n```",
+      "q3_items": [
+        {
+          "task": "insight 六角色全链路端到端验证",
+          "acceptance": "Workflow 定义触发后依次调用 decision_coach→decision_critic→decision_mirror→decision_observer→decision_aggregator→film_generator，产出胶片且响应时间<30s"
+        },
+        {
+          "task": "LLM 回退降级模板路径实现",
+          "acceptance": "当 LLM 服务不可用时，系统自动使用本地降级模板完成 insight 工作流并产出结果（无外部 API 调用）"
+        },
+        {
+          "task": "FlowEngine SQLite 持久化机制",
+          "acceptance": "Workflow 执行过程中每步状态变更落库，重启引擎后可从断点恢复执行（检查 database.db 及 state table）"
+        },
+        {
+          "task": "Skills 服务 Python 测试套件",
+          "acceptance": "pytest 运行覆盖所有 7 个技能的核心逻辑，通过率>95%（含 mock LLM 场景）"
+        },
+        {
+          "task": "FlowEngine 错误恢复与并发一致性",
+          "acceptance": "模拟 Skills 服务超时/失败时引擎重试 3 次后降级；并发执行 2 个 workflow 无状态冲突（数据库锁检测通过）"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\n    \"task\": \"insight 六角色全链路端到端验证\",\n    \"acceptance\": \"Workflow 定义触发后依次调用 decision_coach→decision_critic→decision_mirror→decision_observer→decision_aggregator→film_generator，产出胶片且响应时间<30s\"\n  },\n  {\n    \"task\": \"LLM 回退降级模板路径实现\",\n    \"acceptance\": \"当 LLM 服务不可用时，系统自动使用本地降级模板完成 insight 工作流并产出结果（无外部 API 调用）\"\n  },\n  {\n    \"task\": \"FlowEngine SQLite 持久化机制\",\n    \"acceptance\": \"Workflow 执行过程中每步状态变更落库，重启引擎后可从断点恢复执行（检查 database.db 及 state table）\"\n  },\n  {\n    \"task\": \"Skills 服务 Python 测试套件\",\n    \"acceptance\": \"pytest 运行覆盖所有 7 个技能的核心逻辑，通过率>95%（含 mock LLM 场景）\"\n  },\n  {\n    \"task\": \"FlowEngine 错误恢复与并发一致性\",\n    \"acceptance\": \"模拟 Skills 服务超时/失败时引擎重试 3 次后降级；并发执行 2 个 workflow 无状态冲突（数据库锁检测通过）\"\n  }\n]\n```",
+      "latency_s": 86.84
+    },
+    "Kimi": {
+      "family": "Kimi",
+      "model": "claude-qoder-kimi-k3",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "{\"choice\":\"A\",\"reason\":\"MVP 的唯一使命是以最小成本验证架构可行性与端到端闭环，金路径（Workflow 定义 → Delphi 引擎 → Skills 六角色 → LLM/降级 → 聚合 → 胶片）正是这条架构假设的完整切片：双栈分工、HTTP 技能契约、状态机驱动多角色编排、降级容错、聚合产出，每一环都已在闭环中被真实验证。当前 1.2 万行引擎代码和 7 个已注册技能属于『零件齐备但未通电』，未跑通前无法证明这些零件组合起来成立——这是最大的架构风险，必须用 P0 优先级消除。B 选项的持久化/并发/错误恢复属于『已知可解的工程问题』，不构成架构可行性疑问，延后做不会推翻架构；且在没有真实业务闭环压测的情况下设计这些机制，容易过度设计或做错假设（正确顺序是先有真实负载再优化引擎）。C 选项在闭环未验证时扩张能力面，是典型的『为平台而平台』，会把未验证的契约当成既定事实去叠加集成，返工成本最高。A 跑通后还会反哺 B 和 C：真实闭环暴露的引擎缺陷才是持久化与并发机制的真实需求来源，金路径验证过的 Skill 契约才是扩展 MCP/热加载的正确基线。执行建议：A 的验收应明确为『一个真实决策问题输入，产出一份完整胶片，全程日志可追踪到每个角色的真实 LLM 调用或明确的降级标记』，同时允许用最小实现（如内存态执行、单线程）绕开引擎深层机制，避免 A 被 B 的范围污染。\",\"risk\":\"选 A 的主要风险有三：一是为求快速跑通而留下临时实现（内存态、无恢复、硬编码编排），若不打技术债标签并限时回填，临时方案会固化为永久架构，演示成功后直接基于脆弱引擎继续堆功能，后期返工成本倍增；二是 LLM 降级模板路径若未被真实触发验证（只验了 happy path），金路径演示可能掩盖容错缺陷，给利益相关方造成『系统比实际更稳』的错觉，验收时必须强制注入一次 LLM 失败来验证降级与聚合不中断；三是引擎深层机制延后期间若团队规模或并行开发扩大，缺少持久化与并发一致性的引擎会在多工作流场景出现状态错乱，因此 A 完成之后 B 应立刻升为新的 P0，不能",
+      "q2_raw": "{\"choice\":\"A\",\"reason\":\"MVP 的核心目标是验证架构可行性与端到端闭环，金路径（insight 六角色）是唯一可信的证据源。先跑通真实调用能看到 Delphi-Skills-LLM-聚合-胶片的完整数据流，立即暴露接口协议、降级路径、并发与持久化等真实现实约束；测试与文档可在有真实反馈后定向补充，避免‘为未知问题写测试’的浪费。\",\"risk\":\"可能暴露未预期的集成缺陷导致后续返工；但通过快速迭代 + BCW 决议回流可控制风险。\"}",
+      "q3_items": [
+        {
+          "task": "insight 六角色 Skill 全链路端到端验证",
+          "acceptance": "通过 Delphi 引擎完整调用 insight_workflow (code_executor→observer→mirror→critic→coach→aggregator→film_generator) 并产出胶片文件"
+        },
+        {
+          "task": "LLM 回退降级模板实现与验证",
+          "acceptance": "模拟 LLM 服务不可用时 workflow 自动降级至内置模板继续执行且聚合器能正常处理降级响应"
+        },
+        {
+          "task": "Skills 服务 Python 测试套件建设",
+          "acceptance": "覆盖 insight 六角色及 aggregator/film_generator 的 Pytest 测试通过率≥90%，覆盖代码分支≥80%"
+        },
+        {
+          "task": "FlowEngine SQLite 持久化与错误恢复",
+          "acceptance": "Workflow 运行时崩溃重启后可从 checkpoint 恢复状态机位置且数据一致性校验通过"
+        },
+        {
+          "task": "06.13 FlowEngine 实现文档对齐补全",
+          "acceptance": "06.13 任务清单打勾项≥70% 且未勾选项有明确 P1/P2 排期"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\"task\": \"insight 六角色 Skill 全链路端到端验证\", \"acceptance\": \"通过 Delphi 引擎完整调用 insight_workflow (code_executor→observer→mirror→critic→coach→aggregator→film_generator) 并产出胶片文件\"},\n  {\"task\": \"LLM 回退降级模板实现与验证\", \"acceptance\": \"模拟 LLM 服务不可用时 workflow 自动降级至内置模板继续执行且聚合器能正常处理降级响应\"},\n  {\"task\": \"Skills 服务 Python 测试套件建设\", \"acceptance\": \"覆盖 insight 六角色及 aggregator/film_generator 的 Pytest 测试通过率≥90%，覆盖代码分支≥80%\"},\n  {\"task\": \"FlowEngine SQLite 持久化与错误恢复\", \"acceptance\": \"Workflow 运行时崩溃重启后可从 checkpoint 恢复状态机位置且数据一致性校验通过\"},\n  {\"task\": \"06.13 FlowEngine 实现文档对齐补全\", \"acceptance\": \"06.13 任务清单打勾项≥70% 且未勾选项有明确 P1/P2 排期\"}\n]\n```",
+      "latency_s": 97.22
+    },
+    "DeepSeek": {
+      "family": "DeepSeek",
+      "model": "claude-qoder-deepseek-v4-pro",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "{\"choice\":\"A\",\"reason\":\"MVP 的首要目标是验证架构可行性，而非生产级健壮性。金路径闭环直接体现 DeepFlow 核心价值主张——多角色推演到胶片产出，是最小可行验证路径。引擎持久化与并发可在闭环验证后渐进增强，平台能力扩展更应在核心链路跑通后进行。\",\"risk\":\"暂缓引擎深层机制会导致后续重构时需补充持久化与错误恢复，但当前阶段该风险可控，因为闭环验证优先暴露架构问题而非健壮性问题。\"}",
+      "q2_raw": "```json\n{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 的核心目标是验证架构可行性和端到端闭环。采用'先金路径闭环再加固'策略时，全链路冒烟测试能最直接暴露系统集成问题（Workflow 引擎→Skills 服务→LLM→聚合→胶片）。当前已有 Workflow 定义和基础实现，立即跑通可快速确认架构假设是否成立，避免在测试/文档投入后才发现架构缺陷导致返工成本更高。\",\n  \"risk\": \"可能掩盖潜在稳定性问题（如错误恢复机制未验证），但可通过后续迭代补充，符合 MVP 最小成本原则。\"\n}\n```",
+      "q3_items": [
+        {
+          "task": "End-to-end insight decision gold path validation",
+          "acceptance": "Execute complete workflow from Workflow definition through Delphi Engine → Skills service (6 roles) → LLM aggregation → Film output with verified JSON artifacts at each stage"
+        },
+        {
+          "task": "Skills service Python test suite creation",
+          "acceptance": "pytest coverage including /skills execution endpoints, LLM fallback templates for all 6 roles, and integration tests against mock LLM responses"
+        },
+        {
+          "task": "FlowEngine SQLite persistence & recovery implementation",
+          "acceptance": "Workflow state survives engine restart with transaction log replay; test via simulate crash during role transition and verify state consistency on recovery"
+        },
+        {
+          "task": "LLM fallback degradation template implementation",
+          "acceptance": "All 6 roles have documented fallback templates that produce valid decision objects when LLM returns error or timeout; verified via chaos injection in Skills client"
+        },
+        {
+          "task": "FlowEngine concurrent workflow consistency guarantee",
+          "acceptance": "Two workflows modifying same context cannot conflict; implemented via optimistic locking with version checks; tested via simulated parallel submissions"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\"task\": \"End-to-end insight decision gold path validation\", \"acceptance\": \"Execute complete workflow from Workflow definition through Delphi Engine → Skills service (6 roles) → LLM aggregation → Film output with verified JSON artifacts at each stage\"},\n  {\"task\": \"Skills service Python test suite creation\", \"acceptance\": \"pytest coverage including /skills execution endpoints, LLM fallback templates for all 6 roles, and integration tests against mock LLM responses\"},\n  {\"task\": \"FlowEngine SQLite persistence & recovery implementation\", \"acceptance\": \"Workflow state survives engine restart with transaction log replay; test via simulate crash during role transition and verify state consistency on recovery\"},\n  {\"task\": \"LLM fallback degradation template implementation\", \"acceptance\": \"All 6 roles have documented fallback templates that produce valid decision objects when LLM returns error or timeout; verified via chaos injection in Skills client\"},\n  {\"task\": \"FlowEngine concurrent workflow consistency guarantee\", \"acceptance\": \"Two workflows modifying same context cannot conflict; implemented via optimistic locking with version checks; tested via simulated parallel submissions\"}\n]\n```",
+      "latency_s": 83.61
+    },
+    "Qwen": {
+      "family": "Qwen",
+      "model": "claude-qoder-qwen3-8-max",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "```json\n{\"choice\":\"A\",\"reason\":\"MVP 的核心是验证架构可行性和端到端闭环，金路径（insight 六角色）直接对应产品文档的'洞见 - 决策推演'价值主张。跑通端到端演示能最快验证 Delphi+Python 双栈协同、Workflow 定义与执行器设计是否合理、Skills 服务架构能否支撑多角色链式调用。即使引擎深层机制暂缺，也可用内存态 + 基础错误处理保底，不影响端到端闭环验证。\",\"risk\":\"若无持久化/并发保护，长周期任务或中断恢复可能失败；建议在演示脚本中覆盖关键断点重连和降级模板回退路径，确保 P0 验收可观测可复现。\"}\n```",
+      "q2_raw": "{\"choice\":\"A\",\"reason\":\"MVP 核心目标是快速验证架构可行性与端到端闭环，先跑通金路径能立即暴露真实集成问题（如 LLM 降级、持久化、并发），比测试或文档更早发现系统级风险。现成 Workflow 定义已存在，具备立即验证条件。\",\"risk\":\"缺陷可能较隐蔽，修复成本随迭代增加；建议边跑边记录问题，48 小时内必须补上关键测试与文档修正。\"}",
+      "q3_items": [
+        {
+          "task": "Full Insight Pipeline End-to-End Verification",
+          "acceptance": "金路径六角色技能通过 Delphi Workflow → Skills 服务 → LLM → 聚合器 → film_generator 产出生成胶片，日志记录完整调用链且无断点"
+        },
+        {
+          "task": "Delphi FlowEngine Persistence & Recovery",
+          "acceptance": "SQLite 持久化后系统重启可恢复 Workflow 状态，错误场景下实现至少一次重试机制且数据一致性验证通过"
+        },
+        {
+          "task": "LLM Fallback Template Implementation",
+          "acceptance": "当 LLM 调用失败时，系统自动降级到本地模板生成响应，workflow 执行继续完成不落空且返回明确降级标识"
+        },
+        {
+          "task": "Python Skill Unit Test Coverage",
+          "acceptance": "Skills 服务核心逻辑测试覆盖度达 80% 以上，包含 decision_aggregator/film_generator 功能及异常场景回归"
+        },
+        {
+          "task": "FlowEngine Architecture Documentation Update",
+          "acceptance": "06.13 任务清单标注完成情况，缺失部分补充实现计划和时间表，P0 任务标记清晰且责任人到位"
+        }
+      ],
+      "q3_raw": "[{\"task\":\"Full Insight Pipeline End-to-End Verification\",\"acceptance\":\"金路径六角色技能通过 Delphi Workflow → Skills 服务 → LLM → 聚合器 → film_generator 产出生成胶片，日志记录完整调用链且无断点\"}, {\"task\":\"Delphi FlowEngine Persistence & Recovery\",\"acceptance\":\"SQLite 持久化后系统重启可恢复 Workflow 状态，错误场景下实现至少一次重试机制且数据一致性验证通过\"}, {\"task\":\"LLM Fallback Template Implementation\",\"acceptance\":\"当 LLM 调用失败时，系统自动降级到本地模板生成响应，workflow 执行继续完成不落空且返回明确降级标识\"}, {\"task\":\"Python Skill Unit Test Coverage\",\"acceptance\":\"Skills 服务核心逻辑测试覆盖度达 80% 以上，包含 decision_aggregator/film_generator 功能及异常场景回归\"}, {\"task\":\"FlowEngine Architecture Documentation Update\",\"acceptance\":\"06.13 任务清单标注完成情况，缺失部分补充实现计划和时间表，P0 任务标记清晰且责任人到位\"}]",
+      "latency_s": 79.07
+    },
+    "MiniMax": {
+      "family": "MiniMax",
+      "model": "claude-qoder-minimax-m3",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "```json\n{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 的核心目标是验证架构可行性与端到端闭环，而 insight 决策推演是已明确定义的金路径（对应产品文档 07.02）。选择 A 能以最小成本一次性验证 Workflow 引擎→Skills 服务→LLM→聚合的完整链路，产生可演示的真实价值产出，为后续迭代争取资源与信心。\",\n  \"risk\": \"引擎深层机制（持久化/并发）被后置可能导致后期重构；但可通过在 A 执行过程中埋下观察点（如日志、异常处理记录）降低风险，待闭环跑通后再集中攻坚 B 类任务。\"\n}\n```",
+      "q2_raw": "{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 核心目标是验证架构可行性与端到端闭环，必须先跑通真实调用链才能发现真正的阻塞点；先看到胶片产出再补测试文档符合敏捷迭代原则，且现有 Workflow 定义已具备执行条件。\",\n  \"risk\": \"可能掩盖部分边缘 case 和错误处理缺陷，但可在后续加固阶段通过专项测试解决\"\n}",
+      "q3_items": [
+        {
+          "task": "insight 六角色 Skill 全链路真实调用验证",
+          "acceptance": "通过 Delphi Engine → Skills 服务端到端执行 simple_qa.workflow.json，完整走通六角色对话 → decision_aggregator 聚合 → film_generator 产出胶片，LLM 降级路径有覆盖"
+        },
+        {
+          "task": "FlowEngine SQLite 持久化与错误恢复机制实现",
+          "acceptance": "Workflow 状态机在 crash/restart 场景下能恢复中间状态，异常终止后重试不丢失进度，单元测试覆盖率≥80%"
+        },
+        {
+          "task": "Skills 服务后端测试套件建设",
+          "acceptance": "Python 侧补充 insight 六角色的集成测试与异常测试（含 LLM 回退场景），CI 流水线通过率 100%"
+        },
+        {
+          "task": "并发一致性与流控保障",
+          "acceptance": "同一 Workflow 实例的并发请求由 Engine 串行化处理，多客户端同时调用时无 race condition，内存/连接池监控指标正常"
+        },
+        {
+          "task": "文档同步更新 - FlowEngine 实现清单",
+          "acceptance": "06.13 清单中所有已完工项打勾，未完成项标注预计完成时间，代码基线 hash 与文档版本对应"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\"task\": \"insight 六角色 Skill 全链路真实调用验证\", \"acceptance\": \"通过 Delphi Engine → Skills 服务端到端执行 simple_qa.workflow.json，完整走通六角色对话 → decision_aggregator 聚合 → film_generator 产出胶片，LLM 降级路径有覆盖\"},\n  {\"task\": \"FlowEngine SQLite 持久化与错误恢复机制实现\", \"acceptance\": \"Workflow 状态机在 crash/restart 场景下能恢复中间状态，异常终止后重试不丢失进度，单元测试覆盖率≥80%\"},\n  {\"task\": \"Skills 服务后端测试套件建设\", \"acceptance\": \"Python 侧补充 insight 六角色的集成测试与异常测试（含 LLM 回退场景），CI 流水线通过率 100%\"},\n  {\"task\": \"并发一致性与流控保障\", \"acceptance\": \"同一 Workflow 实例的并发请求由 Engine 串行化处理，多客户端同时调用时无 race condition，内存/连接池监控指标正常\"},\n  {\"task\": \"文档同步更新 - FlowEngine 实现清单\", \"acceptance\": \"06.13 清单中所有已完工项打勾，未完成项标注预计完成时间，代码基线 hash 与文档版本对应\"}\n]\n```",
+      "latency_s": 77.52
+    },
+    "Cantus": {
+      "family": "Cantus",
+      "model": "claude-qoder-cantus",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "```json\n{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 的核心目标是验证架构可行性与端到端闭环，而非完善底层机制。金路径闭环（workflow→引擎→六角色技能→LLM→聚合→胶片）是 DeepFlow 产品价值的唯一完整证明：若此链路无法跑通真实决策问题，持久化/并发等机制无意义。当前已有基础实现（1.2 万行引擎 +7 个技能 + 示例定义），只需聚焦验证与降级模板补充即可达成演示级闭环。\",\n  \"risk\": \"引擎深层机制缺陷可能在后期暴露导致返工。缓解策略：金路径验证阶段采用最小持久化方案（内存状态 + 关键节点 snapshot），并发控制使用串行执行器，待闭环稳定后再迭代 P1 健壮性功能。\"\n}\n```",
+      "q2_raw": "```json\n{\"choice\":\"A\",\"reason\":\"MVP 目标是验证架构可行性与端到端闭环，insight 六角色是金路径。用现有 workflow 定义先跑通真实调用链最能快速暴露 Delphi-Skills 网关、状态机迁移、LLM 回退降级等关键集成点问题，比先补测试或文档更高效。\",\"risk\":\"可能遗漏潜在缺陷或覆盖不足导致后续返工，但 MVP 阶段优先看到可运行的完整流程更重要。\"}",
+      "q3_items": [
+        {
+          "task": "insight 六角色 Skill 全链路真实调用",
+          "acceptance": "Delphi 引擎发起 insight_workflow 请求后，7 个角色 LLM 依次执行 → aggregation 聚合 → film_generator 产出胶片且返回完整 trace_id"
+        },
+        {
+          "task": "Workflow 定义→Delphi→Skills→LLM→胶片闭环验证",
+          "acceptance": "执行 Config/workflows/insight_decision_gold.workflow.json 可端到端跑通（127.0.0.1:8001/skills/execute 正常响应）并生成有效胶片内容"
+        },
+        {
+          "task": "FlowEngine 核心机制保障 (SQLite 持久化 + 错误恢复)",
+          "acceptance": "中断 Workflow 执行后再启动，FlowEngine 能恢复至断点状态并重放未完成步骤且数据一致性不丢失"
+        },
+        {
+          "task": "P0 测试套件覆盖 Skills+FlowEngine",
+          "acceptance": "Python Skills 侧新增 pytest 单元测试，至少覆盖 6 个决策角色的输入/输出校验与 LLM 回退降级逻辑"
+        },
+        {
+          "task": "06.13 FlowEngine 实现任务清单位置打勾更新",
+          "acceptance": "06.13 文档中 P0 标记项≥90% 验收通过（含上述 3 项 + 其他子项）并附自动化测试报告链接"
+        }
+      ],
+      "q3_raw": "```json\n[{\"task\":\"insight 六角色 Skill 全链路真实调用\",\"acceptance\":\"Delphi 引擎发起 insight_workflow 请求后，7 个角色 LLM 依次执行 → aggregation 聚合 → film_generator 产出胶片且返回完整 trace_id\"},{\"task\":\"Workflow 定义→Delphi→Skills→LLM→胶片闭环验证\",\"acceptance\":\"执行 Config/workflows/insight_decision_gold.workflow.json 可端到端跑通（127.0.0.1:8001/skills/execute 正常响应）并生成有效胶片内容\"},{\"task\":\"FlowEngine 核心机制保障 (SQLite 持久化 + 错误恢复)\",\"acceptance\":\"中断 Workflow 执行后再启动，FlowEngine 能恢复至断点状态并重放未完成步骤且数据一致性不丢失\"},{\"task\":\"P0 测试套件覆盖 Skills+FlowEngine\",\"acceptance\":\"Python Skills 侧新增 pytest 单元测试，至少覆盖 6 个决策角色的输入/输出校验与 LLM 回退降级逻辑\"},{\"task\":\"06.13 FlowEngine 实现任务清单位置打勾更新\",\"acceptance\":\"06.13 文档中 P0 标记项≥90% 验收通过（含上述 3 项 + 其他子项）并附自动化测试报告链接\"}]\n```",
+      "latency_s": 75.35
+    }
+  },
+  "generations": {
+    "GLM": {
+      "family": "GLM",
+      "model": "claude-qoder-glm-5-2",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "{\"choice\":\"A\",\"reason\":\"MVP 明确定义为「最小成本验证架构可行性与端到端闭环」，金路径正是核心价值主张。A 直接验证 Workflow→Delphi→Skills→LLM→聚合→胶片 全链路是否跑得通，这是架构可行性的一票否决项——如果金路径不通，引擎再健壮、平台再宽泛也无意义。B 的持久化/并发和 C 的平台扩展都是建立在「闭环本身成立」前提之上的后续投入，在闭环未被验证前投入属于过早优化。A 的完成还能暴露集成层真实问题（协议契约、超时、降级路径），为 B 的引擎加固提供真实场景驱动而非臆测驱动。\",\"risk\":\"引擎深层机制（SQLite 持久化、崩溃恢复、并发一致性）后置，当前演示可能仅覆盖 happy path；若 LLM 降级模板链路验证不充分，生产环境首次降级可能产出空胶片。建议 A 的验收标准中硬性要求至少触发一次 LLM 回退降级路径并验证降级模板产出，以最小代价覆盖降级链路，避免「绿路径假绿」。\"}",
+      "q2_raw": "```json\n{\"choice\":\"A\",\"reason\":\"MVP 核心目标是验证架构可行性与端到端闭环，金路径是 insight 六角色→聚合→胶片。先跑通真实调用能立即暴露：Skills/LLM 降级/Workflow 定义一致性/Delphi-Skills 桥接等关键风险点，比补测试和文档更直接服务于 MVP 目标。现有 Workflow 定义已存在可直接复用，127.0.0.1:8001 可访问且技能已注册。\",\"risk\":\"无测试/文档情况下冒烟可能遗漏边界缺陷；若发现阻塞性问题（如 LLM 降级未实现）需立即回退到相应子任务修复，但整体仍符合\\\"快速失败、快速修正\\\"的 MVP 原则。\"}\n```",
+      "q3_items": [
+        {
+          "task": "insight 六角色全链路端到端验证",
+          "acceptance": "Workflow 定义触发后依次调用 decision_coach→decision_critic→decision_mirror→decision_observer→decision_aggregator→film_generator，产出胶片且响应时间<30s"
+        },
+        {
+          "task": "LLM 回退降级模板路径实现",
+          "acceptance": "当 LLM 服务不可用时，系统自动使用本地降级模板完成 insight 工作流并产出结果（无外部 API 调用）"
+        },
+        {
+          "task": "FlowEngine SQLite 持久化机制",
+          "acceptance": "Workflow 执行过程中每步状态变更落库，重启引擎后可从断点恢复执行（检查 database.db 及 state table）"
+        },
+        {
+          "task": "Skills 服务 Python 测试套件",
+          "acceptance": "pytest 运行覆盖所有 7 个技能的核心逻辑，通过率>95%（含 mock LLM 场景）"
+        },
+        {
+          "task": "FlowEngine 错误恢复与并发一致性",
+          "acceptance": "模拟 Skills 服务超时/失败时引擎重试 3 次后降级；并发执行 2 个 workflow 无状态冲突（数据库锁检测通过）"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\n    \"task\": \"insight 六角色全链路端到端验证\",\n    \"acceptance\": \"Workflow 定义触发后依次调用 decision_coach→decision_critic→decision_mirror→decision_observer→decision_aggregator→film_generator，产出胶片且响应时间<30s\"\n  },\n  {\n    \"task\": \"LLM 回退降级模板路径实现\",\n    \"acceptance\": \"当 LLM 服务不可用时，系统自动使用本地降级模板完成 insight 工作流并产出结果（无外部 API 调用）\"\n  },\n  {\n    \"task\": \"FlowEngine SQLite 持久化机制\",\n    \"acceptance\": \"Workflow 执行过程中每步状态变更落库，重启引擎后可从断点恢复执行（检查 database.db 及 state table）\"\n  },\n  {\n    \"task\": \"Skills 服务 Python 测试套件\",\n    \"acceptance\": \"pytest 运行覆盖所有 7 个技能的核心逻辑，通过率>95%（含 mock LLM 场景）\"\n  },\n  {\n    \"task\": \"FlowEngine 错误恢复与并发一致性\",\n    \"acceptance\": \"模拟 Skills 服务超时/失败时引擎重试 3 次后降级；并发执行 2 个 workflow 无状态冲突（数据库锁检测通过）\"\n  }\n]\n```",
+      "latency_s": 86.84
+    },
+    "Kimi": {
+      "family": "Kimi",
+      "model": "claude-qoder-kimi-k3",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "{\"choice\":\"A\",\"reason\":\"MVP 的唯一使命是以最小成本验证架构可行性与端到端闭环，金路径（Workflow 定义 → Delphi 引擎 → Skills 六角色 → LLM/降级 → 聚合 → 胶片）正是这条架构假设的完整切片：双栈分工、HTTP 技能契约、状态机驱动多角色编排、降级容错、聚合产出，每一环都已在闭环中被真实验证。当前 1.2 万行引擎代码和 7 个已注册技能属于『零件齐备但未通电』，未跑通前无法证明这些零件组合起来成立——这是最大的架构风险，必须用 P0 优先级消除。B 选项的持久化/并发/错误恢复属于『已知可解的工程问题』，不构成架构可行性疑问，延后做不会推翻架构；且在没有真实业务闭环压测的情况下设计这些机制，容易过度设计或做错假设（正确顺序是先有真实负载再优化引擎）。C 选项在闭环未验证时扩张能力面，是典型的『为平台而平台』，会把未验证的契约当成既定事实去叠加集成，返工成本最高。A 跑通后还会反哺 B 和 C：真实闭环暴露的引擎缺陷才是持久化与并发机制的真实需求来源，金路径验证过的 Skill 契约才是扩展 MCP/热加载的正确基线。执行建议：A 的验收应明确为『一个真实决策问题输入，产出一份完整胶片，全程日志可追踪到每个角色的真实 LLM 调用或明确的降级标记』，同时允许用最小实现（如内存态执行、单线程）绕开引擎深层机制，避免 A 被 B 的范围污染。\",\"risk\":\"选 A 的主要风险有三：一是为求快速跑通而留下临时实现（内存态、无恢复、硬编码编排），若不打技术债标签并限时回填，临时方案会固化为永久架构，演示成功后直接基于脆弱引擎继续堆功能，后期返工成本倍增；二是 LLM 降级模板路径若未被真实触发验证（只验了 happy path），金路径演示可能掩盖容错缺陷，给利益相关方造成『系统比实际更稳』的错觉，验收时必须强制注入一次 LLM 失败来验证降级与聚合不中断；三是引擎深层机制延后期间若团队规模或并行开发扩大，缺少持久化与并发一致性的引擎会在多工作流场景出现状态错乱，因此 A 完成之后 B 应立刻升为新的 P0，不能",
+      "q2_raw": "{\"choice\":\"A\",\"reason\":\"MVP 的核心目标是验证架构可行性与端到端闭环，金路径（insight 六角色）是唯一可信的证据源。先跑通真实调用能看到 Delphi-Skills-LLM-聚合-胶片的完整数据流，立即暴露接口协议、降级路径、并发与持久化等真实现实约束；测试与文档可在有真实反馈后定向补充，避免‘为未知问题写测试’的浪费。\",\"risk\":\"可能暴露未预期的集成缺陷导致后续返工；但通过快速迭代 + BCW 决议回流可控制风险。\"}",
+      "q3_items": [
+        {
+          "task": "insight 六角色 Skill 全链路端到端验证",
+          "acceptance": "通过 Delphi 引擎完整调用 insight_workflow (code_executor→observer→mirror→critic→coach→aggregator→film_generator) 并产出胶片文件"
+        },
+        {
+          "task": "LLM 回退降级模板实现与验证",
+          "acceptance": "模拟 LLM 服务不可用时 workflow 自动降级至内置模板继续执行且聚合器能正常处理降级响应"
+        },
+        {
+          "task": "Skills 服务 Python 测试套件建设",
+          "acceptance": "覆盖 insight 六角色及 aggregator/film_generator 的 Pytest 测试通过率≥90%，覆盖代码分支≥80%"
+        },
+        {
+          "task": "FlowEngine SQLite 持久化与错误恢复",
+          "acceptance": "Workflow 运行时崩溃重启后可从 checkpoint 恢复状态机位置且数据一致性校验通过"
+        },
+        {
+          "task": "06.13 FlowEngine 实现文档对齐补全",
+          "acceptance": "06.13 任务清单打勾项≥70% 且未勾选项有明确 P1/P2 排期"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\"task\": \"insight 六角色 Skill 全链路端到端验证\", \"acceptance\": \"通过 Delphi 引擎完整调用 insight_workflow (code_executor→observer→mirror→critic→coach→aggregator→film_generator) 并产出胶片文件\"},\n  {\"task\": \"LLM 回退降级模板实现与验证\", \"acceptance\": \"模拟 LLM 服务不可用时 workflow 自动降级至内置模板继续执行且聚合器能正常处理降级响应\"},\n  {\"task\": \"Skills 服务 Python 测试套件建设\", \"acceptance\": \"覆盖 insight 六角色及 aggregator/film_generator 的 Pytest 测试通过率≥90%，覆盖代码分支≥80%\"},\n  {\"task\": \"FlowEngine SQLite 持久化与错误恢复\", \"acceptance\": \"Workflow 运行时崩溃重启后可从 checkpoint 恢复状态机位置且数据一致性校验通过\"},\n  {\"task\": \"06.13 FlowEngine 实现文档对齐补全\", \"acceptance\": \"06.13 任务清单打勾项≥70% 且未勾选项有明确 P1/P2 排期\"}\n]\n```",
+      "latency_s": 97.22
+    },
+    "DeepSeek": {
+      "family": "DeepSeek",
+      "model": "claude-qoder-deepseek-v4-pro",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "{\"choice\":\"A\",\"reason\":\"MVP 的首要目标是验证架构可行性，而非生产级健壮性。金路径闭环直接体现 DeepFlow 核心价值主张——多角色推演到胶片产出，是最小可行验证路径。引擎持久化与并发可在闭环验证后渐进增强，平台能力扩展更应在核心链路跑通后进行。\",\"risk\":\"暂缓引擎深层机制会导致后续重构时需补充持久化与错误恢复，但当前阶段该风险可控，因为闭环验证优先暴露架构问题而非健壮性问题。\"}",
+      "q2_raw": "```json\n{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 的核心目标是验证架构可行性和端到端闭环。采用'先金路径闭环再加固'策略时，全链路冒烟测试能最直接暴露系统集成问题（Workflow 引擎→Skills 服务→LLM→聚合→胶片）。当前已有 Workflow 定义和基础实现，立即跑通可快速确认架构假设是否成立，避免在测试/文档投入后才发现架构缺陷导致返工成本更高。\",\n  \"risk\": \"可能掩盖潜在稳定性问题（如错误恢复机制未验证），但可通过后续迭代补充，符合 MVP 最小成本原则。\"\n}\n```",
+      "q3_items": [
+        {
+          "task": "End-to-end insight decision gold path validation",
+          "acceptance": "Execute complete workflow from Workflow definition through Delphi Engine → Skills service (6 roles) → LLM aggregation → Film output with verified JSON artifacts at each stage"
+        },
+        {
+          "task": "Skills service Python test suite creation",
+          "acceptance": "pytest coverage including /skills execution endpoints, LLM fallback templates for all 6 roles, and integration tests against mock LLM responses"
+        },
+        {
+          "task": "FlowEngine SQLite persistence & recovery implementation",
+          "acceptance": "Workflow state survives engine restart with transaction log replay; test via simulate crash during role transition and verify state consistency on recovery"
+        },
+        {
+          "task": "LLM fallback degradation template implementation",
+          "acceptance": "All 6 roles have documented fallback templates that produce valid decision objects when LLM returns error or timeout; verified via chaos injection in Skills client"
+        },
+        {
+          "task": "FlowEngine concurrent workflow consistency guarantee",
+          "acceptance": "Two workflows modifying same context cannot conflict; implemented via optimistic locking with version checks; tested via simulated parallel submissions"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\"task\": \"End-to-end insight decision gold path validation\", \"acceptance\": \"Execute complete workflow from Workflow definition through Delphi Engine → Skills service (6 roles) → LLM aggregation → Film output with verified JSON artifacts at each stage\"},\n  {\"task\": \"Skills service Python test suite creation\", \"acceptance\": \"pytest coverage including /skills execution endpoints, LLM fallback templates for all 6 roles, and integration tests against mock LLM responses\"},\n  {\"task\": \"FlowEngine SQLite persistence & recovery implementation\", \"acceptance\": \"Workflow state survives engine restart with transaction log replay; test via simulate crash during role transition and verify state consistency on recovery\"},\n  {\"task\": \"LLM fallback degradation template implementation\", \"acceptance\": \"All 6 roles have documented fallback templates that produce valid decision objects when LLM returns error or timeout; verified via chaos injection in Skills client\"},\n  {\"task\": \"FlowEngine concurrent workflow consistency guarantee\", \"acceptance\": \"Two workflows modifying same context cannot conflict; implemented via optimistic locking with version checks; tested via simulated parallel submissions\"}\n]\n```",
+      "latency_s": 83.61
+    },
+    "Qwen": {
+      "family": "Qwen",
+      "model": "claude-qoder-qwen3-8-max",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "```json\n{\"choice\":\"A\",\"reason\":\"MVP 的核心是验证架构可行性和端到端闭环，金路径（insight 六角色）直接对应产品文档的'洞见 - 决策推演'价值主张。跑通端到端演示能最快验证 Delphi+Python 双栈协同、Workflow 定义与执行器设计是否合理、Skills 服务架构能否支撑多角色链式调用。即使引擎深层机制暂缺，也可用内存态 + 基础错误处理保底，不影响端到端闭环验证。\",\"risk\":\"若无持久化/并发保护，长周期任务或中断恢复可能失败；建议在演示脚本中覆盖关键断点重连和降级模板回退路径，确保 P0 验收可观测可复现。\"}\n```",
+      "q2_raw": "{\"choice\":\"A\",\"reason\":\"MVP 核心目标是快速验证架构可行性与端到端闭环，先跑通金路径能立即暴露真实集成问题（如 LLM 降级、持久化、并发），比测试或文档更早发现系统级风险。现成 Workflow 定义已存在，具备立即验证条件。\",\"risk\":\"缺陷可能较隐蔽，修复成本随迭代增加；建议边跑边记录问题，48 小时内必须补上关键测试与文档修正。\"}",
+      "q3_items": [
+        {
+          "task": "Full Insight Pipeline End-to-End Verification",
+          "acceptance": "金路径六角色技能通过 Delphi Workflow → Skills 服务 → LLM → 聚合器 → film_generator 产出生成胶片，日志记录完整调用链且无断点"
+        },
+        {
+          "task": "Delphi FlowEngine Persistence & Recovery",
+          "acceptance": "SQLite 持久化后系统重启可恢复 Workflow 状态，错误场景下实现至少一次重试机制且数据一致性验证通过"
+        },
+        {
+          "task": "LLM Fallback Template Implementation",
+          "acceptance": "当 LLM 调用失败时，系统自动降级到本地模板生成响应，workflow 执行继续完成不落空且返回明确降级标识"
+        },
+        {
+          "task": "Python Skill Unit Test Coverage",
+          "acceptance": "Skills 服务核心逻辑测试覆盖度达 80% 以上，包含 decision_aggregator/film_generator 功能及异常场景回归"
+        },
+        {
+          "task": "FlowEngine Architecture Documentation Update",
+          "acceptance": "06.13 任务清单标注完成情况，缺失部分补充实现计划和时间表，P0 任务标记清晰且责任人到位"
+        }
+      ],
+      "q3_raw": "[{\"task\":\"Full Insight Pipeline End-to-End Verification\",\"acceptance\":\"金路径六角色技能通过 Delphi Workflow → Skills 服务 → LLM → 聚合器 → film_generator 产出生成胶片，日志记录完整调用链且无断点\"}, {\"task\":\"Delphi FlowEngine Persistence & Recovery\",\"acceptance\":\"SQLite 持久化后系统重启可恢复 Workflow 状态，错误场景下实现至少一次重试机制且数据一致性验证通过\"}, {\"task\":\"LLM Fallback Template Implementation\",\"acceptance\":\"当 LLM 调用失败时，系统自动降级到本地模板生成响应，workflow 执行继续完成不落空且返回明确降级标识\"}, {\"task\":\"Python Skill Unit Test Coverage\",\"acceptance\":\"Skills 服务核心逻辑测试覆盖度达 80% 以上，包含 decision_aggregator/film_generator 功能及异常场景回归\"}, {\"task\":\"FlowEngine Architecture Documentation Update\",\"acceptance\":\"06.13 任务清单标注完成情况，缺失部分补充实现计划和时间表，P0 任务标记清晰且责任人到位\"}]",
+      "latency_s": 79.07
+    },
+    "MiniMax": {
+      "family": "MiniMax",
+      "model": "claude-qoder-minimax-m3",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "```json\n{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 的核心目标是验证架构可行性与端到端闭环，而 insight 决策推演是已明确定义的金路径（对应产品文档 07.02）。选择 A 能以最小成本一次性验证 Workflow 引擎→Skills 服务→LLM→聚合的完整链路，产生可演示的真实价值产出，为后续迭代争取资源与信心。\",\n  \"risk\": \"引擎深层机制（持久化/并发）被后置可能导致后期重构；但可通过在 A 执行过程中埋下观察点（如日志、异常处理记录）降低风险，待闭环跑通后再集中攻坚 B 类任务。\"\n}\n```",
+      "q2_raw": "{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 核心目标是验证架构可行性与端到端闭环，必须先跑通真实调用链才能发现真正的阻塞点；先看到胶片产出再补测试文档符合敏捷迭代原则，且现有 Workflow 定义已具备执行条件。\",\n  \"risk\": \"可能掩盖部分边缘 case 和错误处理缺陷，但可在后续加固阶段通过专项测试解决\"\n}",
+      "q3_items": [
+        {
+          "task": "insight 六角色 Skill 全链路真实调用验证",
+          "acceptance": "通过 Delphi Engine → Skills 服务端到端执行 simple_qa.workflow.json，完整走通六角色对话 → decision_aggregator 聚合 → film_generator 产出胶片，LLM 降级路径有覆盖"
+        },
+        {
+          "task": "FlowEngine SQLite 持久化与错误恢复机制实现",
+          "acceptance": "Workflow 状态机在 crash/restart 场景下能恢复中间状态，异常终止后重试不丢失进度，单元测试覆盖率≥80%"
+        },
+        {
+          "task": "Skills 服务后端测试套件建设",
+          "acceptance": "Python 侧补充 insight 六角色的集成测试与异常测试（含 LLM 回退场景），CI 流水线通过率 100%"
+        },
+        {
+          "task": "并发一致性与流控保障",
+          "acceptance": "同一 Workflow 实例的并发请求由 Engine 串行化处理，多客户端同时调用时无 race condition，内存/连接池监控指标正常"
+        },
+        {
+          "task": "文档同步更新 - FlowEngine 实现清单",
+          "acceptance": "06.13 清单中所有已完工项打勾，未完成项标注预计完成时间，代码基线 hash 与文档版本对应"
+        }
+      ],
+      "q3_raw": "```json\n[\n  {\"task\": \"insight 六角色 Skill 全链路真实调用验证\", \"acceptance\": \"通过 Delphi Engine → Skills 服务端到端执行 simple_qa.workflow.json，完整走通六角色对话 → decision_aggregator 聚合 → film_generator 产出胶片，LLM 降级路径有覆盖\"},\n  {\"task\": \"FlowEngine SQLite 持久化与错误恢复机制实现\", \"acceptance\": \"Workflow 状态机在 crash/restart 场景下能恢复中间状态，异常终止后重试不丢失进度，单元测试覆盖率≥80%\"},\n  {\"task\": \"Skills 服务后端测试套件建设\", \"acceptance\": \"Python 侧补充 insight 六角色的集成测试与异常测试（含 LLM 回退场景），CI 流水线通过率 100%\"},\n  {\"task\": \"并发一致性与流控保障\", \"acceptance\": \"同一 Workflow 实例的并发请求由 Engine 串行化处理，多客户端同时调用时无 race condition，内存/连接池监控指标正常\"},\n  {\"task\": \"文档同步更新 - FlowEngine 实现清单\", \"acceptance\": \"06.13 清单中所有已完工项打勾，未完成项标注预计完成时间，代码基线 hash 与文档版本对应\"}\n]\n```",
+      "latency_s": 77.52
+    },
+    "Cantus": {
+      "family": "Cantus",
+      "model": "claude-qoder-cantus",
+      "status": "ok",
+      "q1_choice": "A",
+      "q2_choice": "A",
+      "q1_raw": "```json\n{\n  \"choice\": \"A\",\n  \"reason\": \"MVP 的核心目标是验证架构可行性与端到端闭环，而非完善底层机制。金路径闭环（workflow→引擎→六角色技能→LLM→聚合→胶片）是 DeepFlow 产品价值的唯一完整证明：若此链路无法跑通真实决策问题，持久化/并发等机制无意义。当前已有基础实现（1.2 万行引擎 +7 个技能 + 示例定义），只需聚焦验证与降级模板补充即可达成演示级闭环。\",\n  \"risk\": \"引擎深层机制缺陷可能在后期暴露导致返工。缓解策略：金路径验证阶段采用最小持久化方案（内存状态 + 关键节点 snapshot），并发控制使用串行执行器，待闭环稳定后再迭代 P1 健壮性功能。\"\n}\n```",
+      "q2_raw": "```json\n{\"choice\":\"A\",\"reason\":\"MVP 目标是验证架构可行性与端到端闭环，insight 六角色是金路径。用现有 workflow 定义先跑通真实调用链最能快速暴露 Delphi-Skills 网关、状态机迁移、LLM 回退降级等关键集成点问题，比先补测试或文档更高效。\",\"risk\":\"可能遗漏潜在缺陷或覆盖不足导致后续返工，但 MVP 阶段优先看到可运行的完整流程更重要。\"}",
+      "q3_items": [
+        {
+          "task": "insight 六角色 Skill 全链路真实调用",
+          "acceptance": "Delphi 引擎发起 insight_workflow 请求后，7 个角色 LLM 依次执行 → aggregation 聚合 → film_generator 产出胶片且返回完整 trace_id"
+        },
+        {
+          "task": "Workflow 定义→Delphi→Skills→LLM→胶片闭环验证",
+          "acceptance": "执行 Config/workflows/insight_decision_gold.workflow.json 可端到端跑通（127.0.0.1:8001/skills/execute 正常响应）并生成有效胶片内容"
+        },
+        {
+          "task": "FlowEngine 核心机制保障 (SQLite 持久化 + 错误恢复)",
+          "acceptance": "中断 Workflow 执行后再启动，FlowEngine 能恢复至断点状态并重放未完成步骤且数据一致性不丢失"
+        },
+        {
+          "task": "P0 测试套件覆盖 Skills+FlowEngine",
+          "acceptance": "Python Skills 侧新增 pytest 单元测试，至少覆盖 6 个决策角色的输入/输出校验与 LLM 回退降级逻辑"
+        },
+        {
+          "task": "06.13 FlowEngine 实现任务清单位置打勾更新",
+          "acceptance": "06.13 文档中 P0 标记项≥90% 验收通过（含上述 3 项 + 其他子项）并附自动化测试报告链接"
+        }
+      ],
+      "q3_raw": "```json\n[{\"task\":\"insight 六角色 Skill 全链路真实调用\",\"acceptance\":\"Delphi 引擎发起 insight_workflow 请求后，7 个角色 LLM 依次执行 → aggregation 聚合 → film_generator 产出胶片且返回完整 trace_id\"},{\"task\":\"Workflow 定义→Delphi→Skills→LLM→胶片闭环验证\",\"acceptance\":\"执行 Config/workflows/insight_decision_gold.workflow.json 可端到端跑通（127.0.0.1:8001/skills/execute 正常响应）并生成有效胶片内容\"},{\"task\":\"FlowEngine 核心机制保障 (SQLite 持久化 + 错误恢复)\",\"acceptance\":\"中断 Workflow 执行后再启动，FlowEngine 能恢复至断点状态并重放未完成步骤且数据一致性不丢失\"},{\"task\":\"P0 测试套件覆盖 Skills+FlowEngine\",\"acceptance\":\"Python Skills 侧新增 pytest 单元测试，至少覆盖 6 个决策角色的输入/输出校验与 LLM 回退降级逻辑\"},{\"task\":\"06.13 FlowEngine 实现任务清单位置打勾更新\",\"acceptance\":\"06.13 文档中 P0 标记项≥90% 验收通过（含上述 3 项 + 其他子项）并附自动化测试报告链接\"}]\n```",
+      "latency_s": 75.35
+    }
+  },
+  "summary": {
+    "q1_votes": {
+      "A": [
+        "GLM",
+        "Kimi",
+        "DeepSeek",
+        "Qwen",
+        "MiniMax",
+        "Cantus"
+      ]
+    },
+    "q1_failed": [],
+    "q1_winner": "A",
+    "q2_votes": {
+      "A": [
+        "GLM",
+        "Kimi",
+        "DeepSeek",
+        "Qwen",
+        "MiniMax",
+        "Cantus"
+      ]
+    },
+    "q2_failed": [],
+    "q2_winner": "A",
+    "q3_aggregated": [
+      {
+        "task": "insight 六角色全链路端到端验证",
+        "mentions": 1,
+        "families": [
+          "GLM"
+        ]
+      },
+      {
+        "task": "LLM 回退降级模板路径实现",
+        "mentions": 1,
+        "families": [
+          "GLM"
+        ]
+      },
+      {
+        "task": "FlowEngine SQLite 持久化机制",
+        "mentions": 1,
+        "families": [
+          "GLM"
+        ]
+      },
+      {
+        "task": "Skills 服务 Python 测试套件",
+        "mentions": 1,
+        "families": [
+          "GLM"
+        ]
+      },
+      {
+        "task": "FlowEngine 错误恢复与并发一致性",
+        "mentions": 1,
+        "families": [
+          "GLM"
+        ]
+      },
+      {
+        "task": "insight 六角色 Skill 全链路端到端验证",
+        "mentions": 1,
+        "families": [
+          "Kimi"
+        ]
+      },
+      {
+        "task": "LLM 回退降级模板实现与验证",
+        "mentions": 1,
+        "families": [
+          "Kimi"
+        ]
+      },
+      {
+        "task": "Skills 服务 Python 测试套件建设",
+        "mentions": 1,
+        "families": [
+          "Kimi"
+        ]
+      },
+      {
+        "task": "FlowEngine SQLite 持久化与错误恢复",
+        "mentions": 1,
+        "families": [
+          "Kimi"
+        ]
+      },
+      {
+        "task": "06.13 FlowEngine 实现文档对齐补全",
+        "mentions": 1,
+        "families": [
+          "Kimi"
+        ]
+      },
+      {
+        "task": "End-to-end insight decision gold path validation",
+        "mentions": 1,
+        "families": [
+          "DeepSeek"
+        ]
+      },
+      {
+        "task": "Skills service Python test suite creation",
+        "mentions": 1,
+        "families": [
+          "DeepSeek"
+        ]
+      },
+      {
+        "task": "FlowEngine SQLite persistence & recovery implementation",
+        "mentions": 1,
+        "families": [
+          "DeepSeek"
+        ]
+      },
+      {
+        "task": "LLM fallback degradation template implementation",
+        "mentions": 1,
+        "families": [
+          "DeepSeek"
+        ]
+      },
+      {
+        "task": "FlowEngine concurrent workflow consistency guarantee",
+        "mentions": 1,
+        "families": [
+          "DeepSeek"
+        ]
+      },
+      {
+        "task": "Full Insight Pipeline End-to-End Verification",
+        "mentions": 1,
+        "families": [
+          "Qwen"
+        ]
+      },
+      {
+        "task": "Delphi FlowEngine Persistence & Recovery",
+        "mentions": 1,
+        "families": [
+          "Qwen"
+        ]
+      },
+      {
+        "task": "LLM Fallback Template Implementation",
+        "mentions": 1,
+        "families": [
+          "Qwen"
+        ]
+      },
+      {
+        "task": "Python Skill Unit Test Coverage",
+        "mentions": 1,
+        "families": [
+          "Qwen"
+        ]
+      },
+      {
+        "task": "FlowEngine Architecture Documentation Update",
+        "mentions": 1,
+        "families": [
+          "Qwen"
+        ]
+      },
+      {
+        "task": "insight 六角色 Skill 全链路真实调用验证",
+        "mentions": 1,
+        "families": [
+          "MiniMax"
+        ]
+      },
+      {
+        "task": "FlowEngine SQLite 持久化与错误恢复机制实现",
+        "mentions": 1,
+        "families": [
+          "MiniMax"
+        ]
+      },
+      {
+        "task": "Skills 服务后端测试套件建设",
+        "mentions": 1,
+        "families": [
+          "MiniMax"
+        ]
+      },
+      {
+        "task": "并发一致性与流控保障",
+        "mentions": 1,
+        "families": [
+          "MiniMax"
+        ]
+      },
+      {
+        "task": "文档同步更新 - FlowEngine 实现清单",
+        "mentions": 1,
+        "families": [
+          "MiniMax"
+        ]
+      },
+      {
+        "task": "insight 六角色 Skill 全链路真实调用",
+        "mentions": 1,
+        "families": [
+          "Cantus"
+        ]
+      },
+      {
+        "task": "Workflow 定义→Delphi→Skills→LLM→胶片闭环验证",
+        "mentions": 1,
+        "families": [
+          "Cantus"
+        ]
+      },
+      {
+        "task": "FlowEngine 核心机制保障 (SQLite 持久化 + 错误恢复)",
+        "mentions": 1,
+        "families": [
+          "Cantus"
+        ]
+      },
+      {
+        "task": "P0 测试套件覆盖 Skills+FlowEngine",
+        "mentions": 1,
+        "families": [
+          "Cantus"
+        ]
+      },
+      {
+        "task": "06.13 FlowEngine 实现任务清单位置打勾更新",
+        "mentions": 1,
+        "families": [
+          "Cantus"
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Audit Types                                                          
+  DeepFlow Audit Types                                                          
   Type definitions for audit logging system                                    
                                                                                
   Features:                                                                    
@@ -11,7 +11,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Audit.Types;
+unit DeepFlow.Audit.Types;
 
 interface
 

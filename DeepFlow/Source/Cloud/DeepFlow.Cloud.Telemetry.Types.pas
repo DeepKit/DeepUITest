@@ -1,16 +1,16 @@
-unit UniFlow.Cloud.Telemetry.Types;
+unit DeepFlow.Cloud.Telemetry.Types;
 
 {*******************************************************************************
-  UniFlow OpenTelemetry 类型定义
+  DeepFlow OpenTelemetry 类型定义
   
   功能:
   - Trace/Span 类型
   - Metrics 类型  
   - Logs 类型
-  - 属性和上下�?
-  - 导出器配�?
+  - 属性和上下�?
+  - 导出器配�?
   
-  作�? UniFlow Team
+  作�? DeepFlow Team
   日期: 2024-01
 *******************************************************************************}
 
@@ -29,7 +29,7 @@ type
 
   {$REGION 'Trace 类型'}
   
-  /// <summary>Span 状�?/summary>
+  /// <summary>Span 状�?/summary>
   TSpanStatus = (
     ssUnset,
     ssOk,
@@ -45,7 +45,7 @@ type
     skConsumer
   );
   
-  /// <summary>属性值类�?/summary>
+  /// <summary>属性值类�?/summary>
   TAttributeValue = record
   private
     FValueType: (avtString, avtInt, avtDouble, avtBool, avtStringArray);
@@ -69,7 +69,7 @@ type
     function ToJSON: TJSONValue;
   end;
   
-  /// <summary>属性集�?/summary>
+  /// <summary>属性集�?/summary>
   TAttributes = class
   private
     FItems: TDictionary<string, TAttributeValue>;
@@ -121,7 +121,7 @@ type
     property Attributes: TAttributes read FAttributes;
   end;
   
-  /// <summary>Trace 上下�?/summary>
+  /// <summary>Trace 上下�?/summary>
   TTraceContext = class
   private
     FTraceId: string;
@@ -210,14 +210,14 @@ type
     mkExponentialHistogram
   );
   
-  /// <summary>指标数据�?/summary>
+  /// <summary>指标数据�?/summary>
   TDataPoint = record
     Timestamp: TDateTime;
     Value: Double;
     Attributes: TAttributes;
   end;
   
-  /// <summary>直方图边�?/summary>
+  /// <summary>直方图边�?/summary>
   THistogramBuckets = record
     Boundaries: TArray<Double>;
     Counts: TArray<Int64>;
@@ -260,7 +260,7 @@ type
     property Histogram: THistogramBuckets read FHistogram;
   end;
   
-  /// <summary>指标计数�?/summary>
+  /// <summary>指标计数�?/summary>
   TCounter = class
   private
     FMetric: TMetric;
@@ -292,7 +292,7 @@ type
     property Metric: TMetric read FMetric;
   end;
   
-  /// <summary>直方图指�?/summary>
+  /// <summary>直方图指�?/summary>
   THistogramMetric = class
   private
     FMetric: TMetric;
@@ -358,7 +358,7 @@ type
   
   {$ENDREGION}
   
-  {$REGION '资源和配�?}
+  {$REGION '资源和配�?}
   
   /// <summary>资源信息</summary>
   TResource = class
@@ -382,7 +382,7 @@ type
     property SchemaUrl: string read FSchemaUrl write FSchemaUrl;
   end;
   
-  /// <summary>导出器类�?/summary>
+  /// <summary>导出器类�?/summary>
   TExporterType = (
     etOTLP,
     etJaeger,
@@ -398,7 +398,7 @@ type
     opHttpJson
   );
   
-  /// <summary>导出器配�?/summary>
+  /// <summary>导出器配�?/summary>
   TExporterConfig = record
     ExporterType: TExporterType;
     Endpoint: string;
@@ -425,7 +425,7 @@ type
     stParentBased
   );
   
-  /// <summary>采样器配�?/summary>
+  /// <summary>采样器配�?/summary>
   TSamplerConfig = record
     SamplerType: TSamplerType;
     Ratio: Double;
@@ -457,9 +457,9 @@ type
   
   {$ENDREGION}
   
-  {$REGION '工作流特定类�?}
+  {$REGION '工作流特定类�?}
   
-  /// <summary>工作流追踪属�?/summary>
+  /// <summary>工作流追踪属�?/summary>
   TWorkflowTraceAttributes = class
   public
     class procedure SetWorkflowAttributes(ASpan: TSpan;
@@ -472,33 +472,33 @@ type
       const AProvider, AModel: string; ATokensIn, ATokensOut: Integer);
   end;
   
-  /// <summary>工作流指标名�?/summary>
+  /// <summary>工作流指标名�?/summary>
   TWorkflowMetrics = class
   public const
     // Workflow 指标
-    WORKFLOW_EXECUTIONS_TOTAL = 'uniflow.workflow.executions.total';
-    WORKFLOW_EXECUTION_DURATION = 'uniflow.workflow.execution.duration';
-    WORKFLOW_ACTIVE = 'uniflow.workflow.active';
-    WORKFLOW_ERRORS_TOTAL = 'uniflow.workflow.errors.total';
+    WORKFLOW_EXECUTIONS_TOTAL = 'deepflow.workflow.executions.total';
+    WORKFLOW_EXECUTION_DURATION = 'deepflow.workflow.execution.duration';
+    WORKFLOW_ACTIVE = 'deepflow.workflow.active';
+    WORKFLOW_ERRORS_TOTAL = 'deepflow.workflow.errors.total';
     
     // Skill 指标
-    SKILL_EXECUTIONS_TOTAL = 'uniflow.skill.executions.total';
-    SKILL_EXECUTION_DURATION = 'uniflow.skill.execution.duration';
-    SKILL_ERRORS_TOTAL = 'uniflow.skill.errors.total';
+    SKILL_EXECUTIONS_TOTAL = 'deepflow.skill.executions.total';
+    SKILL_EXECUTION_DURATION = 'deepflow.skill.execution.duration';
+    SKILL_ERRORS_TOTAL = 'deepflow.skill.errors.total';
     
     // LLM 指标
-    LLM_REQUESTS_TOTAL = 'uniflow.llm.requests.total';
-    LLM_REQUEST_DURATION = 'uniflow.llm.request.duration';
-    LLM_TOKENS_TOTAL = 'uniflow.llm.tokens.total';
-    LLM_ERRORS_TOTAL = 'uniflow.llm.errors.total';
+    LLM_REQUESTS_TOTAL = 'deepflow.llm.requests.total';
+    LLM_REQUEST_DURATION = 'deepflow.llm.request.duration';
+    LLM_TOKENS_TOTAL = 'deepflow.llm.tokens.total';
+    LLM_ERRORS_TOTAL = 'deepflow.llm.errors.total';
     
     // Session 指标
-    SESSION_ACTIVE = 'uniflow.session.active';
-    SESSION_MESSAGES_TOTAL = 'uniflow.session.messages.total';
+    SESSION_ACTIVE = 'deepflow.session.active';
+    SESSION_MESSAGES_TOTAL = 'deepflow.session.messages.total';
     
     // Queue 指标
-    QUEUE_MESSAGES_TOTAL = 'uniflow.queue.messages.total';
-    QUEUE_MESSAGE_DURATION = 'uniflow.queue.message.duration';
+    QUEUE_MESSAGES_TOTAL = 'deepflow.queue.messages.total';
+    QUEUE_MESSAGE_DURATION = 'deepflow.queue.message.duration';
   end;
   
   {$ENDREGION}
@@ -506,7 +506,7 @@ type
 implementation
 
 uses
-  System.Hash;
+  System.Hash, System.Math;
 
 {$REGION 'TAttributeValue'}
 
@@ -1315,7 +1315,7 @@ end;
 class function TResource.Default: TResource;
 begin
   Result := TResource.Create;
-  Result.FAttributes.SetAttribute('telemetry.sdk.name', 'uniflow-otel');
+  Result.FAttributes.SetAttribute('telemetry.sdk.name', 'deepflow-otel');
   Result.FAttributes.SetAttribute('telemetry.sdk.language', 'delphi');
   Result.FAttributes.SetAttribute('telemetry.sdk.version', '1.0.0');
 end;
@@ -1474,23 +1474,23 @@ end;
 class procedure TWorkflowTraceAttributes.SetWorkflowAttributes(ASpan: TSpan;
   const AWorkflowId, AWorkflowName: string; AVersion: Integer);
 begin
-  ASpan.SetAttribute('uniflow.workflow.id', AWorkflowId);
-  ASpan.SetAttribute('uniflow.workflow.name', AWorkflowName);
-  ASpan.SetAttribute('uniflow.workflow.version', AVersion);
+  ASpan.SetAttribute('deepflow.workflow.id', AWorkflowId);
+  ASpan.SetAttribute('deepflow.workflow.name', AWorkflowName);
+  ASpan.SetAttribute('deepflow.workflow.version', AVersion);
 end;
 
 class procedure TWorkflowTraceAttributes.SetSkillAttributes(ASpan: TSpan;
   const ASkillId, ASkillType: string);
 begin
-  ASpan.SetAttribute('uniflow.skill.id', ASkillId);
-  ASpan.SetAttribute('uniflow.skill.type', ASkillType);
+  ASpan.SetAttribute('deepflow.skill.id', ASkillId);
+  ASpan.SetAttribute('deepflow.skill.type', ASkillType);
 end;
 
 class procedure TWorkflowTraceAttributes.SetSessionAttributes(ASpan: TSpan;
   const ASessionId, AUserId: string);
 begin
-  ASpan.SetAttribute('uniflow.session.id', ASessionId);
-  ASpan.SetAttribute('uniflow.user.id', AUserId);
+  ASpan.SetAttribute('deepflow.session.id', ASessionId);
+  ASpan.SetAttribute('deepflow.user.id', AUserId);
 end;
 
 class procedure TWorkflowTraceAttributes.SetLLMAttributes(ASpan: TSpan;

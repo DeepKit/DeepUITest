@@ -1,6 +1,6 @@
 (*******************************************************************************
                                                                                
-  UniFlow Plugin Registry                                                      
+  DeepFlow Plugin Registry                                                      
   Central plugin management and lifecycle control                              
                                                                                
   Features:                                                                    
@@ -12,7 +12,7 @@
                                                                                
 *******************************************************************************)
 
-unit UniFlow.Plugin.Registry;
+unit DeepFlow.Plugin.Registry;
 
 interface
 
@@ -24,8 +24,8 @@ uses
   System.Generics.Collections,
   System.Generics.Defaults,
   System.SyncObjs,
-  UniFlow.Plugin.Intf,
-  UniFlow.Plugin.Loader;
+  DeepFlow.Plugin.Intf,
+  DeepFlow.Plugin.Loader;
 
 type
   //----------------------------------------------------------------------------
@@ -42,15 +42,15 @@ type
   
   TPluginEntry = class
   private
-    FPlugin: IUniFlowPlugin;
+    FPlugin: IDeepFlowPlugin;
     FInfo: TPluginInfo;
     FEnabled: Boolean;
     FLoadTime: TDateTime;
     FContext: IPluginContext;
   public
-    constructor Create(APlugin: IUniFlowPlugin);
+    constructor Create(APlugin: IDeepFlowPlugin);
     
-    property Plugin: IUniFlowPlugin read FPlugin;
+    property Plugin: IDeepFlowPlugin read FPlugin;
     property Info: TPluginInfo read FInfo write FInfo;
     property Enabled: Boolean read FEnabled write FEnabled;
     property LoadTime: TDateTime read FLoadTime;
@@ -172,7 +172,7 @@ type
   
   TPluginQueryResult = record
     Success: Boolean;
-    Plugins: TArray<IUniFlowPlugin>;
+    Plugins: TArray<IDeepFlowPlugin>;
     ErrorMessage: string;
   end;
   
@@ -215,13 +215,14 @@ type
     procedure DoError(const PluginId, ErrorMessage: string);
     
     function GetPluginEntry(const PluginId: string): TPluginEntry;
+    function GetLoadedPluginIds: TArray<string>;
   public
     constructor Create(const AConfig: TPluginRegistryConfig); overload;
     constructor Create(ALoader: TPluginLoader; AOwnsLoader: Boolean = False); overload;
     destructor Destroy; override;
     
     /// <summary>Register a plugin</summary>
-    function RegisterPlugin(Plugin: IUniFlowPlugin; Context: IPluginContext = nil): Boolean;
+    function RegisterPlugin(Plugin: IDeepFlowPlugin; Context: IPluginContext = nil): Boolean;
     /// <summary>Unregister a plugin by ID</summary>
     procedure UnregisterPlugin(const PluginId: string);
     /// <summary>Unregister all plugins</summary>
@@ -233,11 +234,11 @@ type
     function DiscoverAndRegister(const Directory: string = ''): Integer;
     
     /// <summary>Get plugin by ID</summary>
-    function GetPlugin(const PluginId: string): IUniFlowPlugin;
+    function GetPlugin(const PluginId: string): IDeepFlowPlugin;
     /// <summary>Get all registered plugins</summary>
-    function GetAllPlugins: TArray<IUniFlowPlugin>;
+    function GetAllPlugins: TArray<IDeepFlowPlugin>;
     /// <summary>Get all enabled plugins</summary>
-    function GetEnabledPlugins: TArray<IUniFlowPlugin>;
+    function GetEnabledPlugins: TArray<IDeepFlowPlugin>;
     /// <summary>Get plugin info list</summary>
     function GetPluginInfoList: TArray<TPluginInfo>;
     
@@ -254,7 +255,7 @@ type
     function DisablePlugin(const PluginId: string): Boolean;
     
     /// <summary>Query plugins by capability</summary>
-    function GetPluginsByCapability(Capability: TPluginCapability): TArray<IUniFlowPlugin>;
+    function GetPluginsByCapability(Capability: TPluginCapability): TArray<IDeepFlowPlugin>;
     /// <summary>Get all action executors</summary>
     function GetActionExecutors: TArray<IPluginActionExecutor>;
     /// <summary>Get all validators</summary>
@@ -348,7 +349,7 @@ end;
 // TPluginEntry
 //------------------------------------------------------------------------------
 
-constructor TPluginEntry.Create(APlugin: IUniFlowPlugin);
+constructor TPluginEntry.Create(APlugin: IDeepFlowPlugin);
 begin
   inherited Create;
   FPlugin := APlugin;
@@ -874,7 +875,7 @@ begin
   end;
 end;
 
-function TPluginRegistry.RegisterPlugin(Plugin: IUniFlowPlugin; Context: IPluginContext): Boolean;
+function TPluginRegistry.RegisterPlugin(Plugin: IDeepFlowPlugin; Context: IPluginContext): Boolean;
 var
   Entry: TPluginEntry;
   PluginId: string;
@@ -1040,7 +1041,7 @@ begin
   end;
 end;
 
-function TPluginRegistry.GetPlugin(const PluginId: string): IUniFlowPlugin;
+function TPluginRegistry.GetPlugin(const PluginId: string): IDeepFlowPlugin;
 var
   Entry: TPluginEntry;
 begin
@@ -1051,7 +1052,7 @@ begin
     Result := nil;
 end;
 
-function TPluginRegistry.GetAllPlugins: TArray<IUniFlowPlugin>;
+function TPluginRegistry.GetAllPlugins: TArray<IDeepFlowPlugin>;
 var
   Entry: TPluginEntry;
   I: Integer;
@@ -1070,12 +1071,12 @@ begin
   end;
 end;
 
-function TPluginRegistry.GetEnabledPlugins: TArray<IUniFlowPlugin>;
+function TPluginRegistry.GetEnabledPlugins: TArray<IDeepFlowPlugin>;
 var
   Entry: TPluginEntry;
-  ResultList: TList<IUniFlowPlugin>;
+  ResultList: TList<IDeepFlowPlugin>;
 begin
-  ResultList := TList<IUniFlowPlugin>.Create;
+  ResultList := TList<IDeepFlowPlugin>.Create;
   try
     FLock.Enter;
     try
@@ -1172,12 +1173,12 @@ begin
   Result := True;
 end;
 
-function TPluginRegistry.GetPluginsByCapability(Capability: TPluginCapability): TArray<IUniFlowPlugin>;
+function TPluginRegistry.GetPluginsByCapability(Capability: TPluginCapability): TArray<IDeepFlowPlugin>;
 var
   Entry: TPluginEntry;
-  ResultList: TList<IUniFlowPlugin>;
+  ResultList: TList<IDeepFlowPlugin>;
 begin
-  ResultList := TList<IUniFlowPlugin>.Create;
+  ResultList := TList<IDeepFlowPlugin>.Create;
   try
     FLock.Enter;
     try
@@ -1195,8 +1196,8 @@ end;
 
 function TPluginRegistry.GetActionExecutors: TArray<IPluginActionExecutor>;
 var
-  Plugins: TArray<IUniFlowPlugin>;
-  Plugin: IUniFlowPlugin;
+  Plugins: TArray<IDeepFlowPlugin>;
+  Plugin: IDeepFlowPlugin;
   Executors: TArray<IPluginActionExecutor>;
   Executor: IPluginActionExecutor;
   ResultList: TList<IPluginActionExecutor>;
@@ -1218,8 +1219,8 @@ end;
 
 function TPluginRegistry.GetValidators: TArray<IPluginValidator>;
 var
-  Plugins: TArray<IUniFlowPlugin>;
-  Plugin: IUniFlowPlugin;
+  Plugins: TArray<IDeepFlowPlugin>;
+  Plugin: IDeepFlowPlugin;
   Validators: TArray<IPluginValidator>;
   Validator: IPluginValidator;
   ResultList: TList<IPluginValidator>;
@@ -1241,8 +1242,8 @@ end;
 
 function TPluginRegistry.GetEventHandlers: TArray<IPluginEventHandler>;
 var
-  Plugins: TArray<IUniFlowPlugin>;
-  Plugin: IUniFlowPlugin;
+  Plugins: TArray<IDeepFlowPlugin>;
+  Plugin: IDeepFlowPlugin;
   Handlers: TArray<IPluginEventHandler>;
   Handler: IPluginEventHandler;
   ResultList: TList<IPluginEventHandler>;
@@ -1264,8 +1265,8 @@ end;
 
 function TPluginRegistry.GetTransformers: TArray<IPluginTransformer>;
 var
-  Plugins: TArray<IUniFlowPlugin>;
-  Plugin: IUniFlowPlugin;
+  Plugins: TArray<IDeepFlowPlugin>;
+  Plugin: IDeepFlowPlugin;
   Transformers: TArray<IPluginTransformer>;
   Transformer: IPluginTransformer;
   ResultList: TList<IPluginTransformer>;
@@ -1307,25 +1308,6 @@ begin
   for Validator in Validators do
     if Validator.CanHandle(ValidatorType) then
       Exit(Validator);
-end;
-
-function TPluginRegistry.GetLoadedPluginIds: TArray<string>;
-var
-  Entry: TPluginEntry;
-  I: Integer;
-begin
-  FLock.Enter;
-  try
-    SetLength(Result, FPlugins.Count);
-    I := 0;
-    for Entry in FPlugins.Values do
-    begin
-      Result[I] := Entry.Info.Id;
-      Inc(I);
-    end;
-  finally
-    FLock.Leave;
-  end;
 end;
 
 initialization

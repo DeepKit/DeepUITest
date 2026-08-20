@@ -1,4 +1,4 @@
-{ ============================================================================
+﻿{ ============================================================================
   DeepSpec.Services.Context
 
   Pluggable context assembly pipeline with token budget trimming.
@@ -118,7 +118,9 @@ end;
 
 class function TContextAssembler.EstimateTokens(const AText: string): Integer;
 begin
-  // Rough estimate: ~4 chars per token for English, ~2 for CJK
+  // Rough estimate: ~4 chars per token for English, ~2 for CJK.
+  // Not dead code: chunk sources should set TContextChunk.TokenEstimate via
+  // this helper rather than guessing (bugfix.md BUG-13 reviewed, kept).
   Result := Length(AText) div 3;
 end;
 

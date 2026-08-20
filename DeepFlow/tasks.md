@@ -1,376 +1,218 @@
-﻿# UniFlow 开发任务清�?
+# DeepFlow 开发任务清单
 
-> 更新日期: 2025-12-07
+> 更新日期：2026-08-10
 >
-> **当前状�? UniFlow v1.0 开发完�?* �?
->
-> UniFlow Workflow Engine v1.0 功能完整，所有计划任务已完成�?
+> 当前状态：**DeepFlow v1.1 发布就绪 + 金路径闭环达成 + 六角色 LLM 真绿验证 + 104/104 测试全绿 + 可鉴 Web MVP 治理闭环（T10～T14）**
+
+---
+
+## 待办
+
+| 编号 | 任务 | 优先级 |
+|------|------|--------|
+| T15 | 分享卡片导出质量优化：wrapText 4 行硬限截断、insight 行高重叠、canvas 固定高度内容溢出 | P2 |
+| T16 | 真流式体验优化：上游讯飞 GLM 非增量流式（deltas=1，已知限制非代码 bug），候选方案为前端分片逐字渲染或切换流式模型 | P3 |
+| T17 | WiseGateway 治理决策：计划任务 WiseGateway_Supervisor 已禁用（与手动启动争端口），需正式化启动方式（恢复 supervisor 或固化手动） | P2 |
+| T18 | 可鉴 tests/ 补 T13/T14 自动化用例（流式 SSE + 历史持久化/复盘/删除/清空） | P3 |
+| ### 已完成项
+
+#### 可鉴 v1.0.0 核心交付（2026-08-11）
+
+| 模块 | 内容 | 状态 |
+|------|------|------|
+| **T19a** | 个人决策数据服务端持久化（SQLite WAL CRUD） | ✅ Completed |
+| **T19b/c/d** | 脑内 X 光片 + 树洞模式 + 跨会话成长对比 | ✅ Completed |
+| **T20** | WiseGateway call_by_name 多家族 LLM 治理 | ✅ Completed |
+| **T18** | v2 冒烟测试 kejian_v2_smoke_test.py 全绿 | ✅ Completed |
+| **T14** | 历史持久化与复盘（localStorage+ 服务端同步） | ✅ Completed |
+| **T13** | 追问流式输出支持（SSE ReadableStream） | ✅ Completed |
+
+#### 已知限制（不阻塞发布）
+
+| 编号 | 问题 | 影响 | 降级措施 |
+|------|------|------|----------|
+| GPT 网络 | 国内 GPT 访问受限导致四视角偶发降级 | 聚合器仍可用，胶片生成正常 | 用户选择 GLM/Kimi 等替代模型 |
+
+T15-T17（分享卡片质量、真流式体验、WiseGateway 正式化启动）标记为后续迭代增强。
+
+已完成项已移入 history.md / 下方"已完成里程碑"速览。
 
 ---
 
 ## 已完成里程碑
 
-### 核心开发里程碑
+### 可鉴决策操作系统 MVP (2026-08-09)
 
-| 里程�?| 内容 | 状�?|
-|---------|------|------|
-| M1 | 核心框架 (Phase 1-3) | �?|
-| M2 | 完整流程 (Phase 4-6) | �?|
-| M3 | 生产就绪 (Phase 7-8) | �?|
-| P2 | 可选增�?(Audit/Metrics/Skills/Editor) | �?|
-| P3 | 维护任务 (SQLite/WebSocket/CI/Docs) | �?|
-| P4-A | DeepBase 集成 | �?|
-| P4-B | 中文文档 | �?|
-| P4-C | Event Sourcing | �?|
-| P4-D | 分析与可视化 | �?|
-| P4-E | 性能优化 | �?|
-| P4-F | 多租户支�?| �?|
-| P4-G | 插件系统 | �?|
-| P5-A | 生产加固 | �?|
-| P5-B | 功能增强 | �?|
-| P5-C | 平台集成 | �?|
-| P6-A | 云原生支�?| �?|
-| P6-B | AI 增强 | �?|
-
-### 代码统计摘要
-
-**总计: ~112,000+ �?* (�?P6 扩展)
-
-| 类型 | 文件�?| 行数 |
-|------|--------|------|
-| Pascal (Source) | 64 | ~74,000 |
-| Pascal (Examples/Tests) | 6 | ~3,500 |
-| Python Skills | 4 | ~1,450 |
-| Node.js Skills | 7 | ~1,100 |
-| Web Editor | 11 | ~4,500 |
-| Editor Tests | 7 | ~2,300 |
-| Analytics Dashboard | 8 | ~4,900 |
-| Tenant Console | 6 | ~4,200 |
-| Deploy (K8s/Helm/Istio) | 15 | ~1,800 |
-| CI/CD | 4 | ~550 |
-| English Docs | 6 | ~2,250 |
-| Chinese Docs | 4 | ~2,590 |
-
-## 待开发任�?(Code Review 优化�?
-
-### 方向 P: 安全漏洞修复 [TASK-2100~2104] 🔴
-
-> 优先�? P0 (紧�? | 预估工时: 1-2 �?| 来源: 2025-12-07 AI 安全代码审查
-
-| 任务 ID | 名称 | 严重�?| 描述 | 状�?|
-|---------|------|--------|------|------|
-| TASK-2100 | 沙箱逃逸修�?| �?| 移除 `code_executor.py` 中的 `setattr`/`delattr`，包�?`getattr` 过滤危险属�?| �?已完�?|
-| TASK-2101 | SSRF 防护 | �?| �?`http-request.js` 添加内网 IP 过滤，阻止请�?localhost/私有网段 | �?已完�?|
-| TASK-2102 | JSON 解析安全 | �?| 修复 `node-types.js` 中多�?`JSON.parse` 未捕获异常的问题 | �?已完�?|
-| TASK-2103 | 错误信息脱敏 | �?| 修改 `main.py` 全局异常处理器，生产环境不返回详细错�?| �?已完�?|
-| TASK-2104 | 存储操作反馈 | �?| 修改 `utils.js` �?`Storage.set` 返回操作结果 | �?已完�?|
-
-### 方向 Q: 代码质量与安全增�?[TASK-2105~2109] 🟡
-
-> 优先�? P1 | 预估工时: 1 �?| 来源: 2025-12-07 AI 代码深度审查
-
-| 任务 ID | 名称 | 严重�?| 描述 | 状�?|
-|---------|------|--------|------|------|
-| TASK-2105 | Analytics 存储反馈 | �?| 修复 `Analytics/utils.js` �?`setStorage` 静默失败问题 | �?已完�?|
-| TASK-2106 | Timeline 日志完善 | �?| 修复 `timeline.js` �?`formatJson` �?catch �?| �?已完�?|
-| TASK-2107 | XSS 防护增强 | �?| 增强 `dashboard.js` �?`escapeHtml` 防护范围 | �?已完�?|
-| TASK-2108 | Python eval 注入防护 | �?| �?`python-data-transformer.py` 添加表达式安全验�?| �?已完�?|
-| TASK-2109 | JS Function 注入防护 | �?| �?`json-transform.js` 添加 `_validateExpression` 安全验证 | �?已完�?|
-
-### 方向 H: 架构与安全加�?[TASK-1100~1103]
-
-> 优先�? P1 | 预估工时: 3-4 �?| 来源: 2025-12-06 AI Code Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1100 | 安全审计: SQL 注入防御 | 审查 Storage 层，确保强制使用参数化查询，禁止依赖 `SanitizeSQL` 拼接 | 待开�?|
-| TASK-1101 | 架构重构: Engine 拆分 | �?`TUniFlowEngine` 的加载与注册逻辑拆分�?`TWorkflowLoader` �?`TRegistryManager` | 待开�?|
-| TASK-1102 | 并发优化: 及时取消机制 | �?`IActionExecutor` 增加 Cancellation 支持，优�?`ExecuteParallel` �?FailFast 响应速度 | 待开�?|
-| TASK-1103 | 内存优化: 循环结果流式处理 | 优化 `ExecuteLoop`，增加配置项以支持不收集结果或流式处理，防止大数据量 OOM | 待开�?|
-
-### 方向 I: DeepBase Core 深度优化 [TASK-1200~1102]
-
-> 优先�? P2 | 预估工时: 2-3 �?| 来源: 2025-12-06 DeepBase Core Code Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1200 | IoC 性能优化 | 移除 `TryResolve` 中的异常捕获，改�?`PeekResolve` 或返回状态码；优�?Singleton 锁机�?| 待开�?|
-| TASK-1201 | ORM 映射加�?| 优化 `MapRowToEntity`，引入预编译 Setter �?RTTI 缓存，提升大数据量查询性能 | 待开�?|
-| TASK-1202 | 安全接口加固 | 标记 `ExecuteSQL` �?Unsafe，增�?`ExecuteSQLUnsafe` 别名，并在文档中强调参数化查�?| 待开�?|
-
-### 方向 J: DeepBase 基础设施加固 [TASK-1300~1306]
-
-> 优先�? P2 | 预估工时: 3-4 �?| 来源: 2025-12-06 DeepBase Full Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1300 | EventBus 内存保护 | �?`TEventBus.FEventHiDeepDeepDeepDeepDeepStory` 增加最大内存限制或默认禁用历史记录，防止内存泄�?| 待开�?|
-| TASK-1301 | 日志脱敏机制 | �?`TDeepBaseLogger` 中实�?`LogSanitizer` 拦截器，自动掩盖密码/Token等敏感字�?| 待开�?|
-| TASK-1302 | WorkerQueue 持久�?| 实现 `TFileJobStorage` �?`TDbJobStorage`，并设为生产环境默认，防止重启丢�?| 待开�?|
-| TASK-1303 | 安全配置加固 | 标记 `GetConfigEncrypted` 为已过时，强制迁移到 `DeepBase.Security`；TCorsMiddleware 增加白名�?| 待开�?|
-| TASK-1304 | 网络安全增强 | `THttpClient_` 增加 SSRF 防御（内�?IP 过滤）；补全 WebSocket 空壳实现 | 待开�?|
-| TASK-1305 | 序列化补全与安全 | 实现 `TXmlSerializer.Deserialize`；增加反序列化类型白名单机制 | 待开�?|
-| TASK-1306 | MVVM 性能优化 | �?`TBindingManager` 增加 RTTI 属性缓存，提升高频更新场景下的 UI 性能 | 待开�?|
-
-### 方向 K: 数据库与核心加固 [TASK-1400~1403]
-
-> 优先�? P2 | 预估工时: 2-3 �?| 来源: 2025-12-06 DeepBase DB Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1400 | 统一连接�?| 标记 `DeepBase.DB.ConnectionPool.pas` 为已过时，统一迁移�?`DeepBase.DB.Pool.pas` | 待开�?|
-| TASK-1401 | 查询日志脱敏 | �?`DeepBase.DB.DoQry.LogQuery` 中增加参数脱敏，防止日志记录密码/Token | 待开�?|
-| TASK-1402 | DoQry 易用性增�?| �?`UniDbSelect/Exec` 增加 `TJSONObject` 重载，减�?JSON 序列化开销 | 待开�?|
-| TASK-1403 | 预编译池内存管理 | �?`GPreparedPool` 增加 LRU 或定时清理机制，防止长期运行内存泄漏 | 待开�?|
-
-### 方向 L: 业务模块深度优化 [TASK-1500~1503]
-
-> 优先�? P2 | 预估工时: 2-3 �?| 来源: 2025-12-06 DeepBase Business Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1500 | License 安全加固 | 移除 `DeepBase.License.pas` 中硬编码�?`LICENSE_SECRET`，改为外部配置或混淆 | 待开�?|
-| TASK-1501 | CSV 导出安全 | �?`TDataExport.EscapeCSV` 中增加对 `=, +, -, @` 开头字段的转义，防�?CSV 注入 | 待开�?|
-| TASK-1502 | Diff 性能保护 | �?`TTextDiff` 增加超时机制或最大行数限制，防止大文件比对导�?UI 冻结 | 待开�?|
-| TASK-1503 | LLM 架构重构 | �?`TDeepBaseLLM` 中的模板管理功能拆分�?`TLLMTemplateManager`，减轻上帝类负担 | 待开�?|
-
-### 方向 M: 核心管理与弹性优�?[TASK-1600~1603]
-
-> 优先�? P2 | 预估工时: 2-3 �?| 来源: 2025-12-06 DeepBase Core Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1600 | 插件签名验证 | �?`TDeepBasePluginManager.LoadPlugin` 中增加对 BPL 文件的签名校验，防止加载恶意插件 | 待开�?|
-| TASK-1601 | 插件配置隔离 | 修改 `TPluginContext.SetConfig`，强制为 Key 加上插件 ID 前缀，防止插件篡改系统配�?| 待开�?|
-| TASK-1602 | 限流锁优�?| 优化 `TRateLimiter`，使用原子操作替代互斥锁，提升高并发吞吐�?| 待开�?|
-| TASK-1603 | 数据库抽�?| 提取 `ISchemaProvider` 接口，将 `ValidateSchema` 中的 SQLite 特定 SQL 解�?| 待开�?|
-
-### 方向 N: 架构支撑优化 [TASK-1700~1703]
-
-> 优先�? P3 | 预估工时: 2-3 �?| 来源: 2025-12-06 DeepBase Support Review
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1700 | Schema 资源�?| �?`DeepBase.Schema.pas` 中的 SQL 常量移至 `.sql` 资源文件，简化代码并方便 DBA 审查 | 待开�?|
-| TASK-1701 | 反射缓存 | 优化 `TReflect`，增�?`TProperty` �?`TMethod` 缓存，提�?`GetProp/Call` 性能 | 待开�?|
-| TASK-1702 | 迁移测试套件 | 建立自动�?Schema 迁移测试，覆盖从最低兼容版本到当前版本的所有升级路�?| 待开�?|
-| TASK-1703 | 插件反射规范 | 在文档和 CI 检查中增加规则，限制插件使�?`TFieldAccess` 修改私有字段 | 待开�?|
-
-### 方向 O: 低熵代码重构 [TASK-1800~1805]
-
-> 优先�? P2 | 预估工时: 3-4 �?| 来源: 2025-12-07 代码熵管理分�?
->
-> 参考文�? `../01.01.DeepBase-4AI-集成指南-v1.0.md`
-
-| 任务 ID | 名称 | 描述 | 状�?|
-|---------|------|------|------|
-| TASK-1800 | 删除重复 LLM 代码 | 删除 `UniFlow.AI.Types.pas` �?`UniFlow.AI.LLMClient.pas`，统一使用 DeepBase.LLM，已创建 UniFlow.AI.Adapter.pas | �?已完�?|
-| TASK-1801 | 统一错误码模�?| 实现 `{Source}/{Category}/{Specific}` 格式错误码，添加 TErrorCode 解析�?| �?已完�?|
-| TASK-1802 | 命名一致性审�?| 根据 Glossary.md 审计代码，统一术语使用 (FlowInstance/TUniFlowEvent/Step/Snapshot �? | 待开�?|
-| TASK-1803 | Event Sourcing 合规检�?| 检查所�?FlowInstance 状态变化是否都写了 TUniFlowEvent，修复遗�?| 待开�?|
-| TASK-1804 | 分层边界检查脚�?| 创建 `scripts/check-layer-violations.ps1` 检测违规依�?| �?已完�?|
-| TASK-1805 | Step 命名审计 | 审计现有步骤名，生成 `docs/naming-audit-report.md`，核心代码符合规�?| �?已完�?|
-
----
-
-## 已完成任�?
-
-### 方向 B: 中文文档补全 [TASK-1010~1013] �?
-
-| 任务 ID | 内容 | 输出文件 | 状�?|
-|---------|------|------|------|
-| TASK-1010 | 中文快速入�?| `docs/zh/quick-start.md` | �?|
-| TASK-1011 | 中文 Workflow 格式 | `docs/zh/workflow-definition.md` | �?|
-| TASK-1012 | 中文 Skill 开�?| `docs/zh/skills-development.md` | �?|
-| TASK-1013 | 中文部署指南 | `docs/zh/deployment.md` | �?|
-
-### 方向 G: 插件系统 [TASK-1060~1063] �?
-
-| 任务 ID | 内容 | 输出文件 | 状�?|
-|---------|------|------|------|
-| TASK-1060 | 插件接口定义 | `UniFlow.Plugin.Intf.pas` | �?|
-| TASK-1061 | 插件加载�?| `UniFlow.Plugin.Loader.pas` | �?|
-| TASK-1062 | 插件注册�?| `UniFlow.Plugin.Registry.pas` | �?|
-| TASK-1063 | 示例插件 | `UniFlow.Plugin.Examples.pas` | �?|
-
----
-
-## Bug 修复状�?
-
-详细 Bug 修复记录�?`bugfix.md`
-
-| 严重程度 | 已修�?|
-|----------|--------|
-| Critical | 1 |
-| High | 95 |
-| Medium | 22 |
-| Low | 7 |
-| **合计** | **125** |
-
----
-
-## 已完成问题清�?(2025-12-06)
-
-### 架构问题 (全部完成)
-
-| ID | 问题描述 | 严重程度 | 状�?|
-|----|------|----------|------|
-| ARCH-001 | 依赖注入容器 | Medium | �?(BUG-058) |
-| ARCH-002 | TTenantEventStore 接口不一�?| High | �?(BUG-049) |
-| ARCH-003 | Skill Service URL 配置外置 | Low | �?(BUG-060) |
-| ARCH-004 | ExecuteParallel 真正并行 | Medium | �?(BUG-055) |
-
-### 代码质量问题 (全部完成)
-
-| ID | 问题描述 | 严重程度 | 状�?|
-|----|------|----------|------|
-| CODE-001 | TStepResult.Output 所有权 | High | �?(BUG-050) |
-| CODE-002 | ExecuteLoop 对象池优�?| Medium | �?(BUG-061) |
-| CODE-003 | 缺少 try-finally 保护 | High | �?(BUG-051) |
-| CODE-004 | HTTP/重试超时配置�?| Low | �?(BUG-054) |
-| CODE-005 | 子工作流变量隔离 | Medium | �?(BUG-052) |
-
-### 安全问题 (全部完成)
-
-| ID | 问题描述 | 严重程度 | 状�?|
-|----|------|----------|------|
-| SEC-001 | 表达式注入白名单 | High | �?(BUG-045) |
-| SEC-002 | 审计日志敏感信息脱敏 | High | �?(BUG-046) |
-| SEC-003 | 租户隔离签名验证 | High | �?(BUG-047) |
-| SEC-004 | Skill 服务身份认证 | Medium | �?(BUG-053) |
-| SEC-005 | 配额检查原子操�?| Medium | �?(BUG-048) |
-
-### 质量保证问题 (全部完成)
-
-| ID | 问题描述 | 优先�?| 状�?|
-|----|------|------|------|
-| QA-001 | 核心单元测试 | Critical | �?(BUG-056) |
-| QA-002 | 边界条件测试 | High | �?(BUG-059) |
-| QA-003 | 并发场景测试 | High | �?(BUG-059) |
-| QA-004 | 错误恢复测试 | Medium | �?(BUG-059) |
-
-### 用户体验问题 (全部完成)
-
-| ID | 问题描述 | 优先�?| 状�?|
-|----|------|------|------|
-| UX-001 | 错误信息友好�?| High | �?(BUG-057) |
-| UX-002 | 工作流模板库 | Medium | �?(BUG-062) |
-| UX-003 | 调试器可视化 | Medium | �?(BUG-063) |
-| UX-004 | 性能分析面板 | Low | �?(BUG-064) |
-
----
-
-## 已完�?P5 任务
-
-### P5-A: 生产加固 �?
-
-| 任务 | 描述 | 状�?|
+| 模块 | 内容 | 状态 |
 |------|------|------|
-| TASK-2001 | 端到端集成测�?| �?|
-| TASK-2002 | 压力测试与基�?| �?|
-| TASK-2003 | 生产部署脚本 | �?|
-| TASK-2004 | 监控告警集成 | �?|
+| Brand Archive | 产品定位文档（OCGS+DeepFlow+DeepInsight 三体架构） | Completed |
+| Web MVP | 单页应用 + 品牌样式 + 六角色推演逻辑 | Completed |
+| Skills Integration | 参数契约修正 + 字段映射 + 胶片渲染 | Completed |
+| Virus Loop | 品牌水印 + 分享卡片 + 邀请链接 | Completed |
+| E2E Tests | Python 端到端测试套件（kejian_e2e_test.py） | Completed |
+| Load Test | 批量压力测试工具（stress_test.py） | Completed |
+| Samples | 决策样本库生成器（100+ scenarios） | Completed |
+| Documentation | README + API 文档 | Completed |
+| Follow-up Chat | 胶片后继续追问（对话式治理，/llm/chat 多轮） | Completed |
+| Scenario Templates | 行业决策场景模板：战略/投资/人事/采购四场景知识库，四角色 prompt 差异化注入（T8） | Completed |
+| LLM Stability | T9：LLM_TIMEOUT 40s→90s（消除随机超时降级）+ 截断降级诊断（finish_reason=length → llm_response_truncated，六 skill 全覆盖） | Completed |
+| Film Visual | T10：胶片视觉化升级，visual fields 契约 + 前端视觉组件 + 分享卡片洞察内容（e9a47ec9） | Completed |
+| UI Fix | T11：聚合区 [object Object] 渲染修复（itemText 智能提取）+ film 变量作用域缺陷（881ff0fc） | Completed |
+| Scenario Expansion | T12：行业场景模板扩展——新增医疗/法律/教育/家庭四场景四角色聚焦（34dfa198） | Completed |
+| Streaming Follow-up | T13：追问流式输出 SSE（client.py stream + /llm/chat/stream + 前端逐字显影 + 降级兜底），网关停摆根因定位并恢复（8460b9e0） | Completed |
+| Decision History | T14：决策历史与复盘（localStorage 持久化 + 历史面板 + 一键回放 + 删除/清空），3 缺陷修复见 bugfix.md BUG-2026-036~038（5b31c355） | Completed |
+| Data Persistence | T19a：个人决策数据服务端持久化（Skills SQLite CRUD + 前端同步/导出导入 + 端口探测），为 DeepInsight 集成奠基（4a2bb003） | Completed |
 
-### P5-B: 功能增强 �?
 
-| 任务 | 描述 | 状�?|
+### DeepInsight × DeepFlow 集成评估结论 (2026-08-10)
+
+> 问题：D:\_Progs\02Business\DeepInsight（洞见·思维显影室）软件功能可否通过 DeepFlow 实现？
+
+**结论：可以，且已有可鉴 MVP 实证。** DeepInsight 基础版核心承诺（每周一决策/思维显影/可回看胶片）与可鉴已验证能力高度同构，DeepFlow 作为 workflow 运行时 + Skills 服务可承接全部核心能力，FMX 桌面壳保留为薄客户端或转 Web 形态。
+
+| DeepInsight 功能 | DeepFlow 承接方式 | 实证状态 |
+|------------------|--------------------|----------|
+| 六 NPC（主持人/决策教练/架构师/诘问者/心理镜子/旁观者） | 可鉴六角色推演（coach/critic/mirror/observer/aggregator/film_generator）一一对应 | ✅ 已验证 |
+| 决策胶片 | film_generator + 胶片视觉化（T10） | ✅ 已验证 |
+| 脑内 X 光片（第三人称自我觉察） | 新增 X-ray skill（第三人称洞察生成），prompt 复用可鉴六角色模式 | 🔧 待实现 |
+| 五段显影流程（问题→方案→风险→觉察→决策，可提前结束/跳过） | DeepFlow workflow JSON 编排（分支/条件/提前终止为核心能力） | 🔧 待实现 |
+| 树洞模式（轻量陪伴 + 按需分析） | /llm/chat 轻量对话 workflow + 按钮触发 X 光片 | 🔧 待实现 |
+| 跨会话记忆/旁观者成长对比 | DeepFlow Memory 系统（03.15 设计）+ Session 模块；一期可先 localStorage（T14 已验证） | 🔧 待实现 |
+| @角色名点名发言 | 多轮对话 role 参数指定角色 | 🔧 待实现 |
+| 桌面 FMX UI | 不重复实现：DeepInsight 降级为薄客户端调 Skills HTTP API，或迁入可鉴 Web 形态 | 方案已定 |
+
+与三体架构（OCGS 定框架 + DeepFlow 执行 + DeepInsight 良知）一致：DeepInsight 定位"良知/觉察层"，其显影执行能力由 DeepFlow 承接，避免两套并行实现。
+
+
+### 核心开发里程碑 (2024-12 ~ 2025-12)
+
+| 里程碑 | 内容 | 状态 |
+|--------|------|------|
+| M1 | 核心框架 (Phase 1-3) | 已完成 |
+| M2 | 完整流程 (Phase 4-6) | 已完成 |
+| M3 | 生产就绪 (Phase 7-8) | 已完成 |
+| P2 | 可选增强 (Audit/Metrics/Skills/Editor) | 已完成 |
+| P3 | 维护任务 (SQLite/WebSocket/CI/Docs) | 已完成 |
+| P4-A | DeepBase 集成 | 已完成 |
+| P4-B | 中文文档 | 已完成 |
+| P4-C | Event Sourcing | 已完成 |
+| P4-D | 分析与可视化 | 已完成 |
+| P4-E | 性能优化 | 已完成 |
+| P4-F | 多租户支持 | 已完成 |
+| P4-G | 插件系统 | 已完成 |
+| P5-A | 生产加固 | 已完成 |
+| P5-B | 功能增强 | 已完成 |
+| P5-C | 平台集成 | 已完成 |
+| P6-A | 云原生支持 | 已完成 |
+| P6-B | AI 增强 | 已完成 |
+
+### DeepFlow 正名 (2026-08-06)
+
+| 任务 | 内容 | 状态 |
 |------|------|------|
-| TASK-2010 | 工作流版本控�?| �?|
-| TASK-2011 | 可视化编辑器增强 | �?|
-| TASK-2012 | 更多 Skill 模板 | �?|
-| TASK-2013 | 工作流导�?导出 | �?|
+| 文档正名 | 73 篇 .md UniFlow 转 DeepFlow, 两层命名 UpFlow/deepFlow | 已完成 |
+| 代码 unit 改名 | 68 个 .pas unit/program/uses 全改 DeepFlow.* | 已完成 |
+| schema URI 纠正 | $id uniflow:// 转 deepflow://, author/URL 同步 | 已完成 |
+| 03.07 自指修复 | 标题/对比表/命名约定修正 | 已完成 |
+| 术语表扩写 | 02.07 补 UpFlow/deepFlow 条目 | 已完成 |
+| ADR 备案 | ADR-002 已批准 | 已完成 |
+| 冗余清理 | 3 个冗余 prompt 删除 + Editor favicon | 已完成 |
+| 类型标识符重命名 | 25 个文件 477 处 TUniFlowXxx→TDeepFlowXxx, 零残留 | 已完成 (commit fb6fbadf) |
 
-### P5-C: 平台集成 �?
+### 2026-08-07: UTF-8 损坏修复
 
-| 任务 | 描述 | 状�?|
+| 任务 | 内容 | 状态 |
 |------|------|------|
-| TASK-2020 | MCP 协议完整支持 | �?|
-| TASK-2021 | 更多 LLM 提供�?| �?|
-| TASK-2022 | 消息队列集成 (RabbitMQ/Kafka) | �?|
-| TASK-2023 | 数据库存储后�?(PostgreSQL) | �?|
+| TASK-0102 | 39 个 .pas 文件 UTF-8 损坏修复 | 已完成 |
+| BUG-2026-007 | 39 个文件评论中文损坏：git checkout HEAD 恢复 | 已完成 (commit ea96fdc6) |
+| tools/utf8-fix-analyzer.py | UTF-8 损坏检测工具 | 已完成 |
 
----
+### 2026-08-07: 构建配置完成
 
-## 已完�?P6 任务
-
-### P6-A: 云原生支�?�?
-
-| 任务 | 描述 | 状�?|
+| 任务 | 内容 | 状态 |
 |------|------|------|
-| TASK-3001 | Kubernetes 部署模板 | �?|
-| TASK-3002 | Helm Chart �?| �?|
-| TASK-3003 | Service Mesh 集成 (Istio) | �?|
-| TASK-3004 | 分布式追�?(OpenTelemetry) | �?|
+| TASK-0103 | DeepBase 外部依赖路径配置 | 已完成 |
+| DeepFlow.dpk | DeepFlow 运行时包文件 | 已完成 |
+| DeepFlow.dproj | MSBuild 项目配置（含 DeepBase Core 搜索路径） | 已完成 |
 
-### P6-B: AI 增强 �?
+### 2026-08-07: Delphi 编译完整修复里程碑
 
-| 任务 | 描述 | 状�?|
+| 任务 | 内容 | 状态 |
 |------|------|------|
-| TASK-3010 | 智能工作流推�?| �?|
-| TASK-3011 | 自然语言工作流生�?| �?|
-| TASK-3012 | AI 异常检�?| �?|
-| TASK-3013 | 智能重试策略 | �?|
+| TASK-0104 | Source\*所有.pas 文件 Delphi 37 dcc32 编译通过 | 已完成 (零 Error) |
+| fix-nlwf | NLWorkflowGen.pas implicit forward + trailing comma | 已完成 |
+| fix-utf8 | 128 处代码字符串 UTF-8 损坏批量修复 | 已完成 |
+| fix-reco | Recommendation.pas TComparer/API mismatch 修复 | 已完成 |
+| fix-rabbitmq | RabbitMQ.pas 接口声明顺序修复 | 已完成 |
+| fix-kafka | Kafka.pas cross-unit reference + E2251 cascade | 已完成 |
+| fix-benchmark | Benchmark.pas Tests API 不匹配修复 | 已完成 |
+| fix-e2e | E2E.pas Tests API 不匹配修复 | 已完成 |
+| fix-executor | Executor.pas Uses/WillRaise/TTask.Run 修复 | 已完成 |
+| dcu-search-path | 添加 dcu 到 -U 搜索路径 | 已完成 |
 
----
+### 2026-08-07~08: DUnitX 测试驱动修复里程碑 (44→104 全绿)
 
-## 后续发展建议 (P7)
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0105 | DUnitX 测试运行器建立（DeepFlow.Tests.Runner.dpr + XML 报告 + 逐 fixture 运行） | 已完成 |
+| TASK-0106 | Executor 测试 55/55（SetVariable 重定向/AsString 标量/表达式防嵌套/Start 保留输出/并行捕获修复/Mock 加锁） | 已完成 |
+| TASK-0107 | E2E 测试 29/29（Guard expression 守卫 + length 过滤器 + Session 定时器死锁 + 编译路径补 Source\Session） | 已完成 |
+| TASK-0108 | Benchmark 测试 20/20（TMemoryMonitor 匿名线程悬垂句柄 + LargeContext/LeakDetection JSON 泄漏修复） | 已完成 |
+| 测试总闸 | 104/104 通过，0 失败/0 泄漏/0 错误 | 已完成 (2026-08-08) |
 
-### P7-A: 企业级功�?
+### 2026-08-08: Python Skill 服务真实联调里程碑
 
-| 任务 | 描述 | 复杂�?|
-|------|------|--------|
-| TASK-4001 | SSO/SAML/OAuth2 集成 | High |
-| TASK-4002 | 工作流审�?人工介入节点 | Medium |
-| TASK-4003 | 企业级审计合�?(SOC2/GDPR) | High |
-| TASK-4004 | 多数据中心容�?| High |
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0109 | Skills 服务依赖修复（补装 litellm/structlog/RestrictedPython/packaging，修复损坏 packaging 安装） | 已完成 |
+| TASK-0110 | 创建缺失 llm/client.py（LiteLLM 异步聊天客户端 + LLMConfig + ChatResult） | 已完成 |
+| TASK-0111 | Python Skill Service 启动验证：/health、/skills、/skills/execute 沙箱执行 5050、安全拦截 import os 拒绝 | 已完成 |
+| TASK-0112 | Delphi E2E 演示程序（DeepFlowSkillE2E.pas）：Health/ListSkills/沙箱执行/安全拦截四连验证 | 已完成 |
+| 联调成果 | Delphi TSkillClient ↔ Python FastAPI 全链路打通；修复 2 个真实契约 bug（见 bugfix.md BUG-2026-031/032） | 已完成 |
+| 回归验证 | 修改 Skill.Types/Client 后全量 104/104 仍全绿 | 已完成 |
+| LLM 真调 | /llm/chat 需要有效 OPENAI_API_KEY（当前环境网络受限，代码路径已就绪待真实 key） | 待真 key |
 
-### P7-B: 开发体验优�?
+### 2026-08-08: 金路径闭环 + 发布就绪（v1.1.0）
 
-| 任务 | 描述 | 复杂�?|
-|------|------|--------|
-| TASK-4010 | 工作�?DSL 语言设计 | High |
-| TASK-4011 | VS Code / IDE 插件 | Medium |
-| TASK-4012 | CLI 工具完善 | Low |
-| TASK-4013 | SDK (Python/Go/TypeScript) | Medium |
-
-### P7-C: 生态集�?
-
-| 任务 | 描述 | 复杂�?|
-|------|------|--------|
-| TASK-4020 | Webhook 运营商集�?(Stripe/Twilio/SendGrid) | Medium |
-| TASK-4021 | 低代码平台集�?(Retool/Appsmith) | Medium |
-| TASK-4022 | BI 工具集成 (Metabase/Superset) | Low |
-| TASK-4023 | 工单系统集成 (Jira/ServiceNow) | Medium |
-
-### P7-D: 性能与质�?
-
-| 任务 | 描述 | 复杂�?|
-|------|------|--------|
-| TASK-4030 | 工作流执行回�?(Replay/Debug) | High |
-| TASK-4031 | 性能基线自动�?| Medium |
-| TASK-4032 | 混沌工程测试 | High |
-| TASK-4033 | 全链路压测平�?| Medium |
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| TASK-0113 | LLM 链路修复（KIRO_API_KEY + DEFAULT_LLM_MODEL + LLM_BASE_URL 环境变量；Skills 服务重启后 /llm/chat 真实可用） | 已完成 |
+| TASK-0114 | 防假绿机制（六角色 system prompt 强制 JSON + _parse_response 围栏提取 + raw_analysis 检测主动降级） | 已完成 |
+| TASK-0115 | 聚合器扩容（max_tokens 8192 + _compact_view 输入压缩，修复真实数据截断降级） | 已完成 |
+| TASK-0116 | 金路径端到端演示（goldpath_demo.py 并行四视角 + 聚合 + 胶片 + 产物落盘） | 已完成 |
+| 发布验证 | Delphi 编译 64/64 + 测试 104/104 + 六角色 LLM 真绿 degraded=False + 端到端胶片产出 | 已完成 (2026-08-08) |
+| 版本 | CHANGELOG 更新至 v1.1.0 | 已完成 |
 
 ---
 
 ## 相关文档
 
-- `hiDeepDeepDeepDeepDeepStory.md` - 开发历史详细记�?
+- `history.md` - 开发历史详细记录
 - `bugfix.md` - Bug 修复详细记录
-- `docs/en/` - 英文文档
+- `ADR/ADR-002-术语纠正与 unit 改名.md` - 正名决策记录
+- `tools/verify-term-rename.py` - 术语一致性检查脚本
+- `tools/utf8-fix-analyzer.py` - UTF-8 损坏检测工具
+- `DeepFlow.dpk` - DeepFlow 运行时包文件
+- `DeepFlow.dproj` - MSBuild 项目配置
 - `docs/zh/` - 中文文档
-- `docs/api-reference.md` - API 参�?
-- `docs/quick-start.md` - 快速入�?
 
 ---
 
-## 优先级说�?
+## 已完成里程碑 (本会话)
 
-- **P0**: 紧急阻塞性问�?
+| 任务 | 内容 | Commit |
+|------|------|--------|
+| T19a | 个人决策数据服务端持久化（Skills SQLite CRUD + 前端同步/导出导入） | `4a2bb003` |
+| T19b | 脑内 X 光片 skill + /llm/xray 端点（跨会话历史注入、温和第三人称观察） | `4269fc85` |
+| T19c | 树洞模式（前端入口 + 陪伴对话 + 按需生成 X 光片分析） | `4269fc85` |
+| T19d | 跨会话成长对比（历史摘要注入，识别旧模式与新成长） | `4269fc85` |
+
+---
+
+## 优先级说明
+
+- **TASK-01xx**: 正名遗留项
+- **P0**: 紧急阻塞性问题
 - **P1**: MVP 必需
 - **P2**: 完整功能
 - **P3**: 维护优化
-- **P4**: 扩展增强
-- **P5**: 生产加固
-- **P6**: 云原�?AI
-- **P7**: 企业�?

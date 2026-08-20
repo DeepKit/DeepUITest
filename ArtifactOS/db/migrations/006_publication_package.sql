@@ -77,4 +77,10 @@ create trigger trg_publish_quality_bound
 before insert or update on artifactos.publication_package
 for each row execute function artifactos.fn_guard_publish_quality_bound();
 
+-- Bind RealPublishGate trigger (function created in 004)
+drop trigger if exists trg_real_publish_gate_required on artifactos.publication_package;
+create trigger trg_real_publish_gate_required
+before insert or update on artifactos.publication_package
+for each row execute function artifactos.fn_guard_publish_requires_gate();
+
 commit;

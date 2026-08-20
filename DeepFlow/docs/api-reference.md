@@ -1,4 +1,4 @@
-﻿# UniFlow API Reference
+# DeepFlow API Reference
 
 > Version: 1.0  
 > Last Updated: 2025-12-05
@@ -315,12 +315,12 @@ end;
 
 ## AI Integration
 
-### TUniFlowLLMAdapter
+### TDeepFlowLLMAdapter
 
 Adapter for DeepBase LLM integration.
 
 ```pascal
-var Adapter := TUniFlowLLMAdapter.Create;
+var Adapter := TDeepFlowLLMAdapter.Create;
 try
   // Configure
   var Options: TLLMExecutionOptions;
@@ -552,7 +552,7 @@ Target performance metrics:
 | Workflow parsing (complex) | < 5ms |
 | JSON schema validation | < 0.5ms |
 
-Use `UniFlow.Test.Performance` to run benchmarks:
+Use `DeepFlow.Test.Performance` to run benchmarks:
 
 ```pascal
 RunPerformanceBenchmarks;
